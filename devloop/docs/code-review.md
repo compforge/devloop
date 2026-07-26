@@ -135,6 +135,11 @@ run_review 独占写入。`comments` 是引擎的原始评论（无优先级—�
   "message": "…",         // 引擎的整体消息（如 "No comments generated. Looks good to me."）
   "reviewed_range": "…",  // 审查范围：HEAD 模式是 sha，--mr 模式是 "origin/<target>..HEAD"
   "mr_comment": "…",      // --mr 模式：发评论到 MR 的结果（"posted to MR !N" / "no open MR…" / 失败原因）
+  "pull_request": {       // 找到开放 PR/MR 时的稳定外部 identity；否则为 null
+    "source": "gitlab.example.com",
+    "repository": "group/project",
+    "number": 146
+  },
   "generated_at": 1.0
 }
 ```
@@ -145,11 +150,13 @@ review.json 每次覆盖、只留最新一次；要统计"今天跑了几次 / �
 故每次 review **终态**（success / skipped / error）再追加一行到 `.devloop/review-history.jsonl`：
 
 ```jsonc
-{"ts": 1719300000.0, "secs": 42.0, "status": "success", "sha": "584d717", "count": 3, "failed": 0, "range": "origin/main..HEAD", "posted": "posted to MR !146"}
+{"ts": 1719300000.0, "secs": 42.0, "status": "success", "sha": "584d717", "pull_request": {"source": "gitlab.example.com", "repository": "group/project", "number": 146}, "count": 3, "failed": 0, "range": "origin/main..HEAD", "posted": "posted to MR !146"}
 ```
 
-`ts` + `secs` 支持按天计数与时长统计；per-repo，跨仓聚合即遍历各 repo 此文件。`.devloop` 已
-gitignore，不会被提交。
+`pull_request` 是 review→fix→re-review 以及外部消费者关联 PR/MR 的 key；`source` 与
+`forges` 配置 key 一致，`repository` 是 origin 上的完整仓库路径。没有开放 PR/MR 的本地
+review 不带该 identity。`ts` + `secs` 支持按天计数与时长统计；per-repo，跨仓聚合即遍历各
+repo 此文件。`.devloop` 已 gitignore，不会被提交。
 
 ## 结果回流（下一轮）：agent 怎么做
 

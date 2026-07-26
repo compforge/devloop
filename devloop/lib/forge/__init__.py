@@ -26,6 +26,7 @@ from domain.forge import (
     ForgeNotFound,
     MergeReadiness,
     PullRequest,
+    PullRequestIdentity,
     Release,
     build_window,
     parse_pr_number,
@@ -75,6 +76,13 @@ class ForgeResolution:
     api_host: str    # host to hit for the API (config `api_host` override, else `host`)
     path: str        # owner/repo (GitHub) or group/subgroup/proj (GitLab)
     token: str | None
+
+    def pull_request_identity(self, number: int) -> PullRequestIdentity:
+        return PullRequestIdentity(
+            source=self.host,
+            repository=self.path,
+            number=number,
+        )
 
 
 def resolve_forge(repo_dir: str | Path) -> ForgeResolution | None:

@@ -294,6 +294,31 @@ def test_run_review_append_history():
         assert "ts" in r0 and "secs" in r0           # 时间戳 + 时长，供按天统计
         assert _json.loads(lines[1])["status"] == "skipped"
 
+
+def test_pull_request_identity_uses_origin_source_and_repository():
+    """Review 对外携带完整 identity；source 是 forges 配置 key，不是 provider 名。"""
+    from types import SimpleNamespace
+    from lib.forge import ForgeResolution
+    rr = _load_script("run_review")
+    original = rr.resolve_forge
+    resolution = ForgeResolution(
+        provider="github",
+        host="github-work-alias",
+        api_host="github.example.com",
+        path="owner/repo",
+        token="token",
+    )
+    rr.resolve_forge = lambda repo: resolution
+    try:
+        assert rr._pull_request_identity("/repo", SimpleNamespace(number=17)) == {
+            "source": "github-work-alias",
+            "repository": "owner/repo",
+            "number": 17,
+        }
+        assert rr._pull_request_identity("/repo", None) is None
+    finally:
+        rr.resolve_forge = original
+
 def test_findings_for_history_status_from_warnings():
     """history findings 带 symbol_id + 状态：成功文件 ok、失败(超时)文件 failed+reason。"""
     rr = _load_script("run_review")
@@ -315,16 +340,22 @@ def test_build_history_feed_filters_ok_and_keys_by_symbol():
     with tempfile.TemporaryDirectory() as d:
         sd = _Path(d) / ".devloop"
         sd.mkdir()
+        pull_request = {
+            "source": "github.com",
+            "repository": "owner/repo",
+            "number": 7,
+        }
         rows = [
-            {"sha": "otherpr", "pr_number": 9, "findings": [{"symbol_id": "z.go::Z", "msg": "other", "status": "ok"}]},
-            {"sha": "priorsha", "pr_number": 7, "findings": [
+            {"sha": "otherpr", "pull_request": {**pull_request, "number": 9},
+             "findings": [{"symbol_id": "z.go::Z", "msg": "other", "status": "ok"}]},
+            {"sha": "priorsha", "pull_request": pull_request, "findings": [
                 {"symbol_id": "a.go::F", "msg": "missing nil check", "status": "ok"},
                 {"symbol_id": "b.go::G", "msg": "garbage", "status": "failed", "reason": "timeout"},
                 {"symbol_id": "", "msg": "no unit", "status": "ok"},
             ]},
         ]
         (sd / "review-history.jsonl").write_text("\n".join(_json.dumps(r) for r in rows) + "\n")
-        path = rr._build_history_feed(d, 7, "currentsha")
+        path = rr._build_history_feed(d, pull_request, "currentsha")
         assert path is not None
         data = _json.loads(_Path(path).read_text())
         assert list(data.keys()) == ["a.go::F"]            # only ok + has symbol_id, only this PR
@@ -338,7 +369,11 @@ def test_build_history_feed_none_when_no_pr_or_history():
     with tempfile.TemporaryDirectory() as d:
         assert rr._build_history_feed(d, None, "sha") is None   # no PR -> no feed
         (_Path(d) / ".devloop").mkdir()
-        assert rr._build_history_feed(d, 7, "sha") is None      # no history file -> None
+        assert rr._build_history_feed(
+            d,
+            {"source": "github.com", "repository": "owner/repo", "number": 7},
+            "sha",
+        ) is None                                               # no history file -> None
 
 def test_format_comment_shows_models():
     """review 级 model 身份打进 header（alias×次数、按 alias 排序去重），clean review 也打。"""

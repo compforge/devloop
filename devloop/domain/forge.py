@@ -63,6 +63,26 @@ class ForgeNotFound(ForgeError):
 
 
 # ── domain model ──────────────────────────────────────────────────────────────
+@dataclass(frozen=True)
+class PullRequestIdentity:
+    """Stable cross-repo identity for a PR/MR.
+
+    `source` is the origin host used as the `forges` config key; `repository`
+    is the provider-neutral path under that host.
+    """
+
+    source: str
+    repository: str
+    number: int
+
+    def to_dict(self) -> dict:
+        return {
+            "source": self.source,
+            "repository": self.repository,
+            "number": self.number,
+        }
+
+
 @dataclass
 class PullRequest:
     """A code-review proposal as devloop tracks it — neutral across forges.

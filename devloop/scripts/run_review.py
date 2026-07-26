@@ -27,7 +27,7 @@ sys.path.insert(0, str(HERE.parent))
 from lib import cli, config, git_state, review_engine  # noqa: E402
 from domain.context import base, record_active_repo, store  # noqa: E402
 from domain.forge import ForgeError, pr_label  # noqa: E402
-from lib.forge import forge_for_repo  # noqa: E402
+from lib.forge import forge_for_repo, resolve_forge  # noqa: E402
 
 _MAX_COMMENT_FINDINGS = 30   # 评论里最多列几条，避免超长 MR 评论
 
@@ -169,6 +169,16 @@ def _open_mr(repo: str, branch: str):
         return forge, None
 
 
+def _pull_request_identity(repo: str, pr) -> dict | None:
+    """The complete external identity attached to a PR-bound review."""
+    if pr is None:
+        return None
+    resolution = resolve_forge(repo)
+    if resolution is None:
+        return None
+    return resolution.pull_request_identity(pr.number).to_dict()
+
+
 def _build_background(repo: str, target: str, forge, pr, extra: str | None) -> str:
     """拼引擎的 `--background`（业务上下文，喂进每个文件的 review prompt 以提准）：
     本次提交说明（git log）+ MR 标题/描述（forge）+ 显式 `-b`。全是 detach 进程自己能拿到的，
@@ -222,13 +232,13 @@ def _findings_for_history(comments: list, warnings: list) -> list:
     return out
 
 
-def _build_history_feed(repo: str, pr_number, current_sha: str) -> str | None:
+def _build_history_feed(repo: str, pull_request: dict | None, current_sha: str) -> str | None:
     """Write `.devloop/history.json` (symbol-id -> prior findings) from the most
     recent prior review of THIS pr, for `ccr review --history`. Only `ok` findings
     with a symbol-id are carried (a failed/timed-out file's findings are skipped — we
     can't trust them). Returns the path, or None when there's no prior round or
     nothing to feed."""
-    if not pr_number:
+    if pull_request is None:
         return None
     hist = store.state_dir(repo) / "review-history.jsonl"
     if not hist.exists():
@@ -243,7 +253,7 @@ def _build_history_feed(repo: str, pr_number, current_sha: str) -> str | None:
             except json.JSONDecodeError:
                 continue
             # last row matching this PR (and not the current sha) = its prior review
-            if row.get("pr_number") == pr_number and row.get("sha") != current_sha:
+            if row.get("pull_request") == pull_request and row.get("sha") != current_sha:
                 prior = row
     except OSError:
         return None
@@ -300,8 +310,8 @@ def main(argv: list[str]) -> int:
     range_label = f"origin/{target}..HEAD"
     forge, pr = _open_mr(repo, branch)                              # 冻结的 branch：别把 A 的 findings 发到 B 的 PR
     background = _build_background(repo, target, forge, pr, ns.background)
-    pr_number = pr.number if pr else None
-    history_path = _build_history_feed(repo, pr_number, sha)   # this PR's prior findings → ccr --history
+    pull_request = _pull_request_identity(repo, pr)
+    history_path = _build_history_feed(repo, pull_request, sha)   # this PR's prior findings → ccr --history
 
     # to_ref 传**冻结的 sha**，不是字面量 "HEAD"：ccr 在它自己启动那一刻才解析 HEAD，checkout
     # 若已切走，它审的就是另一条分支——而我们早已把 reviewed_sha 记成上面那个 sha，记录就成了谎。
@@ -309,8 +319,9 @@ def main(argv: list[str]) -> int:
     result = engine.review(repo, f"origin/{target}", sha, background, history_path)
     if not result.ok:
         _write(repo, branch, status="error", reviewed_sha=sha, comments=[], count=0, failed=0,
-               message=result.error, generated_at=base.now())
-        _append_history(repo, started, status="error", sha=sha, count=0, failed=0, range=range_label)
+               message=result.error, pull_request=pull_request, generated_at=base.now())
+        _append_history(repo, started, status="error", sha=sha, pull_request=pull_request,
+                        count=0, failed=0, range=range_label)
         print(f"run_review: {engine.name} output not parseable — see .devloop/review.json")
         return 0
 
@@ -328,8 +339,9 @@ def main(argv: list[str]) -> int:
     _write(repo, branch, status=result.status, reviewed_sha=sha, comments=comments,
            count=len(comments), failed=result.failed, warnings=result.warnings, message=result.message,
            cost_sec=result.cost_sec, tool_version=result.tool_version, inline_posted=inline_posted,
-           reviewed_range=range_label, mr_comment=posted, generated_at=base.now())
-    _append_history(repo, started, status=result.status, sha=sha, pr_number=pr_number,
+           reviewed_range=range_label, mr_comment=posted, pull_request=pull_request,
+           generated_at=base.now())
+    _append_history(repo, started, status=result.status, sha=sha, pull_request=pull_request,
                     count=len(comments), failed=result.failed,
                     findings=_findings_for_history(comments, result.warnings),
                     range=range_label, posted=posted)

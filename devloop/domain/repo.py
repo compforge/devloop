@@ -16,7 +16,7 @@ the state bus instead of the shell:
      each other's fallback; a session with no binding of its own must say --repo —
      other sessions' bindings are only ever surfaced as a hint in that error.
 
-Fuzzy scoring is shared with `enter.py` (/enter), so a name means the
+Fuzzy scoring is shared with the managed-worktree resolver, so a name means the
 same thing everywhere.
 """
 from __future__ import annotations
@@ -57,8 +57,8 @@ class Repo:
 
 
 @dataclass(frozen=True)
-class EnterResolution:
-    """Interactive `/enter` resolution without coupling the resolver to CLI output."""
+class RepoResolution:
+    """Interactive repo resolution without coupling the resolver to CLI output."""
 
     path: str | None = None
     candidates: tuple[tuple[str, str], ...] = ()
@@ -68,7 +68,7 @@ class EnterResolution:
 def default_unit(git_root: str | Path, ctx: RepoContext | None = None) -> repo_layout.Component:
     """repo 级**默认** component：持久化 `code_dir` 缓存优先（= 探测结果的缓存），否则现探
     （`server/` > `backend/` > repo 根）。没有更具体操作目标路径时用——解析边界的默认分支、
-    lifecycle gate 的回落、按名字 `/enter` 一个仓，都收敛到这一个入口（单一事实源）。"""
+    lifecycle gate 的回落、按名字选择一个仓，都收敛到这一个入口（单一事实源）。"""
     ctx = ctx if ctx is not None else RepoContext.load(git_root)
     cached = ctx.repo.code_dir if ctx and ctx.repo.code_dir else None
     if cached:
@@ -329,8 +329,8 @@ def match_subprojects(query: str, ws_root: str | Path) -> list[tuple[int, str, s
     return scored
 
 
-def resolve_enter_target(query: str, cwd: str | Path = ".", *, limit: int = 4) -> EnterResolution:
-    """Resolve the explicit target accepted by `/enter`.
+def resolve_repo_target(query: str, cwd: str | Path = ".", *, limit: int = 4) -> RepoResolution:
+    """Resolve an explicit repo target by path or fuzzy name.
 
     Unlike ``resolve_repo_dir``, this entry-point preserves ambiguous candidates so the
     interactive command can ask the user which subproject they meant. Worktree lifecycle
@@ -343,12 +343,12 @@ def resolve_enter_target(query: str, cwd: str | Path = ".", *, limit: int = 4) -
             path = cwd / path
         path = path.resolve()
         if not path.is_dir():
-            return EnterResolution(reason=f"path does not exist: {path}")
-        return EnterResolution(path=str(path))
+            return RepoResolution(reason=f"path does not exist: {path}")
+        return RepoResolution(path=str(path))
 
     ws_root = workspace.find_containing_workspace(cwd) or workspace.maybe_register_workspace(cwd)
     if not ws_root:
-        return EnterResolution(
+        return RepoResolution(
             reason=(f"cwd not under any registered workspace; pass a path or run "
                     f"init_workspace first (query={query!r})")
         )
@@ -357,16 +357,16 @@ def resolve_enter_target(query: str, cwd: str | Path = ".", *, limit: int = 4) -
         ctx = WorkspaceContext.load(ws_root)
         names = ", ".join(s.name for s in (ctx.subprojects if ctx else []) if s.name)
         if names:
-            return EnterResolution(reason=f"no subproject matches {query!r}; known: {names}")
-        return EnterResolution(
+            return RepoResolution(reason=f"no subproject matches {query!r}; known: {names}")
+        return RepoResolution(
             reason=(f"workspace {ws_root} has no subprojects "
                     f"(no git-repo subdir/symlink found, and none in AGENTS.md)")
         )
     exact = [item for item in scored if item[0] == 0]
     if len(exact) == 1 or len(scored) == 1:
-        return EnterResolution(path=(exact or scored)[0][2])
+        return RepoResolution(path=(exact or scored)[0][2])
     candidates = tuple((name, path) for _, name, path in scored[:limit])
-    return EnterResolution(candidates=candidates)
+    return RepoResolution(candidates=candidates)
 
 
 def resolve_repo_dir(query: str | None, cwd: str | Path = ".") -> tuple[Repo | None, str]:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve an `/enter` target and optionally enter a managed worktree.
+"""Resolve a repo target and optionally create or resume a managed worktree.
 
 Output protocol (first line):
   MATCH<TAB><absolute_path>
@@ -39,8 +39,8 @@ def parse_args(argv: list[str]) -> tuple[str | None, str | None]:
 
 
 def resolve_base(query: str) -> tuple[str | None, int, str]:
-    """Adapt the shared resolver result to `/enter`'s stable line protocol."""
-    result = repo_model.resolve_enter_target(query)
+    """Adapt the shared resolver result to this script's stable line protocol."""
+    result = repo_model.resolve_repo_target(query)
     if result.path:
         return result.path, 0, ""
     if result.candidates:

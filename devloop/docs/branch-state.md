@@ -46,7 +46,7 @@ devloop 关于分支的所有事实,过去挤在一个 `branch.json` + 一次 `R
 
 `remotes` 由 monitor 每 tick `git ls-remote`(便宜,只拿 SHA,不 fetch 对象)写入 `remote_branches.json`,带 `fetched_at`。注入展示 behind 时强制带它:`behind N (vs main, as of 18:07)`;若 monitor 的真 tip 与本地 `origin/<base>` 镜像不一致,显示 `⚠ trunk moved since fetch … — fetch to recount`。**ahead/behind 是关系不是状态**,读时按 `local` vs `base_branch()` 的镜像现算,从不持久化(存它就是上次"behind 0 撒谎"的来源)。
 
-`/enter`(刻意的"去看这个仓")是唯一付得起网络的点:进仓时若 `remote_branches` 陈旧(`REMOTE_VIEW_STALE_SEC`)就重拉 tips;若本地 trunk 镜像确实落后真 tip,再做**一次**有界 `git fetch`(只在真落后时付,clean enter 零成本)。
+`CwdChanged` auto-enter（刻意的"去看这个仓"）是唯一付得起网络的点：进仓时若 `remote_branches` 陈旧（`REMOTE_VIEW_STALE_SEC`）就重拉 tips；若本地 trunk 镜像确实落后真 tip，再做**一次**有界 `git fetch`（只在真落后时付，clean enter 零成本）。
 
 ### 3.4 `fork_from`:git 不持久记录的事实,sticky
 

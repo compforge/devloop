@@ -3,10 +3,9 @@
 
 The native replacement for an old regex-parse-of-`cd` hook:
 the harness hands us the authoritative new working directory, so there's no brittle
-command parsing. This does the cheap, safe part of `/enter` automatically — refresh
-the repo's state segments so Board sees the entered repo on the next UserPromptSubmit.
-`/enter` now only owns what
-can't be inferred from a cd: fuzzy name resolution and worktree creation.
+command parsing. This automatically refreshes the repo's state segments so Board sees
+the entered repo on the next UserPromptSubmit. Managed worktree creation remains an
+explicit script because it cannot be inferred from a cd.
 
 Assumes `cwd` in the payload is the NEW directory (the event's whole point).
 """

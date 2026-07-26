@@ -86,7 +86,7 @@ devloop/
 1. **领域归属沿 `PR/MR → Repo → Component`**：PR/MR 与 branch 生命周期归 Repo，验证范围与验证结果归 Component；Workspace 只聚合上下文。不得重新引入“一个 repo 只有一个代码目录”的假设，具体选择与身份语义见 [`CONCEPTS.md`](./CONCEPTS.md)。
 2. **入口驱动领域，依赖不反向**：`hooks/scripts → domain/lib`；`domain/` 持有业务事实和合法变化，`lib/` 只提供 Git、forge、配置、通知等技术能力。Git、forge、配置分别经统一 seam，入口不得散调外部协议或复制领域判断。
 3. **状态源提供事实，Board 决定组织和投递，guard 读取 live truth**：AGENTS.md 是文字知识源，`.devloop/` 是结构化运行态；Repo、Branch、WorkingTree 与 Session 状态按归属和写入者隔离，验证戳按 Component 记录。Board 只维护 per-session 投递游标，不复制业务事实，也不参与硬门禁判定。详见 [`docs/board.md`](./docs/board.md) 与 [`CONCEPTS.md`](./CONCEPTS.md)。
-4. **生命周期动作走唯一入口，合法例外才软提示**：commit/push/PR 走 `commit_flow`/smart 脚本；worktree 形态的创建、复用和清理走 `enter.py`。保护分支、失活分支、guest session 等无合法编辑路径的情况硬拦截，有合法例外的 in-flight PR/MR 只注入提示。具体流程见 [`docs/loop.md`](./docs/loop.md) 与 [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)。
+4. **生命周期动作走唯一入口，合法例外才软提示**：commit/push/PR 走 `commit_flow`/smart 脚本；checkout 选择及 worktree 形态的创建、复用和清理走 `checkout.py`。保护分支、失活分支、guest session 等无合法编辑路径的情况硬拦截，有合法例外的 in-flight PR/MR 只注入提示。具体流程见 [`docs/loop.md`](./docs/loop.md) 与 [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)。
 
 ---
 

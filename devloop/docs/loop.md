@@ -23,7 +23,7 @@ devloop 的两个杠杆沿循环分布：**状态源 + Board**（软提示）覆
 | # | 拍 | 触发 | 参与者 | 状态效果 |
 |---|----|------|--------|---------|
 | 0 | session 启动 | `SessionStart` | `sessionstart_init` | 状态预热；Board 投递 session items（References / subprojects）；注册全部 subproject 的 AGENTS.md `watchPaths`；workspace 自动注册 |
-| 1 | enter 子模块 | `cd` / `/enter` → `CwdChanged` | `cwdchanged_enter` | 刷新 repo 段状态；记 `active.json`（不占有 owner 锁——enter 只选上下文） |
+| 1 | enter 子模块 | `cd` → `CwdChanged` | `cwdchanged_enter` | 刷新 repo 段状态；记 `active.json`（不占有 owner 锁——enter 只选上下文） |
 | 2 | 每轮对话 | `UserPromptSubmit` | `userprompt_inject` | Board 按相关性投递变化/到期的 session/turn/event items，ui_only 不进入 prompt；`PostCompact` 只令状态 items 重放；AGENTS.md 被改时 `FileChanged` → `filechanged_refs` 刷新事实 |
 | 3 | 开发（编辑与命令） | `PreToolUse` | 策略引擎规则：编辑面（owner / branch merged / requirements）+ 命令面（保护分支 / checkout owner / worktree add / add-all / workspace cwd / pytest / pip / precommit gate） | deny 或放行，全部 fail-open |
 | 3' | 开发后效 | `PostToolUse` | `posttool_git_refresh` | git 状态命令后按**位置感知的有效目录**刷新对应 repo 的 branch 段（**没有**编辑计数 hook：验证是否过期由 gate 现算内容指纹判，不靠工具事件累计——见 CONCEPTS.md〈验证状态〉） |

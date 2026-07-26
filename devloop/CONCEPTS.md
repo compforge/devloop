@@ -13,7 +13,7 @@ devloop 内多个 skill / 脚本共用的术语。架构理念见 [`AGENTS.md`](
   拿站位去答归属，就是让「没有具体目标该选谁」的启发式去回答「这个文件属于谁」——结论是「改 README → 跑 server 的 lint」，而「为什么是 server 不是 cli」没有任何理由。这正是过去单值 `repo_code_dir` 在多代码目录仓上选错目录的根因。「本轮落在哪些 component」由 `select_components` 按**本次改动**算（产出 `WorkSet`），**不挂在 `Repo` 上当单值属性**——解析结果只带 `target_path` 作 explicit 信号。component 有**两个身份**，别混：`path`（绝对路径）是「这次在哪跑 make」的执行事实；`id`（仓相对路径）是**持久化身份**，跨 checkout / worktree 稳定，落 `.devloop` 的一切 key 都用它（见〈验证状态〉）。两者都在**出生点**由唯一构造入口 `Component.at(path, git_root)` 一次算清——`id` 必填、无默认值：给默认值则生产路径漏传就是静默的空 key（多个 component 撞进同一个戳），让消费方自己算又要各自再传一次 `git_root`（传错 root 算出的 key 就是错的）。绑在出生点，这两类错都不可表达。component 还**拥有自己的工具链动作**（`has_target` / `lint_target` / `test_command`）：一个 component「能不能 / 该跑哪个 lint/test 命令」是它自己的事实，checks / gate rules 直接问 component，不再各自拿 `str` 路径去重解析 Makefile 或 Go module。
 
 依赖环境同样属于 component。worktree 创建时预热、lint/test 启动前兜底；验证进程必须使用当前 checkout 的依赖视图，不能向上借主 checkout 的 `node_modules`，也不能沿用指向别处源码的 Python editable environment。跨 checkout 共享的是包管理器缓存，不是整个环境目录。详细模型见 [`docs/worktree-env.md`](./docs/worktree-env.md)。
-- **`repo_code_dir`** / **default component**：repo 级**默认** component——没有更具体目标路径时用（按名字 `/enter` 一个仓、cwd 就是仓根）。探测规则 `server/` > `backend/` > `repo_dir`（`repo_layout.find_repo_code_dir` / `default_component`）。这是**选择**启发式（「没有具体目标该选谁」），与上面的**身份**判据（「这个目录是不是 component」）是两个问题，别拿它回答身份——`discover_components` 曾用它补根 component，而 `server/` 存在时它返回 `server/`（早被枚举收过），于是补根永远补不进、根的 go.mod 从 catalog 里消失。Go / TS 单 component 仓通常就是 `repo_dir`。子项目 `AGENTS.md` 一定在默认 component 下面。
+- **`repo_code_dir`** / **default component**：repo 级**默认** component——没有更具体目标路径时用（显式按名字选仓、cwd 就是仓根）。探测规则 `server/` > `backend/` > `repo_dir`（`repo_layout.find_repo_code_dir` / `default_component`）。这是**选择**启发式（「没有具体目标该选谁」），与上面的**身份**判据（「这个目录是不是 component」）是两个问题，别拿它回答身份——`discover_components` 曾用它补根 component，而 `server/` 存在时它返回 `server/`（早被枚举收过），于是补根永远补不进、根的 go.mod 从 catalog 里消失。Go / TS 单 component 仓通常就是 `repo_dir`。子项目 `AGENTS.md` 一定在默认 component 下面。
 
 ## 保护分支
 
@@ -55,7 +55,7 @@ devloop 循环（`enter → 提需求 → 开发 → commit/PR → 人工 merge 
 聚合工作区下多个 CLI session（claude / codex …）并发操作同一 workspace 是常态；每个 checkout 同一时刻只属于一个 session：
 
 - **owner**：第一个对该 checkout 做**变更动作**的 session——Edit/Write、切分支 / commit 等会碰可变面（working tree / index / 分支位置）的操作，任一建立占有；持有 `<git_root>/.devloop/owner.lock`（pid 存活 + ts-TTL 判活）。占有点：edit guard 首笔编辑 / checkout guard / posttool git 变更。**enter / 只读不占有**：enter 只是选中上下文，多 session 并读不互斥——判据与下面 gitignored 豁免同源：是否污染 owner 的 diff。
-- **guest**：其它并发 session。guest 的两条破坏路径被硬拦——切分支（`checkout_owner_guard`）与直接 Edit/Write（`edit_owner_guard`），统一引导去 worktree（`/enter <repo> --worktree <tag>`）。
+- **guest**：其它并发 session。guest 的两条破坏路径被硬拦——切分支（`checkout_owner_guard`）与直接 Edit/Write（`edit_owner_guard`），统一引导走 managed-worktree 脚本创建隔离 checkout。
 - **gitignored 文件豁免**：guest 写 gitignored 路径（eval 输出、运行日志…）放行——不进 owner 的 status/diff，无混入风险；放行不转移占有权。
 - **释放（两层都有）**：session 正常结束由 SessionEnd hook（`sessionend_release`）立即清掉本 session 的全部运行态（owner 锁含 worktree checkout + active 绑定）；崩溃 / hook 没跑到时退化到 pid 死亡判活，ts-TTL 仅在 pid 不可探测时兜底。
 - 刻意共享 checkout 的逃逸口：人工删 `owner.lock`。
@@ -112,7 +112,7 @@ schema / TTL / cap 数值在 `domain/context/base.py`，不在文档复述。
 
 ## 脚本的 repo 解析
 
-commit_flow / run_fixlint / run_tests 与 cwd 解耦（session cwd 在聚合工作区常驻 workspace 根）：repo 按"显式参数（`--repo` 名/路径）→ cwd 所在仓库 → 本 session 绑定的最近活跃仓（`active/<sid>.json`，见〈Session 运行态〉）"解析，解析来源自述在输出/PLAN 里。本 session 无绑定即拒绝兜底，报错附其它 session 的活跃仓做候选提示。名字走与 `/enter` 相同的模糊匹配（`domain/repo.py`）。
+commit_flow / run_fixlint / run_tests 与 cwd 解耦（session cwd 在聚合工作区常驻 workspace 根）：repo 按"显式参数（`--repo` 名/路径）→ cwd 所在仓库 → 本 session 绑定的最近活跃仓（`active/<sid>.json`，见〈Session 运行态〉）"解析，解析来源自述在输出/PLAN 里。本 session 无绑定即拒绝兜底，报错附其它 session 的活跃仓做候选提示。名字统一走 `domain/repo.py` 的模糊匹配。
 
 ## 占位符 `<PLUGIN_ROOT>`
 

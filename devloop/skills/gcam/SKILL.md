@@ -3,6 +3,9 @@ name: gcam
 description: Commit current changes without pushing. Use when the user says "gcam" or wants to commit only.
 ---
 
+Apply the shared mutation principles in [`git-ops`](../git-ops/SKILL.md). This skill only
+selects the commit-only transaction.
+
 Run:
 
 ```

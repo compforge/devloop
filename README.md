@@ -14,7 +14,7 @@ enter repo → develop on branch → validate affected Components → commit / p
 
 The domain spine is **PR/MR → Repo → Component**: every PR/MR belongs to one repo, and each repo may contain multiple components with independent build/lint/test toolchains. A workspace is an optional context that aggregates multiple repos; plain single-repo use is fully supported.
 
-The branch is the development axis. For concurrent sessions, a worktree is a special form of branch that provides an isolated checkout; `/enter <repo> --worktree <tag>` manages its creation, reuse, dependency preparation, and cleanup. devloop then projects the current change onto affected components and records validation at the same granularity.
+The branch is the development axis. For concurrent sessions, a worktree is a special form of branch that provides an isolated checkout; devloop's managed-worktree helper handles creation, reuse, dependency preparation, and cleanup. devloop then projects the current change onto affected components and records validation at the same granularity.
 
 ## The problem
 

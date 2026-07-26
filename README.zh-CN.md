@@ -14,7 +14,7 @@
 
 领域主链是 **PR/MR → Repo → Component**：每条 PR/MR 始终属于一个 repo，一个 repo 可以包含多个拥有独立 build/lint/test 工具链的 component。Workspace 是聚合多个 repo 的可选上下文，单仓库形态同样完整支持。
 
-Branch 是开发主轴；面向多 session 并发时，worktree 是 branch 的一种特殊形态，用来提供隔离 checkout。`/enter <repo> --worktree <tag>` 统一管理它的创建、复用、依赖准备和清理。随后，devloop 将本次改动投影到受影响的 component，并以同一粒度记录验证结果。
+Branch 是开发主轴；面向多 session 并发时，worktree 是 branch 的一种特殊形态，用来提供隔离 checkout。devloop 的 managed-worktree 脚本统一管理它的创建、复用、依赖准备和清理。随后，devloop 将本次改动投影到受影响的 component，并以同一粒度记录验证结果。
 
 ## 要解决什么
 

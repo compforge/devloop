@@ -58,7 +58,7 @@ class WorkspaceCwdRule(Rule):
                 message=(
                     f"⚠️  You're at the workspace root '{run_dir.resolve()}', not inside a subproject.\n"
                     "Running a subproject-level command here will fail or misbehave.\n"
-                    "Either `cd <subproject>` (or /enter <subproject>) first, or use the devloop scripts, "
+                    "Either `cd <subproject>` first, or use the devloop scripts, "
                     "which resolve the repo themselves (smart_gcam* accept --repo <name|path>; "
                     "run_fixlint/run_tests take it as the first argument)."
                     f"{hint}{active_hint}"

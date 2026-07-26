@@ -23,7 +23,7 @@ component，每个 component 有自己的环境判据和恢复方式。
 
 ## 流程
 
-`/enter --worktree` 创建或复用 worktree 后，按 component 枚举并调用生态注册表的
+managed-worktree 脚本创建或复用 worktree 后，按 component 枚举并调用生态注册表的
 `ensure_ready`。这是预热，降低进入后的第一次验证延迟。
 
 真正的 correctness 关口在 `lifecycle.checks`：lint/test 找到可执行命令后、启动命令前再次

@@ -29,9 +29,9 @@ class WorktreeAddRule(Rule):
                 message=(
                     "Direct `git worktree add` bypasses devloop's managed worktree lifecycle "
                     "(canonical location, base branch, reuse/pruning, and dependency preparation).\n"
-                    f"Use `/enter {repo} --worktree <tag>` in Claude Code, or in Codex run "
-                    f"`python3 \"${{PLUGIN_ROOT}}/scripts/enter.py\" {repo} --worktree <tag>`. "
-                    "The enter flow delegates creation to `domain/worktree.py`."
+                    f"Use the managed-worktree helper with a short unique tag: "
+                    f"`python3 \"<PLUGIN_ROOT>/scripts/checkout.py\" {repo} --worktree <tag>`. "
+                    "The checkout helper delegates creation to `domain/worktree.py`."
                 ),
                 locator=" ".join(target.argv),
             )

@@ -95,7 +95,7 @@ def test_migrated_command_rules_parity():
     session_lock.acquire(R, "other", "br", pid=os.getpid())
     checkout_denied = d("git checkout main", cwd=R, sid="me") or ""
     assert "worktree" in checkout_denied
-    assert '${PLUGIN_ROOT}/scripts/enter.py' in checkout_denied
+    assert '<PLUGIN_ROOT>/scripts/checkout.py' in checkout_denied
     assert "MATCH\\t<path>" in checkout_denied and "workdir" in checkout_denied
     assert d("git switch main", cwd=R, sid="me")
     assert d("git checkout -- f", cwd=R, sid="me") is None      # 文件恢复(非切分支)
@@ -103,12 +103,12 @@ def test_migrated_command_rules_parity():
 
     # worktree_add：所有裸创建（含正确目录）都拦；只读/清理子命令与规范入口放行。
     denied = d("git worktree add ../topic main", cwd=R)
-    assert denied and "managed worktree lifecycle" in denied and "enter.py" in denied
+    assert denied and "managed worktree lifecycle" in denied and "checkout.py" in denied
     assert d("git -C . worktree add .worktrees/topic main", cwd=R)
     assert d("cd . && git worktree add .worktrees/topic main", cwd=R)
     assert d("git worktree list", cwd=R) is None
     assert d("git worktree remove .worktrees/topic", cwd=R) is None
-    assert d("python3 /plugin/scripts/enter.py repo --worktree topic", cwd=R) is None
+    assert d("python3 /plugin/scripts/checkout.py repo --worktree topic", cwd=R) is None
 
     # Codex unified exec envelope 走 edit policy，但投影出的同一 Command 必须命中同一规则。
     edit = _load_hook("pretool_policy_edit")
@@ -345,7 +345,7 @@ def test_checks_prepare_environment_before_running_commands():
 
 
 def test_worktree_creation_prepares_every_component():
-    """`/enter --worktree` 提前准备全部 component；gate 后续仍会走同一 ensure_ready 做兜底。"""
+    """managed-worktree 入口提前准备全部 component；gate 后续仍会走同一 ensure_ready 做兜底。"""
     from lib import ecosystem
 
     from domain import worktree
@@ -363,29 +363,29 @@ def test_worktree_creation_prepares_every_component():
     assert seen == ["dlut_prepare_worktree", "cli"]
 
 
-def test_enter_delegates_resolution_and_worktree_lifecycle():
-    """`enter.py` keeps the line protocol but delegates policy to repo/worktree modules."""
+def test_checkout_delegates_resolution_and_worktree_lifecycle():
+    """`checkout.py` keeps the line protocol but delegates policy to repo/worktree modules."""
     from domain import repo as repo_model, worktree
 
-    enter = _load_script("enter")
-    original_resolve = repo_model.resolve_enter_target
+    checkout = _load_script("checkout")
+    original_resolve = repo_model.resolve_repo_target
     original_create = worktree.create_or_reuse
     seen = []
     try:
-        repo_model.resolve_enter_target = lambda query: repo_model.EnterResolution(path="/repo")
+        repo_model.resolve_repo_target = lambda query: repo_model.RepoResolution(path="/repo")
         worktree.create_or_reuse = lambda repo, tag: (seen.append((repo, tag)) or
                                                         ("/repo/.worktrees/topic", "created worktree"))
-        assert enter.parse_args(["enter.py", "repo", "--worktree", "topic"]) == ("repo", "topic")
-        assert enter.main(["enter.py", "repo", "--worktree", "topic"]) == 0
+        assert checkout.parse_args(["checkout.py", "repo", "--worktree", "topic"]) == ("repo", "topic")
+        assert checkout.main(["checkout.py", "repo", "--worktree", "topic"]) == 0
         assert seen == [("/repo", "topic")]
 
-        repo_model.resolve_enter_target = lambda query: repo_model.EnterResolution(
+        repo_model.resolve_repo_target = lambda query: repo_model.RepoResolution(
             candidates=(("repo-a", "/a"), ("repo-b", "/b")))
-        path, code, line = enter.resolve_base("repo")
+        path, code, line = checkout.resolve_base("repo")
         assert path is None and code == 2
         assert line == "CANDIDATES\trepo-a\t/a\trepo-b\t/b"
     finally:
-        repo_model.resolve_enter_target = original_resolve
+        repo_model.resolve_repo_target = original_resolve
         worktree.create_or_reuse = original_create
 
 def test_lint_passport_is_bound_to_content_not_to_edit_events():

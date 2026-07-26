@@ -265,7 +265,7 @@ def list_worktrees(repo_dir: str | Path) -> list[tuple[str, str, str | None]]:
 
 
 def fetch(repo_dir: str | Path, *refs: str, timeout: int = 8) -> bool:
-    """Bounded `git fetch origin [refs...]` for low-freq, intentional boundaries (/enter).
+    """Bounded `git fetch origin [refs...]` for low-freq, intentional boundaries.
     Refreshes local remote-tracking refs so behind/ahead become REAL rather than
     relative-to-a-stale-mirror. Best-effort (offline → False)."""
     return gitcmd.git(repo_dir, "fetch", "origin", *refs, "--quiet", timeout=timeout).ok

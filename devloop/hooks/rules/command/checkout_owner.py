@@ -49,8 +49,8 @@ class CheckoutOwnerGuardRule(Rule):
                         f"(branch '{owner.get('branch') or '?'}', session {str(owner.get('session_id', ''))[:8]}…). "
                         f"Switching branches here would scramble its working tree.\n"
                         f"Work in an isolated git worktree instead. In Claude Code, run "
-                        f"`/enter {name} --worktree <tag>`. In Codex, choose a short unique tag and run "
-                        f"`python3 \"${{PLUGIN_ROOT}}/scripts/enter.py\" {name} --worktree <tag>`. "
+                        f"the managed-worktree helper with a short unique tag: "
+                        f"`python3 \"<PLUGIN_ROOT>/scripts/checkout.py\" {name} --worktree <tag>`. "
                         f"Read the returned `MATCH\\t<path>`, set subsequent tool calls' `workdir` "
                         f"to that path, and continue the requested work there."
                     ),

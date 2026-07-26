@@ -106,7 +106,7 @@ def _repo_identity(card: RepoIdentityCard) -> str:
     if card.stale_binding_hours is not None:
         extras.append(
             f"repo binding is {card.stale_binding_hours:.1f}h old; state is monitor-fresh, "
-            "but confirm the repo with /enter or cd"
+            "but confirm the repo with cd"
         )
     warning = f" ⚠️ {'; '.join(extras)}" if extras else ""
     if card.trunk_moved_since_fetch:

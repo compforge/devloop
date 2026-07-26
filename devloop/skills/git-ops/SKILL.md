@@ -1,6 +1,6 @@
 ---
 name: git-ops
-description: Commit, push, safely rebase an existing branch, create/read/update/close a pull/merge request (GitHub PR or GitLab MR), cut a feature branch, or view recent PRs in the current repo. Triggers — gcam / gcamp / gcampr / rebase / 解决冲突 / 提 PR / 提 MR / pull request / merge request / 看 PR / 看 MR / 关 PR / 关 MR / 切新分支 / 起新分支 / 发版.
+description: Commit, push, safely rebase an existing branch, create/read/update/close a pull/merge request (GitHub PR or GitLab MR), cut a feature branch, create/resume a managed worktree, or release. Triggers — gcam / gcamp / gcampr / rebase / 解决冲突 / 提 PR / 提 MR / pull request / merge request / 看 PR / 看 MR / 关 PR / 关 MR / checkout / worktree / 切新分支 / 起新分支 / 发版.
 ---
 
 The umbrella for devloop's git + code-review workflow. All git goes through one runner
@@ -13,6 +13,34 @@ MR; `pr` *inspects/manages* an existing one) and resolves the token from config,
 credentials file to hunt for.
 
 Paths use `<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex.
+
+## Operating principles
+
+The scripts are the executable policy; this skill supplies the decision model. Inspect Git
+state freely, but do not improvise a competing mutation sequence when devloop owns that
+operation.
+
+1. **Resolve intent before touching HEAD.** `--branch` means new work and cuts from a freshly
+   fetched `origin/<target>`; omitting it means continue the current branch. Stacking is never
+   inferred from the current checkout — it requires an explicit `--base`.
+2. **Treat an existing identity as work to preserve.** Reusing a branch or worktree tag means
+   resume it as-is, not “make it current.” Checkout must not silently rebase or reset existing
+   work. Updating its baseline is a separate, explicit history operation.
+3. **Revalidate shared state at the mutation boundary.** Injected branch/PR context is useful
+   guidance, but the owning script's live fetch/forge/lease check is authoritative. If fresh
+   state cannot be obtained, or changed underneath the transaction, stop rather than guess.
+4. **Scope mutations to the user's change.** Target one repo and an explicit file set when
+   untracked or unrelated files exist. Never trade convenience for a repo-wide `git add -A`;
+   never let the current cwd silently choose another subproject.
+5. **Rewrite history only as a resumable transaction.** Capture the old remote SHA before a
+   rebase and publish with an exact `force-with-lease`. Never raw force-push, and never guess a
+   reset target after the safe abort point has passed.
+6. **Use hard gates only where no legitimate editing path exists.** Protected and inactive
+   branches are denied. In-flight branches remain editable for review fixes, but new work must
+   move to a new branch.
+7. **Keep ownership boundaries explicit.** Commit/push/PR creation, checkout/worktree lifecycle,
+   PR management, rebase, and release have separate owning entry points. Merge remains a human
+   action. Trust and surface each owner's `PLAN:` or equivalent result.
 
 ## Commit / push / PR
 
@@ -39,6 +67,21 @@ staging, auto-rebased onto the repo root; else tracked modifications — never
 **INACTIVE / merged-or-closed** branch is computed from a live, authoritative forge poll and
 quotes the MR's number / state / sha — so it's ground truth even right after you created the MR
 (a colleague can merge it in seconds); add `--branch` and re-run.
+
+## Checkout / managed worktree
+
+Use ordinary `cd` to select an existing repo or checkout. When another session needs an isolated
+checkout, use the managed helper instead of raw `git worktree add`:
+
+```
+python3 <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <short-unique-tag>
+```
+
+A new tag creates `worktree-<tag>` from a freshly fetched `origin/<target>` and refuses creation
+if that baseline cannot be refreshed. An existing worktree path or retained `worktree-<tag>`
+branch is resumed without rebase/reset. Reuse the same tag only to continue that work; choose a
+new tag for independent work from the latest target. Baseline updates to retained work are
+explicit Git operations, never a side effect of checkout.
 
 ## Rebase an existing PR/MR branch
 

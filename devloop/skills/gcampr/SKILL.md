@@ -3,6 +3,9 @@ name: gcampr
 description: Commit current changes, push, and create/reuse a pull/merge request (GitHub PR or GitLab MR). Use when the user says "gcampr" or asks to commit + push + open/raise a PR / MR / pull request / merge request.
 ---
 
+Apply the shared mutation principles in [`git-ops`](../git-ops/SKILL.md). This skill only
+selects the commit-push-and-open/reuse-PR transaction.
+
 Run the orchestrator (it handles preflight branch decision, staging, commit, push, and PR/MR create/reuse, then prints a self-narrating `PLAN:` banner):
 
 ```

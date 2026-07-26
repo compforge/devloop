@@ -123,7 +123,7 @@ def find_repo_code_dir(repo_dir: str | Path) -> str:
 
 
 def default_component(git_root: str | Path) -> Component:
-    """repo 级默认 component：没有更具体的操作目标路径时用（如按名字 /enter 一个仓、cwd 就是仓根）。
+    """repo 级默认 component：没有更具体的操作目标路径时用（如按名字选仓、cwd 就是仓根）。
     探测规则同 `find_repo_code_dir`（`server/` > `backend/` > repo 根）。"""
     return Component.at(find_repo_code_dir(git_root), git_root)
 

@@ -76,7 +76,7 @@ def test_protocol_files_schema():
 
 def test_enter_does_not_acquire_owner():
     """enter 只选中上下文,不占资源:占有由第一笔变更动作建立(edit/checkout guard、
-    posttool git 变更)。否则只是 /enter 看代码的 session 会把真正要编辑的 session
+    posttool git 变更)。否则只是 cd 进来看代码的 session 会把真正要编辑的 session
     拦成 guest——锁保护的是可变面,只读进入不污染它(与 gitignored 豁免同一判据)。"""
     ce = _load_hook("cwdchanged_enter")
     from domain.context import session as session_lock
@@ -229,7 +229,7 @@ def test_edit_owner_guard():
     inp_b = _hook_input("Edit", {"session_id": "sess-B", "cwd": R, "tool_input": {"file_path": fp}})
     reason = guard.decide(inp_b)
     assert reason and "worktree" in reason and "owner.lock" in reason
-    assert '${PLUGIN_ROOT}/scripts/enter.py' in reason
+    assert '<PLUGIN_ROOT>/scripts/checkout.py' in reason
     assert "MATCH\\t<path>" in reason and "workdir" in reason
 
     # gitignored 文件不进 owner 的 status/diff,guest 写它无混入风险 → 放行,
@@ -274,7 +274,7 @@ def test_apply_patch_owner_guard_uses_target_path():
     })
     reason = guard.decide(inp_b)
     assert reason and "worktree" in reason and "owner.lock" in reason
-    assert '${PLUGIN_ROOT}/scripts/enter.py' in reason
+    assert '<PLUGIN_ROOT>/scripts/checkout.py' in reason
     assert "MATCH\\t<path>" in reason and "workdir" in reason
 
 def test_codex_exec_envelope_runs_edit_and_command_guards():

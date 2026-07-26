@@ -1,4 +1,4 @@
-"""Managed git worktree lifecycle used by the `/enter` flow.
+"""Managed git worktree lifecycle used by the explicit worktree helper.
 
 All devloop-created worktrees live below ``<repo>/.worktrees/``. Keeping creation,
 reuse, pruning, and dependency preparation behind this module prevents callers from
@@ -25,11 +25,13 @@ def prepare_environment(path: str) -> list[str]:
 
 
 def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
-    """Create or reuse ``.worktrees/<tag>`` from ``origin/<target>``.
+    """Create or reuse ``.worktrees/<tag>``.
 
     Worktrees live inside the repo, never as siblings. The legacy ``worktrees/`` layout
     remains readable so existing checkouts continue to resolve. The operation is
     idempotent; each call also prunes old managed worktrees and prepares dependencies.
+    A genuinely new branch is cut from a freshly fetched ``origin/<target>``. A retained
+    branch is resumed as-is: reusing a tag must never rewrite existing work.
     """
     base = Path(repo_dir)
     rel = Path(".worktrees") / tag
@@ -45,20 +47,39 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
 
     target = git_state.local_default_target(repo_dir)
     branch = f"worktree-{tag}"
-    result = gitcmd.git(repo_dir, "worktree", "add", "-b", branch,
-                        str(rel), f"origin/{target}", timeout=30)
+    if git_state.rev_parse(repo_dir, f"refs/heads/{branch}"):
+        result = gitcmd.git(repo_dir, "worktree", "add", str(rel), branch, timeout=30)
+        message = "reused existing branch"
+    else:
+        remote_ref = f"origin/{target}"
+        refspec = f"+refs/heads/{target}:refs/remotes/origin/{target}"
+        if not git_state.fetch(repo_dir, refspec, timeout=30):
+            return None, (
+                f"could not refresh {remote_ref}; worktree was not created "
+                "because its base may be stale"
+            )
+        if not git_state.rev_parse(repo_dir, remote_ref):
+            return None, f"could not resolve refreshed {remote_ref}"
+        result = gitcmd.git(
+            repo_dir,
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            str(rel),
+            remote_ref,
+            timeout=30,
+        )
+        message = f"created worktree from refreshed {remote_ref}"
     if not result.ok:
-        retry = gitcmd.git(repo_dir, "worktree", "add", str(rel), branch, timeout=30)
-        if not retry.ok:
-            return None, f"worktree add failed: {result.err or retry.err}"
+        return None, f"worktree add failed for {branch}: {result.err or result.out}"
 
     path = str((base / rel).resolve())
     _prune_old(repo_dir, keep_path=path)
     warnings = prepare_environment(path)
-    msg = "created worktree"
     if warnings:
-        msg += "; environment warning: " + " | ".join(warnings)
-    return path, msg
+        message += "; environment warning: " + " | ".join(warnings)
+    return path, message
 
 
 def _activity(path: str) -> float:

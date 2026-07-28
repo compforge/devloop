@@ -58,14 +58,14 @@ bash <PLUGIN_ROOT>/scripts/smart_rebase.sh finish --repo <name|path>
 
 ```
 # Claude Code 内
-/plugin marketplace add https://github.com/qiankunli/devloop.git
+/plugin marketplace add https://github.com/compforge/devloop.git
 /plugin install devloop@devloop
 ```
 
 Codex：
 
 ```
-codex plugin marketplace add https://github.com/qiankunli/devloop.git
+codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 

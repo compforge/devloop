@@ -88,7 +88,7 @@ devloop 是**循环机器**——状态总线、硬拦、run / 校验 / deploy �
 `python` 或带版本号的 `python3.x`；需要固定解释器时设置 `DEVLOOP_PYTHON`。
 
 ```
-/plugin marketplace add https://github.com/qiankunli/devloop.git
+/plugin marketplace add https://github.com/compforge/devloop.git
 /plugin install devloop@devloop
 ```
 
@@ -109,7 +109,7 @@ Forge 相关功能（PR/MR 创建 / 状态注入）需要对应平台的 token�
 Codex 支持通过 `.agents/plugins/marketplace.json` 和 `devloop/.codex-plugin/plugin.json` 发布。
 
 ```
-codex plugin marketplace add https://github.com/qiankunli/devloop.git
+codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 

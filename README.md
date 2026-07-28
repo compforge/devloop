@@ -88,7 +88,7 @@ Runtime requirement: **Python 3.10+**. devloop's launcher automatically selects 
 `python3`, `python`, or versioned `python3.x` on `PATH`; set `DEVLOOP_PYTHON` to force a specific binary.
 
 ```
-/plugin marketplace add https://github.com/qiankunli/devloop.git
+/plugin marketplace add https://github.com/compforge/devloop.git
 /plugin install devloop@devloop
 ```
 
@@ -109,7 +109,7 @@ Forge features (PR/MR creation + state injection) need a token for your host (`G
 Codex support is packaged through `.agents/plugins/marketplace.json` and `devloop/.codex-plugin/plugin.json`.
 
 ```
-codex plugin marketplace add https://github.com/qiankunli/devloop.git
+codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 

@@ -726,6 +726,7 @@ def test_lifecycle_review_signal_hook():
     spec = r.to_launch[0]
     assert spec.argv[0] == "python3" and spec.argv[-2:] == ["--repo", "/some/repo"]
     assert spec.argv[1].endswith("run_review.py")
+    assert Path(spec.argv[1]).is_file()
 
 
 if __name__ == "__main__":

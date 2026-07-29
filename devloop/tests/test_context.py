@@ -836,6 +836,82 @@ def test_append_jsonl_ledger():
     assert [json.loads(x)["a"] for x in lines] == [1, 2]          # append-only，两行不覆写
     store.append_jsonl("/dev/null/nope", "x", {"a": 1})           # 不可写路径 → 吞掉，不抛
 
+
+def test_tool_call_timeline_records_raw_events_and_compacts():
+    import json
+
+    from domain.context import tool_calls
+    timeline = _load_hook("tool_call_timeline")
+    R = "/tmp/dlut_tool_calls"
+    shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
+    _git(R, "init", "-q")
+
+    tool_calls.append(R, {
+        "schema": tool_calls.SCHEMA,
+        "kind": "tool_call",
+        "phase": "started",
+        "ts": 1,
+        "tool": "Read",
+    }, now=1)
+    lock = Path(R) / ".devloop" / "tool-calls.lock"
+    os.utime(lock, (1, 1))
+
+    raw = {
+        "cwd": R,
+        "session_id": "session-1",
+        "tool_use_id": "call-1",
+        "model": "gpt",
+        "tool_input": {
+            "patch": "*** Begin Patch\n*** Add File: f\n+x\n*** End Patch\n",
+        },
+    }
+    started = _hook_input("apply_patch", raw)
+    timeline.handle(started)
+    finished = _hook_input("apply_patch", raw)
+    finished.event = "PostToolUse"
+    timeline.handle(finished)
+
+    rows = [
+        json.loads(line)
+        for line in (Path(R) / ".devloop" / "tool-calls.jsonl")
+        .read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 2
+    assert rows[0] == {
+        "schema": tool_calls.SCHEMA,
+        "kind": "tool_call",
+        "phase": "started",
+        "ts": rows[0]["ts"],
+        "call_id": "call-1",
+        "session_id": "session-1",
+        "harness": "codex",
+        "tool": "apply_patch",
+    }
+    assert rows[1]["phase"] == "finished"
+    assert rows[1]["outcome"] == "succeeded"
+    assert rows[1]["duration_ms"] >= 0
+
+    other = "/tmp/dlut_tool_calls_other"
+    shutil.rmtree(other, ignore_errors=True); os.makedirs(other)
+    _git(other, "init", "-q")
+    explicit = _hook_input("Read", {
+        "cwd": R,
+        "session_id": "session-1",
+        "tool_use_id": "call-2",
+        "tool_input": {"file_path": f"{other}/README.md"},
+    })
+    timeline.handle(explicit)
+    assert not any(
+        json.loads(line).get("call_id") == "call-2"
+        for line in (Path(R) / ".devloop" / "tool-calls.jsonl")
+        .read_text(encoding="utf-8").splitlines()
+    )
+    assert json.loads(
+        (Path(other) / ".devloop" / "tool-calls.jsonl")
+        .read_text(encoding="utf-8").splitlines()[-1]
+    )["call_id"] == "call-2"
+
+
 def test_friction_records_deny():
     """blocked Decision → 追加一条 friction 记录（kind/source/tool + 逐 finding 的 rule/locator +
     live branch）；allow → 不写文件。best-effort：append 抛错也不影响 guard（record_deny 不抛）。"""

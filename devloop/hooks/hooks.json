@@ -3,6 +3,12 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "*",
+        "hooks": [
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_call_timeline.py\"", "timeout": 5, "statusMessage": "Recording tool activity" }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/pretool_policy_bash.py\"", "timeout": 5, "statusMessage": "Checking command policy" }
@@ -89,6 +95,17 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_call_timeline.py\"",
+            "timeout": 5,
+            "statusMessage": "Recording tool activity"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
@@ -96,6 +113,19 @@
             "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/posttool_git_refresh.py\"",
             "timeout": 10,
             "statusMessage": "Refreshing devloop branch state"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_call_timeline.py\"",
+            "timeout": 5,
+            "statusMessage": "Recording failed tool activity"
           }
         ]
       }

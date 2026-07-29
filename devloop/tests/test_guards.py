@@ -59,7 +59,8 @@ def test_protocol_files_schema():
     assert_hooks(
         P / "hooks/hooks.json",
         {"PreToolUse", "PostToolUse", "SessionStart", "SessionEnd", "UserPromptSubmit",
-         "PostCompact", "PreCompact", "FileChanged", "CwdChanged", "Stop", "SubagentStop"},
+         "PostCompact", "PreCompact", "FileChanged", "CwdChanged", "Stop", "SubagentStop",
+         "PostToolUseFailure"},
     )
     assert_hooks(
         P / "hooks/hooks.codex.json",

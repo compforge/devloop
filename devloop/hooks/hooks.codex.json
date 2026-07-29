@@ -3,6 +3,17 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_call_timeline.py\"",
+            "timeout": 5,
+            "statusMessage": "Recording tool activity"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
@@ -64,6 +75,17 @@
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_call_timeline.py\"",
+            "timeout": 5,
+            "statusMessage": "Recording tool activity"
+          }
+        ]
+      },
       {
         "matcher": "Bash|exec",
         "hooks": [

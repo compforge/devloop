@@ -16,7 +16,6 @@ from .model import (
     RepoReferencesCard,
     ReviewCard,
     ReviewLabelCard,
-    TextCard,
     ValidationCard,
     WorkspaceCard,
 )
@@ -56,8 +55,6 @@ def render_item(item: BoardItem) -> str:
             for pr in payload.pull_requests
         ]
         return "Recent PR/MR history: " + "; ".join(labels)
-    if isinstance(payload, TextCard):
-        return payload.text
     raise TypeError(f"unsupported Board payload: {type(payload)!r}")
 
 

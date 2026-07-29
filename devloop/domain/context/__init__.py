@@ -15,9 +15,6 @@ two storage domains to present one cohesive view. Families:
   SHA-validated PR state, never the cached view; see docs/branch-state.md);
   `prstate.py`: the monitor's & gcampr's shared writer of the monitor-owned segments.
 - session runtime — `session.py`: active-repo binding + the checkout owner lock.
-- loop-state ledgers — `loopstate/` subpackage: `friction` (guard-deny events) +
-  `requirement` (requirement Trajectory spine), the 经验沉淀 line (workspace
-  docs/loop-state.md). Future members: steering capture, resolution events, the miner.
 
 Usage (DISPLAY facts; Board owns prompt delivery, gates use `gate.evaluate`):
     from domain.context import RepoContext, WorkspaceContext, PullRequest

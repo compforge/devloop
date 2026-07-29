@@ -64,8 +64,6 @@ def record_session_event(repo_dir: str | Path, session_id: str | None,
     observability write must never cost the caller's real work.
 
     Which ledgers do NOT belong here, and why the `kind` field doesn't make them fit:
-    - `requirements/<id>/session.jsonl` — a REQUIREMENT's lifecycle, keyed by its first branch,
-      and devloop reads it back.
     - `review-history.jsonl` — a PR's review rounds, read back by `run_review` to feed the next
       review (`ccr --history`). Keyed by full PullRequest identity because review→fix→re-review spans SESSIONS
       by nature (review in one, fix in the next); re-keying it per session would cut that join.

@@ -47,8 +47,8 @@ Board 只投递当前工作所需信息。当前分支的 PR 会进入 branch �
 token。每个条目独立去重，某个事实变化不会捎带未变化的整块上下文。
 
 相关性属于 `BoardView`，投递节奏属于 `DeliveryPolicy`；事实生产者不选择 channel、
-prompt scope 或重放行为。Requirement 当前仅以兼容卡片加入 Board，其独立 provider
-与领域抽象留到 Board UI 完成后再推进。
+prompt scope 或重放行为。Requirement 等长期领域对象由 Baton Plugin 提供，不在 devloop
+的 Harness 内 Board 建兼容投影。
 
 ### 投递状态不是业务事实
 

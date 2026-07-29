@@ -44,7 +44,7 @@ class HookResult:
     name: str
     ok: bool                              # inline hook 的通过与否；signal hook 恒 True
     summary: str = ""
-    relay: BackgroundSpec | None = None   # 非 None = signal hook，需 agent 起其后台下游
+    relay: BackgroundSpec | None = None   # 非 None = signal hook，由 commit_flow detach 后台下游
     advisory: bool = False                # True = 软提示：ok=False 时通报但不阻断（不进 proceed）
 
 

@@ -14,9 +14,9 @@ enter repo → 基于 branch 开发 → 按 Component 验证 → commit / push �
 
 **领域主链是 `PR/MR → Repo → Component`**：PR/MR 始终锚定一个 repo；repo 是 git、branch、forge 状态和提交历史的边界；component 是 repo 内 build/lint/test 的验证单位。Branch 是开发生命周期主轴；面向多 session 并发时，worktree 是 branch 的一种特殊形态。
 
-**Workspace 是运行上下文，不是 PR/MR 的归属边界**：它可以聚合多个 repo，为跨 repo 需求、项目知识和多 session 协作提供共同根；单仓库模式同样完整支持。跨 repo 需求当前仍按 repo 分别进入生命周期，0.1 不编排 fanout 或发包依赖顺序。
+**Workspace 是运行上下文，不是 PR/MR 的归属边界**：它可以聚合多个 repo，为项目知识和多 session 协作提供共同根；单仓库模式同样完整支持。跨 repo Requirement 与长期编排由 Baton/reqloop 拥有，devloop 不维护需求状态机。
 
-**目录按 owner 表达这个模型**：`domain/` 承载 Workspace / Repo / Component、branch/PR 状态、生命周期规则及合法变化；`lib/` 提供 Git、forge、ecosystem、notify、config、parser 等技术能力；`hooks/` 与 `scripts/` 是事件和工作流两类驱动 adapter。入口只向 `domain/lib` 调用，两层都不反向依赖入口，让 LLM 对 workspace/repo 的作用落在可观测、可约束的路径上，而不是散落 shell 副作用。
+**目录按 owner 表达这个模型**：`domain/` 承载 Workspace / Repo / Component、branch/PR 状态、生命周期规则及合法变化；`lib/` 提供 Git、forge、ecosystem、config、parser 等技术能力；`hooks/` 与 `scripts/` 是事件和工作流两类驱动 adapter。入口只向 `domain/lib` 调用，两层都不反向依赖入口，让 LLM 对 workspace/repo 的作用落在可观测、可约束的路径上，而不是散落 shell 副作用。
 
 AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.json` 是由 hooks、scripts、monitors 从 git、forge、验证命令和文字源派生的**结构化运行态**。Board 在两者之上组织当前 session 相关的紧凑视图并投递给 prompt。三者共同服务于同一个目标：让 LLM 对 workspace/repo 的作用可控、可观测、可验证。一轮循环的端到端时序见 [`docs/loop.md`](./docs/loop.md)。
 
@@ -54,7 +54,6 @@ devloop/
 │   ├── gitcmd.py  git_state.py    #   ★统一 git runner 与 git/branch/worktree 事实
 │   ├── forge/                     #   ★GitHub/GitLab 平级 adapter + HTTP/按 repo 分发
 │   ├── ecosystem/                 #   ★工具链身份、环境准备与 canonical fallback
-│   ├── notify/                    #   ★外部状态 Source/Notifier 端口
 │   └── config.py  parsers.py      #   ★配置持久化与文字源解析
 ├── hooks/                          # 事件驱动 adapter：把 LLM/CLI 工具调用投影成领域决策
 │   ├── hooks.json                 # Claude 事件注册
@@ -84,9 +83,10 @@ devloop/
 ## 关键约定
 
 1. **领域归属沿 `PR/MR → Repo → Component`**：PR/MR 与 branch 生命周期归 Repo，验证范围与验证结果归 Component；Workspace 只聚合上下文。不得重新引入“一个 repo 只有一个代码目录”的假设，具体选择与身份语义见 [`CONCEPTS.md`](./CONCEPTS.md)。
-2. **入口驱动领域，依赖不反向**：`hooks/scripts → domain/lib`；`domain/` 持有业务事实和合法变化，`lib/` 只提供 Git、forge、配置、通知等技术能力。Git、forge、配置分别经统一 seam，入口不得散调外部协议或复制领域判断。
+2. **入口驱动领域，依赖不反向**：`hooks/scripts → domain/lib`；`domain/` 持有业务事实和合法变化，`lib/` 只提供 Git、forge、配置等技术能力。Git、forge、配置分别经统一 seam，入口不得散调外部协议或复制领域判断。
 3. **状态源提供事实，Board 决定组织和投递，guard 读取 live truth**：AGENTS.md 是文字知识源，`.devloop/` 是结构化运行态；Repo、Branch、WorkingTree 与 Session 状态按归属和写入者隔离，验证戳按 Component 记录。Board 只维护 per-session 投递游标，不复制业务事实，也不参与硬门禁判定。详见 [`docs/board.md`](./docs/board.md) 与 [`CONCEPTS.md`](./CONCEPTS.md)。
 4. **生命周期动作走唯一入口，合法例外才软提示**：commit/push/PR 走 `commit_flow`/smart 脚本；checkout 选择及 worktree 形态的创建、复用和清理走 `checkout.py`。保护分支、失活分支、guest session 等无合法编辑路径的情况硬拦截，有合法例外的 in-flight PR/MR 只注入提示。具体流程见 [`docs/loop.md`](./docs/loop.md) 与 [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)。
+5. **devloop 产出开发事实，不拥有长期 loop 或会话唤醒**：monitor、review 和生命周期脚本只维护结构化状态或外部 PR/MR 结果；Baton/reqloop 负责持久观察、调度和后续工作。不要在 Harness Plugin 内重建通知 transport、waiter 或 re-arm 流程。
 
 ---
 
@@ -94,8 +94,7 @@ devloop/
 
 - 一轮循环端到端流程（事件 → hook/script → 状态）：[`docs/loop.md`](./docs/loop.md)
 - Board 上下文读模型（事实源 → Board/View → channel/scope/replay policy）：[`docs/board.md`](./docs/board.md)
-- 外部事件驱动的会话续跑（感知 → 唤醒 → 按 auto-mode 决策，含设计/实现分层）：[`docs/event-driven-resume.md`](./docs/event-driven-resume.md)
-- devops 生命周期 hook（pre_commit/post_commit/pre_mr/post_mr，统一 lint/test/review 等的触发；hook 皆阻塞，异步=发信号+既有 wake）：[`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)
+- devops 生命周期 hook（pre_commit/post_commit/pre_mr/post_mr，统一 lint/test/review 等的触发；hook 皆阻塞，异步结果写结构化状态供下一轮或外部控制面观察）：[`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)
 - Worktree 依赖环境（checkout-local 依赖视图 + 共享包缓存；生态 prepare 与验证前置条件）：[`docs/worktree-env.md`](./docs/worktree-env.md)
 - 提交期 code-review（signal hook `review`，任意相位由 config 决定：detach 起、审全量 diff、不挡 commit、结果经 Board pull 投递；分支有开放 MR 时（典型 post_mr）机会性发评论到 MR 做历史）：[`docs/code-review.md`](./docs/code-review.md)
 - 使用 / 安装 / 配置：[`README.md`](./README.md)

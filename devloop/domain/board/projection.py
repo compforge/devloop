@@ -8,7 +8,6 @@ from domain.forge import MergeReadiness, pr_label
 from lib import git_state
 
 from domain.context import base, store
-from domain.context.loopstate import requirement
 
 from .model import (
     Board,
@@ -28,7 +27,6 @@ from .model import (
     ReviewCard,
     ReviewLabelCard,
     SubprojectCard,
-    TextCard,
     ValidationCard,
     WorkspaceCard,
 )
@@ -139,16 +137,6 @@ def _repo_items(root: str, repo: RepoContext, stale_binding_hours: float | None)
             payload=ReviewLabelCard(repo.label_pending, repo.label_pending_key),
         ))
 
-    # Requirement-first is intentionally deferred. Keep the current branch-scoped summary as
-    # an explicit text bridge so Board can evolve without pretending this is its final model.
-    requirement_line = requirement.turn_line(repo.repo.repo_dir, repo.branch.local.name or None)
-    if requirement_line:
-        items.append(BoardItem(
-            type=BoardItemType.REQUIREMENT_CURRENT,
-            kind=BoardItemKind.STATE,
-            scope=scope,
-            payload=TextCard(source="requirement.current", text=requirement_line),
-        ))
     if repo.prs:
         items.append(BoardItem(
             type=BoardItemType.REPO_PR_HISTORY,

@@ -10,7 +10,6 @@ from enum import Enum
 class BoardItemType(str, Enum):
     WORKSPACE = "workspace"
     REPO_REFERENCES = "repo.references"
-    REQUIREMENT_CURRENT = "requirement.current"
     REPO_IDENTITY = "repo.identity"
     REPO_VALIDATION = "repo.validation"
     REPO_PR_BLOCKED = "repo.pr-blocked"
@@ -132,14 +131,6 @@ class PrHistoryCard:
     pull_requests: tuple[PullRequestCard, ...]
 
 
-@dataclass(frozen=True)
-class TextCard:
-    """Temporary bridge for a domain that has not exposed a typed Board projection yet."""
-
-    source: str
-    text: str
-
-
 BoardPayload = (
     WorkspaceCard
     | RepoReferencesCard
@@ -149,7 +140,6 @@ BoardPayload = (
     | ReviewCard
     | ReviewLabelCard
     | PrHistoryCard
-    | TextCard
 )
 
 

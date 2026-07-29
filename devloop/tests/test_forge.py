@@ -119,7 +119,7 @@ def test_forge_merge_readiness_mapping():
     assert r({"has_conflicts": True}) is MergeReadiness.CONFLICT                # fallback when no detailed status
     # GitHub adapter hasn't implemented it → inherits the safe UNKNOWN default (no HTTP)
     assert GitHubForge.__new__(GitHubForge).merge_readiness(0) is MergeReadiness.UNKNOWN
-    # blocks_merge: the shared "worth nagging about" predicate (banner + wake channel use it)
+    # blocks_merge: the shared "worth nagging about" predicate used by status consumers
     assert MergeReadiness.CONFLICT.blocks_merge and MergeReadiness.DISCUSSIONS_UNRESOLVED.blocks_merge
     assert not (MergeReadiness.READY.blocks_merge or MergeReadiness.UNKNOWN.blocks_merge
                 or MergeReadiness.DRAFT.blocks_merge)

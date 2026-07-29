@@ -12,9 +12,9 @@ two monitor-owned segments via `domain.context.prstate` (the single writer of bo
 It is the *sole* writer of those files (disjoint from every other writer-role), so no lock is
 needed. No daemon, no heartbeat hooks, no scheduler.
 
-Persist-only by design: it does NOT notify / wake the session. Waking on a PR change is the
-notify port's job — the forge `Source` (`lib/notify/sources/forge.py`, watches pr.json) driven by
-either transport via `scripts/notify.py` — see docs/event-driven-resume.md.
+Persist-only by design: it does not own session wake or long-running loop scheduling. Baton/reqloop
+may observe the files it maintains, while standalone devloop continues to consume them through its
+guards and next-prompt Board projection.
 
 The poll/selection logic lives in `domain.context.prstate` so gcampr and the gate can trigger the
 same authoritative refresh without importing this script.
@@ -34,7 +34,6 @@ sys.path.insert(0, str(HERE.parent))
 
 from domain import repo_layout, workspace  # noqa: E402
 from domain.context import WorkspaceContext, prstate  # noqa: E402
-from domain.context.loopstate import requirement  # noqa: E402
 from domain.context.base import PR_POLL_INTERVAL_SEC  # noqa: E402
 
 
@@ -42,13 +41,6 @@ def sweep_repo(repo: str) -> None:
     """Refresh both monitor-owned segments for one repo (each best-effort, fail-open)."""
     prstate.refresh_pr(repo)
     prstate.refresh_remote_branches(repo)
-    # loop-state close half: with the pr window just refreshed, close finished requirements
-    # (append pr_merged / session_end to their session.jsonl). Idempotent; no-op when the repo
-    # has no requirements. Guarded so a close failure never breaks the poll sweep.
-    try:
-        requirement.reconcile_closures(repo)
-    except Exception:
-        pass
 
 
 def repos_to_poll(target: str) -> list[str]:

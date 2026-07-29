@@ -1,7 +1,7 @@
 # 提交期 code-review（异步、不阻塞、全自动）
 
 code-review 是 lifecycle 的 **signal hook**：触发但**不挡 commit**、**不阻塞主线程**——
-commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://github.com/qiankunli/case-code-review)，
+commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://github.com/compforge/case-code-review)，
 可切 `ocr`，见 `review.tool` 配置），审 `origin/<target>..HEAD`（整条分支 vs target 的全量改动），结果写
 `.devloop/review.json`（→ 下一轮注入浮现，**通用交付**）。**机会性地**:relay 跑时若分支已有
 开放 MR,就**额外**把结果发一条评论到 MR 上（→ MR 攒出 review 历史，可跟踪对比）。承接

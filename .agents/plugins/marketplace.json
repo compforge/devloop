@@ -1,7 +1,7 @@
 {
   "name": "devloop",
   "owner": {
-    "name": "qiankunli"
+    "name": "compforge"
   },
   "description": "Cross-CLI plugin marketplace (Codex side). devloop is the primary developer-workflow plugin; example is a placeholder for the multi-plugin intent.",
   "plugins": [
@@ -13,8 +13,8 @@
       },
       "description": "Dev-loop workflow: git/PR + lint/test + workspace-aware state injection + execution-level hard intercepts for Codex.",
       "author": {
-        "name": "qiankunli",
-        "url": "https://github.com/qiankunli"
+        "name": "compforge",
+        "url": "https://github.com/compforge"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -31,8 +31,8 @@
       },
       "description": "Placeholder plugin demonstrating that the devloop marketplace hosts multiple plugins (Codex side).",
       "author": {
-        "name": "qiankunli",
-        "url": "https://github.com/qiankunli"
+        "name": "compforge",
+        "url": "https://github.com/compforge"
       },
       "policy": {
         "installation": "AVAILABLE",

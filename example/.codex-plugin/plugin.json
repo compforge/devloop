@@ -1,10 +1,10 @@
 {
   "name": "example",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Placeholder plugin demonstrating that devloop marketplace hosts multiple plugins (Codex side).",
   "author": {
-    "name": "qiankunli",
-    "url": "https://github.com/qiankunli"
+    "name": "compforge",
+    "url": "https://github.com/compforge"
   },
   "license": "MIT",
   "keywords": ["example", "template"],

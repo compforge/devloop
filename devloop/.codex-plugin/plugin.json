@@ -1,10 +1,10 @@
 {
   "name": "devloop",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Dev-loop workflow: git/PR (GitHub + GitLab) + Board-managed workspace/repo context delivery + lint/test gates + execution-level hard intercepts for Claude Code and Codex.",
   "author": {
-    "name": "qiankunli",
-    "url": "https://github.com/qiankunli"
+    "name": "compforge",
+    "url": "https://github.com/compforge"
   },
   "license": "MIT",
   "keywords": [

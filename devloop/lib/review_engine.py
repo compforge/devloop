@@ -84,7 +84,7 @@ class CcrEngine:
             return False
 
     def install_hint(self) -> str:
-        return "see github.com/qiankunli/case-code-review"
+        return "see github.com/compforge/case-code-review"
 
     def rule_path(self) -> str:
         return "<repo>/.casecodereview/rule.json"

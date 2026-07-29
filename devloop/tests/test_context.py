@@ -61,8 +61,8 @@ def test_turn_block_stable_across_clock_when_state_unchanged():
     让任何别的测试变红（每行内容都还是对的），所以这条测试就是那个前提的守卫。
     `base.fmt_ts` 故意渲染绝对时间戳而非"N 分钟前"，正是为此。
 
-    时钟**允许**驱动的只有阈值跃迁（running→stale @REVIEW_STALE_SEC、requirement idle
-    @REQUIREMENT_STALE_SEC）——那是真状态变了，本就该重发。跨不过任何阈值的时间流逝必须零变化。
+    时钟**允许**驱动的只有阈值跃迁（running→stale @REVIEW_STALE_SEC）——那是真状态变了，
+    本就该重发。跨不过任何阈值的时间流逝必须零变化。
     """
     from domain.context import RepoContext, base, store
     R = "/tmp/dlut_blockstable"
@@ -853,7 +853,7 @@ def test_friction_records_deny():
     friction.record_deny(deny, tool="Bash", cwd=R, session_id="s-1")
     rec = json.loads((Path(R) / ".devloop" / "friction.jsonl").read_text().splitlines()[-1])
     assert rec["kind"] == "friction" and rec["source"] == "guard" and rec["tool"] == "Bash"
-    assert rec["branch"] == "feat/x"                              # live branch，供后续归属 requirement
+    assert rec["branch"] == "feat/x"                              # live branch，供后续归因
     assert rec["session_id"] == "s-1"                             # 下钻 harness transcript 的 join 键
     assert rec["findings"] == [{"rule": "protect-branch", "locator": "git push origin main"}]
 
@@ -894,256 +894,13 @@ def test_friction_sink_wired_into_bash_guard():
     assert any(f["rule"] == "protect-branch" for f in rec["findings"])
 
 
-def test_requirement_open_attach_resolve():
-    """requirement scope（loop-state slice3）：open 建索引 + session_start；attach 续接 + branch_cut；
-    resolve 反查；open 幂等（不重复 session_start）；note 对未索引分支惰性 open。"""
-    import json
-
-    from domain.context import store
-    from domain.context.loopstate import requirement
-    R = "/tmp/dlut_req"
-    shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
-
-    # open：id = 首个分支名；索引段（branches 按 repo 嵌套，键 = realpath）+ session_start（带 repo）
-    rid = requirement.open_requirement(R, "feat/x", fork_from="main", fork_sha="abc")
-    assert rid == "feat/x"
-    RK = str(Path(R).resolve())                  # repo 键 = realpath（symlink 拼写不分裂键）
-    idx = store.load_segment(R, "requirements")
-    assert idx["branches"] == {RK: {"feat/x": "feat/x"}} and idx["requirements"]["feat/x"]["status"] == "open"
-    sess = (Path(R) / ".devloop" / "requirements" / "feat/x" / "session.jsonl").read_text().splitlines()
-    e0 = json.loads(sess[0])
-    assert e0["kind"] == "session_start" and e0["requirement"] == "feat/x" and e0["fork_sha"] == "abc"
-    assert e0["repo"] == RK                      # 事件带 repo：单 spine 跨仓的归因字段
-
-    # open 幂等：不追加第二条 session_start
-    requirement.open_requirement(R, "feat/x")
-    assert len((Path(R) / ".devloop" / "requirements" / "feat/x" / "session.jsonl").read_text().splitlines()) == 1
-
-    # attach：第二个分支续接同一 requirement → branch_cut{continues:true}，索引指向 req
-    requirement.attach_branch(R, "feat/x", "fix/x-followup", fork_sha="def")
-    assert requirement.resolve(R, "fix/x-followup") == "feat/x"
-    sess = (Path(R) / ".devloop" / "requirements" / "feat/x" / "session.jsonl").read_text().splitlines()
-    last = json.loads(sess[-1])
-    assert last["kind"] == "branch_cut" and last["branch"] == "fix/x-followup" and last["continues"] is True
-
-    # resolve 未索引分支 → None；note 对它惰性 open（id = 该分支）
-    assert requirement.resolve(R, "chore/z") is None
-    requirement.note(R, "chore/z", {"kind": "pr_created", "branch": "chore/z", "number": 9})
-    assert requirement.resolve(R, "chore/z") == "chore/z"
-    zsess = (Path(R) / ".devloop" / "requirements" / "chore/z" / "session.jsonl").read_text().splitlines()
-    assert json.loads(zsess[0])["kind"] == "session_start" and json.loads(zsess[-1])["kind"] == "pr_created"
-
-
-def test_requirement_reconcile_closures():
-    """close 半（monitor 侧，loop-state）：merged PR → pr_merged + session_end{done}，幂等不重复；
-    不写 requirements.json（保 gcampr 单写者）；open → 不 end；closed-only → abandoned；
-    staleness backstop → assumed_done。"""
-    import json
-
-    from domain.context import store
-    from domain.context.loopstate import requirement
-    R = "/tmp/dlut_req_close"
-    shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
-
-    def kinds(req):
-        return [e["kind"] for e in requirement.session_events(R, req)]
-
-    # feat/x：PR merged → pr_merged + session_end done
-    requirement.open_requirement(R, "feat/x")
-    store.save_segment(R, "pr", {"prs": [{"number": 100, "state": "merged", "source_branch": "feat/x"}]})
-    idx_before = store.load_segment(R, "requirements")
-    requirement.reconcile_closures(R)
-    assert kinds("feat/x") == ["session_start", "pr_merged", "session_end"]
-    end = requirement.session_events(R, "feat/x")[-1]
-    assert end["result"] == "done"
-    assert store.load_segment(R, "requirements") == idx_before   # 不写索引（单写者不变）
-
-    # 幂等：再跑一遍不追加
-    requirement.reconcile_closures(R)
-    assert kinds("feat/x") == ["session_start", "pr_merged", "session_end"]
-
-    # feat/open：PR 仍 open → 不 end
-    requirement.open_requirement(R, "feat/open")
-    store.save_segment(R, "pr", {"prs": [
-        {"number": 100, "state": "merged", "source_branch": "feat/x"},
-        {"number": 101, "state": "open", "source_branch": "feat/open"}]})
-    requirement.reconcile_closures(R)
-    assert "session_end" not in kinds("feat/open")
-
-    # feat/dead：PR closed（非 merged）→ pr_closed + session_end abandoned
-    requirement.open_requirement(R, "feat/dead")
-    store.save_segment(R, "pr", {"prs": [{"number": 102, "state": "closed", "source_branch": "feat/dead"}]})
-    requirement.reconcile_closures(R)
-    ev = requirement.session_events(R, "feat/dead")
-    assert ev[-2]["kind"] == "pr_closed" and ev[-1]["result"] == "abandoned"
-
-    # feat/stale：无 PR，idle 超阈值 → assumed_done（backstop）
-    requirement.open_requirement(R, "feat/stale")
-    store.save_segment(R, "pr", {"prs": []})
-    requirement.reconcile_closures(R, stale_after_sec=0)   # 立即判定过期
-    assert requirement.session_events(R, "feat/stale")[-1]["result"] == "assumed_done"
-
-
-def test_requirement_arcs_and_offwindow_closure():
-    """review findings F1/F2：① 同名分支在需求关闭后再 open → 追加新 session_start（arc 定界），
-    且上一 arc 的 merged PR 不得立刻误关新 arc；② 闭合按 spine 的 pr_created number 事件溯源——
-    PR 掉出 5 条窗口时用 forge.get(number) 兜底，从不为未建 PR 的分支查 forge。"""
-    import json
-
-    from domain.context import store
-    from domain.context.loopstate import requirement
-    R = "/tmp/dlut_req_arcs"
-    shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
-
-    def events():
-        return requirement.session_events(R, "feat/x")
-
-    # arc1：open + pr_created(100)，窗口里 100 merged → pr_merged + session_end done
-    requirement.open_requirement(R, "feat/x")
-    requirement.note(R, "feat/x", {"kind": "pr_created", "branch": "feat/x", "number": 100})
-    store.save_segment(R, "pr", {"prs": [{"number": 100, "state": "merged", "source_branch": "feat/x"}]})
-    requirement.reconcile_closures(R)
-    assert [e["kind"] for e in events()][-2:] == ["pr_merged", "session_end"]
-
-    # F1：需求已关闭，同名分支再 open → 新 session_start（第二段 arc 可见）
-    requirement.open_requirement(R, "feat/x", fork_sha="new")
-    starts = [e for e in events() if e["kind"] == "session_start"]
-    assert len(starts) == 2 and starts[-1]["fork_sha"] == "new"
-    # arc 活跃期间再 open → 幂等，不重复
-    requirement.open_requirement(R, "feat/x")
-    assert len([e for e in events() if e["kind"] == "session_start"]) == 2
-
-    # 旧 arc 的 merged PR(100) 仍在窗口 → 不得误关新 arc（旧实现会立刻 session_end）
-    requirement.reconcile_closures(R)
-    assert len([e for e in events() if e["kind"] == "session_end"]) == 1
-
-    # F2：arc2 建了 PR 105，窗口里没有它（掉出 PRS_CAP）→ forge.get(105) 兜底 → done
-    requirement.note(R, "feat/x", {"kind": "pr_created", "branch": "feat/x", "number": 105})
-
-    class _F:
-        def get(self, num):
-            assert num == 105                       # 只查 spine 里已知存在的 PR
-            from domain.context import PullRequest
-            return PullRequest(number=105, state="merged", source_branch="feat/x")
-    orig = requirement.forge_for_repo
-    requirement.forge_for_repo = lambda repo: _F()
-    try:
-        requirement.reconcile_closures(R)
-    finally:
-        requirement.forge_for_repo = orig
-    ks = [e["kind"] for e in events()]
-    assert ks[-2:] == ["pr_merged", "session_end"] and ks.count("session_end") == 2
-    assert json.loads((Path(R) / ".devloop/requirements/feat/x/session.jsonl")
-                      .read_text().splitlines()[-1])["result"] == "done"
-
-    # 无 forge（返回 None）+ 窗口空 + 未过期 → pending 保持 open，不误关
-    requirement.open_requirement(R, "feat/y")
-    requirement.note(R, "feat/y", {"kind": "pr_created", "branch": "feat/y", "number": 200})
-    store.save_segment(R, "pr", {"prs": []})
-    requirement.reconcile_closures(R)               # 该仓无 origin → forge None → unknown
-    assert not any(e["kind"] == "session_end" for e in requirement.session_events(R, "feat/y"))
-
-
-def test_requirement_attach_guards_arc_invariant():
-    """狗粮发现（PR#62 后首用）：attach 必须守住「每段 arc 以 session_start 开头」的定界约定。
-    ① `--requirement <未开过的名字>` 走 continue 路径 → 先补 session_start 再 branch_cut
-    （否则 spine 首行是 branch_cut，工具靠首行识别原始流的约定被破坏）；
-    ② 需求已关闭后 attach 后续分支（merge 后 follow-up）→ 新 arc 的 session_start 先行
-    （否则 branch_cut 悬在 session_end 之后，_active_tail 看不见、永远不被 reconcile）。"""
-    from domain.context import store
-    from domain.context.loopstate import requirement
-    R = "/tmp/dlut_req_attach"
-    shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
-
-    # ① attach 到从未 open 过的 requirement：session_start 先于 branch_cut，索引两条都建
-    requirement.attach_branch(R, "feat/new-req", "fix/first-cut", fork_sha="abc")
-    ks = [e["kind"] for e in requirement.session_events(R, "feat/new-req")]
-    assert ks == ["session_start", "branch_cut"]
-    assert requirement.resolve(R, "fix/first-cut") == "feat/new-req"
-
-    # 活跃 arc 上再 attach 其他分支 → 不重复 session_start
-    requirement.attach_branch(R, "feat/new-req", "fix/second-cut")
-    ks = [e["kind"] for e in requirement.session_events(R, "feat/new-req")]
-    assert ks == ["session_start", "branch_cut", "branch_cut"]
-
-    # ② 需求关闭后 attach follow-up 分支 → 新 arc：session_start 先行，branch_cut 可被 tail 看见
-    requirement.note(R, "feat/new-req", {"kind": "pr_created", "branch": "fix/first-cut", "number": 7})
-    store.save_segment(R, "pr", {"prs": [{"number": 7, "state": "merged", "source_branch": "fix/first-cut"}]})
-    requirement.reconcile_closures(R)
-    assert [e["kind"] for e in requirement.session_events(R, "feat/new-req")][-1] == "session_end"
-    requirement.attach_branch(R, "feat/new-req", "fix/followup")
-    tail = requirement._active_tail(requirement.session_events(R, "feat/new-req"))
-    assert [e["kind"] for e in tail] == ["session_start", "branch_cut"]
-    assert tail[-1]["branch"] == "fix/followup"
-
-
-def test_requirement_cross_repo_dev_root():
-    """requirement-first 目标态：仓属于注册 workspace → requirement 域落 workspace 根（dev root），
-    跨仓事件写同一 spine（带 repo 字段）；turn_line 渲染跨仓 PR live 态（多仓带 repo 前缀）；
-    reconcile 按 (repo, number) join 各仓 pr.json 收口——同号不同仓不混淆。
-    （Mode B——仓不属任何 workspace——退化为 repo 根，即其余 requirement 测试的形态。）"""
-    import json
-
-    from domain import workspace as registry
-    from domain.context import store
-    from domain.context.loopstate import requirement
-
-    W = "/tmp/dlut_req_ws"
-    shutil.rmtree(W, ignore_errors=True)
-    A, B = f"{W}/repoA", f"{W}/repoB"
-    for r in (A, B):
-        os.makedirs(f"{r}/.git")                 # .git 目录 → _main_repo_root 返回自身
-    Path(f"{W}/AGENTS.md").write_text("# ws\n")
-    registry.register_workspace(W)
-
-    # A 开需求，B attach 同一需求 → 单 spine 落 W/.devloop，事件带各自 repo；仓内无 requirement 域
-    requirement.open_requirement(A, "feat/cross", fork_from="main")
-    requirement.attach_branch(B, "feat/cross", "feat/cross-b")
-    spine = Path(W) / ".devloop/requirements/feat/cross/session.jsonl"
-    assert spine.exists()
-    AK, BK = str(Path(A).resolve()), str(Path(B).resolve())
-    evs = [json.loads(x) for x in spine.read_text().splitlines()]
-    assert [e["kind"] for e in evs] == ["session_start", "branch_cut"]
-    assert evs[0]["repo"] == AK and evs[1]["repo"] == BK
-    assert not (Path(A) / ".devloop/requirements").exists()
-    assert requirement.resolve(B, "feat/cross-b") == "feat/cross"
-
-    # 双仓各自 note 同号 PR —— (repo, number) 是键，不混淆
-    requirement.note(A, "feat/cross", {"kind": "pr_created", "branch": "feat/cross", "number": 7})
-    requirement.note(B, "feat/cross-b", {"kind": "pr_created", "branch": "feat/cross-b", "number": 7})
-
-    # turn_line：从任一仓看到同一个任务视图，多仓时 PR 带 repo 短名前缀
-    store.save_segment(A, "pr", {"prs": [{"number": 7, "state": "merged", "source_branch": "feat/cross"}]})
-    store.save_segment(B, "pr", {"prs": [{"number": 7, "state": "open", "source_branch": "feat/cross-b"}]})
-    line = requirement.turn_line(B, "feat/cross-b")
-    assert line.startswith("Requirement: feat/cross")
-    assert "repoA#7 merged" in line and "repoB#7 open" in line
-    assert requirement.turn_line(B, "unrelated-branch") == ""   # 无 requirement → 零注入
-
-    # reconcile（从 A 触发，管整个 dev root）：A#7 merged 记账；B#7 仍 open → 不收口
-    requirement.reconcile_closures(A)
-    evs = [json.loads(x) for x in spine.read_text().splitlines()]
-    kinds = [e["kind"] for e in evs]
-    assert kinds.count("pr_merged") == 1 and "session_end" not in kinds
-    merged = next(e for e in evs if e["kind"] == "pr_merged")
-    assert merged["repo"] == AK and merged["number"] == 7
-
-    # B 的 PR 也 merge → 需求收口 done；收口后 turn_line 归零（任务已完成，不再占 token）
-    store.save_segment(B, "pr", {"prs": [{"number": 7, "state": "merged", "source_branch": "feat/cross-b"}]})
-    requirement.reconcile_closures(B)
-    evs = [json.loads(x) for x in spine.read_text().splitlines()]
-    assert evs[-1]["kind"] == "session_end" and evs[-1]["result"] == "done"
-    assert requirement.turn_line(B, "feat/cross-b") == ""
-
-
 def test_state_domains_worktree():
-    """三域布局的核心承诺：linked worktree 里产生的 repo 域（friction/requirements）与 branch 域
-    （branch/validation）状态全部落**主仓** .devloop（worktree 清理不再丢数据）；owner 锁留在
+    """三域布局的核心承诺：linked worktree 里产生的 repo 域（friction）与 branch 域
+    （branch/validation）状态全部落**主仓** .devloop；owner 锁留在
     worktree 自己的 .devloop（并行 worktree 不被误串行化）；submodule 形态的 .git 文件回落本地
     （绝不往宿主 .git/modules 里写）。"""
     from domain.context import RepoContext, store
     from hooks import friction
-    from domain.context.loopstate import requirement
     from domain.context import session as session_lock
     from hooks.core.domain import Decision, Finding, Severity
     M = "/tmp/dlut_domains_main"
@@ -1160,13 +917,11 @@ def test_state_domains_worktree():
     assert store.state_dir(W).resolve() == (Path(M) / ".devloop").resolve()   # repo 域统一落主仓
     assert store.worktree_state_dir(W) == Path(W) / ".devloop"                # working-tree 域留本地
 
-    # repo 域：worktree 里的 friction / requirement 落主仓
+    # repo 域：worktree 里的 friction 落主仓
     deny = Decision.of([Finding(rule="protect-branch", severity=Severity.DENY, message="n", locator="x")])
     friction.record_deny(deny, tool="Bash", cwd=W)
     assert (Path(M) / ".devloop/friction.jsonl").exists()
     assert not (Path(W) / ".devloop/friction.jsonl").exists()
-    requirement.open_requirement(W, "feat/wt")
-    assert (Path(M) / ".devloop/requirements/feat/wt/session.jsonl").exists()
 
     # branch 域：worktree 的 refresh/validation 落主仓 branches/feat/wt/，与主 checkout 的
     # branches/main/ 并存互不干扰（git 禁止同分支双检出 → 每文件单写者天然成立）

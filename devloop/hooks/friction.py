@@ -10,9 +10,8 @@ protect pattern), a rule that's never right — that today only live in a human'
 Two invariants:
 - **Best-effort, never load-bearing**: a logging failure MUST NOT change the guard verdict.
   The whole call is wrapped so a deny stays a deny even if the write blows up.
-- **Branch, best-effort**: captured for later attribution to a requirement (the
-  `requirements/` scope is a later slice — see docs/loop-state.md, this is slice 1). None
-  when it can't be resolved; the miner tolerates it.
+- **Branch, best-effort**: captured so later analysis can group repeated friction by development
+  branch. None when it cannot be resolved; readers must tolerate it.
 """
 from __future__ import annotations
 

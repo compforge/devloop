@@ -13,8 +13,8 @@ verdict 形状相同，过去各自 ad-hoc 接线——本机制让它们都退�
 
 **为什么需要一个新缝。** devloop 是 native-first：能坐 Claude Code 原生事件就不自造。
 但 CC 原生事件只到**工具层**（`PreToolUse(Bash)` 看命令字符串），**git 生命周期这个
-altitude 没有原生事件**。所以 lifecycle 是一个正当的「缺失 facade」——与 `lib/notify`
-（推端口）、`lib/forge`（评审平台 facade）同性质，不是重造原生事件。
+altitude 没有原生事件**。所以 lifecycle 是一个正当的「缺失 facade」——与 `lib/forge`
+（评审平台 facade）同性质，不是重造原生事件。
 
 **dispatch 永远同步。** 它并发起一个相位上的全部 hook、join 等全部返回再聚合（`lint ‖ test`
 同跑，墙钟 = 最慢那个）。它**不能**起「跑完唤醒 session」的后台任务（subprocess 派生的子进程

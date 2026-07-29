@@ -5,7 +5,7 @@ Everything above (views / seams / ledger writers) calls these; nothing else touc
 
 `.devloop/` facts are split into three DOMAINS (see devloop/AGENTS.md context conventions):
   repo domain      → the MAIN repo's .devloop (state_dir): segments + ledgers that describe
-                     the repo / a requirement — one copy, survives worktree cleanup.
+                     the repo — one copy, survives worktree cleanup.
   branch domain    → main .devloop/branches/<branch>/ (branch_segment): state that describes
                      one BRANCH (topology / validation / review). git forbids checking the
                      same branch out in two worktrees, so per-file single-writer holds free.

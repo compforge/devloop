@@ -45,7 +45,6 @@ class DeliveryPolicy:
     _rules = {
         BoardItemType.WORKSPACE: DeliveryRule(_PROMPT_AND_UI, PromptScope.SESSION),
         BoardItemType.REPO_REFERENCES: DeliveryRule(_PROMPT_AND_UI, PromptScope.SESSION),
-        BoardItemType.REQUIREMENT_CURRENT: DeliveryRule(_PROMPT_AND_UI, PromptScope.SESSION),
         BoardItemType.REPO_IDENTITY: DeliveryRule(_PROMPT_AND_UI, PromptScope.TURN),
         BoardItemType.REPO_VALIDATION: DeliveryRule(_PROMPT_AND_UI, PromptScope.TURN),
         BoardItemType.REPO_PR_BLOCKED: DeliveryRule(

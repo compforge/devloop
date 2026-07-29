@@ -38,7 +38,7 @@ devloop/                              # ← 仓库根（marketplace）
 │   ├── skills/                       #     6 个 skill（CLI 共享）
 │   ├── commands/                     #     slash commands（Claude 端）
 │   ├── domain/                       #     领域模型与状态变化（workspace/repo/component/context/lifecycle）
-│   ├── lib/                          #     技术能力（git/forge/ecosystem/notify/config/parser）
+│   ├── lib/                          #     技术能力（git/forge/ecosystem/config/parser）
 │   ├── hooks/                        #     事件驱动 adapter 与 PreToolUse policy
 │   ├── scripts/                      #     git-ops 系列 + init_repo / init_workspace
 │   ├── config/                       #     用户配置模板（config.json：workspaces / gitlab / precommit）

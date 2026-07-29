@@ -195,8 +195,8 @@ class MergeReadiness(str, Enum):
     def blocks_merge(self) -> bool:
         """An ACTIONABLE blocker the author must clear — conflict / unresolved discussions / CI —
         as opposed to READY, a non-actionable wait (NEEDS_APPROVAL / DRAFT), or the async UNKNOWN.
-        The shared predicate the surfaces (turn banner, wake channel) alert on, so 'what's worth
-        nagging about' is defined once here, not re-listed per surface."""
+        The shared predicate used by status surfaces, so 'what's worth nagging about' is defined
+        once here, not re-listed per consumer."""
         return self in {
             MergeReadiness.CONFLICT,
             MergeReadiness.DISCUSSIONS_UNRESOLVED,

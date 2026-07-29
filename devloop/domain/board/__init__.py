@@ -27,7 +27,6 @@ from .model import (
     ReviewCard,
     ReviewLabelCard,
     SubprojectCard,
-    TextCard,
     ValidationCard,
     WorkspaceCard,
 )

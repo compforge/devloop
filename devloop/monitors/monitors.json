@@ -2,6 +2,6 @@
   {
     "name": "devloop-pr-sweep",
     "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/scripts/poll_pr_status.py\" \"${CLAUDE_PROJECT_DIR}\"",
-    "description": "Polling GitHub/GitLab for recent PR/MR status → keep .devloop/pr.json fresh (persist-only, for the PR guard / prompt injection; session wake is the forge channel's job)"
+    "description": "Polling GitHub/GitLab for recent PR/MR status → keep .devloop/pr.json fresh for guards, Board projection, and external observers"
   }
 ]

@@ -169,14 +169,18 @@ def test_pr_cli_findings_and_reply():
         def __init__(self, prs):
             super().__init__(prs)
             self.replied = []
+            self.resolved = []
         def comments(self, number):
             return [
                 Comment(id="20", thread_id="20", path="a.py", line=5, body="漏判空 ccr:fp=fp1"),
                 Comment(id="21", thread_id="20", reply_to="20", body="ccr:label=wrong — 走不到"),
-                Comment(id="30", thread_id="30", path="b.py", body="缺测试 ccr:fp=fp2"),
+                Comment(id="30", thread_id="30", path="b.py", body="缺测试 ccr:fp=fp2",
+                        resolvable=True),
             ]
         def reply(self, number, target, body):
             self.replied.append((number, target.id, body))
+        def resolve_thread(self, number, target):
+            self.resolved.append((number, target.thread_id))
 
     fake = _F([PullRequest(number=5, state="open", source_branch="feat/x")])
 
@@ -191,6 +195,9 @@ def test_pr_cli_findings_and_reply():
         assert prcli.main(["findings", "5", "--pending"]) == 0
         assert prcli.main(["reply", "5", "30", "ccr:label=minor — 补了"]) == 0
         assert fake.replied == [(5, "30", "ccr:label=minor — 补了")]
+        assert fake.resolved == [(5, "30")]
+        assert prcli.main(["reply", "5", "30", "普通讨论回复"]) == 0
+        assert fake.resolved == [(5, "30")]  # only a valid ccr:label closes the discussion
         assert prcli.main(["reply", "5", "999", "x"]) == 1      # 不存在的 comment id → 报错,不静默
     finally:
         prcli.forge_for_repo = orig_forge
@@ -354,7 +361,7 @@ def test_pullrequest_and_cadence():
     assert c.should_emit("x", now=200, ttl=1800)            # PostCompact clear → emit
 
 def test_forge_comment_endpoint():
-    """comment() 发到正确端点：gitlab → merge_requests/{n}/notes；github → issues/{n}/comments。"""
+    """Summary stays a plain note; a GitLab fallback finding can use an unanchored discussion."""
     from lib.forge.github import GitHubForge
     from lib.forge.gitlab import GitLabForge
 
@@ -364,6 +371,8 @@ def test_forge_comment_endpoint():
 
     gl = GitLabForge("h", "o/r", "t"); gl.c = _Cap(); gl.comment(7, "hi")
     assert gl.c.calls == [("merge_requests/7/notes", {"body": "hi"})]
+    gl.thread_comment(7, "finding")
+    assert gl.c.calls[-1] == ("merge_requests/7/discussions", {"body": "finding"})
     gh = GitHubForge("api.github.com", "o", "r", "t"); gh.c = _Cap(); gh.comment(7, "hi")
     assert gh.c.calls == [("issues/7/comments", {"body": "hi"})]
 
@@ -466,7 +475,8 @@ def test_forge_comments_union_both_surfaces():
          "notes": [{"id": 1, "author": {"username": "amy"}, "body": "summary"}]},
         {"id": "d2", "individual_note": False, "notes": [
             {"id": 20, "author": {"username": "bot"}, "body": "finding ccr:fp=abc",
-             "position": {"new_path": "a.py", "new_line": 5}},
+             "position": {"new_path": "a.py", "new_line": 5},
+             "resolvable": True, "resolved": False},
             {"id": 21, "author": {"username": "amy"}, "body": "ccr:label=wrong"},
             {"id": 99, "system": True, "body": "changed the description"},
         ]},
@@ -478,6 +488,9 @@ def test_forge_comments_union_both_surfaces():
     assert (cs[1].id, cs[1].thread_id, cs[1].reply_to) == ("20", "d2", "")
     assert (cs[2].id, cs[2].thread_id, cs[2].reply_to) == ("21", "d2", "20")  # GitLab 无 per-note parent → 归根
     assert (cs[1].path, cs[1].line) == ("a.py", 5)
+    assert cs[1].resolvable and not cs[1].resolved
+    assert cs[2].resolvable and not cs[2].resolved       # replies inherit discussion state
+    assert not cs[0].resolvable and not cs[0].resolved   # ordinary notes are not resolvable
 
 
 def test_forge_reply_endpoint():
@@ -512,6 +525,31 @@ def test_forge_reply_endpoint():
         raise AssertionError("default reply should raise")
     except ForgeError:
         pass
+
+
+def test_forge_resolve_discussion_endpoint():
+    """GitLab resolves a resolvable discussion with the discussion endpoint; plain or
+    non-resolvable comments fail explicitly instead of pretending the merge blocker is gone."""
+    from domain.forge import Comment, ForgeError
+    from lib.forge.gitlab import GitLabForge
+
+    class _Cap:
+        def __init__(self): self.calls = []
+        def put(self, path, body): self.calls.append((path, body)); return {}
+
+    gl = GitLabForge("h", "o/r", "t"); gl.c = _Cap()
+    gl.resolve_thread(7, Comment(id="20", thread_id="d2", resolvable=True))
+    assert gl.c.calls == [("merge_requests/7/discussions/d2", {"resolved": True})]
+
+    for comment in (
+        Comment(id="1"),
+        Comment(id="20", thread_id="d2", resolvable=False),
+    ):
+        try:
+            gl.resolve_thread(7, comment)
+            raise AssertionError("non-resolvable comment should raise")
+        except ForgeError:
+            pass
 
 
 def test_forge_default_branch():

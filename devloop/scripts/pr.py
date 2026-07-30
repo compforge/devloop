@@ -158,8 +158,8 @@ def cmd_findings(ns) -> int:
 
 def cmd_reply(ns) -> int:
     """Reply in a comment's thread — how a `ccr:label=<verdict>` verdict lands on the finding
-    it judges. Takes a comment id from `pr findings`; the thread is resolved here so callers
-    never touch the provider's threading model."""
+    it judges. Takes a comment id from `pr findings`; after the durable reply lands, a
+    resolvable thread is best-effort resolved so it no longer blocks merging."""
     forge = _forge_or_exit(ns, "pr reply")
     number = _number_or_exit(ns.number, "pr reply")
     try:
@@ -172,7 +172,17 @@ def cmd_reply(ns) -> int:
     except ForgeError as e:
         print(f"pr reply: {e}", file=sys.stderr)
         return 1
-    print(f"replied to {ns.comment_id} on {pr_label(forge.provider, number)}")
+    suffix = ""
+    if review_feedback.label_verdict(ns.body) and target.resolvable and not target.resolved:
+        try:
+            forge.resolve_thread(number, target)
+            suffix = "; discussion resolved"
+        except ForgeError as e:
+            # The verdict is already durable. Do not report the whole operation as failed
+            # (which invites a duplicate label reply); surface the remaining merge blocker.
+            print(f"pr reply: label posted, but discussion resolve failed: {e}", file=sys.stderr)
+            suffix = "; discussion still unresolved"
+    print(f"replied to {ns.comment_id} on {pr_label(forge.provider, number)}{suffix}")
     return 0
 
 

@@ -152,6 +152,8 @@ class Comment:
     reply_to: str = ""          # `id` of the comment this replies to; "" = thread root
     path: str = ""              # diff anchor (new side); "" for plain conversation comments
     line: int | None = None
+    resolvable: bool = False     # this thread can be marked resolved on the forge
+    resolved: bool = False       # current thread resolution state
 
 
 @dataclass
@@ -286,6 +288,16 @@ class Forge(abc.ABC):
         """Post a new comment on PR/MR `number` (GitHub issue comment / GitLab MR note).
         Write primitive — used to attach code-review history to the MR."""
 
+    def thread_comment(self, number: int, body: str) -> None:
+        """Post a new replyable comment thread without a diff anchor.
+
+        This is the last rung for a review finding whose line/file anchor cannot land: it
+        preserves a distinct reply target (and, where supported, a resolvable discussion)
+        instead of flattening the finding into the review summary. Adapters without such a
+        surface raise and let the caller fall back to `comment`.
+        """
+        raise ForgeError(f"{self.provider or 'forge'}: unanchored comment threads not supported")
+
     def diff_comment(self, number: int, body: str, path: str, line: int | None = None) -> None:
         """Post a comment anchored to `path:line` on the NEW side of PR/MR `number`'s diff,
         or to `path` as a whole when `line` is None. The anchor is what buys the forge's
@@ -317,6 +329,15 @@ class Forge(abc.ABC):
         Same raise-and-let-the-caller-degrade contract as `diff_comment`.
         """
         raise ForgeError(f"{self.provider or 'forge'}: replies not supported")
+
+    def resolve_thread(self, number: int, target: Comment) -> None:
+        """Mark `target`'s thread resolved after its finding has been handled.
+
+        The label reply is the durable review verdict; resolution is a separate, best-effort
+        forge lifecycle transition. Adapters that cannot resolve threads raise so callers can
+        keep the verdict while reporting that the merge blocker may remain.
+        """
+        raise ForgeError(f"{self.provider or 'forge'}: resolving comment threads not supported")
 
     def merge_readiness(self, number: int) -> MergeReadiness:
         """Why MR/PR `number` can't merge yet (CONFLICT / DISCUSSIONS_UNRESOLVED / …), or READY.

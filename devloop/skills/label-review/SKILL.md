@@ -3,7 +3,7 @@ name: label-review
 description: '逐条评价 review 已发布到 GitLab/GitHub PR/MR 的 finding comments，并通过 devloop plugin 回复 ccr:label 标注，供后续 API 集中采集 ground truth。Use when the user asks to 看/处理/评价 review comments or findings, when a "Review findings: N 条待打标" context line surfaces, or when the user says 打标 / label findings.'
 ---
 
-review 把每条 finding 发布成 PR/MR 上的**锚点 comment**（带 `ccr:fp=` 指纹）；Codex/Claude
+review 把每条 finding 发布成 PR/MR 上的**独立 thread comment**（带 `ccr:fp=` 指纹）；Codex/Claude
 对这些 comment **逐条求证并在其线程内回复** `ccr:label=<verdict>`。后续统一通过 GitLab/GitHub
 API 采集「原 finding comment + 其 label 回复」产出 ground truth；真问题和误报一样有价值，
 只标一侧数据就偏了。
@@ -44,6 +44,10 @@ API 采集「原 finding comment + 其 label 回复」产出 ground truth；真�
      'ccr:label=wrong — 该分支实际走不到，xxx.py:42 已早返回 #textbook'
    ```
 
+   `reply` 会先发布 label，再尽量把 GitLab discussion 标记为 resolved，避免未解决 discussion
+   阻塞 MR 合并。若 resolve 失败，命令会明确提示 `discussion still unresolved`；label 已经生效，
+   不要重复回复同一个 label，转而在 GitLab 处理该 discussion。
+
    词表四档（**只有这四个词会被采集侧认**，拼错等于没标，`findings --pending` 会继续列它）：
    - `ccr:label=important — <理由>`（实质缺陷，采纳修复）
    - `ccr:label=minor — <理由>`（真但小/润色，采纳）
@@ -68,8 +72,9 @@ API 采集「原 finding comment + 其 label 回复」产出 ground truth；真�
 
 ## 边界
 
-- 只有**锚点 comment**（行级或文件级）能打标——它有线程可回复。review 汇总 note 里列出的
+- 只有**独立 thread comment**能打标——优先是行级/文件级锚点，GitLab 锚不上时还会降级成
+  无锚 discussion。review 汇总 note 里列出的
   回落 finding 没有线程，`findings` 不列、也不该标；这类会越来越少（run_review 先按
-  行锚 → 文件锚 降级，尽量不掉进汇总）。
-- `reply` 只能回锚点 comment 的线程，对普通 note 回复会报错。这是有意的：避免发出一条
+  行锚 → 文件锚 → 无锚 discussion 降级，尽量不掉进汇总）。
+- `reply` 只能回 thread comment，对普通 note 回复会报错。这是有意的：避免发出一条
   跟被判对象脱钩的游离评论。

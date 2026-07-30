@@ -1,7 +1,7 @@
 """Review feedback — which published findings still lack a verdict.
 
-The durable relationship, entirely on the forge: `run_review` publishes each finding as an
-ANCHORED comment carrying a `ccr:fp=<fp>` footer; an agent/human later replies in that thread
+The durable relationship, entirely on the forge: `run_review` publishes each finding as a
+THREADED comment carrying a `ccr:fp=<fp>` footer; an agent/human later replies in that thread
 with `ccr:label=<verdict>`. This module joins the two back together over `Forge.comments()`.
 
 Nothing here is persisted as a source of truth, on purpose. The join key (`fp`) travels inside
@@ -45,22 +45,29 @@ class Finding:
         return not self.label
 
 
+def label_verdict(body: str) -> str:
+    """Return a recognized `ccr:label` verdict, or "" for ordinary/invalid replies."""
+    match = _LABEL_RE.search(body or "")
+    return match.group(1) if match and match.group(1) in VERDICTS else ""
+
+
 def findings(comments: list[Comment]) -> list[Finding]:
     """Published findings on a PR/MR, each with its `ccr:label` verdict when one exists.
 
-    A published finding is an ANCHORED comment (`thread_id` != "") carrying a `ccr:fp=`. The
-    anchor requirement is what excludes the review summary note, which also lists `ccr:fp=`
+    A published finding is a THREADED comment (`thread_id` != "") carrying a `ccr:fp=`. The
+    thread requirement is what excludes the review summary note, which also lists `ccr:fp=`
     — once per fallback finding, in one un-anchored body. That note is correctly skipped: it
     has no thread, so nothing in it can be replied to, so nothing in it can be labeled. (That
-    cost is why `run_review` degrades line → file anchor before ever falling back to it.)
+    cost is why `run_review` degrades line anchor → file anchor → unanchored thread before
+    ever falling back to it.)
     """
     verdicts: dict[str, str] = {}
     for c in comments:
         if not c.thread_id or not c.reply_to:       # a verdict is a REPLY in a finding's thread
             continue
-        m = _LABEL_RE.search(c.body or "")
-        if m and m.group(1) in VERDICTS:
-            verdicts.setdefault(c.thread_id, m.group(1))   # first verdict wins; later ones are discussion
+        verdict = label_verdict(c.body)
+        if verdict:
+            verdicts.setdefault(c.thread_id, verdict)   # first verdict wins; later ones are discussion
     out = []
     for c in comments:
         if not c.thread_id:

@@ -1,7 +1,7 @@
 """Review feedback — which published findings still lack a verdict.
 
 The durable relationship, entirely on the forge: `run_review` publishes each finding as a
-THREADED comment carrying a `ccr:fp=<fp>` footer; an agent/human later replies in that thread
+replyable comment carrying a `ccr:fp=<fp>` footer; an agent/human later replies to that comment
 with `ccr:label=<verdict>`. This module joins the two back together over `Forge.comments()`.
 
 Nothing here is persisted as a source of truth, on purpose. The join key (`fp`) travels inside
@@ -52,30 +52,23 @@ def label_verdict(body: str) -> str:
 
 
 def findings(comments: list[Comment]) -> list[Finding]:
-    """Published findings on a PR/MR, each with its `ccr:label` verdict when one exists.
+    """Published findings on a PR/MR, each with its first valid verdict reply.
 
-    A published finding is a THREADED comment (`thread_id` != "") carrying a `ccr:fp=`. The
-    thread requirement is what excludes the review summary note, which also lists `ccr:fp=`
-    — once per fallback finding, in one un-anchored body. That note is correctly skipped: it
-    has no thread, so nothing in it can be replied to, so nothing in it can be labeled. (That
-    cost is why `run_review` degrades line anchor → file anchor → unanchored thread before
-    ever falling back to it.)
+    A published finding is a replyable comment carrying a `ccr:fp=`. Replyability excludes the
+    review summary note, which may list `ccr:fp=` once per fallback finding. The summary has
+    no reply target, so nothing in it can be labeled.
     """
-    verdicts: dict[str, str] = {}
+    found = []
     for c in comments:
-        if not c.thread_id or not c.reply_to:       # a verdict is a REPLY in a finding's thread
-            continue
-        verdict = label_verdict(c.body)
-        if verdict:
-            verdicts.setdefault(c.thread_id, verdict)   # first verdict wins; later ones are discussion
-    out = []
-    for c in comments:
-        if not c.thread_id:
+        if not c.replyable:
             continue
         m = _FP_RE.search(c.body or "")
-        if m:
-            out.append(Finding(fp=m.group(1), comment=c, label=verdicts.get(c.thread_id, "")))
-    return out
+        if not m:
+            continue
+        label = next((verdict for reply in c.replies
+                      if (verdict := label_verdict(reply.body))), "")
+        found.append(Finding(fp=m.group(1), comment=c, label=label))
+    return found
 
 
 def pending(comments: list[Comment]) -> list[Finding]:
@@ -91,5 +84,5 @@ def pending_key(found: list[Finding]) -> str:
     after an earlier round was labeled, it is new work and must reopen the nudge. Sorted so comment
     order (two forge surfaces, interleaved by time) can't churn the key and reset the decay.
     """
-    identities = sorted(f"{f.fp}:{f.comment.id or f.comment.thread_id}" for f in found)
+    identities = sorted(f"{f.fp}:{f.comment.id or f.comment.reply_ref}" for f in found)
     return hashlib.sha256("\n".join(identities).encode()).hexdigest()[:12] if identities else ""

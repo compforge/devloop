@@ -27,7 +27,13 @@ _SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS.parent))
 
 from domain import review_feedback  # noqa: E402
-from domain.forge import ForgeError, MergeReadiness, parse_pr_number, pr_label  # noqa: E402
+from domain.forge import (  # noqa: E402
+    CommentResolution,
+    ForgeError,
+    MergeReadiness,
+    parse_pr_number,
+    pr_label,
+)
 from lib import cli  # noqa: E402
 from lib.forge import forge_for_repo  # noqa: E402
 
@@ -77,10 +83,14 @@ def cmd_show(ns) -> int:
     print(f"  merge: {_READINESS_LABEL.get(readiness, readiness.value)}")
     print(f"  {pr.web_url}")
     if comments:
-        print(f"  comments ({len(comments)}):")
+        count = sum(1 + len(comment.replies) for comment in comments)
+        print(f"  comments ({count}):")
         for c in comments[:20]:
             body = (c.body or "").strip().replace("\n", " ")
             print(f"    - {c.author}: {body[:120]}")
+            for reply in c.replies:
+                body = (reply.body or "").strip().replace("\n", " ")
+                print(f"      ↳ {reply.author}: {body[:120]}")
     return 0
 
 
@@ -173,9 +183,13 @@ def cmd_reply(ns) -> int:
         print(f"pr reply: {e}", file=sys.stderr)
         return 1
     suffix = ""
-    if review_feedback.label_verdict(ns.body) and target.resolvable and not target.resolved:
+    if (
+        review_feedback.label_verdict(ns.body)
+        and target.resolve_ref
+        and target.resolution is not CommentResolution.RESOLVED
+    ):
         try:
-            forge.resolve_thread(number, target)
+            forge.resolve_comment(number, target)
             suffix = "; discussion resolved"
         except ForgeError as e:
             # The verdict is already durable. Do not report the whole operation as failed

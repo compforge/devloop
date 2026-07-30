@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import abc
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 PRS_CAP = 5   # max entries in the recent-PR window the monitor tracks
@@ -131,29 +131,40 @@ class PullRequest:
         )
 
 
+class CommentResolution(str, Enum):
+    """Resolution state of the provider interaction backing a top-level comment."""
+    UNSUPPORTED = "unsupported"
+    UNRESOLVED = "unresolved"
+    RESOLVED = "resolved"
+
+
 @dataclass
 class Comment:
-    """A comment on a PR/MR — neutral across forges, and across both comment surfaces
-    (plain conversation note + diff-anchored note; see `Forge.comments`).
+    """One top-level PR/MR comment, optionally backed by a replyable review interaction.
 
-    `id` / `thread_id` are OPAQUE: each adapter picks values its own `reply` understands
-    (GitLab discussion id, GitHub top-level review-comment id), so callers never branch on
-    provider. Grouping into threads is the caller's job — `thread_id` equality is the only
-    contract, deliberately instead of a nested tree type (no caller needs one yet).
+    `replies` keeps provider threading inside the Forge adapter: callers consume one neutral
+    Comment whether GitHub supplied a review-comment thread or GitLab supplied a discussion.
+    `reply_ref` / `resolve_ref` are opaque adapter handles and must only be passed back to the
+    Forge that produced them.
 
-    Carries no label/finding vocabulary: a `ccr:fp=` / `ccr:label=` footer is just body text
-    the review layer writes and greps. The forge is the join's source of truth, which is why
-    nothing here is persisted locally — see `comments()`.
+    Carries no label/finding vocabulary: `ccr:fp=` and `ccr:label=` remain review-layer body
+    conventions. The forge is the durable source of truth, so comment refs are never persisted
+    locally.
     """
     author: str = ""
     body: str = ""
     id: str = ""                # opaque, adapter-scoped; "" when the adapter can't supply one
-    thread_id: str = ""         # same value for every comment in one thread; "" = standalone
-    reply_to: str = ""          # `id` of the comment this replies to; "" = thread root
     path: str = ""              # diff anchor (new side); "" for plain conversation comments
     line: int | None = None
-    resolvable: bool = False     # this thread can be marked resolved on the forge
-    resolved: bool = False       # current thread resolution state
+    created_at: str = ""
+    replies: list["Comment"] = field(default_factory=list)
+    reply_ref: str = ""
+    resolve_ref: str = ""
+    resolution: CommentResolution = CommentResolution.UNSUPPORTED
+
+    @property
+    def replyable(self) -> bool:
+        return bool(self.reply_ref)
 
 
 @dataclass
@@ -272,72 +283,48 @@ class Forge(abc.ABC):
 
     @abc.abstractmethod
     def comments(self, number: int) -> list[Comment]:
-        """Every human-visible comment on PR/MR `number` — BOTH surfaces: plain conversation
-        notes and the diff-anchored ones `diff_comment` writes. The union is the point: a
-        caller that wants to find what review posted must not have to know which surface it
-        landed on (GitHub splits them across two endpoints; GitLab merges them into one).
-        System/bot activity notes are excluded — they aren't comments anyone wrote.
+        """Top-level human comments on PR/MR `number`, with review replies nested.
 
-        Carries `id`/`thread_id`, so a caller that reads then replies gets the reply target
-        from this same call. That's why devloop persists no local comment refs: the forge is
-        the durable store, and a ref cached elsewhere would only be a staler copy of this.
+        The adapter merges the provider's plain-comment and review surfaces. A replyable
+        review interaction is one Comment with `replies` and opaque action refs; callers do
+        not group flat provider notes or understand GitHub threads versus GitLab discussions.
+        System/bot activity notes are excluded.
         """
 
     @abc.abstractmethod
-    def comment(self, number: int, body: str) -> None:
-        """Post a new comment on PR/MR `number` (GitHub issue comment / GitLab MR note).
-        Write primitive — used to attach code-review history to the MR."""
+    def comment(
+        self,
+        number: int,
+        body: str,
+        *,
+        replyable: bool = False,
+        path: str = "",
+        line: int | None = None,
+    ) -> None:
+        """Post one comment, optionally requiring a replyable provider interaction.
 
-    def thread_comment(self, number: int, body: str) -> None:
-        """Post a new replyable comment thread without a diff anchor.
-
-        This is the last rung for a review finding whose line/file anchor cannot land: it
-        preserves a distinct reply target (and, where supported, a resolvable discussion)
-        instead of flattening the finding into the review summary. Adapters without such a
-        surface raise and let the caller fall back to `comment`.
+        The default is a standalone GitHub issue comment / GitLab MR note. With
+        `replyable=True`, `path`/`line` optionally request a new-side diff anchor; adapters
+        raise when that shape is unsupported rather than silently publishing a standalone
+        comment. The caller owns any fallback policy.
         """
-        raise ForgeError(f"{self.provider or 'forge'}: unanchored comment threads not supported")
-
-    def diff_comment(self, number: int, body: str, path: str, line: int | None = None) -> None:
-        """Post a comment anchored to `path:line` on the NEW side of PR/MR `number`'s diff,
-        or to `path` as a whole when `line` is None. The anchor is what buys the forge's
-        native comment lifecycle: when a later push changes those lines, the forge marks the
-        comment outdated and folds it — so each review round's findings age out with the code
-        instead of piling up as plain notes.
-
-        `line=None` is a granularity knob on ONE surface, not a second surface — same endpoint,
-        same lifecycle, same failure mode, one field dropped (GitHub `subject_type=file`,
-        GitLab `position_type=file`). That's why it's a parameter here, whereas `comment` stays
-        a separate method: that one is a different endpoint with a different lifecycle.
-        File-level anchoring is the rung between a line anchor and the plain summary note —
-        it still gets an id and a thread, so a finding posted this way is still replyable.
-
-        Raises ForgeError when the anchor can't land (the line isn't in the current diff; the
-        file isn't in it either; GitLab older than 16.4 has no file position type). Callers are
-        expected to degrade — line → file → summary note. Concrete-with-default (peer of
-        merge_readiness): an adapter with no anchored surface at all raises too."""
-        raise ForgeError(f"{self.provider or 'forge'}: diff comments not supported")
 
     def reply(self, number: int, target: Comment, body: str) -> None:
-        """Post `body` into `target`'s thread on PR/MR `number`. `target` must have come from
-        THIS forge's `comments()` — its `id`/`thread_id` are adapter-private values.
+        """Reply to a Comment returned by this Forge's `comments()`.
 
-        Raises ForgeError when `target` isn't threadable (`thread_id` == ""), rather than
-        silently degrading to a standalone comment: a reply that lands detached from what it
-        answers is a worse outcome than an error the caller can handle. Only the diff-anchored
-        surface threads — uniformly across forges by construction, see `GitLabForge._to_comment`.
-        Same raise-and-let-the-caller-degrade contract as `diff_comment`.
+        Adapters consume `target.reply_ref`. A standalone comment raises rather than silently
+        creating a detached response.
         """
         raise ForgeError(f"{self.provider or 'forge'}: replies not supported")
 
-    def resolve_thread(self, number: int, target: Comment) -> None:
-        """Mark `target`'s thread resolved after its finding has been handled.
+    def resolve_comment(self, number: int, target: Comment) -> None:
+        """Resolve the review interaction backing `target` after its finding is handled.
 
         The label reply is the durable review verdict; resolution is a separate, best-effort
-        forge lifecycle transition. Adapters that cannot resolve threads raise so callers can
-        keep the verdict while reporting that the merge blocker may remain.
+        forge transition. Adapters consume `target.resolve_ref`; unsupported comments raise so
+        callers keep the verdict while reporting that the merge blocker may remain.
         """
-        raise ForgeError(f"{self.provider or 'forge'}: resolving comment threads not supported")
+        raise ForgeError(f"{self.provider or 'forge'}: resolving comments not supported")
 
     def merge_readiness(self, number: int) -> MergeReadiness:
         """Why MR/PR `number` can't merge yet (CONFLICT / DISCUSSIONS_UNRESOLVED / …), or READY.

@@ -10,7 +10,15 @@ from __future__ import annotations
 import urllib.parse
 
 from ._rest import RestClient
-from domain.forge import Comment, Forge, ForgeError, MergeReadiness, PullRequest, Release
+from domain.forge import (
+    Comment,
+    CommentResolution,
+    Forge,
+    ForgeError,
+    MergeReadiness,
+    PullRequest,
+    Release,
+)
 
 # GitLab persisted state → neutral.
 _STATE_IN = {"opened": "open", "merged": "merged", "closed": "closed", "locked": "closed"}
@@ -145,62 +153,59 @@ class GitLabForge(Forge):
         # GitHub this needs no second fetch. `system` notes are GitLab's activity log
         # ("changed the description"), not comments.
         discussions = self.c.get_all(f"merge_requests/{number}/discussions")
-        return [
-            self._to_comment(d, n)
-            for d in discussions for n in d.get("notes", [])
-            if not n.get("system")
-        ]
+        comments = []
+        for discussion in discussions:
+            notes = [note for note in discussion.get("notes", []) if not note.get("system")]
+            if not notes:
+                continue
+            if discussion.get("individual_note"):
+                comments.extend(self._to_comment(note) for note in notes)
+                continue
+            root = notes[0]
+            comment = self._to_comment(root)
+            comment.replies = [self._to_comment(note) for note in notes[1:]]
+            comment.reply_ref = str(discussion.get("id") or "")
+            if root.get("resolvable"):
+                comment.resolve_ref = comment.reply_ref
+                comment.resolution = (
+                    CommentResolution.RESOLVED
+                    if root.get("resolved")
+                    else CommentResolution.UNRESOLVED
+                )
+            comments.append(comment)
+        return sorted(comments, key=lambda comment: comment.created_at)
 
     @staticmethod
-    def _to_comment(discussion: dict, note: dict) -> Comment:
-        # An individual_note discussion wraps a plain note. GitLab would actually let us reply
-        # into one (POST .../notes promotes it to a thread), but the port reports thread_id=""
-        # anyway: GitHub CAN'T reply to its plain-comment surface, and a port whose reply
-        # threads on one provider and raises on the other forces callers to branch on provider
-        # — the exact thing this port exists to prevent. Findings are diff-anchored, so the
-        # real reply path never lands here.
-        threaded = not discussion.get("individual_note")
-        notes = [n for n in discussion.get("notes", []) if not n.get("system")]
-        root = notes[0] if notes else {}
+    def _to_comment(note: dict) -> Comment:
         pos = note.get("position") or {}
         return Comment(
             author=(note.get("author") or {}).get("username", "?"),
             body=note.get("body") or "",
             id=str(note.get("id") or ""),
-            thread_id=str(discussion.get("id") or "") if threaded else "",
-            # GitLab has no per-note parent — every note in a discussion answers its root.
-            reply_to=str(root.get("id") or "") if threaded and note.get("id") != root.get("id") else "",
             path=pos.get("new_path") or "",
             line=pos.get("new_line"),
-            # Resolution belongs to the discussion. GitLab repeats these fields on its
-            # resolvable root note; inherit that state for every reply so callers can use
-            # whichever comment id they were handed without understanding GitLab's shape.
-            resolvable=bool(root.get("resolvable")),
-            resolved=bool(root.get("resolved")),
+            created_at=note.get("created_at") or "",
         )
 
-    def comment(self, number: int, body: str) -> None:
-        self.c.post(f"merge_requests/{number}/notes", {"body": body})
-
-    def thread_comment(self, number: int, body: str) -> None:
-        self.c.post(f"merge_requests/{number}/discussions", {"body": body})
-
-    def reply(self, number: int, target: Comment, body: str) -> None:
-        if not target.thread_id:
-            raise ForgeError(f"MR !{number}: comment {target.id or '?'} is a plain note — "
-                             "GitLab can only reply inside a discussion")
-        self.c.post(f"merge_requests/{number}/discussions/{target.thread_id}/notes",
-                    {"body": body})
-
-    def resolve_thread(self, number: int, target: Comment) -> None:
-        if not target.thread_id:
-            raise ForgeError(f"MR !{number}: comment {target.id or '?'} is not a discussion")
-        if not target.resolvable:
-            raise ForgeError(f"MR !{number}: discussion {target.thread_id} is not resolvable")
-        self.c.put(f"merge_requests/{number}/discussions/{target.thread_id}",
-                   {"resolved": True})
-
-    def diff_comment(self, number: int, body: str, path: str, line: int | None = None) -> None:
+    def comment(
+        self,
+        number: int,
+        body: str,
+        *,
+        replyable: bool = False,
+        path: str = "",
+        line: int | None = None,
+    ) -> None:
+        if not replyable:
+            if path or line is not None:
+                raise ForgeError(f"MR !{number}: a standalone comment cannot have a diff anchor")
+            self.c.post(f"merge_requests/{number}/notes", {"body": body})
+            return
+        if not path:
+            if line is not None:
+                raise ForgeError(f"MR !{number}: a diff line requires a path")
+            self.c.post(f"merge_requests/{number}/discussions", {"body": body})
+            return
         # Positioned discussion — GitLab re-anchors it on every push and folds it as
         # "outdated" once the lines change; with the project setting
         # `resolve_outdated_diff_discussions` it even auto-resolves then.
@@ -218,6 +223,19 @@ class GitLabForge(Forge):
         if line is not None:
             pos["new_line"] = line
         self.c.post(f"merge_requests/{number}/discussions", {"body": body, "position": pos})
+
+    def reply(self, number: int, target: Comment, body: str) -> None:
+        if not target.reply_ref:
+            raise ForgeError(f"MR !{number}: comment {target.id or '?'} is a plain note — "
+                             "GitLab can only reply inside a discussion")
+        self.c.post(f"merge_requests/{number}/discussions/{target.reply_ref}/notes",
+                    {"body": body})
+
+    def resolve_comment(self, number: int, target: Comment) -> None:
+        if not target.resolve_ref:
+            raise ForgeError(f"MR !{number}: comment {target.id or '?'} is not resolvable")
+        self.c.put(f"merge_requests/{number}/discussions/{target.resolve_ref}",
+                   {"resolved": True})
 
     def _diff_refs(self, number: int) -> dict:
         """The MR's current diff version (base/start/head sha) a position anchors against.

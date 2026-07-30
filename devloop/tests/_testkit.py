@@ -30,7 +30,7 @@ os.makedirs(_GCFG, exist_ok=True)
 os.environ["DEVLOOP_CONFIG_DIR"] = _GCFG
 
 from domain.context import PullRequest  # noqa: E402
-from domain.forge import Comment, Forge, ForgeNotFound, Release  # noqa: E402
+from domain.forge import Comment, Forge, ForgeError, ForgeNotFound, Release  # noqa: E402
 
 
 class _FakeForge(Forge):
@@ -80,13 +80,17 @@ class _FakeForge(Forge):
     def comments(self, number):
         return [Comment(author="x", body="y")]
 
-    def comment(self, number, body):
+    def comment(self, number, body, *, replyable=False, path="", line=None):
+        if replyable:
+            if not path:
+                raise ForgeError("unanchored replyable comments not supported")
+            self.diff_posted = getattr(self, "diff_posted", [])
+            self.diff_posted.append((number, path, line, body))
+            return
+        if path or line is not None:
+            raise ForgeError("standalone comments cannot have a diff anchor")
         self.posted = getattr(self, "posted", [])
         self.posted.append((number, body))
-
-    def diff_comment(self, number, body, path, line=None):
-        self.diff_posted = getattr(self, "diff_posted", [])
-        self.diff_posted.append((number, path, line, body))   # line=None → 文件级锚点
 
     def default_branch(self):
         return "main"

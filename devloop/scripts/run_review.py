@@ -103,7 +103,13 @@ def _post_inline(forge, pr, comments: list) -> tuple[int, list]:
             # None = 文件级锚点。line-level 先试行锚、退文件锚;file-level 只有文件锚这一级。
             for anchor in ((int(line), None) if line else (None,)):
                 try:
-                    forge.diff_comment(pr.number, rendered, path, anchor)
+                    forge.comment(
+                        pr.number,
+                        rendered,
+                        replyable=True,
+                        path=path,
+                        line=anchor,
+                    )
                     posted += 1
                     anchored = True
                     break
@@ -112,7 +118,7 @@ def _post_inline(forge, pr, comments: list) -> tuple[int, list]:
         if anchored:
             continue
         try:
-            forge.thread_comment(pr.number, rendered)
+            forge.comment(pr.number, rendered, replyable=True)
             posted += 1
         except ForgeError:
             # GitHub 没有无锚 review thread；GitLab 也可能禁掉 discussions。最后才回汇总。

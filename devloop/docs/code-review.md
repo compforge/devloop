@@ -23,7 +23,8 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   发评论（典型是 `post_mr`——MR 刚建好;或往在途 MR 追加提交时也会命中）。
   没有 MR 就只落 review.json。所以 **MR 评论是机会性的,不是 phase 硬绑**。
 - **findings 优先锚点,汇总 note 兜底**:每条 finding 先尝试发成 diff 锚点评论
-  （`forge.diff_comment`,GitLab positioned discussion / GitHub review comment）——锚点换来
+  （`forge.comment(..., replyable=True)`,GitLab positioned discussion / GitHub review
+  comment）——锚点换来
   forge **原生的 outdated 生命周期**:下一轮 AI 修完再 push,改到的行上的旧 finding 被 forge
   自动折叠成 outdated,不像普通 note 永远悬着（GitLab 项目开 `resolve_outdated_diff_discussions`
   还能 push 时自动 resolve）。汇总评论承载 review 级身份（models / cost / 引擎版本）与历史
@@ -32,11 +33,13 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
 - **finding 有 line-level 和 file-level 两级**:带行号的是 line-level（"这行漏判空"）,不带的
   是 file-level（"这文件缺测试"）——后者不是信息缺失,本来就没有哪一行可指,直接锚文件。
   line-level 锚不上时（最常见:context 行 finding,行不在当前 diff 里）先退一级到文件锚,
-  两级都锚不上才进汇总。多这一级的理由是**可打标性**:只有锚点评论有线程、能被回复
-  `ccr:label=`,汇总里的 finding 只是一行文本、没有可回复的对象,等于退出 ground truth 回收。
+  两级都锚不上再尝试无锚 review comment，仍不支持才进汇总。多这些层级的理由是
+  **可打标性**:独立 review comment 能被回复 `ccr:label=`,汇总里的 finding 只是一行文本、
+  没有可回复的对象,等于退出 ground truth 回收。
 - **打标闭环锚在 forge 上,不落本地**:finding comment 带 `ccr:fp=` 指纹,verdict 以
-  `ccr:label=` 回复落在同一线程,两者由 `domain/review_feedback.py` 从 `forge.comments()` join
-  回来。join 键跟着持久对象（comment body）走,所以换机器 / 换 worktree / 换 session 都接得上;
+  `ccr:label=` 回复落在其下；Forge adapter 把平台线程整理成 top-level Comment + replies，
+  `domain/review_feedback.py` 直接读取。指纹跟着持久对象（comment body）走,所以换机器 /
+  换 worktree / 换 session 都接得上;
   本地存一份 fp→comment-id 表只会是这份数据的陈旧副本,丢了还会把 join 悄悄弄断。
   待打标数（`Review findings: N 条待打标`）由此派生,刻意不用 review.json 的 finding 数——
   那是「上次 review 出了几条」而非「还剩几条没标」:标完了它照喊,review.json 一被下轮覆盖
@@ -56,8 +59,9 @@ gcampr → … → commit → publish（建/复用 MR）→ post_mr relay
 run_review（后台、独立进程）：**启动即冻结 (branch, sha)**（见下）→ 先写 status=running
    → 自动拼 --background（业务上下文）：本次提交说明（git log）+ MR 标题/描述（forge）
    → <engine> review --from origin/<target> --to <冻结的 sha> --background <ctx> --format json   # engine=ccr(默认)/ocr
-   → 写 .devloop/review.json（通用）+ 若分支有开放 MR：逐条 findings 尝试锚点（diff_comment）
-     → line-level 行锚 →（失败）文件锚；file-level 直接文件锚 →（都失败）回落汇总评论（forge.comment）
+   → 写 .devloop/review.json（通用）+ 若分支有开放 MR：逐条 findings 发 replyable comment
+     → line-level 行锚 →（失败）文件锚；file-level 直接文件锚
+     →（锚点失败）无锚 review comment →（仍失败）回落汇总评论（forge.comment）
 下一轮：userprompt 注入读 review.json → 上下文出现 `Review: …`（含 mr_comment 状态）
 
 打标（异步、人/agent 触发，见 `skills/label-review`）：

@@ -416,15 +416,21 @@ def test_post_inline_findings():
     assert len(fake.diff_posted) == 2                           # 行锚成功 → 不会再补一条文件锚
 
     class Refusing(_FakeForge):
-        def diff_comment(self, *a, **kw):
-            raise ForgeError("no anchor")
+        def comment(self, number, body, *, replyable=False, path="", line=None):
+            if replyable:
+                raise ForgeError("no anchor")
+            super().comment(number, body)
     rf = Refusing([PullRequest(number=7, state="open")])
     n2, fb2 = rr._post_inline(rf, rf.get(7), comments)
     assert n2 == 0 and len(fb2) == 3                            # 全部回落，单条失败不致命
     assert rr._post_inline(None, None, comments) == (0, comments)   # 无 MR → 原样回落
 
     class Discussing(Refusing):
-        def thread_comment(self, number, body):
+        def comment(self, number, body, *, replyable=False, path="", line=None):
+            if not replyable:
+                return super().comment(number, body)
+            if path:
+                raise ForgeError("no anchor")
             self.thread_posted = getattr(self, "thread_posted", [])
             self.thread_posted.append((number, body))
 
@@ -441,10 +447,10 @@ def test_post_inline_degrades_line_to_file_anchor():
 
     class LineRefusing(_FakeForge):
         """收文件锚、拒行锚——GitLab「行不在 diff」/ GitHub 422 的形状。"""
-        def diff_comment(self, number, body, path, line=None):
+        def comment(self, number, body, *, replyable=False, path="", line=None):
             if line is not None:
                 raise ForgeError("line not in diff")
-            super().diff_comment(number, body, path, None)
+            super().comment(number, body, replyable=replyable, path=path)
 
     f = LineRefusing([PullRequest(number=7, state="open")])
     comments = [{"path": "a.py", "start_line": 3, "end_line": 5,
@@ -463,11 +469,18 @@ def test_review_feedback_joins_fp_to_label():
     from domain.review_feedback import Finding, findings, pending
 
     cs = [
-        # 汇总 note：无 thread，body 里有多个 ccr:fp → 不是 published finding
-        Comment(id="1", thread_id="", body="2 finding(s)\n- `a.py` `ccr:fp=aaa`\n- `b.py` `ccr:fp=bbb`"),
-        Comment(id="20", thread_id="20", path="a.py", line=5, body="漏判空 <sub>ccr:fp=fp1</sub>"),
-        Comment(id="21", thread_id="20", reply_to="20", body="ccr:label=wrong — 该路径走不到 #textbook"),
-        Comment(id="30", thread_id="30", path="b.py", body="缺测试 <sub>ccr:fp=fp2</sub>"),   # file-level
+        # 汇总 note：无 reply target，body 里有多个 ccr:fp → 不是 published finding
+        Comment(id="1", body="2 finding(s)\n- `a.py` `ccr:fp=aaa`\n- `b.py` `ccr:fp=bbb`"),
+        Comment(
+            id="20",
+            reply_ref="20",
+            path="a.py",
+            line=5,
+            body="漏判空 <sub>ccr:fp=fp1</sub>",
+            replies=[Comment(id="21", body="ccr:label=wrong — 该路径走不到 #textbook")],
+        ),
+        Comment(id="30", reply_ref="30", path="b.py",
+                body="缺测试 <sub>ccr:fp=fp2</sub>"),   # file-level
     ]
     fs = findings(cs)
     assert [(f.fp, f.label) for f in fs] == [("fp1", "wrong"), ("fp2", "")]   # 汇总 note 未入列
@@ -475,22 +488,27 @@ def test_review_feedback_joins_fp_to_label():
     assert fs[1].comment.path == "b.py" and fs[1].comment.line is None
 
     # 词表外的 verdict 视为未标——打错字必须显示成还没标,不能污染 ground truth
-    typo = [Comment(id="40", thread_id="40", body="x <sub>ccr:fp=fp3</sub>"),
-            Comment(id="41", thread_id="40", reply_to="40", body="ccr:label=importnat — oops")]
+    typo = [Comment(
+        id="40",
+        reply_ref="40",
+        body="x <sub>ccr:fp=fp3</sub>",
+        replies=[Comment(id="41", body="ccr:label=importnat — oops")],
+    )]
     assert [f.fp for f in pending(typo)] == ["fp3"]
 
     # pending_key 认 fp 集合、不认条数：标掉一条又新来一条 → 数没变但活变了 → key 必须变
     from domain.review_feedback import pending_key
-    def _fs(*fps): return [Finding(fp=f, comment=Comment(id=f, thread_id=f)) for f in fps]
+    def _fs(*fps): return [Finding(fp=f, comment=Comment(id=f, reply_ref=f)) for f in fps]
     assert pending_key(_fs("a", "b")) == pending_key(_fs("b", "a"))   # 顺序无关（两个面交织）
     assert pending_key(_fs("a", "b")) != pending_key(_fs("a", "c"))   # 同为 2 条,活不同
     # fingerprint 是稳定问题身份；同一问题在新 review 轮次重新发布时 comment id 会变，必须重开 nudge
     assert pending_key(_fs("a")) != pending_key(
-        [Finding(fp="a", comment=Comment(id="new-round", thread_id="new-round"))])
+        [Finding(fp="a", comment=Comment(id="new-round", reply_ref="new-round"))])
     assert pending_key([]) == ""
 
     # 带 ccr:label 但不是回复（thread 根自己提了一嘴）→ 不算 verdict
-    selfref = [Comment(id="50", thread_id="50", body="讲讲 ccr:label=wrong 的用法 <sub>ccr:fp=fp4</sub>")]
+    selfref = [Comment(id="50", reply_ref="50",
+                       body="讲讲 ccr:label=wrong 的用法 <sub>ccr:fp=fp4</sub>")]
     assert [f.fp for f in pending(selfref)] == ["fp4"]
 
 

@@ -423,6 +423,15 @@ def test_post_inline_findings():
     assert n2 == 0 and len(fb2) == 3                            # 全部回落，单条失败不致命
     assert rr._post_inline(None, None, comments) == (0, comments)   # 无 MR → 原样回落
 
+    class Discussing(Refusing):
+        def thread_comment(self, number, body):
+            self.thread_posted = getattr(self, "thread_posted", [])
+            self.thread_posted.append((number, body))
+
+    df = Discussing([PullRequest(number=7, state="open")])
+    n3, fb3 = rr._post_inline(df, df.get(7), comments)
+    assert n3 == 3 and fb3 == []                                # GitLab: 锚不上也保住独立 discussion
+    assert len(df.thread_posted) == 3
 
 def test_post_inline_degrades_line_to_file_anchor():
     """line-level finding 的行锚不上（context 行 finding：行不在当前 diff 里）→ 先退一级到
@@ -486,12 +495,12 @@ def test_review_feedback_joins_fp_to_label():
 
 
 def test_format_comment_counts_inline():
-    """汇总评论只列回落的 findings；总数 = 回落 + 锚上的，并标注锚上条数。回落项没有行号
+    """汇总评论只列回落的 findings；总数 = 回落 + 独立 thread，并标注 thread 数。回落项没有行号
     （file-level finding）时只渲染 path，不拼空的 `:0-0`。"""
     rr = _load_script("run_review")
     body = rr._format_comment([{"path": "b.py", "content": "left"}], 0, "r", "s", {}, 0, "",
                               inline_posted=2)
-    assert "**3 finding(s)**" in body and "2 条已锚到 diff" in body and "b.py" in body
+    assert "**3 finding(s)**" in body and "2 条已作为独立 review thread 发布" in body and "b.py" in body
     assert "b.py:" not in body                  # 无行号 → 不拼 `:0-0`
     assert "clean" in rr._format_comment([], 0, "r", "s", {}, 0, "", inline_posted=0)
 

@@ -172,10 +172,18 @@ class GitLabForge(Forge):
             reply_to=str(root.get("id") or "") if threaded and note.get("id") != root.get("id") else "",
             path=pos.get("new_path") or "",
             line=pos.get("new_line"),
+            # Resolution belongs to the discussion. GitLab repeats these fields on its
+            # resolvable root note; inherit that state for every reply so callers can use
+            # whichever comment id they were handed without understanding GitLab's shape.
+            resolvable=bool(root.get("resolvable")),
+            resolved=bool(root.get("resolved")),
         )
 
     def comment(self, number: int, body: str) -> None:
         self.c.post(f"merge_requests/{number}/notes", {"body": body})
+
+    def thread_comment(self, number: int, body: str) -> None:
+        self.c.post(f"merge_requests/{number}/discussions", {"body": body})
 
     def reply(self, number: int, target: Comment, body: str) -> None:
         if not target.thread_id:
@@ -183,6 +191,14 @@ class GitLabForge(Forge):
                              "GitLab can only reply inside a discussion")
         self.c.post(f"merge_requests/{number}/discussions/{target.thread_id}/notes",
                     {"body": body})
+
+    def resolve_thread(self, number: int, target: Comment) -> None:
+        if not target.thread_id:
+            raise ForgeError(f"MR !{number}: comment {target.id or '?'} is not a discussion")
+        if not target.resolvable:
+            raise ForgeError(f"MR !{number}: discussion {target.thread_id} is not resolvable")
+        self.c.put(f"merge_requests/{number}/discussions/{target.thread_id}",
+                   {"resolved": True})
 
     def diff_comment(self, number: int, body: str, path: str, line: int | None = None) -> None:
         # Positioned discussion — GitLab re-anchors it on every push and folds it as

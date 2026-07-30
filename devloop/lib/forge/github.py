@@ -118,51 +118,65 @@ class GitHubForge(Forge):
 
     def comments(self, number: int) -> list[Comment]:
         # GitHub splits a PR's comments across two endpoints — conversation comments live on
-        # the ISSUE surface, the line-anchored ones `diff_comment` writes on the PULLS surface.
-        # Both are fetched and merged: a caller looking for what review posted can't be asked
-        # to know which surface it landed on. Interleaved by creation time so the merged list
-        # reads as one conversation.
+        # the ISSUE surface, while review roots and replies live on the PULLS surface. Group
+        # review replies here so callers receive one top-level Comment per interaction.
         issue = self.c.get_all(f"issues/{number}/comments")
         review = self.c.get_all(f"pulls/{number}/comments")
-        rows = [(n, False) for n in issue]
-        rows += [(n, True) for n in review]
-        rows.sort(key=lambda r: r[0].get("created_at") or "")   # ISO-8601 Z → lexical == chronological
-        return [self._to_comment(n, anchored=a) for n, a in rows]
+        replies: dict[str, list[dict]] = {}
+        roots = []
+        for row in review:
+            parent = str(row.get("in_reply_to_id") or "")
+            if parent:
+                replies.setdefault(parent, []).append(row)
+            else:
+                roots.append(row)
+
+        comments = [self._to_comment(row) for row in issue]
+        for root in roots:
+            cid = str(root.get("id") or "")
+            comment = self._to_comment(root, anchored=True)
+            comment.reply_ref = cid
+            comment.replies = [
+                self._to_comment(row, anchored=True)
+                for row in sorted(
+                    replies.get(cid, []),
+                    key=lambda item: item.get("created_at") or "",
+                )
+            ]
+            comments.append(comment)
+        return sorted(comments, key=lambda comment: comment.created_at)
 
     @staticmethod
-    def _to_comment(n: dict, *, anchored: bool) -> Comment:
-        cid = str(n.get("id") or "")
-        parent = str(n.get("in_reply_to_id") or "")
+    def _to_comment(n: dict, *, anchored: bool = False) -> Comment:
         return Comment(
             author=(n.get("user") or {}).get("login", "?"),
             body=n.get("body") or "",
-            id=cid,
-            # Only review comments thread; a thread is keyed by its ROOT comment id, which is
-            # also what the replies endpoint takes as its target.
-            thread_id=(parent or cid) if anchored else "",
-            reply_to=parent,
+            id=str(n.get("id") or ""),
             path=(n.get("path") or "") if anchored else "",
             # `line` goes null once a push makes the anchor outdated — `original_line` still
             # says where it was written, which is what a reader needs.
             line=(n.get("line") or n.get("original_line")) if anchored else None,
+            created_at=n.get("created_at") or "",
         )
 
-    def comment(self, number: int, body: str) -> None:
-        # Conversation comment on the PR (= issue comment), one of the two surfaces
-        # `comments()` reads.
-        self.c.post(f"issues/{number}/comments", {"body": body})
-
-    def reply(self, number: int, target: Comment, body: str) -> None:
-        if not target.thread_id:
-            raise ForgeError(f"PR #{number}: comment {target.id or '?'} is a conversation "
-                             "comment — GitHub can only reply to review comments")
-        # thread_id is the root review comment id — exactly what /replies anchors to.
-        self.c.post(f"pulls/{number}/comments/{target.thread_id}/replies", {"body": body})
-
-    def diff_comment(self, number: int, body: str, path: str, line: int | None = None) -> None:
-        # Anchored review comment — GitHub collapses it as outdated once a later push
-        # changes the anchored lines. Needs the PR's current head sha as commit_id;
-        # memoized per PR (one review round posts N findings against the same head).
+    def comment(
+        self,
+        number: int,
+        body: str,
+        *,
+        replyable: bool = False,
+        path: str = "",
+        line: int | None = None,
+    ) -> None:
+        if not replyable:
+            if path or line is not None:
+                raise ForgeError(f"PR #{number}: a standalone comment cannot have a diff anchor")
+            self.c.post(f"issues/{number}/comments", {"body": body})
+            return
+        if not path:
+            raise ForgeError(f"PR #{number}: GitHub replyable comments require a diff path")
+        # GitHub replyable comments live on the review surface. Anchoring lets GitHub mark
+        # them outdated after later pushes; one posting round shares the current head sha.
         if number not in self._head_sha_memo:
             sha = (self.c.get(f"pulls/{number}").get("head") or {}).get("sha") or ""
             if not sha:
@@ -177,3 +191,9 @@ class GitHubForge(Forge):
         else:
             req |= {"line": line, "side": "RIGHT"}
         self.c.post(f"pulls/{number}/comments", req)
+
+    def reply(self, number: int, target: Comment, body: str) -> None:
+        if not target.reply_ref:
+            raise ForgeError(f"PR #{number}: comment {target.id or '?'} is a conversation "
+                             "comment — GitHub can only reply to review comments")
+        self.c.post(f"pulls/{number}/comments/{target.reply_ref}/replies", {"body": body})

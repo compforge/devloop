@@ -162,7 +162,7 @@ def test_pr_cli_findings_and_reply():
     """`pr findings` / `pr reply` 是打标闭环的读写两半:一条 provider-neutral 命令,让 skill
     不必分 GitHub/GitLab 各写一套 API 姿势。reply 用 findings 打印的 comment id 定位,线程
     在这里解析——调用方不碰 provider 的 threading 模型。"""
-    from domain.forge import Comment
+    from domain.forge import Comment, CommentResolution
     prcli = _load_script("pr")
 
     class _F(_FakeForge):
@@ -172,15 +172,27 @@ def test_pr_cli_findings_and_reply():
             self.resolved = []
         def comments(self, number):
             return [
-                Comment(id="20", thread_id="20", path="a.py", line=5, body="漏判空 ccr:fp=fp1"),
-                Comment(id="21", thread_id="20", reply_to="20", body="ccr:label=wrong — 走不到"),
-                Comment(id="30", thread_id="30", path="b.py", body="缺测试 ccr:fp=fp2",
-                        resolvable=True),
+                Comment(
+                    id="20",
+                    reply_ref="20",
+                    path="a.py",
+                    line=5,
+                    body="漏判空 ccr:fp=fp1",
+                    replies=[Comment(id="21", body="ccr:label=wrong — 走不到")],
+                ),
+                Comment(
+                    id="30",
+                    reply_ref="30",
+                    resolve_ref="30",
+                    resolution=CommentResolution.UNRESOLVED,
+                    path="b.py",
+                    body="缺测试 ccr:fp=fp2",
+                ),
             ]
         def reply(self, number, target, body):
             self.replied.append((number, target.id, body))
-        def resolve_thread(self, number, target):
-            self.resolved.append((number, target.thread_id))
+        def resolve_comment(self, number, target):
+            self.resolved.append((number, target.resolve_ref))
 
     fake = _F([PullRequest(number=5, state="open", source_branch="feat/x")])
 
@@ -371,17 +383,17 @@ def test_forge_comment_endpoint():
 
     gl = GitLabForge("h", "o/r", "t"); gl.c = _Cap(); gl.comment(7, "hi")
     assert gl.c.calls == [("merge_requests/7/notes", {"body": "hi"})]
-    gl.thread_comment(7, "finding")
+    gl.comment(7, "finding", replyable=True)
     assert gl.c.calls[-1] == ("merge_requests/7/discussions", {"body": "finding"})
     gh = GitHubForge("api.github.com", "o", "r", "t"); gh.c = _Cap(); gh.comment(7, "hi")
     assert gh.c.calls == [("issues/7/comments", {"body": "hi"})]
 
 
-def test_forge_diff_comment_endpoint():
-    """diff_comment() 发行锚点评论（原生 outdated 生命周期）：gitlab → positioned discussion
+def test_forge_replyable_comment_endpoint():
+    """comment(replyable=True) 发行可回复 comment：GitLab → positioned/unanchored discussion
     （diff_refs memo，一轮 N 条只 GET 一次）；github → pulls/{n}/comments 带 head-sha commit_id
-    （同样 memo）。端口默认实现 raise ForgeError——不支持的 adapter 让调用方回落汇总 note。"""
-    from domain.forge import Forge, ForgeError
+    （同样 memo）。不支持的 shape 明确 raise，让调用方决定是否回落。"""
+    from domain.forge import ForgeError
     from lib.forge.github import GitHubForge
     from lib.forge.gitlab import GitLabForge
 
@@ -392,7 +404,8 @@ def test_forge_diff_comment_endpoint():
 
     gl = GitLabForge("h", "o/r", "t")
     gl.c = _Cap({"diff_refs": {"base_sha": "b", "start_sha": "s", "head_sha": "h"}})
-    gl.diff_comment(7, "hi", "a.py", 5); gl.diff_comment(7, "yo", "b.py", 9)
+    gl.comment(7, "hi", replyable=True, path="a.py", line=5)
+    gl.comment(7, "yo", replyable=True, path="b.py", line=9)
     assert gl.c.gets == 1                                        # diff_refs memoized
     path, body = gl.c.calls[0]
     assert path == "merge_requests/7/discussions" and body["body"] == "hi"
@@ -401,7 +414,8 @@ def test_forge_diff_comment_endpoint():
 
     gh = GitHubForge("api.github.com", "o", "r", "t")
     gh.c = _Cap({"head": {"sha": "abc"}})
-    gh.diff_comment(7, "hi", "a.py", 5); gh.diff_comment(7, "yo", "b.py", 9)
+    gh.comment(7, "hi", replyable=True, path="a.py", line=5)
+    gh.comment(7, "yo", replyable=True, path="b.py", line=9)
     assert gh.c.gets == 1                                        # head sha memoized
     assert gh.c.calls[0] == ("pulls/7/comments",
                              {"body": "hi", "commit_id": "abc", "path": "a.py", "line": 5, "side": "RIGHT"})
@@ -410,37 +424,46 @@ def test_forge_diff_comment_endpoint():
     # subject_type=file）。github 侧 line/side 必须整个省掉,给 null 会 422。
     gl3 = GitLabForge("h", "o/r", "t")
     gl3.c = _Cap({"diff_refs": {"base_sha": "b", "start_sha": "s", "head_sha": "h"}})
-    gl3.diff_comment(7, "hi", "a.py")
+    gl3.comment(7, "hi", replyable=True, path="a.py")
     pos = gl3.c.calls[0][1]["position"]
     assert pos["position_type"] == "file" and pos["new_path"] == "a.py"
     assert "new_line" not in pos
 
     gh3 = GitHubForge("api.github.com", "o", "r", "t")
     gh3.c = _Cap({"head": {"sha": "abc"}})
-    gh3.diff_comment(7, "hi", "a.py")
+    gh3.comment(7, "hi", replyable=True, path="a.py")
     assert gh3.c.calls[0] == ("pulls/7/comments",
                               {"body": "hi", "commit_id": "abc", "path": "a.py",
                                "subject_type": "file"})
 
-    try:                                                         # 端口默认：不支持 → raise
-        Forge.diff_comment(gl, 7, "x", "a.py", 1)
-        raise AssertionError("default diff_comment should raise")
+    try:
+        gl.comment(7, "x", path="a.py")
+        raise AssertionError("standalone comments must reject a diff anchor")
+    except ForgeError:
+        pass
+
+    try:
+        gh.comment(7, "unanchored", replyable=True)
+        raise AssertionError("GitHub should reject an unanchored replyable comment")
     except ForgeError:
         pass
 
     gl2 = GitLabForge("h", "o/r", "t")                           # 缺 sha 的 diff_refs → 提前明确报错,
     gl2.c = _Cap({"diff_refs": {"head_sha": "h"}})               # 不让 None 漏进 position 变成盲 400
     try:
-        gl2.diff_comment(7, "hi", "a.py", 5)
+        gl2.comment(7, "hi", replyable=True, path="a.py", line=5)
         raise AssertionError("partial diff_refs should raise")
     except ForgeError as e:
         assert "base_sha" in str(e) and "start_sha" in str(e)
 
 
 def test_forge_comments_union_both_surfaces():
-    """comments() 返回两个面的并集并带 id/thread_id——调用方不必知道 finding 落在哪个面。
-    github 拆成 issues/{n}+pulls/{n} 两次 GET，按 created_at 交织；gitlab 一次 discussions
-    就覆盖两者。system note / individual_note 的处理见断言。"""
+    """comments() 把两个 provider 表面收成顶层 Comment + nested replies。
+
+    GitHub 拆成 issues/{n}+pulls/{n} 两次 GET；GitLab 一次 discussions 覆盖两者。
+    调用方不再按 thread id 自己 join，system note 也不会穿透 adapter。
+    """
+    from domain.forge import CommentResolution
     from lib.forge.github import GitHubForge
     from lib.forge.gitlab import GitLabForge
 
@@ -463,11 +486,11 @@ def test_forge_comments_union_both_surfaces():
     })
     cs = gh.comments(7)
     assert sorted(gh.c.gets) == ["issues/7/comments", "pulls/7/comments"]   # 两个面都读了
-    assert [c.body for c in cs] == ["summary", "finding ccr:fp=abc", "ccr:label=wrong"]  # created_at 交织
-    assert (cs[0].id, cs[0].thread_id, cs[0].path) == ("1", "", "")         # 会话评论不成 thread
-    assert (cs[1].id, cs[1].thread_id, cs[1].reply_to) == ("20", "20", "")  # 根：thread 键 = 自身 id
-    assert (cs[2].id, cs[2].thread_id, cs[2].reply_to) == ("21", "20", "20")  # 回复归到根的 thread
-    assert cs[2].line == 5   # line 被 push 打成 null → 回落 original_line（写时的位置）
+    assert [c.body for c in cs] == ["summary", "finding ccr:fp=abc"]
+    assert (cs[0].id, cs[0].replyable, cs[0].path) == ("1", False, "")
+    assert (cs[1].id, cs[1].reply_ref) == ("20", "20")
+    assert [reply.body for reply in cs[1].replies] == ["ccr:label=wrong"]
+    assert cs[1].replies[0].line == 5  # null line 回落 original_line（写时的位置）
 
     gl = GitLabForge("h", "o/r", "t")
     gl.c = _Cap({"merge_requests/7/discussions": [
@@ -483,20 +506,23 @@ def test_forge_comments_union_both_surfaces():
     ]})
     cs = gl.comments(7)
     assert gl.c.gets == ["merge_requests/7/discussions"]                    # 一次就够，不用第二个面
-    assert [c.body for c in cs] == ["summary", "finding ccr:fp=abc", "ccr:label=wrong"]  # system 被排除
-    assert cs[0].thread_id == ""              # individual_note 是普通 note 的包装,回不进去
-    assert (cs[1].id, cs[1].thread_id, cs[1].reply_to) == ("20", "d2", "")
-    assert (cs[2].id, cs[2].thread_id, cs[2].reply_to) == ("21", "d2", "20")  # GitLab 无 per-note parent → 归根
+    assert [c.body for c in cs] == ["summary", "finding ccr:fp=abc"]
+    assert not cs[0].replyable             # individual_note 是普通 note 的包装，回不进去
+    assert (cs[1].id, cs[1].reply_ref, cs[1].resolve_ref) == ("20", "d2", "d2")
+    assert [(reply.id, reply.body) for reply in cs[1].replies] == [
+        ("21", "ccr:label=wrong"),
+    ]
     assert (cs[1].path, cs[1].line) == ("a.py", 5)
-    assert cs[1].resolvable and not cs[1].resolved
-    assert cs[2].resolvable and not cs[2].resolved       # replies inherit discussion state
-    assert not cs[0].resolvable and not cs[0].resolved   # ordinary notes are not resolvable
+    assert cs[1].resolution is CommentResolution.UNRESOLVED
+    assert cs[0].resolution is CommentResolution.UNSUPPORTED
 
 
 def test_forge_reply_endpoint():
-    """reply() 回到 target 所在线程：gitlab → discussions/{id}/notes；github → 根 review
-    comment 的 /replies。不可成线程的 target（thread_id 为空）→ raise，由调用方决定是否回落，
-    而不是静默发成一条游离评论。端口默认实现同样 raise。"""
+    """reply() 消费 adapter 产生的 opaque reply_ref。
+
+    GitLab 写 discussion notes，GitHub 写 root review comment replies；普通 comment 没有
+    reply_ref 时明确失败，不静默发布游离回复。
+    """
     from domain.forge import Comment, Forge, ForgeError
     from lib.forge.github import GitHubForge
     from lib.forge.gitlab import GitLabForge
@@ -506,30 +532,29 @@ def test_forge_reply_endpoint():
         def post(self, path, body): self.calls.append((path, body)); return {"id": 1}
 
     gl = GitLabForge("h", "o/r", "t"); gl.c = _Cap()
-    gl.reply(7, Comment(id="21", thread_id="d2"), "ccr:label=important")
+    gl.reply(7, Comment(id="20", reply_ref="d2"), "ccr:label=important")
     assert gl.c.calls == [("merge_requests/7/discussions/d2/notes", {"body": "ccr:label=important"})]
 
     gh = GitHubForge("api.github.com", "o", "r", "t"); gh.c = _Cap()
-    gh.reply(7, Comment(id="21", thread_id="20"), "ccr:label=important")   # thread_id = 根 id
+    gh.reply(7, Comment(id="20", reply_ref="20"), "ccr:label=important")
     assert gh.c.calls == [("pulls/7/comments/20/replies", {"body": "ccr:label=important"})]
 
     for f in (gl, gh):                                     # 普通评论无线程 → 明确报错,不静默游离
         try:
-            f.reply(7, Comment(id="1", thread_id=""), "x")
+            f.reply(7, Comment(id="1"), "x")
             raise AssertionError("reply to a non-threadable comment should raise")
         except ForgeError:
             pass
 
     try:                                                   # 端口默认：不支持 → raise
-        Forge.reply(gl, 7, Comment(id="1", thread_id="d2"), "x")
+        Forge.reply(gl, 7, Comment(id="1", reply_ref="d2"), "x")
         raise AssertionError("default reply should raise")
     except ForgeError:
         pass
 
 
-def test_forge_resolve_discussion_endpoint():
-    """GitLab resolves a resolvable discussion with the discussion endpoint; plain or
-    non-resolvable comments fail explicitly instead of pretending the merge blocker is gone."""
+def test_forge_resolve_comment_endpoint():
+    """GitLab resolves the provider interaction behind a comment via opaque resolve_ref."""
     from domain.forge import Comment, ForgeError
     from lib.forge.gitlab import GitLabForge
 
@@ -538,18 +563,14 @@ def test_forge_resolve_discussion_endpoint():
         def put(self, path, body): self.calls.append((path, body)); return {}
 
     gl = GitLabForge("h", "o/r", "t"); gl.c = _Cap()
-    gl.resolve_thread(7, Comment(id="20", thread_id="d2", resolvable=True))
+    gl.resolve_comment(7, Comment(id="20", resolve_ref="d2"))
     assert gl.c.calls == [("merge_requests/7/discussions/d2", {"resolved": True})]
 
-    for comment in (
-        Comment(id="1"),
-        Comment(id="20", thread_id="d2", resolvable=False),
-    ):
-        try:
-            gl.resolve_thread(7, comment)
-            raise AssertionError("non-resolvable comment should raise")
-        except ForgeError:
-            pass
+    try:
+        gl.resolve_comment(7, Comment(id="1"))
+        raise AssertionError("non-resolvable comment should raise")
+    except ForgeError:
+        pass
 
 
 def test_forge_default_branch():

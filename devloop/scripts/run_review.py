@@ -19,12 +19,14 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
 from lib import cli, config, git_state, review_engine  # noqa: E402
+from domain import review_feedback  # noqa: E402
 from domain.context import base, record_active_repo, store  # noqa: E402
 from domain.forge import ForgeError, pr_label  # noqa: E402
 from lib.forge import forge_for_repo, resolve_forge  # noqa: E402
@@ -67,7 +69,7 @@ def _append_history(repo: str, started: float, **fields) -> None:
         pass
 
 
-def _post_inline(forge, pr, comments: list) -> tuple[int, list]:
+def _post_inline(forge, pr, comments: list, sha: str = "") -> tuple[int, list]:
     """把 findings 逐条发成可回复 thread，优先 diff 锚点（GitLab positioned discussion /
     GitHub review comment）——锚点让 forge 原生管理生命周期:后续 push 改了对应行,评论自动
     折叠成 outdated,不像普通 note 永远悬着。
@@ -97,7 +99,9 @@ def _post_inline(forge, pr, comments: list) -> tuple[int, list]:
         # 回收约定见 ccr 仓 eval/README「人工标注统一约定」。
         fp = (c.get("fingerprint") or "").strip()
         foot = f"\n\n<sub>ccr:fp={fp}</sub>" if fp else ""
-        rendered = f"{head}\n\n{body}{foot}"
+        key = (c.get("symbol_id") or path).strip()
+        marker = review_feedback.history_marker(key=key, msg=body, sha=sha[:9], fp=fp) if key else ""
+        rendered = f"{head}\n\n{body}{foot}" + (f"\n{marker}" if marker else "")
         anchored = False
         if path:
             # None = 文件级锚点。line-level 先试行锚、退文件锚;file-level 只有文件锚这一级。
@@ -165,6 +169,9 @@ def _format_comment(comments: list, failed: int, range_label: str, sha: str, mod
         if fp:
             tag += f" `ccr:fp={fp}`"   # 汇总列表也可 grep 到指纹（标注约定见 ccr eval/README）
         lines.append(f"- `{loc}`{tag} — {body[:300]}" if body else f"- `{loc}`{tag}")   # 空 content 不留悬空破折号
+        key = (c.get("symbol_id") or c.get("path") or "").strip()
+        if key and body:
+            lines.append(review_feedback.history_marker(key=key, msg=body, sha=sha[:9], fp=fp))
     if len(comments) > _MAX_COMMENT_FINDINGS:
         lines.append(f"- … 另有 {len(comments) - _MAX_COMMENT_FINDINGS} 条,见 `.devloop/review.json`")
     return "\n".join(lines)
@@ -233,8 +240,8 @@ def _post(forge, pr, body: str) -> str:
 
 def _findings_for_history(comments: list, warnings: list) -> list:
     """Per-finding record for review-history.jsonl, tagged with its file's review
-    status: a finding from a file that failed (timeout / token limit) is marked
-    `failed` so the next round won't feed an unverified finding back as context."""
+    status so analytics can distinguish complete findings from output produced by
+    a file that later failed (timeout / token limit). This ledger is never fed back."""
     failed = {w.get("file"): (w.get("message") or "")
               for w in (warnings or []) if isinstance(w, dict) and w.get("type") == "subtask_error"}
     out = []
@@ -249,47 +256,33 @@ def _findings_for_history(comments: list, warnings: list) -> list:
     return out
 
 
-def _build_history_feed(repo: str, pull_request: dict | None, current_sha: str) -> str | None:
-    """Write `.devloop/history.json` (symbol-id -> prior findings) from the most
-    recent prior review of THIS pr, for `ccr review --history`. Only `ok` findings
-    with a symbol-id are carried (a failed/timed-out file's findings are skipped — we
-    can't trust them). Returns the path, or None when there's no prior round or
-    nothing to feed."""
-    if pull_request is None:
-        return None
-    hist = store.state_dir(repo) / "review-history.jsonl"
-    if not hist.exists():
-        return None
-    prior = None
+def _build_history_feed(forge, pr) -> tuple[str | None, list]:
+    """Fetch the current PR/MR comments and materialize ccr's one-shot adapter input.
+
+    The file is deliberately outside `.devloop`: Forge comments are the durable source,
+    and losing this temporary file changes no future review.
+    """
+    if forge is None or pr is None:
+        return None, []
     try:
-        for line in hist.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            # last row matching this PR (and not the current sha) = its prior review
-            if row.get("pull_request") == pull_request and row.get("sha") != current_sha:
-                prior = row
-    except OSError:
-        return None
-    if not prior:
-        return None
-    by_symbol: dict = {}
-    for f in prior.get("findings") or []:
-        sid = f.get("symbol_id") or ""
-        if f.get("status") != "ok" or not sid:
-            continue
-        by_symbol.setdefault(sid, []).append({"msg": f.get("msg", ""), "sha": (prior.get("sha") or "")[:9]})
-    if not by_symbol:
-        return None
-    out = store.state_dir(repo) / "history.json"
+        comments = forge.comments(pr.number)
+    except ForgeError:
+        return None, []
+    feed = review_feedback.history_feed(comments)
+    if not feed:
+        return None, comments
     try:
-        out.write_text(json.dumps(by_symbol, ensure_ascii=False, indent=2), encoding="utf-8")
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix="ccr-history-",
+            suffix=".json",
+            delete=False,
+        ) as out:
+            json.dump(feed, out, ensure_ascii=False)
+            return out.name, comments
     except OSError:
-        return None
-    return str(out)
+        return None, comments
 
 
 def main(argv: list[str]) -> int:
@@ -309,7 +302,8 @@ def main(argv: list[str]) -> int:
 
     def skip(msg: str) -> int:
         _write(repo, branch, status="skipped", reviewed_sha=sha, comments=[], count=0, failed=0, message=msg, generated_at=base.now())
-        _append_history(repo, started, status="skipped", sha=sha, count=0, failed=0, message=msg)
+        _append_history(repo, started, status="skipped", sha=sha,
+                        count=0, failed=0, message=msg)
         print(f"run_review: {msg} — skipped")
         return 0
 
@@ -328,37 +322,59 @@ def main(argv: list[str]) -> int:
     forge, pr = _open_mr(repo, branch)                              # 冻结的 branch：别把 A 的 findings 发到 B 的 PR
     background = _build_background(repo, target, forge, pr, ns.background)
     pull_request = _pull_request_identity(repo, pr)
-    history_path = _build_history_feed(repo, pull_request, sha)   # this PR's prior findings → ccr --history
+    history_path, prior_comments = (
+        _build_history_feed(forge, pr) if engine.name == "ccr" else (None, [])
+    )  # current Forge comments → one-shot ccr --history
 
     # to_ref 传**冻结的 sha**，不是字面量 "HEAD"：ccr 在它自己启动那一刻才解析 HEAD，checkout
     # 若已切走，它审的就是另一条分支——而我们早已把 reviewed_sha 记成上面那个 sha，记录就成了谎。
     # 传 sha 之后「记录说审了什么」与「实际审了什么」由构造保证一致。
-    result = engine.review(repo, f"origin/{target}", sha, background, history_path)
+    try:
+        result = engine.review(repo, f"origin/{target}", sha, background, history_path)
+    finally:
+        if history_path:
+            Path(history_path).unlink(missing_ok=True)
     if not result.ok:
         _write(repo, branch, status="error", reviewed_sha=sha, comments=[], count=0, failed=0,
                message=result.error, pull_request=pull_request, generated_at=base.now())
-        _append_history(repo, started, status="error", sha=sha, pull_request=pull_request,
+        _append_history(repo, started, status="error", sha=sha,
+                        pull_request=pull_request,
                         count=0, failed=0, range=range_label)
         print(f"run_review: {engine.name} output not parseable — see .devloop/review.json")
         return 0
 
     comments = result.comments
     tool_label = f"{engine.name} {result.tool_version}" if result.tool_version else ""
-    inline_posted, fallback = _post_inline(forge, pr, comments)   # inline 优先,锚不上的进汇总
-    if not comments and not result.failed:
+    suppressed = review_feedback.suppress_delivery_fingerprints(prior_comments)
+    publish_comments = []
+    for comment in comments:
+        fp = (comment.get("fingerprint") or "").strip()
+        if fp and fp in suppressed:
+            continue
+        publish_comments.append(comment)
+    deduped = len(comments) - len(publish_comments)
+    inline_posted, fallback = _post_inline(
+        forge, pr, publish_comments, sha,
+    )   # inline 优先,锚不上的进汇总
+    if not publish_comments and not result.failed:
         # clean（无 finding 且全部文件审完）不发 MR 评论——往在途 MR 反复 push 会攒出一串
         # 无信息量的 "✅ clean" 刷屏；clean 结论已在 review.json（下一轮注入 Review: clean）。
         # failed>0 仍发：没审完不是可信的 clean，要在 MR 上留痕。
-        posted = "clean — MR comment skipped"
+        posted = (
+            f"{deduped} existing finding(s) unchanged — MR comment skipped"
+            if deduped else "clean — MR comment skipped"
+        )
     else:
         posted = _post(forge, pr, _format_comment(fallback, result.failed, range_label, sha, result.models,
                                                   result.cost_sec, tool_label, inline_posted))
     _write(repo, branch, status=result.status, reviewed_sha=sha, comments=comments,
            count=len(comments), failed=result.failed, warnings=result.warnings, message=result.message,
            cost_sec=result.cost_sec, tool_version=result.tool_version, inline_posted=inline_posted,
+           deduped=deduped,
            reviewed_range=range_label, mr_comment=posted, pull_request=pull_request,
            generated_at=base.now())
-    _append_history(repo, started, status=result.status, sha=sha, pull_request=pull_request,
+    _append_history(repo, started, status=result.status, sha=sha,
+                    pull_request=pull_request,
                     count=len(comments), failed=result.failed,
                     findings=_findings_for_history(comments, result.warnings),
                     range=range_label, posted=posted)

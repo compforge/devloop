@@ -34,7 +34,9 @@ API 采集「原 finding comment + 其 label 回复」产出 ground truth；真�
      review 是模型写的，你也是模型，附和它会让 ground truth 退化成"模型认同模型"，
      整个评测基准就白做了；
    - 论证扎实但在实际执行路径上不成立的判 wrong（"教科书事实错套"是最常见误报形态）；
-   - pre-existing（diff 没碰的行为）不算本单有效 finding；
+   - diff 之前已存在、不是本次改动引入的行为不算有效 finding，判 wrong 并用
+     `#out-of-diff` 说明 attribution 反证；
+   - 同一 MR 的更早 comment 已交付同一问题，判 repeat 并指向那条 comment；
    - 拿不准判 debatable，不要硬判。
 
 3. **打标**：回到该 finding 的线程里回复，一条一行：
@@ -48,13 +50,14 @@ API 采集「原 finding comment + 其 label 回复」产出 ground truth；真�
    阻塞 MR 合并。若 resolve 失败，命令会明确提示 `discussion still unresolved`；label 已经生效，
    不要重复回复同一个 label，转而在 GitLab 处理该 discussion。
 
-   词表四档（**只有这四个词会被采集侧认**，拼错等于没标，`findings --pending` 会继续列它）：
+   词表五档（**只有这五个词会被采集侧认**，拼错等于没标，`findings --pending` 会继续列它）：
    - `ccr:label=important — <理由>`（实质缺陷，采纳修复）
    - `ccr:label=minor — <理由>`（真但小/润色，采纳）
    - `ccr:label=debatable — <理由>`（见仁见智/防御性建议，不采纳）
    - `ccr:label=wrong — <理由>`（误报，附反证）
+   - `ccr:label=repeat — <更早 comment 链接或 id>`（同一 MR 已交付过同一问题）
 
-   理由里可带病因 tag：`#textbook` `#padding` `#pre-existing` `#stale` `#cross-file`。
+   理由里可带病因 tag：`#textbook` `#padding` `#out-of-diff` `#stale` `#cross-file`。
 
    发现 review 漏掉的问题，对该 diff 行**直接评论** `ccr:missed — <一句描述>`。
 
@@ -69,6 +72,8 @@ API 采集「原 finding comment + 其 label 回复」产出 ground truth；真�
   本地 ground truth；
 - 修复了 finding 指出的问题 → important/minor；驳回要附**可验证的**反证（指到具体文件行，
   不是"我认为不会发生"）。
+- repeat 不是对事实真伪的判断，只表示当前 MR 已有更早的同问题 comment；必须给出可定位的
+  comment 链接或 id，不能因为两条评论“看起来相似”就合并。
 
 ## 边界
 

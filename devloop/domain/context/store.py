@@ -97,7 +97,7 @@ def commit_message_file(root: str | Path) -> Path:
 
 def tmp_dir(root: str | Path) -> Path:
     """Ephemera under the repo-domain dir (`.devloop/tmp/`): inter-process hand-offs and logs
-    (review.log and the ccr history feed). The line vs ledgers: mining / audit reads ledgers
+    (such as review.log). The line vs ledgers: mining / audit reads ledgers
     long-term; tmp is consumed once and safe to delete any time."""
     return state_dir(root) / "tmp"
 

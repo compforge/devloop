@@ -97,6 +97,37 @@ def test_review_engine_resolve():
     r = re.ReviewResult(ok=True, comments=[1], failed=2)
     assert r.ok and r.comments == [1] and r.failed == 2 and r.warnings == [] and r.status == "success"
 
+
+def test_ccr_engine_passes_history():
+    """CCR adapter 必须把 caller 持有的上一轮 findings 传成 --history；否则连续 review 退化成独立运行。"""
+    from types import SimpleNamespace
+    re = _load_script("run_review").review_engine
+    seen = []
+    original = re.subprocess.run
+
+    def fake_run(cmd, **kwargs):
+        seen.append(cmd)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"status":"success","comments":[]}',
+            stderr="",
+        )
+
+    re.subprocess.run = fake_run
+    try:
+        result = re.CcrEngine().review(
+            "/repo", "origin/main", "abc123", None, "/tmp/prior.json",
+        )
+    finally:
+        re.subprocess.run = original
+
+    assert result.ok
+    assert seen == [[
+        "ccr", "review", "--from", "origin/main", "--to", "abc123",
+        "--format", "json", "--repo", "/repo", "--history", "/tmp/prior.json",
+    ]]
+
+
 def test_review_injection_line():
     """review.json 经 _format_turn 在下一轮注入浮现（pull）：running / N findings / clean；skipped 不出。"""
     from domain.context import RepoContext, base, store
@@ -331,49 +362,49 @@ def test_findings_for_history_status_from_warnings():
     assert out[0]["symbol_id"] == "a.go::F" and out[0]["status"] == "ok"
     assert out[1]["status"] == "failed" and "deadline" in out[1]["reason"]
 
-def test_build_history_feed_filters_ok_and_keys_by_symbol():
-    """回喂只取本 PR 上一轮的 ok findings、按 symbol-id keyed；failed / 无 symbol_id / 别的 PR 都跳过。"""
+def test_build_history_feed_fetches_current_forge_comments():
+    """连续 review 的持久事实只在 Forge；本地仅为 CCR 临时物化一次输入。"""
     import json as _json
-    import tempfile
     from pathlib import Path as _Path
+    from domain.forge import Comment, CommentResolution
+    from domain.review_feedback import history_marker
     rr = _load_script("run_review")
-    with tempfile.TemporaryDirectory() as d:
-        sd = _Path(d) / ".devloop"
-        sd.mkdir()
-        pull_request = {
-            "source": "github.com",
-            "repository": "owner/repo",
-            "number": 7,
-        }
-        rows = [
-            {"sha": "otherpr", "pull_request": {**pull_request, "number": 9},
-             "findings": [{"symbol_id": "z.go::Z", "msg": "other", "status": "ok"}]},
-            {"sha": "priorsha", "pull_request": pull_request, "findings": [
-                {"symbol_id": "a.go::F", "msg": "missing nil check", "status": "ok"},
-                {"symbol_id": "b.go::G", "msg": "garbage", "status": "failed", "reason": "timeout"},
-                {"symbol_id": "", "msg": "no unit", "status": "ok"},
-            ]},
-        ]
-        (sd / "review-history.jsonl").write_text("\n".join(_json.dumps(r) for r in rows) + "\n")
-        path = rr._build_history_feed(d, pull_request, "currentsha")
-        assert path is not None
-        data = _json.loads(_Path(path).read_text())
-        assert list(data.keys()) == ["a.go::F"]            # only ok + has symbol_id, only this PR
-        assert data["a.go::F"][0]["msg"] == "missing nil check"
-        assert data["a.go::F"][0]["sha"] == "priorsha"     # the prior row's sha
 
-def test_build_history_feed_none_when_no_pr_or_history():
-    import tempfile
-    from pathlib import Path as _Path
+    class WithComments(_FakeForge):
+        def comments(self, number):
+            assert number == 7
+            marker = history_marker(
+                key="a.go::F", msg="missing nil check", sha="priorsha", fp="fp1",
+            )
+            return [Comment(
+                id="20",
+                reply_ref="20",
+                path="a.go",
+                body=f"🤖 **devloop code-review**\n\nfinding <sub>ccr:fp=fp1</sub>\n{marker}",
+                replies=[Comment(body="ccr:label=wrong — caller guarantees non-nil")],
+                resolution=CommentResolution.RESOLVED,
+            )]
+
+    forge = WithComments([PullRequest(number=7, state="open")])
+    path, prior_comments = rr._build_history_feed(forge, forge.get(7))
+    try:
+        assert path is not None
+        assert len(prior_comments) == 1
+        data = _json.loads(_Path(path).read_text())
+        assert list(data) == ["a.go::F"]
+        assert data["a.go::F"][0]["sha"] == "priorsha"
+        assert "false positive" in data["a.go::F"][0]["msg"]
+        assert "caller guarantees non-nil" in data["a.go::F"][0]["msg"]
+    finally:
+        if path:
+            _Path(path).unlink()
+
+
+def test_build_history_feed_none_without_pr_or_comments():
     rr = _load_script("run_review")
-    with tempfile.TemporaryDirectory() as d:
-        assert rr._build_history_feed(d, None, "sha") is None   # no PR -> no feed
-        (_Path(d) / ".devloop").mkdir()
-        assert rr._build_history_feed(
-            d,
-            {"source": "github.com", "repository": "owner/repo", "number": 7},
-            "sha",
-        ) is None                                               # no history file -> None
+    forge = _FakeForge([PullRequest(number=7, state="open")])
+    assert rr._build_history_feed(None, None) == (None, [])
+    assert rr._build_history_feed(forge, forge.get(7)) == (None, forge.comments(7))
 
 def test_format_comment_shows_models():
     """review 级 model 身份打进 header（alias×次数、按 alias 排序去重），clean review 也打。"""
@@ -408,10 +439,11 @@ def test_post_inline_findings():
         {"path": "b.py", "content": "file-level: 缺测试"},      # 无行号 → 本就是 file-level
         {"content": "no path at all"},                          # 无锚可锚 → 汇总
     ]
-    n, fb = rr._post_inline(fake, pr, comments)
+    n, fb = rr._post_inline(fake, pr, comments, "abc123456")
     assert n == 2 and [c.get("content") for c in fb] == ["no path at all"]
     assert fake.diff_posted[0][:3] == (7, "a.py", 5)            # line-level：锚在 end_line
     assert "m1" in fake.diff_posted[0][3] and "bug" in fake.diff_posted[0][3]
+    assert "ccr:history=" in fake.diff_posted[0][3]
     assert fake.diff_posted[1][:3] == (7, "b.py", None)         # file-level：直接锚文件
     assert len(fake.diff_posted) == 2                           # 行锚成功 → 不会再补一条文件锚
 
@@ -455,10 +487,11 @@ def test_post_inline_degrades_line_to_file_anchor():
     f = LineRefusing([PullRequest(number=7, state="open")])
     comments = [{"path": "a.py", "start_line": 3, "end_line": 5,
                  "content": "bug", "fingerprint": "fp1"}]
-    n, fb = rr._post_inline(f, f.get(7), comments)
+    n, fb = rr._post_inline(f, f.get(7), comments, "abc123456")
     assert (n, fb) == (1, [])                          # 没掉进汇总
     assert f.diff_posted[0][:3] == (7, "a.py", None)   # 退到文件级锚点
     assert "ccr:fp=fp1" in f.diff_posted[0][3]         # 指纹仍在 → 仍 join 得回 finding
+    assert "ccr:history=" in f.diff_posted[0][3]        # Forge comment 可独立恢复下一轮 history
 
 
 def test_review_feedback_joins_fp_to_label():
@@ -496,6 +529,15 @@ def test_review_feedback_joins_fp_to_label():
     )]
     assert [f.fp for f in pending(typo)] == ["fp3"]
 
+    repeat = [Comment(
+        id="42",
+        reply_ref="42",
+        body="x <sub>ccr:fp=fp-repeat</sub>",
+        replies=[Comment(id="43", body="ccr:label=repeat — see comment 20")],
+    )]
+    assert [(f.fp, f.label) for f in findings(repeat)] == [("fp-repeat", "repeat")]
+    assert pending(repeat) == []
+
     # pending_key 认 fp 集合、不认条数：标掉一条又新来一条 → 数没变但活变了 → key 必须变
     from domain.review_feedback import pending_key
     def _fs(*fps): return [Finding(fp=f, comment=Comment(id=f, reply_ref=f)) for f in fps]
@@ -512,6 +554,57 @@ def test_review_feedback_joins_fp_to_label():
     assert [f.fp for f in pending(selfref)] == ["fp4"]
 
 
+def test_review_feedback_history_marker_and_legacy_path():
+    """新评论按 symbol-id 精确恢复；旧评论没有 marker 时从 Forge 文件锚点降级恢复。"""
+    from domain.forge import Comment
+    from domain.forge import CommentResolution
+    from domain.review_feedback import (
+        history_feed,
+        history_marker,
+        suppress_delivery_fingerprints,
+    )
+
+    marker = history_marker(key="a.go::F", msg="new exact finding", sha="abc123", fp="same")
+    comments = [
+        Comment(
+            id="1",
+            reply_ref="1",
+            path="a.go",
+            body=f"🤖 **devloop code-review**\n\nold copy <sub>ccr:fp=same</sub>\n{marker}",
+        ),
+        # A pre-marker comment falls back to the Forge path.
+        Comment(
+            id="2",
+            reply_ref="2",
+            path="a.go",
+            body="🤖 **devloop code-review**\n\nlegacy latest\n\n<sub>ccr:fp=legacy</sub>",
+        ),
+        # Summary notes are not replyable, but their machine markers still survive.
+        Comment(body="🤖 **devloop code-review**\n\n" +
+                history_marker(key="b.go", msg="summary finding", sha="def456", fp="sum")),
+    ]
+    feed = history_feed(comments)
+    assert feed["a.go::F"] == [{"msg": "new exact finding", "sha": "abc123"}]
+    assert feed["a.go"] == [{"msg": "legacy latest"}]
+    assert feed["b.go"] == [{"msg": "summary finding", "sha": "def456"}]
+    assert suppress_delivery_fingerprints(comments) == {"same", "legacy", "sum"}
+
+    resolved = [Comment(
+        body="🤖 **devloop code-review**\n\nfixed <sub>ccr:fp=fixed</sub>",
+        resolution=CommentResolution.RESOLVED,
+    )]
+    assert suppress_delivery_fingerprints(resolved) == set()
+
+    repeat_marker = history_marker(key="a.go::F", msg="duplicate", fp="repeat")
+    resolved_repeat = [Comment(
+        body=f"🤖 **devloop code-review**\n\nduplicate <sub>ccr:fp=repeat</sub>\n{repeat_marker}",
+        replies=[Comment(body="ccr:label=repeat — see comment 20")],
+        resolution=CommentResolution.RESOLVED,
+    )]
+    assert suppress_delivery_fingerprints(resolved_repeat) == {"repeat"}
+    assert "Do not deliver it again" in history_feed(resolved_repeat)["a.go::F"][0]["msg"]
+
+
 def test_format_comment_counts_inline():
     """汇总评论只列回落的 findings；总数 = 回落 + 独立 thread，并标注 thread 数。回落项没有行号
     （file-level finding）时只渲染 path，不拼空的 `:0-0`。"""
@@ -520,6 +613,7 @@ def test_format_comment_counts_inline():
                               inline_posted=2)
     assert "**3 finding(s)**" in body and "2 条已作为独立 review thread 发布" in body and "b.py" in body
     assert "b.py:" not in body                  # 无行号 → 不拼 `:0-0`
+    assert "ccr:history=" in body                # 汇总 fallback 也能从 Forge 恢复
     assert "clean" in rr._format_comment([], 0, "r", "s", {}, 0, "", inline_posted=0)
 
 

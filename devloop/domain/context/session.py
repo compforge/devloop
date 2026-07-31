@@ -64,10 +64,9 @@ def record_session_event(repo_dir: str | Path, session_id: str | None,
     observability write must never cost the caller's real work.
 
     Which ledgers do NOT belong here, and why the `kind` field doesn't make them fit:
-    - `review-history.jsonl` — a PR's review rounds, read back by `run_review` to feed the next
-      review (`ccr --history`). Keyed by full PullRequest identity because review→fix→re-review spans SESSIONS
-      by nature (review in one, fix in the next); re-keying it per session would cut that join.
-      Its writer is also a detached process with no session id at all.
+    - `review-history.jsonl` — run-level review metrics written by a detached process with no
+      session id. It is observability only; continuous review history is re-derived from Forge
+      comments, never from this local ledger.
     The test isn't "is it append-only jsonl" — it's WHO OWNS the lifetime, and whether anything
     reads it. A ledger devloop consumes cannot live somewhere callers are told to truncate freely.
     """

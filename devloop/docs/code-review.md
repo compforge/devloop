@@ -58,7 +58,8 @@ gcampr → … → commit → publish（建/复用 MR）→ post_mr relay
    → commit_flow detach 起 run_review（PLAN 出 `review: launched in background`）
 run_review（后台、独立进程）：**启动即冻结 (branch, sha)**（见下）→ 先写 status=running
    → 自动拼 --background（业务上下文）：本次提交说明（git log）+ MR 标题/描述（forge）
-   → <engine> review --from origin/<target> --to <冻结的 sha> --background <ctx> --format json   # engine=ccr(默认)/ocr
+   → 经 forge.comments 拉当前 PR/MR 已有 finding threads，临时构造 history
+   → <engine> review --from origin/<target> --to <冻结的 sha> --background <ctx> --format json [--history <feed>]
    → 写 .devloop/review.json（通用）+ 若分支有开放 MR：逐条 findings 发 replyable comment
      → line-level 行锚 →（失败）文件锚；file-level 直接文件锚
      →（锚点失败）无锚 review comment →（仍失败）回落汇总评论（forge.comment）
@@ -78,11 +79,19 @@ agent：pr findings <n> --pending → 逐条对照真实 diff 求证 → pr repl
 （`_BG_CAP`），因为它每文件都注、要控 token。AGENTS.md / 受影响 spec 等更多上下文是后续增量
 （往同一个 background 里加）。
 
+**连续 review 必须带已有 Forge findings**：PR/MR comments 是唯一持久事实源。devloop 每次经
+`forge.comments()` 拉取当前 PR/MR 的 finding threads 与 `ccr:label` 回复，临时投影成 CCR
+`--history` 输入，review 进程结束即删除；不从 `.devloop/review-history.jsonl` 恢复行为状态。
+新评论携带隐藏的 unit key，优先精确回到 symbol-id；旧评论只有 diff 锚点时按 repo-relative
+path 退化。发布阶段再按稳定 fingerprint 跳过已有未解决 thread 与已标 `wrong` / `repeat`
+的同一 finding；已解决且不属于这两类的问题若重新出现，允许重新发布。尚未创建 PR/MR 时
+没有可恢复的跨次 history。临时 CI runner 采用同一姿势即可，无需缓存容器或持久化 workspace。
+
 关键对象（锚点）：`domain/lifecycle/review.py`（`review` handler，返回 relay）、`commit_flow`
 （`launch_background_relays`，各相位 git 动作后 detach 起）、`scripts/run_review.py`（后台执行体：
 审全量 diff + 机会性发评论，经 `lib/review_engine.py` 协议调引擎）、`lib/review_engine.py`（**review
 tool 协议** `ReviewEngine` + `ReviewResult` + ocr/ccr adapter）、`domain/review_feedback.py`（fp↔label
-join，纯函数、无 HTTP）、`scripts/pr.py`（`pr findings` / `pr reply`：打标闭环的读写两半）、
+join + Forge comments→history 投影，纯函数、无 HTTP）、`scripts/pr.py`（`pr findings` / `pr reply`：打标闭环的读写两半）、
 `forge.comment`（写评论原语，gitlab notes / github issue comment）、
 `.devloop/review.json`（结果段）、`context/repo.py` 的 `Review:` 注入行（pull）。
 
@@ -161,6 +170,9 @@ review.json 每次覆盖、只留最新一次；要统计"今天跑了几次 / �
 `forges` 配置 key 一致，`repository` 是 origin 上的完整仓库路径。没有开放 PR/MR 的本地
 review 不带该 identity。`ts` + `secs` 支持按天计数与时长统计；per-repo，跨仓聚合即遍历各
 repo 此文件。`.devloop` 已 gitignore，不会被提交。
+
+该 JSONL 只用于统计 / audit，不参与下一轮 review；删掉它不会改变行为。跨 revision 的
+history 始终从 Forge comments 重新派生。
 
 ## 结果回流（下一轮）：agent 怎么做
 

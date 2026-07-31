@@ -21,7 +21,7 @@ def decide(inp: hook_io.HookInput) -> str | None:
     if not inp.is_tool("Bash"):
         return None
     change = engine.project(inp)
-    ctx = PolicyContext(inp.cwd, session_id=inp.session_id)
+    ctx = PolicyContext(inp.cwd, identity=inp.identity)
     decision = engine.evaluate(change, ctx, rules.REGISTRY)
     if not decision.blocked:
         return None

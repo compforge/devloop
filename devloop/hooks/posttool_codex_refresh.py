@@ -17,7 +17,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hooks import hook_io, posttool_git_refresh  # noqa: E402
 from domain import repo_layout, workspace  # noqa: E402
-from domain.context import RepoContext, WorkspaceContext, record_active_repo, workspace_for_repo  # noqa: E402
+from domain.context import (  # noqa: E402
+    RepoContext,
+    WorkspaceContext,
+    record_active_repo,
+    session,
+    workspace_for_repo,
+)
 from hooks.core import engine  # noqa: E402
 from hooks.core.domain import Command, FileChange  # noqa: E402
 
@@ -55,11 +61,9 @@ def _warm_repo(git_root: str, session_id: str) -> None:
         else RepoContext.load(git_root) or RepoContext.refresh_all(git_root)
     )
     record_active_repo(git_root, session_id)
-    # Codex does not document a session id environment variable for model-run shell
-    # commands. Keep an anonymous binding as a best-effort fallback for scripts invoked
-    # from an aggregate workspace root; session-scoped bindings remain the precise path
-    # when the CLI provides an env id.
-    if not (os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CODEX_SESSION_ID")):
+    # Keep an anonymous binding only when the model-run command has no runtime identity.
+    # Precise script fallbacks use CODEX_THREAD_ID through session.current_identity().
+    if not session.current_identity().session_id:
         record_active_repo(git_root, "")
 
 

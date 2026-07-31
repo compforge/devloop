@@ -139,13 +139,17 @@ def _prune_old(repo_dir: str, keep_path: str | None = None) -> None:
     if len(managed) <= keep:
         return
     protected = str(Path(keep_path).resolve()) if keep_path else None
-    sid = os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    identity = session.current_identity()
     doomed = sorted(managed, key=_activity, reverse=True)[keep:]
     pruned = False
     for path in doomed:
         if path == protected:
             continue
-        if sid and session.foreign_owner(path, sid):
+        if identity.session_id and session.foreign_owner(
+            path,
+            identity.session_id,
+            harness=identity.harness,
+        ):
             continue
         if gitcmd.git(repo_dir, "worktree", "remove", path, timeout=30).ok:
             pruned = True

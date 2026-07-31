@@ -70,7 +70,12 @@ def handle(inp: hook_io.HookInput) -> None:
         # ownership follows activity: a session doing git work in a checkout claims it
         # (no-op if a foreign session already owns it — the guards handle that side)
         if inp.session_id and git_root in owning_roots:
-            session.acquire(git_root, inp.session_id, git_state.get_current_branch(git_root) or "")
+            session.acquire(
+                git_root,
+                inp.session_id,
+                git_state.get_current_branch(git_root) or "",
+                harness=inp.harness,
+            )
 
 
 if __name__ == "__main__":

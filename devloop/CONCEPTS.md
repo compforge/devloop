@@ -52,13 +52,13 @@ devloop 循环（`enter → 提需求 → 开发 → commit/PR → 人工 merge 
 
 ## Owner / guest session（checkout 占有）
 
-聚合工作区下多个 CLI session（claude / codex …）并发操作同一 workspace 是常态；每个 checkout 同一时刻只属于一个 session：
+聚合工作区下多个 CLI session（claude / codex …）并发操作同一 workspace 是常态；每个 checkout 在同一 harness 内同一时刻只属于一个 session：
 
-- **owner**：第一个对该 checkout 做**变更动作**的 session——Edit/Write、切分支 / commit 等会碰可变面（working tree / index / 分支位置）的操作，任一建立占有；持有 `<git_root>/.devloop/owner.lock`（pid 存活 + ts-TTL 判活）。占有点：edit guard 首笔编辑 / checkout guard / posttool git 变更。**enter / 只读不占有**：enter 只是选中上下文，多 session 并读不互斥——判据与下面 gitignored 豁免同源：是否污染 owner 的 diff。
-- **guest**：其它并发 session。guest 的两条破坏路径被硬拦——切分支（`checkout_owner_guard`）与直接 Edit/Write（`edit_owner_guard`），统一引导走 managed-worktree 脚本创建隔离 checkout。
+- **owner**：第一个对该 checkout 做**变更动作**的 session——Edit/Write、切分支 / commit 等会碰可变面（working tree / index / 分支位置）的操作，任一建立占有；按 harness 持有 `<git_root>/.devloop/<harness>.owner.lock`（如 `codex.owner.lock` / `claude.owner.lock`，记录 harness 名、pid 存活 + ts-TTL 判活）。同一 harness 的 session 互斥，不同 harness 各管自己的 session、互不拦截。占有点：edit guard 首笔编辑 / checkout guard / posttool git 变更。**enter / 只读不占有**：enter 只是选中上下文，多 session 并读不互斥——判据与下面 gitignored 豁免同源：是否污染 owner 的 diff。
+- **guest**：同一 harness 内的其它并发 session。guest 的两条破坏路径被硬拦——切分支（`checkout_owner_guard`）与直接 Edit/Write（`edit_owner_guard`），统一引导走 managed-worktree 脚本创建隔离 checkout。
 - **gitignored 文件豁免**：guest 写 gitignored 路径（eval 输出、运行日志…）放行——不进 owner 的 status/diff，无混入风险；放行不转移占有权。
 - **释放（两层都有）**：session 正常结束由 SessionEnd hook（`sessionend_release`）立即清掉本 session 的全部运行态（owner 锁含 worktree checkout + active 绑定）；崩溃 / hook 没跑到时退化到 pid 死亡判活，ts-TTL 仅在 pid 不可探测时兜底。
-- 刻意共享 checkout 的逃逸口：人工删 `owner.lock`。
+- 刻意共享 checkout 的逃逸口：人工删对应的 `<harness>.owner.lock`。
 
 为什么这样设计（acquire 跟活动走、edit 也要拦）见 AGENTS.md〈Owner 锁〉。
 
@@ -66,8 +66,8 @@ devloop 循环（`enter → 提需求 → 开发 → commit/PR → 人工 merge 
 
 session-scoped 运行状态的统一生命周期约定：**activity 时创建 → SessionEnd 释放（`sessionend_release` hook）→ pid / TTL 兜底过期**；落盘一文件一 owner（owner = session）。实现统一在 `domain/context/session.py`——context 按 owner 粒度分模块（session / workspace / repo），模块归属看事实的 owner，不看文件落在哪个目录。当前两个实例：
 
-- **checkout 占有**：`<git_root>/.devloop/owner.lock`（上节）。
-- **repo 绑定**：`<workspace_root>/.devloop/active/<session_id>.json`——"该 session 最近在干哪个仓"，喂脚本兜底解析与 workspace 根的 Board turn view。hook 写入带 payload 的 session_id，脚本经 `CLAUDE_CODE_SESSION_ID` 自识别。**绝不读别的 session 的绑定当答案**：无绑定即拒绝兜底、要求显式 `--repo`，他人绑定仅在报错里作候选提示——拿不准时最多麻烦一次，绝不静默走错仓。
+- **checkout 占有**：`<git_root>/.devloop/<harness>.owner.lock`（上节）。
+- **repo 绑定**：`<workspace_root>/.devloop/active/<session_id>.json`——"该 session 最近在干哪个仓"，喂脚本兜底解析与 workspace 根的 Board turn view。hook 使用 payload 身份，脚本由 `SessionIdentity` 从 `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID` 识别当前 harness 与 session。**绝不读别的 session 的绑定当答案**：无绑定即拒绝兜底、要求显式 `--repo`，他人绑定仅在报错里作候选提示——拿不准时最多麻烦一次，绝不静默走错仓。
 
 ## 验证状态
 

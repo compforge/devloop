@@ -35,6 +35,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
+from domain.context.session import SessionIdentity
+
 
 @dataclass
 class HookInput:
@@ -58,6 +60,16 @@ class HookInput:
     def is_codex(self) -> bool:
         """Codex hook payloads expose `model`; Claude's shared payload subset does not."""
         return "model" in self.raw
+
+    @property
+    def harness(self) -> str:
+        """Harness identity used to isolate checkout ownership."""
+        return self.identity.harness
+
+    @property
+    def identity(self) -> SessionIdentity:
+        """The current harness/session pair from the authoritative hook payload."""
+        return SessionIdentity.from_hook(self.session_id, is_codex=self.is_codex)
 
     @property
     def file_path(self) -> str:

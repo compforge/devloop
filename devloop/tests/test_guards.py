@@ -113,9 +113,9 @@ def test_owner_lock_acquire_atomic():
     # TOCTOU 模拟:read 第一次谎报\"无锁\"(检查窗口),实际 A 活跃持锁 → B 不得覆盖
     assert session_lock.acquire(R, "A", "b", pid=os.getpid())
     orig_read, calls = session_lock.read, {"n": 0}
-    def flaky_read(repo):
+    def flaky_read(repo, harness="claude"):
         calls["n"] += 1
-        return None if calls["n"] == 1 else orig_read(repo)
+        return None if calls["n"] == 1 else orig_read(repo, harness)
     session_lock.read = flaky_read
     try:
         assert session_lock.acquire(R, "B", "b", pid=os.getpid()) is False
@@ -247,6 +247,51 @@ def test_edit_owner_guard():
     # repo 之外的编辑不 gate
     outside = _hook_input("Edit", {"session_id": "sess-B", "cwd": R, "tool_input": {"file_path": f"{R}/x.py"}})
     assert guard.decide(outside) is None
+
+
+def test_edit_owner_guard_is_scoped_by_harness():
+    guard = _load_hook("pretool_policy_edit")
+    from domain.context import session as session_lock
+
+    root = "/tmp/dlut_eog_harness"
+    repo = f"{root}/repo"
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(repo, exist_ok=True)
+    _git(repo, "init", "-q")
+    file_path = f"{repo}/a.py"
+
+    claude_a = _hook_input("Edit", {
+        "session_id": "claude-A",
+        "cwd": root,
+        "tool_input": {"file_path": file_path},
+    })
+    assert guard.decide(claude_a) is None
+    session_lock.acquire(repo, "claude-A", "feat/claude", pid=os.getpid())
+
+    # Codex gets an independent owner lock even while Claude owns the same checkout.
+    codex_a = _hook_input("Edit", {
+        "model": "gpt-test",
+        "session_id": "codex-A",
+        "cwd": root,
+        "tool_input": {"file_path": file_path},
+    })
+    assert guard.decide(codex_a) is None
+    assert session_lock.read(repo, "codex")["session_id"] == "codex-A"
+    # Pin liveness to the test process before checking the second Codex session.
+    session_lock.acquire(
+        repo, "codex-A", "feat/codex", harness="codex", pid=os.getpid()
+    )
+
+    codex_b = _hook_input("Edit", {
+        "model": "gpt-test",
+        "session_id": "codex-B",
+        "cwd": root,
+        "tool_input": {"file_path": file_path},
+    })
+    assert guard.decide(codex_b)
+    assert session_lock.read(repo, "claude")["session_id"] == "claude-A"
+    assert session_lock.read(repo, "codex")["session_id"] == "codex-A"
+
 
 def test_apply_patch_owner_guard_uses_target_path():
     """Codex ``apply_patch`` must enter the edit policy and anchor owner lookup to the patched

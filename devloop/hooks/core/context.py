@@ -12,16 +12,26 @@ import functools
 from pathlib import Path
 
 from domain import repo_layout
+from domain.context.session import SessionIdentity
 from lib import config
 from hooks.core.domain import Command, FileChange, Target
 
 
 class PolicyContext:
-    def __init__(self, cwd: str, anchor_path: str = "", session_id: str = ""):
+    def __init__(
+        self,
+        cwd: str,
+        anchor_path: str = "",
+        session_id: str = "",
+        harness: str = "claude",
+        identity: SessionIdentity | None = None,
+    ):
         # anchor_path：被编辑文件的路径（Edit/Write）。聚合工作区里 cwd 常停在 workspace 根，
         # 编辑却落在子项目内——必须从文件所在目录解析 repo，而非 cwd（同 edit-family 既有约定）。
         self._cwd = cwd or ""
-        self.session_id = session_id or ""
+        self.identity = identity or SessionIdentity(harness, session_id or "")
+        self.session_id = self.identity.session_id
+        self.harness = self.identity.harness
         if anchor_path:  # edit 族：记文件绝对路径 + 它所在目录（git_root 从目录解析，`git -C <文件>` 会失败）
             f = anchor_path if Path(anchor_path).is_absolute() else str(Path(self._cwd) / anchor_path)
             self._anchor_file = f
@@ -42,9 +52,16 @@ class PolicyContext:
         not from the session cwd or one call-level anchor.
         """
         if isinstance(target, FileChange):
-            return PolicyContext(self._cwd, anchor_path=target.path, session_id=self.session_id)
+            return PolicyContext(
+                self._cwd,
+                anchor_path=target.path,
+                identity=self.identity,
+            )
         if isinstance(target, Command) and target.working_dir.path is not None:
-            return PolicyContext(str(target.working_dir.path), session_id=self.session_id)
+            return PolicyContext(
+                str(target.working_dir.path),
+                identity=self.identity,
+            )
         return self
 
     @property

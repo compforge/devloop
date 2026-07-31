@@ -1023,8 +1023,8 @@ def test_state_domains_worktree():
 
     # working-tree 域：owner 锁各归各的工作树
     assert session_lock.acquire(W, "sess-wt", "feat/wt", pid=os.getpid())
-    assert (Path(W) / ".devloop/owner.lock").exists()
-    assert not (Path(M) / ".devloop/owner.lock").exists()
+    assert (Path(W) / ".devloop/claude.owner.lock").exists()
+    assert not (Path(M) / ".devloop/claude.owner.lock").exists()
 
     # submodule 形态：.git 文件指向宿主 .git/modules/... → 回落本地，绝不写进宿主 git dir
     S = "/tmp/dlut_domains_sub"

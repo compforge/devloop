@@ -29,7 +29,7 @@ def handle(inp: hook_io.HookInput) -> None:
             "ts": timestamp,
             "call_id": call_id,
             "session_id": inp.session_id,
-            "harness": "codex" if inp.is_codex else "claude",
+            "harness": inp.harness,
             "tool": inp.tool_name,
         }
         if phase == "finished":

@@ -12,7 +12,8 @@ the state bus instead of the shell:
   3. THIS session's bound repo in the cwd workspace (`.devloop/active/<sid>.json`,
      one file per session, stamped by the activity writers: CwdChanged / PostToolUse
      hooks and the smart scripts themselves; scripts self-identify via
-     CLAUDE_CODE_SESSION_ID). Concurrent sessions on different repos can't poison
+     the runtime identity (`CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID`).
+     Concurrent sessions on different repos can't poison
      each other's fallback; a session with no binding of its own must say --repo —
      other sessions' bindings are only ever surfaced as a hint in that error.
 

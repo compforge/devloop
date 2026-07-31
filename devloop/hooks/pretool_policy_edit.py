@@ -20,7 +20,7 @@ def decide(inp: hook_io.HookInput) -> str | None:
     change = engine.project(inp)
     if not change.targets:
         return None
-    ctx = PolicyContext(inp.cwd, session_id=inp.session_id)
+    ctx = PolicyContext(inp.cwd, identity=inp.identity)
     decision = engine.evaluate(change, ctx, rules.REGISTRY)
     if not decision.blocked:
         return None

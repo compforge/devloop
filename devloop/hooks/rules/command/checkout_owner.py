@@ -37,7 +37,7 @@ class CheckoutOwnerGuardRule(Rule):
         git_root = repo_layout.find_git_root(run_dir)
         if not git_root:
             return []
-        owner = session.foreign_owner(git_root, sid)
+        owner = session.foreign_owner(git_root, sid, harness=ctx.harness)
         if owner:
             name = Path(git_root).name
             return [
@@ -57,5 +57,10 @@ class CheckoutOwnerGuardRule(Rule):
                     locator=" ".join(target.argv),
                 )
             ]
-        session.acquire(git_root, sid, git_state.get_current_branch(git_root) or "")
+        session.acquire(
+            git_root,
+            sid,
+            git_state.get_current_branch(git_root) or "",
+            harness=ctx.harness,
+        )
         return []

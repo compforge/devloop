@@ -40,7 +40,9 @@ from .base import (
 )
 from .repo import Branch, BranchTopology, RepoContext, RepoMeta, Validation
 from .session import (
+    SessionIdentity,
     clear_active_repo,
+    current_identity,
     load_active_repo,
     load_active_repo_lenient,
     record_active_repo,

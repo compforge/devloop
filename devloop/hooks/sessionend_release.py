@@ -9,7 +9,7 @@ crash fallback (see domain.context.session.release); this hook is the immediate 
 
 Sweep scope mirrors the monitor's repo set (workspace subprojects in Mode A,
 the cwd repo in Mode B) plus each repo's linked worktrees — every checkout
-carries its own `.devloop/owner.lock`.
+carries one `.devloop/<harness>.owner.lock` per active harness.
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def handle(inp: hook_io.HookInput) -> None:
     if ws:
         session.clear_active_repo(ws, inp.session_id)
     for repo in _candidate_checkouts(inp.cwd):
-        session.release(repo, inp.session_id)
+        session.release(repo, inp.session_id, harness=inp.harness)
 
 
 if __name__ == "__main__":

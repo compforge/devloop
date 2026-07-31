@@ -30,7 +30,7 @@ class EditOwnerGuardRule(Rule):
         git_root = ctx.git_root
         if not git_root:
             return []
-        owner = session.foreign_owner(git_root, sid)
+        owner = session.foreign_owner(git_root, sid, harness=ctx.harness)
         if owner:
             if _gitignored(git_root, ctx.anchor_abspath):
                 return []  # gitignored → 不进 owner diff，放行且不抢占
@@ -49,11 +49,16 @@ class EditOwnerGuardRule(Rule):
                         f"Read the returned `MATCH\\t<path>`, set subsequent tool calls' `workdir` "
                         f"to that path, then retry this edit there.\n"
                         f"If you intentionally share this checkout, ask the user to remove "
-                        f"`{git_root}/.devloop/owner.lock` and retry."
+                        f"`{git_root}/.devloop/{ctx.harness}.owner.lock` and retry."
                     ),
                     locator=target.path,
                 )
             ]
         # free / stale / mine → 占有（首个编辑成为 owner）
-        session.acquire(git_root, sid, git_state.get_current_branch(git_root) or "")
+        session.acquire(
+            git_root,
+            sid,
+            git_state.get_current_branch(git_root) or "",
+            harness=ctx.harness,
+        )
         return []

@@ -62,7 +62,7 @@ def test_review_result_lands_on_the_branch_it_reviewed():
         def available(self): return True
         def configured(self, repo): return True
         def install_hint(self): return ""
-        def review(self, repo, from_ref, to_ref, background, history_path=None):
+        def review(self, repo, from_ref, to_ref, background, history_path=None, biz_id=None):
             seen["to_ref"] = to_ref
             # 引擎跑到一半，checkout 被切走——这正是真实场景（人/agent 去开下一条 PR 了）
             _git(repo, "checkout", "-q", "main")
@@ -98,8 +98,8 @@ def test_review_engine_resolve():
     assert r.ok and r.comments == [1] and r.failed == 2 and r.warnings == [] and r.status == "success"
 
 
-def test_ccr_engine_passes_history():
-    """CCR adapter 必须把 caller 持有的上一轮 findings 传成 --history；否则连续 review 退化成独立运行。"""
+def test_ccr_engine_passes_history_and_biz_id():
+    """CCR adapter passes both prior findings and the caller-owned execution identity."""
     from types import SimpleNamespace
     re = _load_script("run_review").review_engine
     seen = []
@@ -117,6 +117,7 @@ def test_ccr_engine_passes_history():
     try:
         result = re.CcrEngine().review(
             "/repo", "origin/main", "abc123", None, "/tmp/prior.json",
+            "github.com:org/repo#148",
         )
     finally:
         re.subprocess.run = original
@@ -125,7 +126,16 @@ def test_ccr_engine_passes_history():
     assert seen == [[
         "ccr", "review", "--from", "origin/main", "--to", "abc123",
         "--format", "json", "--repo", "/repo", "--history", "/tmp/prior.json",
+        "--biz-id", "github.com:org/repo#148",
     ]]
+
+
+def test_pr_identity_projects_to_ccr_biz_id():
+    rr = _load_script("run_review")
+    assert rr._biz_id({
+        "source": "github.com", "repository": "org/repo", "number": 148,
+    }) == "github.com:org/repo#148"
+    assert rr._biz_id(None) is None
 
 
 def test_review_injection_line():

@@ -4,7 +4,7 @@ adapter，`run_review` 一行不用动。
 
 协议 `ReviewEngine`：
   - `name` · `available()` · `configured(repo)` · `install_hint()` · `rule_path()`
-  - `review(repo, from_ref, to_ref, background) -> ReviewResult`
+  - `review(repo, from_ref, to_ref, background, history_path, biz_id) -> ReviewResult`
 
 `ReviewResult` 是 devloop 依赖的**归一化返回形状**（引擎无关）；adapter 负责把自家
 CLI / 输出映射成它。ocr 与 ccr 现在 CLI 同形（ccr 是 ocr 的 fork），但**各自独立 adapter、
@@ -63,14 +63,14 @@ class ReviewEngine(Protocol):
         ...
 
     def review(self, repo: str, from_ref: str, to_ref: str, background: str | None,
-               history_path: str | None = None) -> ReviewResult:
+               history_path: str | None = None, biz_id: str | None = None) -> ReviewResult:
         ...
 
 
 class CcrEngine:
     """case-code-review（ccr）adapter。与 OcrEngine 刻意各自独立、不共享基类——现在
     CLI 同形，但允许 ccr 自行演进（接受重复）。CLI：
-    `ccr review --from --to --format json --repo [--background]`、`ccr llm test`。"""
+    `ccr review --from --to --format json --repo [--background] [--biz-id]`、`ccr llm test`。"""
     name = "ccr"
 
     def available(self) -> bool:
@@ -90,12 +90,14 @@ class CcrEngine:
         return "<repo>/.casecodereview/rule.json"
 
     def review(self, repo: str, from_ref: str, to_ref: str, background: str | None,
-               history_path: str | None = None) -> ReviewResult:
+               history_path: str | None = None, biz_id: str | None = None) -> ReviewResult:
         cmd = ["ccr", "review", "--from", from_ref, "--to", to_ref, "--format", "json", "--repo", repo]
         if background:
             cmd += ["--background", background]
         if history_path:  # prior-review findings, injected per unit so the reviewer reconciles them
             cmd += ["--history", history_path]
+        if biz_id:
+            cmd += ["--biz-id", biz_id]
         try:
             r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, timeout=_REVIEW_TIMEOUT)
         except subprocess.TimeoutExpired:
@@ -139,8 +141,8 @@ class OcrEngine:
         return "<repo>/.opencodereview/rule.json"
 
     def review(self, repo: str, from_ref: str, to_ref: str, background: str | None,
-               history_path: str | None = None) -> ReviewResult:
-        # history_path ignored: per-unit review history is a ccr-only concept (ocr has no unit).
+               history_path: str | None = None, biz_id: str | None = None) -> ReviewResult:
+        # history_path / biz_id ignored: both are ccr-only protocol extensions.
         cmd = ["ocr", "review", "--from", from_ref, "--to", to_ref, "--format", "json", "--repo", repo]
         if background:
             cmd += ["--background", background]

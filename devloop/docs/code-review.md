@@ -60,6 +60,7 @@ run_review（后台、独立进程）：**启动即冻结 (branch, sha)**（见�
    → 自动拼 --background（业务上下文）：本次提交说明（git log）+ MR 标题/描述（forge）
    → 经 forge.comments 拉当前 PR/MR 已有 finding threads，临时构造 history
    → <engine> review --from origin/<target> --to <冻结的 sha> --background <ctx> --format json [--history <feed>]
+     （CCR 额外接收 `--biz-id <forge>:<repository>#<number>`，只用于 session 关联与观测）
    → 写 .devloop/review.json（通用）+ 若分支有开放 MR：逐条 findings 发 replyable comment
      → line-level 行锚 →（失败）文件锚；file-level 直接文件锚
      →（锚点失败）无锚 review comment →（仍失败）回落汇总评论（forge.comment）
@@ -170,6 +171,10 @@ review.json 每次覆盖、只留最新一次；要统计"今天跑了几次 / �
 `forges` 配置 key 一致，`repository` 是 origin 上的完整仓库路径。没有开放 PR/MR 的本地
 review 不带该 identity。`ts` + `secs` 支持按天计数与时长统计；per-repo，跨仓聚合即遍历各
 repo 此文件。`.devloop` 已 gitignore，不会被提交。
+
+同一份外部 identity 还会投影成 CCR 的 opaque `biz_id`，写进 CCR session JSONL 并显示在
+viewer 中，方便从 PR/MR 定位一次 review 的 prompt、耗时与工具轨迹。其格式由 devloop 定义；
+CCR 不解析它，也不会把它注入模型上下文或改变 review 行为。
 
 该 JSONL 只用于统计 / audit，不参与下一轮 review；删掉它不会改变行为。跨 revision 的
 history 始终从 Forge comments 重新派生。

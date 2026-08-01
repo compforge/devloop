@@ -203,6 +203,18 @@ def _pull_request_identity(repo: str, pr) -> dict | None:
     return resolution.pull_request_identity(pr.number).to_dict()
 
 
+def _biz_id(pull_request: dict | None) -> str | None:
+    """把 devloop 的 PR/MR identity 投影成 CCR 不透明 biz_id；格式归 caller 所有。"""
+    if not pull_request:
+        return None
+    source = pull_request.get("source")
+    repository = pull_request.get("repository")
+    number = pull_request.get("number")
+    if not source or not repository or number is None:
+        return None
+    return f"{source}:{repository}#{number}"
+
+
 def _build_background(repo: str, target: str, forge, pr, extra: str | None) -> str:
     """拼引擎的 `--background`（业务上下文，喂进每个文件的 review prompt 以提准）：
     本次提交说明（git log）+ MR 标题/描述（forge）+ 显式 `-b`。全是 detach 进程自己能拿到的，
@@ -330,7 +342,10 @@ def main(argv: list[str]) -> int:
     # 若已切走，它审的就是另一条分支——而我们早已把 reviewed_sha 记成上面那个 sha，记录就成了谎。
     # 传 sha 之后「记录说审了什么」与「实际审了什么」由构造保证一致。
     try:
-        result = engine.review(repo, f"origin/{target}", sha, background, history_path)
+        result = engine.review(
+            repo, f"origin/{target}", sha, background, history_path,
+            biz_id=_biz_id(pull_request),
+        )
     finally:
         if history_path:
             Path(history_path).unlink(missing_ok=True)

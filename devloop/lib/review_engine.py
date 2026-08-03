@@ -22,6 +22,7 @@ import json
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 _REVIEW_TIMEOUT = 800   # review 自身要跑 LLM、审全量 diff，给足
@@ -41,6 +42,7 @@ class ReviewResult:
     models: dict = field(default_factory=dict)  # routing alias -> #responses（去重）；review 级 model 身份，clean 也有
     cost_sec: int = 0                          # 引擎自报的 review 耗时（整秒）；0 = 引擎没报
     tool_version: str = ""                     # 引擎自报的版本；"" = 引擎没报
+    session_id: str = ""                       # 引擎运行轨迹 identity；"" = 引擎没报
     message: str = ""
     error: str = ""                            # ok=False 时的诊断（写进 review.json）
 
@@ -111,12 +113,67 @@ class CcrEngine:
         warnings = out.get("warnings") or []
         failed = sum(1 for w in warnings if isinstance(w, dict) and w.get("type") == "subtask_error")
         summary = out.get("summary") or {}
+        comments = _attach_finding_ready_time(out.get("comments") or [], out.get("session_path") or "")
         return ReviewResult(ok=True, status=out.get("status", "success"),
-                            comments=out.get("comments") or [], warnings=warnings,
+                            comments=comments, warnings=warnings,
                             failed=failed, models=summary.get("models") or {},
                             cost_sec=int(summary.get("elapsed_sec") or 0),
                             tool_version=out.get("version") or "",
+                            session_id=out.get("session_id") or "",
                             message=out.get("message", ""))
+
+
+def _attach_finding_ready_time(comments: list, session_path: str) -> list:
+    """Join each delivered finding to its origin Unit's ready point.
+
+    CCR owns pipeline timing in Session JSONL; devloop only projects the
+    resulting Unit-ready → Finding latency into the forge-facing comment.
+    """
+    ready_by_hypothesis = _finding_ready_ms(session_path)
+    if not ready_by_hypothesis:
+        return comments
+    enriched = []
+    for comment in comments:
+        item = dict(comment)
+        ready_ms = ready_by_hypothesis.get(item.get("hypothesis_id"))
+        if ready_ms is not None:
+            item["ready_ms"] = ready_ms
+        enriched.append(item)
+    return enriched
+
+
+def _finding_ready_ms(session_path: str) -> dict[str, int]:
+    if not session_path:
+        return {}
+    units: dict[str, int] = {}
+    findings: list[tuple[str, str, int]] = []
+    try:
+        with Path(session_path).open(encoding="utf-8") as transcript:
+            for line in transcript:
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                elapsed = record.get("elapsed_ms")
+                if not isinstance(elapsed, (int, float)):
+                    continue
+                if record.get("type") == "artifact" and record.get("artifact_kind") == "review_unit":
+                    unit_id = (record.get("data") or {}).get("unit_id")
+                    if unit_id:
+                        units[str(unit_id)] = int(elapsed)
+                elif record.get("type") == "finding":
+                    hypothesis_id = record.get("hypothesis_id")
+                    origin_unit = record.get("origin_unit")
+                    if hypothesis_id and origin_unit:
+                        findings.append((str(hypothesis_id), str(origin_unit), int(elapsed)))
+    except OSError:
+        return {}
+
+    return {
+        hypothesis_id: finding_ms - units[origin_unit]
+        for hypothesis_id, origin_unit, finding_ms in findings
+        if origin_unit in units and finding_ms >= units[origin_unit]
+    }
 
 
 class OcrEngine:

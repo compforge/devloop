@@ -36,6 +36,10 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   两级都锚不上再尝试无锚 review comment，仍不支持才进汇总。多这些层级的理由是
   **可打标性**:独立 review comment 能被回复 `ccr:label=`,汇总里的 finding 只是一行文本、
   没有可回复的对象,等于退出 ground truth 回收。
+- **单条 finding 展示自己的 ready time**：CCR Session JSONL 是时间事实源；devloop 按
+  `hypothesis_id` / `origin_unit` 连接 Finding 与其 Unit ready point，在独立 thread 上展示
+  `ready in …`。它表示该 Unit 从形成完毕到 Finding 可交付的端到端 latency，不把并发 Execution
+  duration 相加；汇总 header 的 `cost` 仍表示整次 review 的总耗时。
 - **打标闭环锚在 forge 上,不落本地**:finding comment 带 `ccr:fp=` 指纹,verdict 以
   `ccr:label=` 回复落在其下；Forge adapter 把平台线程整理成 top-level Comment + replies，
   `domain/review_feedback.py` 直接读取。指纹跟着持久对象（comment body）走,所以换机器 /
@@ -142,11 +146,12 @@ run_review 独占写入。`comments` 是引擎的原始评论（无优先级—�
 {
   "status": "running | success | completed_with_warnings | completed_with_errors | skipped | error",
   "reviewed_sha": "…",
-  "comments": [ { "path", "content", "start_line", "end_line", "suggestion_code?", "existing_code?", "thinking?" } ],
+  "comments": [ { "path", "content", "start_line", "end_line", "ready_ms?", "suggestion_code?", "existing_code?", "thinking?" } ],
   "count": 3,
   "failed": 0,            // review 失败的文件数（引擎的 subtask_error warnings）——0 评论但 failed>0 = 出错而非 clean
   "warnings": [ … ],      // 引擎原始 warnings（每文件失败原因），供诊断
   "message": "…",         // 引擎的整体消息（如 "No comments generated. Looks good to me."）
+  "session_id": "…",      // 引擎运行轨迹 identity；CCR 提供，其他引擎可为空
   "reviewed_range": "…",  // 审查范围：HEAD 模式是 sha，--mr 模式是 "origin/<target>..HEAD"
   "mr_comment": "…",      // --mr 模式：发评论到 MR 的结果（"posted to MR !N" / "no open MR…" / 失败原因）
   "pull_request": {       // 找到开放 PR/MR 时的稳定外部 identity；否则为 null

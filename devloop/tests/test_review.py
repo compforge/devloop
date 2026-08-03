@@ -6,6 +6,8 @@ Standalone: `python3 devloop/tests/test_review.py`（也 pytest-collectable）�
 from __future__ import annotations
 
 import os
+import io
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -62,7 +64,8 @@ def test_review_result_lands_on_the_branch_it_reviewed():
         def available(self): return True
         def configured(self, repo): return True
         def install_hint(self): return ""
-        def review(self, repo, from_ref, to_ref, background, history_path=None, biz_id=None):
+        def review(self, repo, from_ref, to_ref, background, history_path=None, biz_id=None,
+                   on_finding=None):
             seen["to_ref"] = to_ref
             # 引擎跑到一半，checkout 被切走——这正是真实场景（人/agent 去开下一条 PR 了）
             _git(repo, "checkout", "-q", "main")
@@ -88,6 +91,59 @@ def test_review_result_lands_on_the_branch_it_reviewed():
     assert seen["to_ref"] == reviewed_sha, f"to_ref 应是冻结的 sha，实际 {seen['to_ref']!r}"
 
 
+def test_run_review_posts_streamed_finding_before_engine_returns():
+    """A ready CCR Finding becomes a forge thread during the run, not after its summary."""
+    from domain.context import store
+    rr = _load_script("run_review")
+    repo = "/tmp/dlut_rr_stream"
+    shutil.rmtree(repo, ignore_errors=True)
+    os.makedirs(repo)
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "t@t.t")
+    _git(repo, "config", "user.name", "t")
+    Path(f"{repo}/a.py").write_text("x = 1\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "init")
+    _git(repo, "checkout", "-q", "-b", "feat/stream")
+    Path(f"{repo}/a.py").write_text("x = 2\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "change")
+
+    pr = PullRequest(number=7, state="open")
+    forge = _FakeForge([pr])
+    finding = {"path": "a.py", "start_line": 1, "end_line": 1,
+               "content": "bug", "fingerprint": "fp-stream"}
+
+    class FakeEngine:
+        name = "fake"
+        def available(self): return True
+        def configured(self, repo): return True
+        def install_hint(self): return ""
+        def review(self, repo, from_ref, to_ref, background, history_path=None, biz_id=None,
+                   on_finding=None):
+            assert on_finding is not None
+            on_finding(finding)
+            assert len(forge.diff_posted) == 1, "finding was buffered until review completion"
+            return rr.review_engine.ReviewResult(ok=True, comments=[finding])
+
+    original_resolve, original_open = rr.review_engine.resolve, rr._open_mr
+    original_identity = rr._pull_request_identity
+    rr.review_engine.resolve = lambda name: FakeEngine()
+    rr._open_mr = lambda repo, branch: (forge, pr)
+    rr._pull_request_identity = lambda repo, pr: None
+    try:
+        assert rr.main(["--repo", repo]) == 0
+    finally:
+        rr.review_engine.resolve, rr._open_mr = original_resolve, original_open
+        rr._pull_request_identity = original_identity
+
+    assert len(forge.diff_posted) == 1
+    branch = "feat/stream"
+    segment = store.load_segment(repo, store.branch_segment(branch, "review"))
+    assert segment["status"] == "success" and segment["count"] == 1
+    assert segment["inline_posted"] == 1
+
+
 def test_review_engine_resolve():
     """review tool 协议：按名解析引擎，未知 / 空回落默认 ccr；ReviewResult 归一化形状。"""
     re = _load_script("run_review").review_engine
@@ -100,69 +156,111 @@ def test_review_engine_resolve():
 
 def test_ccr_engine_passes_history_and_biz_id():
     """CCR adapter passes both prior findings and the caller-owned execution identity."""
-    from types import SimpleNamespace
     re = _load_script("run_review").review_engine
     seen = []
-    original = re.subprocess.run
+    original = re.subprocess.Popen
 
-    def fake_run(cmd, **kwargs):
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.StringIO(json.dumps({
+                "type": "run_finished", "result": {"status": "success", "comments": []},
+            }) + "\n")
+        def wait(self): return 0
+        def kill(self): pass
+
+    def fake_popen(cmd, **kwargs):
         seen.append(cmd)
-        return SimpleNamespace(
-            returncode=0,
-            stdout='{"status":"success","comments":[]}',
-            stderr="",
-        )
+        return FakeProcess()
 
-    re.subprocess.run = fake_run
+    re.subprocess.Popen = fake_popen
     try:
         result = re.CcrEngine().review(
             "/repo", "origin/main", "abc123", None, "/tmp/prior.json",
             "github.com:org/repo#148",
         )
     finally:
-        re.subprocess.run = original
+        re.subprocess.Popen = original
 
     assert result.ok
     assert seen == [[
         "ccr", "review", "--from", "origin/main", "--to", "abc123",
-        "--format", "json", "--repo", "/repo", "--history", "/tmp/prior.json",
+        "--format", "jsonl", "--repo", "/repo", "--history", "/tmp/prior.json",
         "--biz-id", "github.com:org/repo#148",
     ]]
 
 
 def test_ccr_engine_joins_finding_ready_time_from_session():
     """单条 finding 的 latency 来自 Session 时间线：Unit ready → Finding。"""
-    import json as _json
     import tempfile
-    from types import SimpleNamespace
     re = _load_script("run_review").review_engine
-    original = re.subprocess.run
+    original = re.subprocess.Popen
 
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as transcript:
-        transcript.write(_json.dumps({
+        transcript.write(json.dumps({
             "type": "artifact", "artifact_kind": "review_unit", "elapsed_ms": 1200,
             "data": {"unit_id": "u-1"},
         }) + "\n")
-        transcript.write(_json.dumps({
+        transcript.write(json.dumps({
             "type": "finding", "elapsed_ms": 6725, "hypothesis_id": "h-1", "origin_unit": "u-1",
         }) + "\n")
         session_path = transcript.name
 
-    def fake_run(cmd, **kwargs):
-        return SimpleNamespace(returncode=0, stdout=_json.dumps({
-            "status": "success", "session_id": "s-1", "session_path": session_path,
-            "comments": [{"hypothesis_id": "h-1", "path": "a.go", "content": "bug"}],
-        }), stderr="")
+    finding = {"hypothesis_id": "h-1", "path": "a.go", "content": "bug"}
 
-    re.subprocess.run = fake_run
+    class FakeProcess:
+        def __init__(self):
+            events = [
+                {"type": "run_started", "session_id": "s-1", "session_path": session_path},
+                {"type": "finding", "finding": finding},
+                {"type": "run_finished", "result": {
+                    "status": "success", "session_id": "s-1", "session_path": session_path,
+                    "comments": [finding],
+                }},
+            ]
+            self.stdout = io.StringIO("".join(json.dumps(event) + "\n" for event in events))
+        def wait(self): return 0
+        def kill(self): pass
+
+    re.subprocess.Popen = lambda cmd, **kwargs: FakeProcess()
     try:
         result = re.CcrEngine().review("/repo", "origin/main", "abc123", None)
     finally:
-        re.subprocess.run = original
+        re.subprocess.Popen = original
         Path(session_path).unlink(missing_ok=True)
 
     assert result.session_id == "s-1"
     assert result.comments[0]["ready_ms"] == 5525
+
+
+def test_ccr_engine_streams_finding_before_return():
+    re = _load_script("run_review").review_engine
+    original = re.subprocess.Popen
+    finding = {"path": "a.go", "content": "bug", "fingerprint": "fp-1"}
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = io.StringIO("".join([
+                json.dumps({"type": "run_started", "session_id": "s-1"}) + "\n",
+                json.dumps({"type": "finding", "finding": finding}) + "\n",
+                json.dumps({"type": "run_finished", "result": {
+                    "status": "success", "comments": [finding],
+                }}) + "\n",
+            ]))
+        def wait(self): return 0
+        def kill(self): pass
+
+    observed = []
+    re.subprocess.Popen = lambda cmd, **kwargs: FakeProcess()
+    try:
+        result = re.CcrEngine().review(
+            "/repo", "origin/main", "abc123", None,
+            on_finding=lambda item: observed.append(item),
+        )
+    finally:
+        re.subprocess.Popen = original
+
+    assert result.ok and result.comments == [finding]
+    assert observed == [finding]
 
 
 def test_pr_identity_projects_to_ccr_biz_id():

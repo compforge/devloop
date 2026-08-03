@@ -63,12 +63,17 @@ gcampr → … → commit → publish（建/复用 MR）→ post_mr relay
 run_review（后台、独立进程）：**启动即冻结 (branch, sha)**（见下）→ 先写 status=running
    → 自动拼 --background（业务上下文）：本次提交说明（git log）+ MR 标题/描述（forge）
    → 经 forge.comments 拉当前 PR/MR 已有 finding threads，临时构造 history
-   → <engine> review --from origin/<target> --to <冻结的 sha> --background <ctx> --format json [--history <feed>]
+   → CCR review --from origin/<target> --to <冻结的 sha> --background <ctx> --format jsonl [--history <feed>]
      （CCR 额外接收 `--biz-id <forge>:<repository>#<number>`，只用于 session 关联与观测）
-   → 写 .devloop/review.json（通用）+ 若分支有开放 MR：逐条 findings 发 replyable comment
+   → 每收到一个通过 Trial 的 finding：增量写 .devloop/review.json；若分支有开放 MR，立即发 replyable comment
      → line-level 行锚 →（失败）文件锚；file-level 直接文件锚
      →（锚点失败）无锚 review comment →（仍失败）回落汇总评论（forge.comment）
+   → run_finished：用最终 summary/warnings 收口 review.json 和汇总评论
 下一轮：userprompt 注入读 review.json → 上下文出现 `Review: …`（含 mr_comment 状态）
+
+CCR 的 stdout JSONL 是调用方交付协议；Session JSONL 仍只是 CCR 内部可观测性事实源。devloop 不 tail
+Session 猜测哪些中间结论可发布。`finding` 事件已经完成 Trial、定位和持久化，因此可以立即发布；若整轮
+随后超时，已发布 finding 与 review.json 中的增量结果仍保留。OCR 没有流式协议时继续走原有批量适配。
 
 打标（异步、人/agent 触发，见 `skills/label-review`）：
 ```

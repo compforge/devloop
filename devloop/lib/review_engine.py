@@ -4,7 +4,7 @@ adapter，`run_review` 一行不用动。
 
 协议 `ReviewEngine`：
   - `name` · `available()` · `configured(repo)` · `install_hint()` · `rule_path()`
-  - `review(repo, from_ref, to_ref, background, history_path, biz_id) -> ReviewResult`
+  - `review(..., on_finding=None) -> ReviewResult`；支持的引擎可在终态前逐条回调成熟 Finding
 
 `ReviewResult` 是 devloop 依赖的**归一化返回形状**（引擎无关）；adapter 负责把自家
 CLI / 输出映射成它。ocr 与 ccr 现在 CLI 同形（ccr 是 ocr 的 fork），但**各自独立 adapter、
@@ -21,9 +21,11 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Callable, Protocol, runtime_checkable
 
 _REVIEW_TIMEOUT = 800   # review 自身要跑 LLM、审全量 diff，给足
 _PROBE_TIMEOUT = 30     # llm test 健康探针，短
@@ -65,14 +67,15 @@ class ReviewEngine(Protocol):
         ...
 
     def review(self, repo: str, from_ref: str, to_ref: str, background: str | None,
-               history_path: str | None = None, biz_id: str | None = None) -> ReviewResult:
+               history_path: str | None = None, biz_id: str | None = None,
+               on_finding: Callable[[dict], None] | None = None) -> ReviewResult:
         ...
 
 
 class CcrEngine:
     """case-code-review（ccr）adapter。与 OcrEngine 刻意各自独立、不共享基类——现在
     CLI 同形，但允许 ccr 自行演进（接受重复）。CLI：
-    `ccr review --from --to --format json --repo [--background] [--biz-id]`、`ccr llm test`。"""
+    `ccr review --from --to --format jsonl --repo [--background] [--biz-id]`、`ccr llm test`。"""
     name = "ccr"
 
     def available(self) -> bool:
@@ -92,28 +95,83 @@ class CcrEngine:
         return "<repo>/.casecodereview/rule.json"
 
     def review(self, repo: str, from_ref: str, to_ref: str, background: str | None,
-               history_path: str | None = None, biz_id: str | None = None) -> ReviewResult:
-        cmd = ["ccr", "review", "--from", from_ref, "--to", to_ref, "--format", "json", "--repo", repo]
+               history_path: str | None = None, biz_id: str | None = None,
+               on_finding: Callable[[dict], None] | None = None) -> ReviewResult:
+        cmd = ["ccr", "review", "--from", from_ref, "--to", to_ref, "--format", "jsonl", "--repo", repo]
         if background:
             cmd += ["--background", background]
         if history_path:  # prior-review findings, injected per unit so the reviewer reconciles them
             cmd += ["--history", history_path]
         if biz_id:
             cmd += ["--biz-id", biz_id]
-        try:
-            r = subprocess.run(cmd, cwd=repo, capture_output=True, text=True, timeout=_REVIEW_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            return ReviewResult(ok=False, error=f"ccr review timed out after {_REVIEW_TIMEOUT}s")
-        except FileNotFoundError:
-            return ReviewResult(ok=False, error="ccr binary not found")
-        try:
-            out = json.loads(r.stdout)
-        except json.JSONDecodeError:
-            return ReviewResult(ok=False, error=(r.stderr or r.stdout or "ccr produced no JSON")[-2000:])
+        streamed: list[dict] = []
+        warnings: list[dict] = []
+        final: dict | None = None
+        session_path = ""
+        timed_out = threading.Event()
+
+        with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr:
+            try:
+                process = subprocess.Popen(
+                    cmd, cwd=repo, stdout=subprocess.PIPE, stderr=stderr,
+                    text=True, bufsize=1,
+                )
+            except FileNotFoundError:
+                return ReviewResult(ok=False, error="ccr binary not found")
+
+            def stop() -> None:
+                timed_out.set()
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+
+            timer = threading.Timer(_REVIEW_TIMEOUT, stop)
+            timer.daemon = True
+            timer.start()
+            try:
+                for line in process.stdout or ():
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    event_type = event.get("type")
+                    if event_type == "run_started":
+                        session_path = event.get("session_path") or ""
+                    elif event_type == "finding" and isinstance(event.get("finding"), dict):
+                        finding = _attach_finding_ready_time([event["finding"]], session_path)[0]
+                        streamed.append(finding)
+                        if on_finding is not None:
+                            on_finding(finding)
+                    elif event_type == "warning" and isinstance(event.get("warning"), dict):
+                        warnings.append(event["warning"])
+                    elif event_type == "run_finished" and isinstance(event.get("result"), dict):
+                        final = event["result"]
+                process.wait()
+            finally:
+                timer.cancel()
+            stderr.seek(0)
+            diagnostic = stderr.read()
+
+        if final is None:
+            reason = (
+                f"ccr review timed out after {_REVIEW_TIMEOUT}s"
+                if timed_out.is_set()
+                else (diagnostic or "ccr produced no run_finished event")[-2000:]
+            )
+            if not streamed:
+                return ReviewResult(ok=False, error=reason)
+            return ReviewResult(
+                ok=True, status="completed_with_errors", comments=streamed,
+                warnings=warnings, message=reason, error=reason,
+            )
+
+        out = final
         warnings = out.get("warnings") or []
         failed = sum(1 for w in warnings if isinstance(w, dict) and w.get("type") == "subtask_error")
         summary = out.get("summary") or {}
-        comments = _attach_finding_ready_time(out.get("comments") or [], out.get("session_path") or "")
+        comments = _attach_finding_ready_time(out.get("comments") or streamed,
+                                              out.get("session_path") or session_path)
         return ReviewResult(ok=True, status=out.get("status", "success"),
                             comments=comments, warnings=warnings,
                             failed=failed, models=summary.get("models") or {},
@@ -198,7 +256,8 @@ class OcrEngine:
         return "<repo>/.opencodereview/rule.json"
 
     def review(self, repo: str, from_ref: str, to_ref: str, background: str | None,
-               history_path: str | None = None, biz_id: str | None = None) -> ReviewResult:
+               history_path: str | None = None, biz_id: str | None = None,
+               on_finding: Callable[[dict], None] | None = None) -> ReviewResult:
         # history_path / biz_id ignored: both are ccr-only protocol extensions.
         cmd = ["ocr", "review", "--from", from_ref, "--to", to_ref, "--format", "json", "--repo", repo]
         if background:

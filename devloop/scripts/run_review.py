@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """code-review hook 的后台执行体：跑配置的 review 引擎（默认 `ccr`，可切 `ocr`）审整条 MR 的全量改动，结果写 `.devloop/review.json`
-并作为一条评论**发到该分支的 MR 上**——让 review 历史挂在 MR 上、可跟踪对比。
+并把成熟 finding 逐条发到该分支的 MR 上——让 review 历史挂在 MR 上、可跟踪对比。
 
 由 lifecycle 的 `review` signal hook（挂 `post_mr`）经 detach 起（见 docs/code-review.md）。审
 `origin/<target>..HEAD`（整条分支 vs target）；查到分支的开放 MR 且有 finding（或有文件审失败）
@@ -147,6 +147,17 @@ def _post_inline(forge, pr, comments: list, sha: str = "") -> tuple[int, list]:
             fallback.append(c)
     fallback += comments[_MAX_COMMENT_FINDINGS:]
     return posted, fallback
+
+
+def _finding_key(comment: dict) -> tuple:
+    """Run-local identity used to join streamed and final engine output."""
+    fingerprint = (comment.get("fingerprint") or "").strip()
+    if fingerprint:
+        return ("fingerprint", fingerprint)
+    return (
+        "content", comment.get("path") or "", comment.get("start_line") or 0,
+        comment.get("end_line") or 0, comment.get("content") or "",
+    )
 
 
 def _format_comment(comments: list, failed: int, range_label: str, sha: str, models: dict | None = None,
@@ -357,6 +368,41 @@ def main(argv: list[str]) -> int:
         _build_history_feed(forge, pr) if engine.name == "ccr" else (None, [])
     )  # current Forge comments → one-shot ccr --history
 
+    suppressed = review_feedback.suppress_delivery_fingerprints(prior_comments)
+    comments: list[dict] = []
+    publish_comments: list[dict] = []
+    fallback: list[dict] = []
+    seen: set[tuple] = set()
+    inline_posted = 0
+
+    def accept_finding(comment: dict) -> None:
+        """Persist and publish one ready Finding without waiting for the run summary."""
+        nonlocal inline_posted
+        key = _finding_key(comment)
+        if key in seen:
+            return
+        seen.add(key)
+        comments.append(comment)
+
+        fp = (comment.get("fingerprint") or "").strip()
+        if not fp or fp not in suppressed:
+            publish_comments.append(comment)
+            if len(publish_comments) <= _MAX_COMMENT_FINDINGS:
+                posted, unanchored = _post_inline(forge, pr, [comment], sha)
+                inline_posted += posted
+                fallback.extend(unanchored)
+            else:
+                fallback.append(comment)
+
+        # review.json is also a live surface: a long review no longer looks
+        # empty merely because its final summary has not arrived yet.
+        _write(
+            repo, branch, status="running", reviewed_sha=sha,
+            comments=comments, count=len(comments), inline_posted=inline_posted,
+            reviewed_range=range_label, pull_request=pull_request,
+            message="review in progress", generated_at=base.now(),
+        )
+
     # to_ref 传**冻结的 sha**，不是字面量 "HEAD"：ccr 在它自己启动那一刻才解析 HEAD，checkout
     # 若已切走，它审的就是另一条分支——而我们早已把 reviewed_sha 记成上面那个 sha，记录就成了谎。
     # 传 sha 之后「记录说审了什么」与「实际审了什么」由构造保证一致。
@@ -364,32 +410,26 @@ def main(argv: list[str]) -> int:
         result = engine.review(
             repo, f"origin/{target}", sha, background, history_path,
             biz_id=_biz_id(pull_request),
+            on_finding=accept_finding,
         )
     finally:
         if history_path:
             Path(history_path).unlink(missing_ok=True)
     if not result.ok:
-        _write(repo, branch, status="error", reviewed_sha=sha, comments=[], count=0, failed=0,
+        _write(repo, branch, status="error", reviewed_sha=sha, comments=comments, count=len(comments), failed=0,
                message=result.error, pull_request=pull_request, generated_at=base.now())
         _append_history(repo, started, status="error", sha=sha,
                         pull_request=pull_request,
-                        count=0, failed=0, range=range_label)
+                        count=len(comments), failed=0, range=range_label)
         print(f"run_review: {engine.name} output not parseable — see .devloop/review.json")
         return 0
 
-    comments = result.comments
+    # Batch engines arrive here with no callback events; CCR's final event
+    # repeats streamed findings. The run-local key keeps both paths exact-once.
+    for comment in result.comments:
+        accept_finding(comment)
     tool_label = f"{engine.name} {result.tool_version}" if result.tool_version else ""
-    suppressed = review_feedback.suppress_delivery_fingerprints(prior_comments)
-    publish_comments = []
-    for comment in comments:
-        fp = (comment.get("fingerprint") or "").strip()
-        if fp and fp in suppressed:
-            continue
-        publish_comments.append(comment)
     deduped = len(comments) - len(publish_comments)
-    inline_posted, fallback = _post_inline(
-        forge, pr, publish_comments, sha,
-    )   # inline 优先,锚不上的进汇总
     if not publish_comments and not result.failed:
         # clean（无 finding 且全部文件审完）不发 MR 评论——往在途 MR 反复 push 会攒出一串
         # 无信息量的 "✅ clean" 刷屏；clean 结论已在 review.json（下一轮注入 Review: clean）。

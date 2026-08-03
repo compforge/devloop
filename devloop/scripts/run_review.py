@@ -34,6 +34,19 @@ from lib.forge import forge_for_repo, resolve_forge  # noqa: E402
 _MAX_COMMENT_FINDINGS = 30   # 评论里最多列几条，避免超长 MR 评论
 
 
+def _ready_label(comment: dict) -> str:
+    ready_ms = comment.get("ready_ms")
+    if not isinstance(ready_ms, (int, float)) or ready_ms < 0:
+        return ""
+    if ready_ms < 1000:
+        return "ready in <1s"
+    seconds = int(ready_ms / 1000 + 0.5)
+    minutes, seconds = divmod(seconds, 60)
+    if not minutes:
+        return f"ready in {seconds}s"
+    return f"ready in {minutes}m {seconds}s"
+
+
 def _head_sha(repo: str) -> str:
     r = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True)
     return r.stdout.strip() if r.returncode == 0 else ""
@@ -93,7 +106,12 @@ def _post_inline(forge, pr, comments: list, sha: str = "") -> tuple[int, list]:
         if not body:
             fallback.append(c)
             continue
-        head = "🤖 **devloop code-review**" + (f" · {alias}" if alias else "")
+        head_parts = ["🤖 **devloop code-review**"]
+        if alias:
+            head_parts.append(alias)
+        if ready := _ready_label(c):
+            head_parts.append(ready)
+        head = " · ".join(head_parts)
         # ccr:fp footer——finding 的稳定指纹（path+content hash），把这条评论和 session
         # finding / 复跑重现 / 人工标注（回复 `ccr:label=<verdict>`）join 到一起；
         # 回收约定见 ccr 仓 eval/README「人工标注统一约定」。
@@ -163,7 +181,8 @@ def _format_comment(comments: list, failed: int, range_label: str, sha: str, mod
         if s or e:
             loc += f":{s}-{e}"
         alias = (c.get("alias") or "").strip()   # 多 model 池里哪个 model 出的（引擎 routing alias），便于对比
-        tag = f" ({alias})" if alias else ""
+        meta = [part for part in (alias, _ready_label(c)) if part]
+        tag = f" ({' · '.join(meta)})" if meta else ""
         body = (c.get("content") or "").strip().replace("\n", " ")
         fp = (c.get("fingerprint") or "").strip()
         if fp:
@@ -384,13 +403,15 @@ def main(argv: list[str]) -> int:
                                                   result.cost_sec, tool_label, inline_posted))
     _write(repo, branch, status=result.status, reviewed_sha=sha, comments=comments,
            count=len(comments), failed=result.failed, warnings=result.warnings, message=result.message,
-           cost_sec=result.cost_sec, tool_version=result.tool_version, inline_posted=inline_posted,
+           cost_sec=result.cost_sec, tool_version=result.tool_version, session_id=result.session_id,
+           inline_posted=inline_posted,
            deduped=deduped,
            reviewed_range=range_label, mr_comment=posted, pull_request=pull_request,
            generated_at=base.now())
     _append_history(repo, started, status=result.status, sha=sha,
                     pull_request=pull_request,
                     count=len(comments), failed=result.failed,
+                    session_id=result.session_id,
                     findings=_findings_for_history(comments, result.warnings),
                     range=range_label, posted=posted)
     print(f"run_review: {len(comments)} comment(s), {result.failed} file(s) failed on {range_label}"

@@ -130,6 +130,41 @@ def test_ccr_engine_passes_history_and_biz_id():
     ]]
 
 
+def test_ccr_engine_joins_finding_ready_time_from_session():
+    """单条 finding 的 latency 来自 Session 时间线：Unit ready → Finding。"""
+    import json as _json
+    import tempfile
+    from types import SimpleNamespace
+    re = _load_script("run_review").review_engine
+    original = re.subprocess.run
+
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as transcript:
+        transcript.write(_json.dumps({
+            "type": "artifact", "artifact_kind": "review_unit", "elapsed_ms": 1200,
+            "data": {"unit_id": "u-1"},
+        }) + "\n")
+        transcript.write(_json.dumps({
+            "type": "finding", "elapsed_ms": 6725, "hypothesis_id": "h-1", "origin_unit": "u-1",
+        }) + "\n")
+        session_path = transcript.name
+
+    def fake_run(cmd, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=_json.dumps({
+            "status": "success", "session_id": "s-1", "session_path": session_path,
+            "comments": [{"hypothesis_id": "h-1", "path": "a.go", "content": "bug"}],
+        }), stderr="")
+
+    re.subprocess.run = fake_run
+    try:
+        result = re.CcrEngine().review("/repo", "origin/main", "abc123", None)
+    finally:
+        re.subprocess.run = original
+        Path(session_path).unlink(missing_ok=True)
+
+    assert result.session_id == "s-1"
+    assert result.comments[0]["ready_ms"] == 5525
+
+
 def test_pr_identity_projects_to_ccr_biz_id():
     rr = _load_script("run_review")
     assert rr._biz_id({
@@ -445,14 +480,15 @@ def test_post_inline_findings():
     fake = _FakeForge([PullRequest(number=7, state="open")])
     pr = fake.get(7)
     comments = [
-        {"path": "a.py", "start_line": 3, "end_line": 5, "alias": "m1", "content": "bug"},
+        {"path": "a.py", "start_line": 3, "end_line": 5, "alias": "m1", "ready_ms": 65000, "content": "bug"},
         {"path": "b.py", "content": "file-level: 缺测试"},      # 无行号 → 本就是 file-level
         {"content": "no path at all"},                          # 无锚可锚 → 汇总
     ]
     n, fb = rr._post_inline(fake, pr, comments, "abc123456")
     assert n == 2 and [c.get("content") for c in fb] == ["no path at all"]
     assert fake.diff_posted[0][:3] == (7, "a.py", 5)            # line-level：锚在 end_line
-    assert "m1" in fake.diff_posted[0][3] and "bug" in fake.diff_posted[0][3]
+    assert "m1" in fake.diff_posted[0][3] and "ready in 1m 5s" in fake.diff_posted[0][3]
+    assert "bug" in fake.diff_posted[0][3]
     assert "ccr:history=" in fake.diff_posted[0][3]
     assert fake.diff_posted[1][:3] == (7, "b.py", None)         # file-level：直接锚文件
     assert len(fake.diff_posted) == 2                           # 行锚成功 → 不会再补一条文件锚

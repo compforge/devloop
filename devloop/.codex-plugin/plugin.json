@@ -1,6 +1,6 @@
 {
   "name": "devloop",
-  "version": "0.2.17",
+  "version": "0.2.18",
   "description": "Dev-loop workflow: git/PR (GitHub + GitLab) + Board-managed workspace/repo context delivery + lint/test gates + execution-level hard intercepts for Claude Code and Codex.",
   "author": {
     "name": "compforge",

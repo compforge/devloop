@@ -145,7 +145,7 @@ def test_prepare_branch_reads_gate_pr_state():
 
 def test_normalize_files_rebase():
     """--files 自动 rebase 到 repo-root 相对路径——调用方从 workspace 根 / server 子目录
-    传来的路径不再死于裸 `git add` 报错;删除文件等不存在路径保持原样。"""
+    传来的路径不再死于裸 `git add` 报错;git 不认识的不存在路径保持原样。"""
     sgo = _load_script("commit_flow")
     R = "/tmp/dlut_nf"
     shutil.rmtree(R, ignore_errors=True)
@@ -157,6 +157,25 @@ def test_normalize_files_rebase():
     assert sgo.normalize_files(f"{R}/repo", ["a.py"], f"{R}/repo/server", []) == ["server/a.py"]
     assert sgo.normalize_files(f"{R}/repo", ["server/a.py"], "/", []) == ["server/a.py"]   # 已正确 → 不动
     assert sgo.normalize_files(f"{R}/repo", ["gone.py"], "/", []) == ["gone.py"]           # 不存在 → 不动
+
+def test_normalize_files_deleted_path_rebase():
+    """已删除文件以 cwd 相对路径传入 --files 时也能 rebase——存在性检查对删除文件
+    永远打不中(两边都不存在),改查 git 删除清单(ls-files -d);未跟踪的不存在路径
+    仍原样透传,交给 git 报 pathspec。"""
+    sgo = _load_script("commit_flow")
+    R = "/tmp/dlut_nfd"
+    shutil.rmtree(R, ignore_errors=True)
+    os.makedirs(f"{R}/repo/server", exist_ok=True)
+    repo = f"{R}/repo"
+    _git(repo, "init", "-q"); _git(repo, "config", "user.email", "t@t.t"); _git(repo, "config", "user.name", "t")
+    Path(f"{repo}/server/a.py").write_text("x")
+    _git(repo, "add", "server/a.py"); _git(repo, "commit", "-qm", "i")
+    os.remove(f"{repo}/server/a.py")
+    plan: list[str] = []
+    assert sgo.normalize_files(repo, ["a.py"], f"{repo}/server", plan) == ["server/a.py"]
+    assert any("rebased" in line for line in plan)
+    assert sgo.normalize_files(repo, ["server/a.py"], "/", []) == ["server/a.py"]  # 已是 repo 相对 → 不动
+    assert sgo.normalize_files(repo, ["gone.py"], f"{repo}/server", []) == ["gone.py"]  # 未跟踪 → 不动
 
 def test_version_bump_mix_hint():
     """版本 bump 与功能文件混在同一 commit → PLAN 软提示(不拦);单独 bump 不提示。"""

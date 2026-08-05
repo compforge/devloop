@@ -165,16 +165,27 @@ def _is_sensitive(path: str) -> bool:
     return any(p in _SENSITIVE_DIRS for p in parts)
 
 
+def _deleted_tracked(repo: str) -> set[str]:
+    """Repo-root-relative paths of tracked files missing from the worktree (`ls-files -d`).
+    Non-git dir / any git error → empty set (normalize_files then just passes paths through)."""
+    r = gitcmd.git(repo, "-c", "core.quotepath=false", "ls-files", "-d")
+    if not r.ok:
+        return set()
+    return {line.strip().strip('"') for line in r.out.splitlines() if line.strip()}
+
+
 def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: list[str]) -> list[str]:
     """Rebase explicit --files entries onto repo-root-relative paths.
 
     `git add` runs at the repo root, but callers pass paths relative to wherever they
     happened to run (the workspace root, a server/ code dir, ...) — a mis-based path
     used to die with a raw `git add` error. Rewrite absolute paths and paths that exist
-    relative to the invoking cwd (but not the repo root); leave the rest untouched
-    (e.g. a deletion staged by name, which exists nowhere).
+    relative to the invoking cwd (but not the repo root); for paths that exist nowhere
+    (a deletion staged by name), fall back to a syntactic rebase validated against
+    git's own deletion list — anything else is left for git to report.
     """
     repo_real = Path(repo).resolve()
+    deleted: set[str] | None = None   # lazy: only fetched when an existence check misses
     out: list[str] = []
     for f in files:
         p = Path(os.path.expanduser(f))
@@ -191,6 +202,21 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
                     rebased = cand.resolve().relative_to(repo_real)
                 except ValueError:
                     pass
+            else:
+                # Deleted file: exists at neither base, so the existence-based rebase above
+                # can never fire for it — and a cwd-relative --files entry for one used to
+                # die as a raw pathspec error, failing the whole batch `git add`. Resolve
+                # syntactically and accept only paths git itself reports as deleted-tracked.
+                if deleted is None:
+                    deleted = _deleted_tracked(repo)
+                if deleted:
+                    try:
+                        rel = cand.resolve().relative_to(repo_real)
+                    except ValueError:
+                        pass   # invoke_cwd outside the repo — can't form an in-repo path
+                    else:
+                        if str(rel) in deleted:
+                            rebased = rel
         if rebased is not None and str(rebased) != f:
             plan.append(f"rebased --files path: {f} → {rebased}")
             out.append(str(rebased))

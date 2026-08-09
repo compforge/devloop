@@ -109,7 +109,7 @@ def test_run_review_posts_streamed_finding_before_engine_returns():
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "change")
 
-    pr = PullRequest(number=7, state="open")
+    pr = PullRequest(number=7, state="open", target_branch="master")
     forge = _FakeForge([pr])
     finding = {"path": "a.py", "start_line": 1, "end_line": 1,
                "content": "bug", "fingerprint": "fp-stream"}
@@ -121,20 +121,24 @@ def test_run_review_posts_streamed_finding_before_engine_returns():
         def install_hint(self): return ""
         def review(self, repo, from_ref, to_ref, background, history_path=None, biz_id=None,
                    on_finding=None):
+            assert from_ref == "origin/master", "review 应以开放 MR 的 target branch 为准"
             assert on_finding is not None
             on_finding(finding)
             assert len(forge.diff_posted) == 1, "finding was buffered until review completion"
             return rr.review_engine.ReviewResult(ok=True, comments=[finding])
 
     original_resolve, original_open = rr.review_engine.resolve, rr._open_mr
+    original_default_target = rr.git_state.local_default_target
     original_identity = rr._pull_request_identity
     rr.review_engine.resolve = lambda name: FakeEngine()
     rr._open_mr = lambda repo, branch: (forge, pr)
+    rr.git_state.local_default_target = lambda repo: "release"
     rr._pull_request_identity = lambda repo, pr: None
     try:
         assert rr.main(["--repo", repo]) == 0
     finally:
         rr.review_engine.resolve, rr._open_mr = original_resolve, original_open
+        rr.git_state.local_default_target = original_default_target
         rr._pull_request_identity = original_identity
 
     assert len(forge.diff_posted) == 1

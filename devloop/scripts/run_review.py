@@ -359,9 +359,9 @@ def main(argv: list[str]) -> int:
     if not engine.configured(repo):
         return skip(f"{engine.name} LLM not configured — run `{engine.name} config set llm.*`")
 
-    target = git_state.local_default_target(repo)
-    range_label = f"origin/{target}..HEAD"
     forge, pr = _open_mr(repo, branch)                              # 冻结的 branch：别把 A 的 findings 发到 B 的 PR
+    target = pr.target_branch if pr is not None and pr.target_branch else git_state.local_default_target(repo)
+    range_label = f"origin/{target}..HEAD"
     background = _build_background(repo, target, forge, pr, ns.background)
     pull_request = _pull_request_identity(repo, pr)
     history_path, prior_comments = (

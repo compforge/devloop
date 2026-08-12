@@ -9,7 +9,7 @@ Read the shared branch/mutation rules in [`git-ops`](../git-ops/SKILL.md) and th
 Run:
 
 ```
-bash <PLUGIN_ROOT>/scripts/smart_gcam.sh --message "<commit msg>" [--repo <name|path>] [--branch <name>] [--files <a,b,c>]
+bash <PLUGIN_ROOT>/scripts/smart_gcam.sh --message "<commit msg>" [--repo <name|path>] [--branch <name>] [--file <path>]...
 ```
 
 Trust the `PLAN:` banner. After committing, ask whether to push (`gcamp`) or open a PR/MR

@@ -26,7 +26,7 @@ overwriting human edits.
 - Pass `--repo <name|path>` from a workspace root or when the target repo is ambiguous.
 - Pass `--branch <name>` for new work and whenever context shows `PROTECTED` or `INACTIVE`.
 - Pass `--target <branch>` only when the destination differs from the repository default.
-- Pass `--files a,b` when unrelated or untracked files exist; otherwise only tracked modifications
+- Repeat `--file <path>` when unrelated or untracked files exist; otherwise only tracked modifications
   are staged. Paths are resolved against the repo root. Never use `git add -A`.
 
 Trust the `PLAN:` banner. On `INACTIVE`, the script performs an authoritative forge refresh and

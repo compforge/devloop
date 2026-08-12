@@ -97,6 +97,25 @@ class Component:
         eco = ecosystem.detect(self.path)
         return eco.fallback_test_command(self.path) if eco else None
 
+    def focused_test_command(self, test_files: list[str]) -> tuple[str, ...] | None:
+        """项目显式采用 `TEST_FILES` Make 契约时，构造按测试文件收窄的命令。
+
+        不从 target 名或测试框架猜支持能力：Makefile 没出现 `TEST_FILES` 就回退全量；路径含 shell
+        元字符或空白也回退，避免把 git 文件名变成 recipe 注入面。
+        """
+        target = self.test_target()
+        if target is None or not test_files:
+            return None
+        if any(not re.fullmatch(r"[A-Za-z0-9_./@+:-]+", path) for path in test_files):
+            return None
+        try:
+            makefile = (Path(self.path) / "Makefile").read_text(encoding="utf-8")
+        except OSError:
+            return None
+        if not re.search(r"\$\(TEST_FILES\)|\$\{TEST_FILES\}", makefile):
+            return None
+        return ("make", target, f"TEST_FILES={' '.join(test_files)}")
+
 
 def find_git_root(cwd: str | Path) -> str | None:
     """Find git root by walking up. Returns absolute path or None if not in a git repo."""

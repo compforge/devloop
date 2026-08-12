@@ -8,7 +8,7 @@ Read the shared branch/mutation rules in [`git-ops`](../git-ops/SKILL.md) and th
 transaction:
 
 ```
-bash <PLUGIN_ROOT>/scripts/smart_gcampr.sh --message-file <repo>/.devloop/commit_msg [--repo <name|path>] [--branch <name>] [--target <branch>] [--files <a,b,c>] [--title "<PR title>"]
+bash <PLUGIN_ROOT>/scripts/smart_gcampr.sh --message-file <repo>/.devloop/commit_msg [--repo <name|path>] [--branch <name>] [--target <branch>] [--file <path>]... [--title "<PR title>"]
 ```
 
 Trust the `PLAN:` banner and surface the returned PR/MR URL.

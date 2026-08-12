@@ -61,6 +61,10 @@ class PythonEcosystem(Ecosystem):
         if self.is_uv_managed(path) and venv.is_dir():
             (venv / ".devloop-envhash").write_text(_env_hash(path), encoding="utf-8")
 
+    def is_test_file(self, path):
+        name = Path(path).name
+        return name.endswith(".py") and (name.startswith("test_") or name.endswith("_test.py"))
+
 
 def _env_hash(path: str | Path) -> str:
     h = hashlib.sha256()

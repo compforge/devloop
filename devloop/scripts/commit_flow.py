@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass, replace
@@ -175,7 +176,7 @@ def _deleted_tracked(repo: str) -> set[str]:
 
 
 def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: list[str]) -> list[str]:
-    """Rebase explicit --files entries onto repo-root-relative paths.
+    """Rebase explicit --file entries onto repo-root-relative paths.
 
     `git add` runs at the repo root, but callers pass paths relative to wherever they
     happened to run (the workspace root, a server/ code dir, ...) — a mis-based path
@@ -204,7 +205,7 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
                     pass
             else:
                 # Deleted file: exists at neither base, so the existence-based rebase above
-                # can never fire for it — and a cwd-relative --files entry for one used to
+                # can never fire for it — and a cwd-relative --file entry for one used to
                 # die as a raw pathspec error, failing the whole batch `git add`. Resolve
                 # syntactically and accept only paths git itself reports as deleted-tracked.
                 if deleted is None:
@@ -218,7 +219,7 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
                         if str(rel) in deleted:
                             rebased = rel
         if rebased is not None and str(rebased) != f:
-            plan.append(f"rebased --files path: {f} → {rebased}")
+            plan.append(f"rebased --file path: {f} → {rebased}")
             out.append(str(rebased))
         else:
             out.append(f)
@@ -289,7 +290,9 @@ def stage(repo: str, files: list[str], plan: list[str]) -> None:
     if gitlinks:
         gitcmd.git(repo, "reset", "-q")
         # Hand back the safe retry instead of making the caller re-enumerate by hand.
-        retry = f"\nRetry with the real files only: --files {','.join(real)}" if real else ""
+        retry = "\nRetry with the real files only: " + " ".join(
+            f"--file {shlex.quote(path)}" for path in real
+        ) if real else ""
         raise SmartError(
             f"staging captured a submodule/embedded-repo gitlink ({', '.join(gitlinks)}) — unstaged.{retry}"
         )
@@ -302,7 +305,7 @@ _VERSION_LINE_RE = re.compile(r'^[+-]\s*"?version"?\s*[:=]', re.IGNORECASE)
 def warn_mixed_version_bump(repo: str, plan: list[str]) -> None:
     """Soft hint (a PLAN line, never a block): a version bump riding along with feature
     files is the 'tangled bump needs a manual discard later' friction — flag it so the
-    caller can split with --files when the bump is unrelated. Amend/release commits
+    caller can split with repeatable --file when the bump is unrelated. Amend/release commits
     that intentionally pair them just read past the note."""
     staged = gitcmd.git(repo, "diff", "--cached", "--name-only").out.splitlines()
     vfiles = [f for f in staged if Path(f).name in _VERSION_BASENAMES]
@@ -317,7 +320,7 @@ def warn_mixed_version_bump(repo: str, plan: list[str]) -> None:
     if bumped:
         plan.append(
             f"note: version bump in {', '.join(bumped)} is mixed with {len(others)} other file(s) — "
-            "if the bump is unrelated, split it out with --files"
+            "if the bump is unrelated, split it out with --file"
         )
 
 
@@ -375,6 +378,10 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
         raise SmartError(how)
     record_active_repo(resolved.git_root)
     target = ns.target or git_state.local_default_target(resolved.git_root)
+    files: list[str] = []
+    for path in ns.file or []:
+        if path not in files:
+            files.append(path)
     return GitIntent(
         mode=ns.mode,
         message=ns.message,
@@ -384,7 +391,7 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
         target=target,
         base=ns.base or f"origin/{target}",
         explicit_base=bool(ns.base),
-        files=[f.strip() for f in ns.files.split(",") if f.strip()] if ns.files else [],
+        files=files,
         repo=resolved.git_root,
         source=how,
         invoke_cwd=invoke_cwd,
@@ -579,7 +586,10 @@ def _build_parser() -> cli.ArgParser:
         default=None,
         help="ref to cut --branch off (default origin/<target>); pass a feature branch for intentional stacking",
     )
-    ap.add_argument("--files", "-f", default=None, help="comma-separated explicit files to stage")
+    ap.add_argument(
+        "--file", "-f", action="append", default=[], metavar="PATH",
+        help="explicit file to stage; repeat for multiple paths",
+    )
     ap.add_argument("--title", default=None, help="MR title (defaults to the message's first line)")
     cli.add_repo_arg(ap, positional=False)  # --repo/-r only; gcampr takes no positional repo
     return ap
@@ -593,16 +603,16 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
     退化成 repo-wide 跑**全部** component：一个你根本没碰的 component 有存量 lint 错误，就会在 commit 已
     落地之后拦掉 push 和 MR。所以范围必须在相位边界由这里算好、冻结下传。
 
-    - `pre_commit`：**将要提交的**那些文件。`--files` 给了就是它——不是「工作树里所有脏文件」：
+    - `pre_commit`：**将要提交的**那些文件。`--file` 给了就是它——不是「工作树里所有脏文件」：
       那是个超集，会把你压根不打算提交的 component 拖进 gate（它有存量 lint 错误就拦掉你的 commit——
       与 #86 修的是同一类失败，只是换了扇门），还会让 lint 的 `make fix` 去改那些 component、改完又
-      不进本次 commit，凭空搅脏工作树。没给 `--files` → `None`：那时工作树确实**就是**将要提交
+      不进本次 commit，凭空搅脏工作树。没给 `--file` → `None`：那时工作树确实**就是**将要提交
       的全部，交给 handler 读，语境本就一致。
     - `post_commit`：刚落地的那个 commit 自身。
     - `pre_mr` / `post_mr`：整条分支 vs target——MR 承载的是整条分支，不是最后那个 commit。
     """
     if phase == "pre_commit":
-        return intent.files or None            # 无 --files → 工作树即答案，与 handler 默认语境一致
+        return intent.files or None            # 无 --file → 工作树即答案，与 handler 默认语境一致
     if phase == "post_commit":
         return repo_model.committed_paths(intent.repo)
     if phase in ("pre_mr", "post_mr"):
@@ -683,7 +693,7 @@ def main(argv: list[str]) -> int:
         f"mode={intent.mode} repo={Path(intent.repo).name} ({intent.source}) "
         f"branch={gv.branch} target={intent.target}"
     ]
-    # `--files` 在这里归一**一次**（仓根相对）：pre_commit gate 拿它当验证范围、staging 拿它
+    # `--file` 在这里归一**一次**（仓根相对）：pre_commit gate 拿它当验证范围、staging 拿它
     # 当 `git add` 目标——两处必须是同一份，各自归一必然漂。`GitIntent` 的契约本就是
     # 「resolved ONCE from argv + state」，`files` 此前是唯一一个还生着的字段（原地归一在
     # stage_and_commit 里，gate 比它早跑，压根看不到）。

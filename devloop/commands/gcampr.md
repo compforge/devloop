@@ -1,20 +1,20 @@
 ---
 name: gcampr
 description: Commit + push + create/reuse a pull/merge request (GitHub PR or GitLab MR; full release flow).
-argument-hint: "<commit message> [--repo <name>] [--branch <name>] [--target <branch>] [--files a,b]"
+argument-hint: "<commit message> [--repo <name>] [--branch <name>] [--target <branch>] [--file path]..."
 allowed-tools: [Bash]
 ---
 
 The user wants to commit + push + open/reuse a pull/merge request. Construct and run the orchestrator:
 
 ```
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/smart_gcampr.sh" --message "<commit message>" [--repo <name|path>] [--branch <name>] [--target <branch>] [--files <a,b,c>] [--title "<PR title>"]
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/smart_gcampr.sh" --message "<commit message>" [--repo <name|path>] [--branch <name>] [--target <branch>] [--file <path>]... [--title "<PR title>"]
 ```
 
 - Derive `--message` from the user's request and the actual diff (`git diff --stat`, `git status`). Shape it as a **short subject (≤72 chars) + blank line + detail body**: the subject becomes the PR/MR title, the body becomes (or is appended to) the PR/MR description — don't cram details into the subject.
 - No `cd` prefix needed — the script resolves the repo itself (cwd's repo → workspace's last-active repo); pass `--repo <subproject name or path>` to target another.
 - Pass `--branch <name>` when the injected context shows the current branch is **PROTECTED** or **INACTIVE** (PR/MR merged/closed) — the script refuses to commit there otherwise and tells you. Pick a short kebab-case feature name.
-- Pass `--files a,b` to stage explicit files; omit to stage tracked modifications. **Never** `git add -A`.
+- Repeat `--file <path>` to stage explicit files; omit it to stage tracked modifications. **Never** `git add -A`.
 - The script self-narrates a `PLAN:` banner and does preflight branch-cutting, staging, commit, push, and PR/MR create/reuse (the forge is picked from the repo's origin). Trust the banner; surface the PR/MR URL to the user.
 - On a `✗ ...` line, fix per the message (usually: add `--branch`) and retry. Do not fall back to raw `git push`. An INACTIVE / merged-or-closed `✗` is computed from a live, authoritative forge poll and quotes the MR's number/state/sha — it's ground truth even seconds after you created the MR (a reviewer can merge it that fast), so add `--branch` and re-run.
 - If `code-review` is enabled for the repo, it runs **automatically** in the background after the commit (commit_flow detaches it — you launch nothing); a `review: launched in background` line appears in the `PLAN:`. Findings surface next turn via the injected `Review:` line; read `.devloop/review.json` for details and report when relevant (advisory — never blocks). See `docs/code-review.md`.

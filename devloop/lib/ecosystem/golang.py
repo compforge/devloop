@@ -1,6 +1,8 @@
 """Go 生态：列进来主要是为了说明它**为什么不需要 prepare**。"""
 from __future__ import annotations
 
+from pathlib import Path
+
 from .base import Ecosystem
 
 
@@ -16,3 +18,6 @@ class GoEcosystem(Ecosystem):
         # 纯 Go module 无 Makefile 也能测——避免多 component 仓已正确识别 Go component 却被误跳过
         # （原 Component.test_command 的回落，迁到生态：这是 Go 的事实，不是 component 模型的）。
         return ("go", "test", "./...")
+
+    def is_test_file(self, path):
+        return Path(path).name.endswith("_test.go")

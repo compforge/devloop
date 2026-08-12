@@ -9,7 +9,7 @@ Read the shared branch/mutation rules in [`git-ops`](../git-ops/SKILL.md) and th
 Run:
 
 ```
-bash <PLUGIN_ROOT>/scripts/smart_gcamp.sh --message "<commit msg>" [--repo <name|path>] [--branch <name>] [--target <branch>] [--files <a,b,c>]
+bash <PLUGIN_ROOT>/scripts/smart_gcamp.sh --message "<commit msg>" [--repo <name|path>] [--branch <name>] [--target <branch>] [--file <path>]...
 ```
 
 This does not create a PR/MR. Trust the `PLAN:` banner.

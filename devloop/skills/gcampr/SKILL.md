@@ -3,22 +3,13 @@ name: gcampr
 description: Commit current changes, push, and create/reuse a pull/merge request (GitHub PR or GitLab MR). Use when the user says "gcampr" or asks to commit + push + open/raise a PR / MR / pull request / merge request.
 ---
 
-Apply the shared mutation principles in [`git-ops`](../git-ops/SKILL.md). This skill only
-selects the commit-push-and-open/reuse-PR transaction.
-
-Run the orchestrator (it handles preflight branch decision, staging, commit, push, and PR/MR create/reuse, then prints a self-narrating `PLAN:` banner):
+Read the shared branch/mutation rules in [`git-ops`](../git-ops/SKILL.md) and the
+[commit flow](../git-ops/references/commit-flow.md). Select the commit-push-and-open/reuse-PR
+transaction:
 
 ```
 bash <PLUGIN_ROOT>/scripts/smart_gcampr.sh --message-file <repo>/.devloop/commit_msg [--repo <name|path>] [--branch <name>] [--target <branch>] [--files <a,b,c>] [--title "<PR title>"]
 ```
 
-Rules:
-- **Message shape: short subject + body.** The first line becomes the PR/MR **title** — keep it ≤72 chars. The rest of the message (after a blank line) becomes the PR/MR **description**, so put the what/why details there, NOT crammed into the subject. Follow-up commits onto an in-flight PR/MR (via gcamp or gcampr) **append** their body to the existing description automatically.
-- **Commit message — never hand-escape multi-line text through the shell.** One-line / simple → inline single-quoted: `--message 'fix: …'`. Multi-line, or containing quotes / `$` / backticks → use the **Write tool** to fully overwrite the canonical `<repo>/.devloop/commit_msg` (gitignored one-shot scratch); do not read, edit, or patch its previous contents. Then pass `--message-file <repo>/.devloop/commit_msg` (alias `-F`; `-F -` reads stdin). The script removes this canonical file on success and retains it on failure for retry. This is the shell-escaping-free path, mirroring `git commit -F` / `gh --body-file`. `--title` defaults to the message's first line, so a multi-line message still yields a valid one-line PR title.
-- No `cd` prefix needed: the script resolves the repo itself (cwd's repo → workspace's last-active repo). From a workspace root, or to target another subproject, pass `--repo <subproject name or path>`.
-- Add `--branch <name>` when the injected `.devloop` context shows the branch is **PROTECTED** or **INACTIVE** (PR/MR merged/closed); the script refuses otherwise and tells you why.
-- `--files` for explicit staging, else tracked modifications are staged. Never `git add -A`. Paths are auto-rebased onto the repo root.
-- Trust the `PLAN:` banner; surface the PR/MR URL. On `✗`, fix per the message and retry — do not fall back to raw git. An INACTIVE/merged `✗` comes from a live, authoritative poll and quotes the MR's number/state/sha, so it's true even seconds after you created the MR (a reviewer can merge that fast) — just add `--branch` and re-run.
-
-The forge (GitHub vs GitLab) is picked automatically from the repo's origin remote.
+Trust the `PLAN:` banner and surface the returned PR/MR URL.
 `<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex.

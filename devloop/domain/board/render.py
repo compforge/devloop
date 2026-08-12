@@ -93,9 +93,7 @@ def _repo_identity(card: RepoIdentityCard) -> str:
     if card.protected:
         extras.append("PROTECTED")
     if card.pr_lifecycle == "inactive":
-        extras.append(
-            f"INACTIVE ({card.pr_label} {card.pr_state}); cut from origin/{card.target_branch}"
-        )
+        extras.append(f"INACTIVE ({card.pr_label} {card.pr_state}): historical branch")
     elif card.pr_lifecycle == "in_flight":
         extras.append(
             f"IN-FLIGHT ({card.pr_label} open); new work needs a fresh branch (gcampr --branch)"

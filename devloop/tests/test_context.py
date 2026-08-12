@@ -261,7 +261,7 @@ def test_in_flight_turn_hint():
     ctx.provider = "github"
     ctx.prs = [PullRequest(number=51, state="merged", source_branch="feat/a")]
     txt = ctx.turn_text()
-    assert "INACTIVE" in txt and "IN-FLIGHT" not in txt
+    assert "INACTIVE (PR #51 merged): historical branch" in txt and "IN-FLIGHT" not in txt
 
     # healthy(无 PR)→ 两者都没有
     ctx.branch.pr_number = None; ctx.prs = []

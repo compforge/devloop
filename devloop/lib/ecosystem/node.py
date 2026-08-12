@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 
 from .base import Ecosystem
@@ -22,6 +23,7 @@ _LOCKFILES: tuple[tuple[str, list[str]], ...] = (
     ("yarn.lock", ["yarn", "install", "--immutable"]),
 )
 _MARKER = ".devloop-envhash"   # node_modules/ 内的指纹：prepare 时 manifest+lockfile sha256
+_TEST_FILE = re.compile(r"\.(?:test|spec)\.(?:[cm]?[jt]sx?)$")
 
 
 class NodeEcosystem(Ecosystem):
@@ -77,6 +79,9 @@ class NodeEcosystem(Ecosystem):
         nm = Path(path) / "node_modules"
         if found and nm.is_dir():
             (nm / _MARKER).write_text(_env_hash(path, found[0]), encoding="utf-8")
+
+    def is_test_file(self, path):
+        return bool(_TEST_FILE.search(Path(path).name))
 
 
 def _env_hash(path: str | Path, lockfile: Path) -> str:

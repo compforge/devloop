@@ -13,6 +13,7 @@ handler 契约：`fn(repo, paths) -> HookResult`（`paths` = 相位边界冻结�
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -24,6 +25,11 @@ from domain.repo_layout import Component
 from domain.lifecycle.base import HookResult
 
 _TAIL_LINES = 40   # 失败时回带的输出尾行数（够定位、不淹没 PLAN）
+_FULL_SUITE_TEST_FILE_LIMIT = 20
+_TEST_SCAN_SKIP = {
+    ".git", ".venv", "venv", "node_modules", "vendor", "dist", "build", "target",
+    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+}
 
 
 def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: bool = False) -> HookResult:
@@ -69,6 +75,43 @@ def _environment_failure(name: str, component: Component, *, advisory: bool = Fa
         return None
     return HookResult(name, ok=False, advisory=advisory,
                       summary=f"environment setup failed in {component.path}: {problem}")
+
+
+def _has_large_test_suite(component: Component) -> bool:
+    """测试文件超过内置小套件阈值时才值得 focused；扫描到第 21 个立即停止。"""
+    eco = ecosystem.detect(component.path)
+    if eco is None:
+        return False
+    found = 0
+    for root, dirs, files in os.walk(component.path):
+        dirs[:] = [name for name in dirs if name not in _TEST_SCAN_SKIP and not name.startswith(".")]
+        for name in files:
+            if eco.is_test_file(Path(root) / name):
+                found += 1
+                if found > _FULL_SUITE_TEST_FILE_LIMIT:
+                    return True
+    return False
+
+
+def _changed_test_files(repo: str, component: Component, paths: list[str]) -> list[str]:
+    """把仓相对 diff 路径筛成 component 相对、仍存在的测试文件。"""
+    eco = ecosystem.detect(component.path)
+    if eco is None:
+        return []
+    repo_root = Path(repo).resolve()
+    component_root = Path(component.path).resolve()
+    selected: list[str] = []
+    for path in paths:
+        absolute = repo_root / path
+        if not absolute.is_file():
+            continue
+        try:
+            relative = absolute.resolve().relative_to(component_root).as_posix()
+        except ValueError:
+            continue
+        if eco.is_test_file(relative) and relative not in selected:
+            selected.append(relative)
+    return selected
 
 
 def lint(repo: str, *, capture: bool = True, component: Component | None = None,
@@ -120,7 +163,13 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
     现阶段先不硬拦，把判断交给 CI / 人。lint 仍是硬拦截。"""
     if component is None:
         ws = repo_model.select_components(repo, paths=paths)
-        results = [test(repo, capture=capture, extra=extra, component=u) for u in ws.components]
+        # lifecycle 传入的 paths 是相位边界冻结的 scope；pre_commit 未显式 --file 时才现读工作树。
+        # 把同一份列表继续传到 component，避免 test 再引入第二套 diff 查询。
+        effective_paths = paths if paths is not None else repo_model.changed_paths(repo)
+        results = [
+            test(repo, capture=capture, extra=extra, component=u, paths=effective_paths)
+            for u in ws.components
+        ]
         return _aggregate("test", ws.reason, results, advisory=True)
     code_dir = component.path
     command = component.test_command()
@@ -131,6 +180,14 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         return env_failure
 
     extra = extra or []
+    focused_files: list[str] = []
+    focused = False
+    if paths is not None and not extra and _has_large_test_suite(component):
+        focused_files = _changed_test_files(repo, component, paths)
+        focused_command = component.focused_test_command(focused_files)
+        if focused_command is not None:
+            command = focused_command
+            focused = True
     argv = [*command, *extra]
     display = " ".join(argv)
     sink: list[str] = []
@@ -144,6 +201,14 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         print(header)
         rc = subprocess.run(argv, cwd=code_dir).returncode
     if rc == 0:
+        if focused:
+            return HookResult(
+                "test",
+                ok=True,
+                advisory=True,
+                summary=f"{display} passed — focused {len(focused_files)} changed test file(s); "
+                        "component test stamp unchanged",
+            )
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
         ctx.mark_test_passed(component.id)
         return HookResult("test", ok=True, advisory=True, summary=f"{display} passed — stamped")

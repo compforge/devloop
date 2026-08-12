@@ -144,7 +144,7 @@ def test_prepare_branch_reads_gate_pr_state():
     assert any("continuing in-flight PR #7" in line for line in plan)
 
 def test_normalize_files_rebase():
-    """--files 自动 rebase 到 repo-root 相对路径——调用方从 workspace 根 / server 子目录
+    """--file 自动 rebase 到 repo-root 相对路径——调用方从 workspace 根 / server 子目录
     传来的路径不再死于裸 `git add` 报错;git 不认识的不存在路径保持原样。"""
     sgo = _load_script("commit_flow")
     R = "/tmp/dlut_nf"
@@ -159,7 +159,7 @@ def test_normalize_files_rebase():
     assert sgo.normalize_files(f"{R}/repo", ["gone.py"], "/", []) == ["gone.py"]           # 不存在 → 不动
 
 def test_normalize_files_deleted_path_rebase():
-    """已删除文件以 cwd 相对路径传入 --files 时也能 rebase——存在性检查对删除文件
+    """已删除文件以 cwd 相对路径传入 --file 时也能 rebase——存在性检查对删除文件
     永远打不中(两边都不存在),改查 git 删除清单(ls-files -d);未跟踪的不存在路径
     仍原样透传,交给 git 报 pathspec。"""
     sgo = _load_script("commit_flow")
@@ -301,6 +301,34 @@ def test_inline_message_still_supported():
     ap = sgo._build_parser()
     assert sgo._resolve_message(ap.parse_args(["mr", "--message", "fix: x"]), ap) == "fix: x"
     assert sgo._resolve_message(ap.parse_args(["mr", "-m", "fix: y"]), ap) == "fix: y"
+
+
+def test_explicit_paths_use_repeatable_file_arguments():
+    """每个 --file 对应一个 argv 路径：空格与逗号是文件名内容，不再充当列表协议。"""
+    import contextlib
+    import io
+
+    sgo = _load_script("commit_flow")
+    root = "/tmp/dlut_repeatable_file"
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(root)
+    _git(root, "init", "-q", "-b", "feat/x")
+    ap = sgo._build_parser()
+    ns = ap.parse_args([
+        "commit", "--message", "fix: x", "--repo", root,
+        "--file", "a,b.py", "-f", "space name.py", "--file", "a,b.py",
+    ])
+    ns.message = sgo._resolve_message(ns, ap)
+    assert sgo.resolve_intent(ns, root).files == ["a,b.py", "space name.py"]
+
+    err = io.StringIO()
+    raised = False
+    try:
+        with contextlib.redirect_stderr(err):
+            ap.parse_args(["commit", "--message", "fix: x", "--files", "a.py,b.py"])
+    except SystemExit:
+        raised = True
+    assert raised and "unrecognized arguments" in err.getvalue()
 
 def test_message_required_with_hint():
     """Neither --message nor --message-file → exits with an actionable hint, not a bare usage dump."""

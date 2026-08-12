@@ -496,12 +496,12 @@ def test_shared_paths_own_no_unit_so_a_docs_change_validates_nothing():
 
 
 def test_precommit_gate_scopes_to_files_being_committed():
-    """`--files` 划定的就是 pre_commit 的验证范围：只验你真要提交的那些 component。
+    """`--file` 划定的就是 pre_commit 的验证范围：只验你真要提交的那些 component。
 
-    红过的样子：pre_commit 的范围是「工作树里所有脏文件」——那是 `--files` 的**超集**。于是
-    `gcam --files cli/a.py` 会连带把你压根不打算提交的 `legacy/` 也拖进 gate，它有存量 lint
+    红过的样子：pre_commit 的范围是「工作树里所有脏文件」——那是 `--file` 的**超集**。于是
+    `gcam --file cli/a.py` 会连带把你压根不打算提交的 `legacy/` 也拖进 gate，它有存量 lint
     错误就直接拦掉你的 commit（与 test_phase_scope_survives_a_clean_tree 同一类失败，只是换了
-    扇门：那次是 clean tree 退化成全仓，这次是 --files 没被当成范围）。副作用还有一条：lint 的
+    扇门：那次是 clean tree 退化成全仓，这次是 --file 没被当成范围）。副作用还有一条：lint 的
     `make fix` 会去改 legacy/ 的文件，改完又不进本次 commit，凭空搅脏工作树。
     """
     from domain.lifecycle import checks
@@ -527,7 +527,7 @@ def test_precommit_gate_scopes_to_files_being_committed():
                            files=["cli/a.py"], repo=R, source="test", invoke_cwd=R)
     assert sgo.phase_paths(intent, "pre_commit") == ["cli/a.py"]
     res = checks.lint(R, paths=sgo.phase_paths(intent, "pre_commit"))
-    assert res.ok, f"legacy 不在 --files 里，不该拦下你的 commit：{res.summary}"
+    assert res.ok, f"legacy 不在 --file 里，不该拦下你的 commit：{res.summary}"
     assert "changed files under: cli" in res.summary and "legacy" not in res.summary
 
     # 对照：范围丢失（老行为 = 工作树全部脏文件）→ 被没打算提交的 legacy 拦下
@@ -608,9 +608,9 @@ def test_phase_scope_survives_a_clean_tree():
         return sgo.GitIntent(mode="commit", message="m", title="m", requested_branch=None,
                              target=target, base=f"origin/{target}", explicit_base=False,
                              files=files or [], repo=R, source="test", invoke_cwd=R)
-    assert sgo.phase_paths(intent(), "pre_commit") is None             # 无 --files → 工作树即答案
+    assert sgo.phase_paths(intent(), "pre_commit") is None             # 无 --file → 工作树即答案
     assert sgo.phase_paths(intent(), "post_commit") == ["cli/a.py"]
-    # `--files` 给了就是 pre_commit 的范围：只验你真要提交的那些，不把工作树里其它脏 component
+    # `--file` 给了就是 pre_commit 的范围：只验你真要提交的那些，不把工作树里其它脏 component
     # 拖进 gate（它有存量 lint 错误就会拦掉你的 commit——与本文件上面那条同一类失败）
     assert sgo.phase_paths(intent(files=["cli/a.py"]), "pre_commit") == ["cli/a.py"]
 
@@ -653,6 +653,53 @@ def test_lifecycle_checks_follow_changed_component():
     assert result.ok and result.advisory
     assert "changed files under: cli" in result.summary
     assert "make test passed" in result.summary
+
+
+def test_lifecycle_focuses_changed_tests_only_for_large_opted_in_suites():
+    """最多 20 个测试时全量；第 21 个起，Makefile 显式消费 TEST_FILES 才按 diff 聚焦。
+
+    focused 不是 Component 全量验证，不能盖原有 test stamp。没有 Make 契约则安全回退全量。
+    """
+    from domain.context import RepoContext
+    from domain.lifecycle import checks
+
+    def make_repo(name: str, count: int, *, focused: bool) -> str:
+        root = f"/tmp/{name}"
+        shutil.rmtree(root, ignore_errors=True)
+        os.makedirs(f"{root}/tests")
+        _git(root, "init", "-q", "-b", "main")
+        _git(root, "config", "user.email", "t@t.t")
+        _git(root, "config", "user.name", "t")
+        Path(f"{root}/pyproject.toml").write_text("[project]\nname = 'x'\nversion = '0'\n")
+        recipe = "@printf '%s' \"$(TEST_FILES)\" > observed\n" if focused else "@printf full > observed\n"
+        Path(f"{root}/Makefile").write_text(f"test:\n\t{recipe}")
+        for index in range(count):
+            Path(f"{root}/tests/test_{index}.py").write_text("def test_x(): pass\n")
+        _git(root, "add", "-A")
+        _git(root, "commit", "-qm", "init")
+        RepoContext.refresh_all(root)
+        return root
+
+    large = make_repo("dlut_focused_large", 21, focused=True)
+    changed = "tests/test_20.py"
+    Path(large, changed).write_text("def test_x(): assert True\n")
+    result = checks.test(large, paths=[changed])
+    assert result.ok and "focused 1 changed test file" in result.summary
+    assert Path(large, "observed").read_text() == changed
+    assert RepoContext.load(large).validation.component(".").last_test_at is None
+
+    small = make_repo("dlut_focused_small", 20, focused=True)
+    Path(small, changed.replace("20", "19")).write_text("def test_x(): assert True\n")
+    result = checks.test(small, paths=[changed.replace("20", "19")])
+    assert result.ok and "stamped" in result.summary
+    assert Path(small, "observed").read_text() == ""
+    assert RepoContext.load(small).validation.component(".").last_test_at is not None
+
+    no_contract = make_repo("dlut_focused_no_contract", 21, focused=False)
+    Path(no_contract, changed).write_text("def test_x(): assert True\n")
+    result = checks.test(no_contract, paths=[changed])
+    assert result.ok and "stamped" in result.summary
+    assert Path(no_contract, "observed").read_text() == "full"
 
 
 def test_partial_unit_lint_failure_does_not_unlock_bare_commit():

@@ -28,7 +28,7 @@ devloop 的两个杠杆沿循环分布：**状态源 + Board**（软提示）覆
 | 3 | 开发（编辑与命令） | `PreToolUse` | `tool_call_timeline` 记录原始调用；策略引擎规则处理编辑面（owner / branch merged / requirements）与命令面（保护分支 / checkout owner / worktree add / add-all / workspace cwd / pytest / pip / precommit gate） | 最近一小时的调用起点追加到 repo 的 `.devloop/tool-calls.jsonl`；策略 deny 或放行，全部 fail-open |
 | 3' | 开发后效 | `PostToolUse` / `PostToolUseFailure` | `tool_call_timeline`；`posttool_git_refresh` | 时间线追加完成结果并滚动清理；git 状态命令后按**位置感知的有效目录**刷新对应 repo 的 branch 段。时间线不参与 validation gate，验证是否过期仍由内容指纹判定 |
 | 4 | 验证 | `/lint` `/test` | `run_fixlint` / `run_tests` → `lifecycle.checks` | 按 component 盖 validation 戳（该 component 的 lint/test 时间 + lint 通过那刻的内容指纹） |
-| 5 | 提交 / PR | `/gcam` `/gcamp` `/gcampr` | `commit_flow`（PLAN banner 自陈） | 新分支 cut 自 `origin/<target>`（base 由意图定）；`--files` 收敛 staging；外来提交自检；建 PR 后触发一次 `poll_pr_status` |
+| 5 | 提交 / PR | `/gcam` `/gcamp` `/gcampr` | `commit_flow`（PLAN banner 自陈） | 新分支 cut 自 `origin/<target>`（base 由意图定）；可重复的 `--file` 收敛 staging；外来提交自检；建 PR 后触发一次 `poll_pr_status` |
 | 5b | 在途 PR/MR rebase | `smart_rebase.sh start/continue/finish` | `domain.rebase`（worktree-local transaction） | start 在改写前保存远端 source SHA；finish 用精确 `force-with-lease`，远端移动即拒绝覆盖 |
 | 6 | 等人工 merge | monitors 周期轮询 | `poll_pr_status` | 写 `pr.json` 窗口 → 当前分支派生为 in-flight，Board turn item 软提示 |
 | 7 | merge 后下一轮 | （人工，AI 范围外） | — | 分支派生为 inactive，编辑被硬拦；回到第 1 拍，从最新 `origin/<target>` 切新分支 |

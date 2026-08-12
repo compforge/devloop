@@ -121,14 +121,23 @@ handler 手里只有 `repo`。想知道「本次改动涉及哪些 component」�
 
 | 相位 | 「本次改动」是什么 | 怎么算 |
 |---|---|---|
-| `pre_commit` | **将要提交的**那些文件 | 有 `--files` → 就是它；没有 → `None`，handler 读工作树（那时工作树就是全部，语境一致） |
+| `pre_commit` | **将要提交的**那些文件 | 有 `--file` → 就是它；没有 → `None`，handler 读工作树（那时工作树就是全部，语境一致） |
 | `post_commit` | 刚落地的那个 commit 自身 | `committed_paths`（`diff-tree --root`，根 commit 也能答） |
 | `pre_mr` / `post_mr` | 整条分支 vs target（MR 承载的是整条分支，不是最后那个 commit） | `range_paths`（三点 `base...head`，避免把别人的提交算成你的） |
 
 冻结还顺带解决一个并发问题：同相位的 lint 与 test 是并发跑的，而 lint 的 `make fix` 会改工作
 树——两个 handler 各自现算范围就可能算出**不同**的集合。算一次、传下去，它们必然一致。
 
-`--files` 尤其要进 pre_commit 的范围：它是「工作树所有脏文件」的**子集**。拿超集当范围，会把你压根不打算提交的 component 拖进 gate——它有存量 lint 错误就拦掉你的 commit（与本表存在的理由同一类失败，只是换了扇门），且 lint 的 `make fix` 会去改那些 component、改完又不进本次 commit，凭空搅脏工作树。故 `--files` 在 `commit_flow.main` 归一**一次**（仓根相对），gate 与 staging 共用同一份——各自归一必然漂。
+可重复的 `--file` 尤其要进 pre_commit 的范围：它是「工作树所有脏文件」的**子集**。拿超集当范围，会把你压根不打算提交的 component 拖进 gate——它有存量 lint 错误就拦掉你的 commit（与本表存在的理由同一类失败，只是换了扇门），且 lint 的 `make fix` 会去改那些 component、改完又不进本次 commit，凭空搅脏工作树。故路径列表在 `commit_flow.main` 归一**一次**（仓根相对），gate 与 staging 共用同一份——各自归一必然漂。
+
+### 小测试套件优先全量
+
+test handler 从相位已经冻结的 path list 中识别改动测试。Component 的测试文件不超过内置小套件
+阈值时始终执行完整 `make test`；超过阈值且 Makefile 显式消费 `TEST_FILES` 时，才通过
+`make test TEST_FILES="..."` 执行改动测试。没有改动测试或项目未采用该 Make 契约时回退全量。
+
+focused 结果只说明本轮选中的测试通过，不更新 Component 的全量 test validation；手工
+`run_tests.py` 没有 lifecycle phase scope，也继续执行全量测试。
 
 **`None` 与 `[]` 是两种语义，不能抹平**：`None` = 不知道范围 → 全跑（保守）；`[]` = 知道且
 为空 → 0 个 component、干净跳过。git 算不出时（如 `origin/<target>` 尚未 fetch）一律返回 `None`

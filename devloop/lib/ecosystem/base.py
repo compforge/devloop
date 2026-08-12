@@ -53,3 +53,7 @@ class Ecosystem:
     def fallback_test_command(self, path: str | Path) -> tuple[str, ...] | None:
         """无 Makefile 时本生态的 canonical test 命令（如 `go test ./...`）。默认没有。"""
         return None
+
+    def is_test_file(self, path: str | Path) -> bool:
+        """`path` 是否是可独立交给 test runner 的测试文件。默认不识别。"""
+        return False

@@ -9,14 +9,14 @@ verdict 形状相同——都是「在某个 git 生命周期相位触发的一�
 包内分工：
 - `base.py`  —— facade 核心：`dispatch` + `HookResult` / `BackgroundSpec` / `DispatchResult`
   + 内置 hook 注册表。纯机制。
-- `checks.py` —— 内置 inline-gate handler（`lint` / `test`），与 fix-lint / run-test skill 共用同
-  一段逻辑、同处盖 `.devloop` validation 戳（单一事实源，不漂移）。
+- `checks.py` —— Component normalize + 内置 `lint` / `test` checks，与 validate skill 共用同一段
+  逻辑、同处盖 `.devloop` validation 戳（单一事实源，不漂移）。
 - （MR2）`review.py` —— code-review 的 signal handler，返回带 `relay` 的 HookResult。
 
 **模型**（详见 `docs/lifecycle-hooks.md`）：
 
-- **hook 只有一种，都是阻塞的**。`dispatch` 并发起一个相位上的全部 hook、join 等全部返回，
-  再聚合（`lint ‖ test` 同跑，墙钟 = 最慢那个）。
+- **hook 只有一种，都是阻塞的**。有 lint check 时先 normalize，再并发起相位上的全部 hook、
+  join 等全部返回并聚合（`normalize → lint ‖ test`）。
 - **「非阻塞」不是 hook 的属性**，而是某个 hook 体只描述异步下游：它返回一个 `relay`
   （`BackgroundSpec`）。`dispatch` 自身永远同步，只收集 relay；调用方在 git 动作完成后
   detach 执行，结果写入结构化状态或外部系统，由下一轮 Board 或 Baton/reqloop 观察。

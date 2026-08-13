@@ -31,7 +31,7 @@ managed-worktree 脚本创建或复用 worktree 后，按 component 枚举并调
 frozen 恢复；失败则返回明确的 environment setup failure，不伪装成 TypeScript、lint 或测试
 代码错误。
 
-同一 lifecycle 相位会并发跑 lint/test，因此 `ensure_ready` 对每个 component 做 single-flight，
+normalize 后同一 lifecycle 相位会并发跑 lint/test，因此 `ensure_ready` 对每个 component 做 single-flight，
 锁内重查环境，只允许一个线程写同一份依赖目录。
 
 ## 关键设计

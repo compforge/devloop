@@ -558,7 +558,10 @@ def test_dispatch_reaches_the_real_lint_handler():
     os.makedirs(f"{R}/cli"); os.makedirs(f"{R}/.devloop")
     _git(R, "init", "-q"); _git(R, "config", "user.email", "t@t.t"); _git(R, "config", "user.name", "t")
     Path(f"{R}/cli/pyproject.toml").write_text("[project]\nname = 'cli'\nversion = '0'\n")
-    Path(f"{R}/cli/Makefile").write_text("lint:\n\ttrue\ntest:\n\ttrue\n")
+    Path(f"{R}/cli/Makefile").write_text(
+        "fix:\n\t@printf normalized > normalized\n"
+        "lint:\n\t@test -f normalized\n"
+        "test:\n\t@test -f normalized\n")
     Path(f"{R}/.devloop/config.json").write_text(
         _json.dumps({"lifecycle": {"repos": {R: {"pre_commit": ["lint", "test"]}}}}))
     _git(R, "add", "-A"); _git(R, "commit", "-qm", "init")
@@ -572,6 +575,7 @@ def test_dispatch_reaches_the_real_lint_handler():
     assert res.proceed, [f"{r.name}: {r.summary}" for r in res.results]
     assert all("errored" not in r.summary for r in res.results), \
         [r.summary for r in res.results]        # TypeError 会被 fail-closed 收敛成这个形状
+    assert Path(f"{R}/cli/normalized").is_file(), "normalize 必须在 lint/test checks 前完成"
     # 范围确实下传到了真 handler（而不是被它自己重算）
     assert all("changed files under: cli" in r.summary for r in res.results)
 
@@ -635,7 +639,7 @@ def test_phase_scope_survives_a_clean_tree():
 
 
 def test_lifecycle_checks_follow_changed_component():
-    """gcampr lifecycle 与 run-test 必须共用 WorkSet：只改 cli 时不得跑仓根 test。"""
+    """gcampr lifecycle 与 validate 必须共用 WorkSet：只改 cli 时不得跑仓根 test。"""
     from domain.lifecycle import checks
 
     R = "/tmp/dlut_lifecycle_unit"
@@ -700,6 +704,12 @@ def test_lifecycle_focuses_changed_tests_only_for_large_opted_in_suites():
     result = checks.test(no_contract, paths=[changed])
     assert result.ok and "stamped" in result.summary
     assert Path(no_contract, "observed").read_text() == "full"
+
+    manual = make_repo("dlut_focused_manual", 1, focused=True)
+    result = checks.test(manual, extra=["TEST_FILES=tests/test_0.py"])
+    assert result.ok and "narrowed by explicit test arguments" in result.summary
+    assert Path(manual, "observed").read_text() == "tests/test_0.py"
+    assert RepoContext.load(manual).validation.component(".").last_test_at is None
 
 
 def test_partial_unit_lint_failure_does_not_unlock_bare_commit():

@@ -29,7 +29,7 @@ devloop 通过两个控制杠杆落实这条生命周期：**Board 上下文投�
 | `/gcamp "<msg>"` | commit + push |
 | `/gcampr "<msg>" [--branch <name>]` | commit + push + 建/复用 PR/MR |
 
-lint / test 无独立 slash 命令：正常由 gcam* 的 `pre_commit` gate 自动触发；手动跑走 fix-lint / run-test skill（自然语言"修下 lint"/"跑下测试"）。两条路径**共用同一套 component 选择**，所以 gate 替你跑的和你手动跑的永远是同一批 component；每次执行会自述本轮选了哪些 component、为什么（`changed files under: cli` / `clean tree, all components: …`），选错一眼可见，不用等错的测试跑完再猜。
+validation 无独立 slash 命令：正常由 gcam* 的 `pre_commit` gate 自动触发；手动验证走 validate skill（自然语言“验证改动”“修下 lint”“跑下测试”）。完整验证先 normalize，再并发执行 lint/test checks；只请求其中一项属于部分验证。两条路径**共用同一套 component 选择**，所以 gate 替你跑的和你手动跑的永远是同一批 component；每次执行会自述本轮选了哪些 component、为什么（`changed files under: cli` / `clean tree, all components: …`），选错一眼可见，不用等错的测试跑完再猜。
 
 进入子项目直接 `cd`。需要并发隔离 checkout 时，agent 使用
 `python3 "<PLUGIN_ROOT>/scripts/checkout.py" <repo> --worktree <tag>`，该脚本只为受控
@@ -37,7 +37,7 @@ worktree 生命周期保留，不作为 slash command 暴露。
 
 保护 / 过期分支上，gcam* 需 `--branch <name>`，脚本会从 `origin/<target>` 切新分支（不给会拒绝并提示）。
 
-gcam* 与 fix-lint / run-test 都不依赖 cwd：默认解析 cwd 所在仓库，在 workspace 根则兜底到最近活跃子项目；用 `--repo <name|path>` 显式指定，无需 `cd` 前缀。
+gcam* 与 validate 都不依赖 cwd：默认解析 cwd 所在仓库，在 workspace 根则兜底到最近活跃子项目；用 `--repo <name|path>` 显式指定，无需 `cd` 前缀。
 
 已有 PR/MR 分支需要 rebase 时，使用独立事务；`finish` 只发布现有的重写历史，不需要 commit message：
 

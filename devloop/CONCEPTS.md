@@ -112,7 +112,7 @@ schema / TTL / cap 数值在 `domain/context/base.py`，不在文档复述。
 
 ## 脚本的 repo 解析
 
-commit_flow / run_fixlint / run_tests 与 cwd 解耦（session cwd 在聚合工作区常驻 workspace 根）：repo 按"显式参数（`--repo` 名/路径）→ cwd 所在仓库 → 本 session 绑定的最近活跃仓（`active/<sid>.json`，见〈Session 运行态〉）"解析，解析来源自述在输出/PLAN 里。本 session 无绑定即拒绝兜底，报错附其它 session 的活跃仓做候选提示。名字统一走 `domain/repo.py` 的模糊匹配。
+commit_flow / run_validate / run_lint / run_tests 与 cwd 解耦（session cwd 在聚合工作区常驻 workspace 根）：repo 按"显式参数（`--repo` 名/路径）→ cwd 所在仓库 → 本 session 绑定的最近活跃仓（`active/<sid>.json`，见〈Session 运行态〉）"解析，解析来源自述在输出/PLAN 里。本 session 无绑定即拒绝兜底，报错附其它 session 的活跃仓做候选提示。名字统一走 `domain/repo.py` 的模糊匹配。
 
 ## 占位符 `<PLUGIN_ROOT>`
 

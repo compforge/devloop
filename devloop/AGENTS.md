@@ -73,8 +73,8 @@ devloop/
 │   └── pretool_*.py               # 命令/编辑硬拦截（guard harness；含 owner 锁与裸 worktree add 拦截）
 ├── scripts/                        # 工作流驱动 adapter：enter / commit_flow + smart_* / pr / release / lint/test/review / init_*
 ├── monitors/monitors.json          # ★PR-sweep 后台轮询（替代 hook 心跳 scheduler）
-├── commands/                       # slash：enter / gcam / gcamp / gcampr（lint/test 归 skill，gate 自动触发）
-├── skills/                         # git-ops / gcam / gcamp / gcampr / fix-lint / run-test
+├── commands/                       # slash：enter / gcam / gcamp / gcampr（validation 归 skill，gate 自动触发）
+├── skills/                         # git-ops / gcam / gcamp / gcampr / validate
 └── config/                         # config.example.json 模板；全局配置在 ~/.devloop/config.json，repo/workspace 可在 .devloop/config.json 就近覆盖
 ```
 

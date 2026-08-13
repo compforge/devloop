@@ -39,7 +39,7 @@ harness 不跟踪、跑完不会 re-invoke 会话）——异步靠某个 hook �
 | 对象 | 位置 | 职责 |
 |---|---|---|
 | `dispatch` / `HookResult` / `BackgroundSpec` | `domain/lifecycle/base.py` | facade：并发 join + 聚合；纯机制 |
-| `lint` / `test` handler | `domain/lifecycle/checks.py` | 内置 inline gate handler（与 `/lint` `/test` 共用同一段逻辑） |
+| normalize + `lint` / `test` checks | `domain/lifecycle/checks.py` | 内置 Component validation（与 validate skill 共用） |
 | `run_lifecycle_gate` / `phase_paths` | `scripts/commit_flow.py` | 在 commit/mr 流水线里的 dispatch 插点 + 算出本相位「本次改动」的范围 |
 | `select_components` / `committed_paths` / `range_paths` | `domain/repo.py` | 范围 → component 投影；各相位取「本次改动」的 git 问法 |
 | `PrecommitGateRule` | `hooks/rules/command/precommit_gate.py` | 裸 `git commit` 的兜底守卫（查戳，不跑） |
@@ -63,13 +63,13 @@ no-op、零行为变化**。配置形如（`default` 叠 `repos[<abs>]`，分层
 
 ```
 resolve_intent → prepare_branch
-              → run_lifecycle_gate(pre_commit)   ← 跑 lint‖test，盖戳，失败即中止
-              → stage_and_commit                  ← lint 的 `make fix` 改的文件在此被收进 commit
+              → run_lifecycle_gate(pre_commit)   ← normalize → lint‖test，盖各 check 戳
+              → stage_and_commit                  ← normalize 改的文件在此被收进 commit
               → run_lifecycle_gate(pre_mr)         ← 仅 mr 模式；默认空
               → publish (push / 建 MR)
 ```
 
-- `pre_commit` 故意排在 staging **之前**：lint 的 `make fix` 会改文件，这些改动要被随后的
+- `pre_commit` 故意排在 staging **之前**：normalize 的 `make fix` 会改文件，这些改动要被随后的
   stage 收进同一个 commit。
 - **硬拦截** gate 失败（lint `ok=False`）→ 抛 `SmartError`、中止、PLAN 显示 `pre_commit: lint ✗`、
   commit 不发生。**软提示**失败（test `ok=False`）→ PLAN 显示 `test ⚠` + 一行通报、**commit 照常**。
@@ -101,12 +101,15 @@ dispatch 对 handler 抛异常一律收敛成 `ok=False`（fail-closed：把关�
 **handler 自己 catch 内部异常、恒返回 `ok=True`（必要时带告警 summary、不带 relay）**
 来保证，是 handler 的契约，不是 dispatcher 的特例。dispatcher 因此保持极简：一种行为。
 
-### 为什么 lint/test 逻辑在 `domain/lifecycle/checks`
+### 为什么 validation 逻辑在 `domain/lifecycle/checks`
 
-`/lint` `/test` 命令与 lifecycle 的 pre_commit gate 必须跑**同一段**逻辑、在**同一处**盖
-戳，否则两条路会漂移（命令绿、gate 红或反之）。故 target 选择（`lint-ci` 优先于 `lint`
-对齐 CI）、warm-cache 清理、盖戳都在 `domain/lifecycle/checks`；`scripts/run_fixlint.py` /
-`run_tests.py` 是薄 CLI 包装（只做 repo 解析 + 实时输出 + 退出码）。
+validate skill 与 lifecycle pre_commit gate 必须跑**同一段**逻辑、在**同一处**盖各 check
+戳，否则手工验证和 gate 会漂移。component 选择、normalize、lint/test target、warm-cache 清理
+和盖戳都在 `domain/lifecycle/checks`；`scripts/run_validate.py` / `run_lint.py` / `run_tests.py`
+是 CLI adapter。
+
+`make fix` 是 validation 的 normalize 前置，不属于 lint check。dispatcher 必须等 normalize 完成，
+再并发启动只读 lint/test；否则 test 会与 fixer 同时读写代码树，两个 check 验证的不是同一份内容。
 
 ### 「本次改动」的范围由相位边界给，不由 handler 猜
 
@@ -125,10 +128,10 @@ handler 手里只有 `repo`。想知道「本次改动涉及哪些 component」�
 | `post_commit` | 刚落地的那个 commit 自身 | `committed_paths`（`diff-tree --root`，根 commit 也能答） |
 | `pre_mr` / `post_mr` | 整条分支 vs target（MR 承载的是整条分支，不是最后那个 commit） | `range_paths`（三点 `base...head`，避免把别人的提交算成你的） |
 
-冻结还顺带解决一个并发问题：同相位的 lint 与 test 是并发跑的，而 lint 的 `make fix` 会改工作
-树——两个 handler 各自现算范围就可能算出**不同**的集合。算一次、传下去，它们必然一致。
+冻结还顺带解决一个并发问题：normalize 会改工作树，后续并发 checks 各自现算范围就可能得到
+**不同**的集合。算一次、传下去，它们必然一致。
 
-可重复的 `--file` 尤其要进 pre_commit 的范围：它是「工作树所有脏文件」的**子集**。拿超集当范围，会把你压根不打算提交的 component 拖进 gate——它有存量 lint 错误就拦掉你的 commit（与本表存在的理由同一类失败，只是换了扇门），且 lint 的 `make fix` 会去改那些 component、改完又不进本次 commit，凭空搅脏工作树。故路径列表在 `commit_flow.main` 归一**一次**（仓根相对），gate 与 staging 共用同一份——各自归一必然漂。
+可重复的 `--file` 尤其要进 pre_commit 的范围：它是「工作树所有脏文件」的**子集**。拿超集当范围，会把你压根不打算提交的 component 拖进 gate——它有存量 lint 错误就拦掉你的 commit（与本表存在的理由同一类失败，只是换了扇门），且 normalize 会去改那些 component、改完又不进本次 commit，凭空搅脏工作树。故路径列表在 `commit_flow.main` 归一**一次**（仓根相对），gate 与 staging 共用同一份——各自归一必然漂。
 
 ### 小测试套件优先全量
 

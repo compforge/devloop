@@ -348,7 +348,7 @@ def test_message_required_with_hint():
 def test_cli_repo_arg_flag_and_positional_equivalent():
     """The shared repo-target arg (lib.cli): --repo and the bare positional are equivalent
     spellings, the flag wins when both appear, and --repo is no longer swallowed as a
-    positional — the original bug that made `run_fixlint.py --repo /x` die with
+    positional — the original bug that made `run_lint.py --repo /x` die with
     "no subproject matches '--repo'"."""
     from lib import cli
     ap = cli.ArgParser(prog="t")

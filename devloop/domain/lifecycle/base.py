@@ -17,6 +17,12 @@ _BUILTIN: dict[str, str] = {
     "review": "domain.lifecycle.review:review",   # signal hook：后台审全量改动、写 review.json + 有开放 MR 时发评论（挂哪相位由 config 决定）
 }
 
+# check → preparation handler。与 _BUILTIN 一样只存惰性调用规格；dispatch 负责按依赖顺序执行，
+# 不理解 normalize/fix 的业务含义。多个 check 将来可各自声明 preparation，而无需给机制加分支。
+_PREPARER: dict[str, str] = {
+    "lint": "domain.lifecycle.checks:normalize",
+}
+
 
 @dataclass(frozen=True)
 class BackgroundSpec:
@@ -88,6 +94,15 @@ def resolve_handler(name: str) -> Callable[..., HookResult] | None:
     return getattr(import_module(mod), fn)
 
 
+def resolve_preparer(name: str) -> Callable[..., HookResult] | None:
+    """check name → preparation handler；没有顺序依赖时返回 None。"""
+    spec = _PREPARER.get(name)
+    if not spec:
+        return None
+    mod, fn = spec.split(":", 1)
+    return getattr(import_module(mod), fn)
+
+
 def dispatch(
     phase: str,
     repo: str,
@@ -103,8 +118,8 @@ def dispatch(
     这是 handler 拿不到、也猜不出来的那半上下文：每个相位的答案不同（pre_commit 是将提交的脏
     文件、post_commit 是刚落地那个 commit、pre_mr 是整条分支 vs target），而 handler 手里只有
     `repo`，只能去读工作树——commit 之后工作树是干净的，那个答案会被读成「不知道范围」进而退化
-    成跑全仓。冻结还顺带让同相位的 lint 与 test 看到**同一个**范围：lint 的 `make fix` 会改工作
-    树，各自现算就可能算出两个不同的集合。
+    成跑全仓。冻结还让 normalize 与同相位的 lint/test checks 看到**同一个**范围；否则 fixer 改过
+    工作树后，各自现算可能得到两个不同集合。
     `None` = 调用方也不知道范围，由 handler 自行判定（保持 CLI 语境的老行为）。
 
     `names` 省略时从 `config.lifecycle(repo)[phase]` 读（opt-in，默认空 → no-op）。
@@ -124,7 +139,23 @@ def dispatch(
     if not names:
         return DispatchResult(phase=phase, results=[])
 
+    preparation_failures: dict[str, HookResult] = {}
+    if registry is None:
+        # 真实内置 checks 先完成各自声明的 preparation，再进入并发区；测试注入 registry 不触盘。
+        for name in names:
+            preparer = resolve_preparer(name)
+            if preparer is None:
+                continue
+            try:
+                prepared = preparer(repo, paths=paths)
+                if not prepared.ok:
+                    preparation_failures[name] = HookResult(name, ok=False, summary=prepared.summary)
+            except Exception as e:  # gate fail-closed
+                preparation_failures[name] = HookResult(name, ok=False, summary=f"preparation errored: {e}")
+
     def _run(name: str) -> HookResult:
+        if name in preparation_failures:
+            return preparation_failures[name]
         handler = (registry or {}).get(name) or resolve_handler(name)
         if handler is None:
             return HookResult(name=name, ok=False, summary=f"unknown lifecycle hook {name!r}")

@@ -60,7 +60,7 @@ class WorkspaceCwdRule(Rule):
                     "Running a subproject-level command here will fail or misbehave.\n"
                     "Either `cd <subproject>` first, or use the devloop scripts, "
                     "which resolve the repo themselves (smart_gcam* accept --repo <name|path>; "
-                    "run_fixlint/run_tests take it as the first argument)."
+                    "run_validate/run_lint/run_tests take it as the first argument)."
                     f"{hint}{active_hint}"
                 ),
                 locator=" ".join(target.argv),

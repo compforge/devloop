@@ -424,7 +424,7 @@ class RepoContext:
     # ── mutators (each touches exactly one segment) ─────────────────────────────
     def mark_lint_passed(self, cid: str, fingerprint: str) -> None:
         """`fingerprint` 必填、且必须是**刚验过的那份内容**的指纹（lint 跑完后现算，不是跑之前）——
-        lint 的 `make fix` 会改文件，跑前算的指纹配不上跑后的树。空串 = 算不出，gate 会按未验证
+        normalize 的 `make fix` 会改文件，跑前算的指纹配不上跑后的树。空串 = 算不出，gate 会按未验证
         处理（fail-closed）。"""
         u = self.validation.of(cid)
         u.last_lint_at = base.now()

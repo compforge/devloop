@@ -409,7 +409,7 @@ def resolve_repo_dir(query: str | None, cwd: str | Path = ".") -> tuple[Repo | N
                 by_path[candidate[2]] = candidate
         scored = list(by_path.values())
         if not scored:
-            # Not a known subproject — maybe a bare relative dirname (`run_fixlint.py devloop`).
+            # Not a known subproject — maybe a bare relative dirname (`run_validate.py devloop`).
             p = cwd / query
             root = repo_layout.find_git_root(p) if p.is_dir() else None
             if root:

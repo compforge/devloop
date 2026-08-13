@@ -1,6 +1,6 @@
-"""内置 inline-gate handler：`lint` / `test`。
+"""Component validation：normalize 后执行 `lint` / `test` checks。
 
-这两个 hook 与 fix-lint / run-test skill（run_fixlint.py / run_tests.py）是同一段逻辑、
+这些 checks 与 validate skill（run_lint.py / run_tests.py / run_validate.py）是同一段逻辑、
 同一处盖 `.devloop` validation 戳——skill 侧是 CLI 入口，gate 侧是 dispatch 调用，跑的是
 这里。stamp 在通过时盖，所以裸 `git commit` 的守卫（`rules/command/precommit_gate`）查到
 的戳与 dispatch 跑出的结果一致。
@@ -114,9 +114,32 @@ def _changed_test_files(repo: str, component: Component, paths: list[str]) -> li
     return selected
 
 
+def normalize(repo: str, *, capture: bool = True, component: Component | None = None,
+              paths: list[str] | None = None) -> HookResult:
+    """在 checks 前执行 Component 的可选 `make fix`；它是准备步骤，不是验证结果。
+
+    lifecycle 与手动 validate 都必须先完成 normalize，再让 lint/test 并发观察同一份稳定代码。
+    fixer 的退出码不直接判定验证：部分 fixer 会用非零表示改过文件，后续只读 lint 才是权威结果。
+    """
+    if component is None:
+        ws = repo_model.select_components(repo, paths=paths)
+        results = [normalize(repo, capture=capture, component=u) for u in ws.components]
+        return _aggregate("normalize", ws.reason, results)
+    if not component.has_target("fix"):
+        return HookResult("normalize", ok=True, summary=f"no make fix target in {component.path} — skipped")
+    env_failure = _environment_failure("normalize", component)
+    if env_failure is not None:
+        return env_failure
+
+    sink: list[str] = []
+    rc = _make(component.path, "fix", capture=capture, sink=sink)
+    suffix = "" if rc == 0 else f" (exit {rc}; lint remains authoritative)"
+    return HookResult("normalize", ok=True, summary=f"make fix completed{suffix}")
+
+
 def lint(repo: str, *, capture: bool = True, component: Component | None = None,
          paths: list[str] | None = None) -> HookResult:
-    """`make fix` 后跑 lint target；通过则盖 lint 戳。只有 `make fix` 能改文件——此处从不手改代码。
+    """跑只读 lint target；通过则给当前内容指纹盖 lint 戳。
 
     `component` 给出即用它（CLI 已按操作目标选好）；否则是 lifecycle gate 入口，按本次改动选 WorkSet
     并 fan-out，避免多 component 仓静默回落 server / 仓根。`paths`（相位边界冻结的改动范围）给出即用它，
@@ -137,8 +160,6 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
         return env_failure
 
     sink: list[str] = []
-    if component.has_target("fix"):
-        _make(code_dir, "fix", capture=capture, sink=sink)   # 可改文件；rc 忽略（fixer 非零正常）
     shutil.rmtree(Path(code_dir) / ".mypy_cache", ignore_errors=True)
     rc = _make(code_dir, target, capture=capture, sink=sink)
     if rc == 0:
@@ -155,7 +176,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
          component: Component | None = None, paths: list[str] | None = None) -> HookResult:
     """跑 component 的 canonical test 命令（Make target 或 Go module 的 `go test ./...`）；
     通过则盖 test 戳。无 test 命令 → 干净跳过。`component` 给出即用它；否则按本次改动
-    选 WorkSet 并 fan-out，使 gcampr lifecycle 与 run-test skill 的选择逻辑一致。
+    选 WorkSet 并 fan-out，使 gcampr lifecycle 与 validate skill 的选择逻辑一致。
     `paths` 同 `lint`：相位边界冻结的改动范围，给出即用它，不自己读工作树。
 
     **advisory（软提示）**：失败只通报、不阻断 commit/MR。test 挂常因基线坏测 / 环境，与本次
@@ -180,6 +201,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         return env_failure
 
     extra = extra or []
+    explicitly_narrowed = bool(extra)
     focused_files: list[str] = []
     focused = False
     if paths is not None and not extra and _has_large_test_suite(component):
@@ -207,6 +229,14 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 ok=True,
                 advisory=True,
                 summary=f"{display} passed — focused {len(focused_files)} changed test file(s); "
+                        "component test stamp unchanged",
+            )
+        if explicitly_narrowed:
+            return HookResult(
+                "test",
+                ok=True,
+                advisory=True,
+                summary=f"{display} passed — narrowed by explicit test arguments; "
                         "component test stamp unchanged",
             )
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)

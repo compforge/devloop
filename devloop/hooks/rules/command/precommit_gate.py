@@ -45,7 +45,7 @@ class PrecommitGateRule(Rule):
         required = [u for u in ws.components if u.lint_target() is not None]
         if not required:
             # 本轮没有任何带 lint target 的 component：dispatch 的 lint 对它们本来就是干净跳过、永远
-            # 盖不出戳，硬要戳等于把裸 commit 锁死（跑 fix-lint 也解不开）。与 checks.lint 对齐。
+            # 盖不出戳，硬要戳等于把裸 commit 锁死（跑 validate 也解不开）。与 checks.lint 对齐。
             return []
         # 通行证 = 「lint 跑过」+「跑的就是现在这份内容」。第二条比指纹，不比编辑计数：计数由
         # PostToolUse 报，而它认不出 apply_patch / MultiEdit / Bash 里的改动——那个 0 的意思是
@@ -65,6 +65,6 @@ class PrecommitGateRule(Rule):
         parts = ["⚠️  Refusing `git commit`: lint is in the pre_commit gate and is stale."]
         for cid, why in unverified:
             parts.append(f"  {cid}: {why}")
-        parts.append("Commit via gcam/gcampr instead (the gate runs lint inline), or run the fix-lint skill, then retry.")
+        parts.append("Commit via gcam/gcampr instead (the gate validates inline), or run the validate skill, then retry.")
         parts.append("Adjust the gate under `lifecycle` in ~/.devloop/config.json.")
         return [Finding(rule=self.name, severity=Severity.DENY, message="\n".join(parts), locator=" ".join(target.argv))]

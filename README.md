@@ -2,139 +2,123 @@
 
 # devloop
 
-**A controlled PR/MR development lifecycle for AI coding agents.** This repository is a cross-CLI plugin marketplace. Its flagship plugin, `devloop`, guides Claude Code and Codex through repo entry, branch development, affected-component validation, commit/push, PR/MR creation, and resumable conflict rebases with an exact-SHA `force-with-lease`, while keeping merge in human hands. It supports both **GitHub (PR)** and **GitLab (MR)**, selected from each repo's origin; `example` remains a placeholder for the marketplace's multi-plugin structure.
+**A controlled PR/MR development lifecycle for AI coding agents.**
 
-> Claude Code and Codex are supported. Design / architecture: [AGENTS.md](./AGENTS.md). Each plugin's own docs live in its directory.
+This repository is a cross-CLI plugin marketplace. Its flagship plugin, `devloop`, helps Claude Code and Codex complete branch-based development without losing control of repository state, validation, Git mutations, or concurrent sessions.
 
-## The development lifecycle
-
-```
-enter repo → develop on branch → validate affected Components → commit / push → open PR/MR → human merge
+```text
+enter repo → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
 ```
 
-The domain spine is **PR/MR → Repo → Component**: every PR/MR belongs to one repo, and each repo may contain multiple components with independent build/lint/test toolchains. A workspace is an optional context that aggregates multiple repos; plain single-repo use is fully supported.
+devloop supports GitHub PRs and GitLab MRs, selected from each repository's origin. Merge remains a human decision.
 
-The branch is the development axis. For concurrent sessions, a worktree is a special form of branch that provides an isolated checkout; devloop's managed-worktree helper handles creation, reuse, dependency preparation, and cleanup. devloop then projects the current change onto affected components and records validation at the same granularity.
+## Why devloop
 
-## The problem
+AI coding often loses time at the boundaries around the code:
 
-When you code with an AI agent, the time sink usually isn't "is the code correct" — it's three **structural losses**:
+- **Information lag** — the agent guesses the current repository, branch, PR/MR, and validation state from conversation history.
+- **Soft conventions do not enforce themselves** — instructions such as “do not commit to main” or “do not use `git add -A`” can still be bypassed without execution-level guards.
+- **Concurrent sessions collide** — multiple agents sharing one checkout can switch branches underneath each other, mix uncommitted work, or resolve an operation to the wrong repository.
 
-1. **Information lag** — the agent doesn't know the real git / workspace state and guesses from chat history. Classic failure: it grinds away on a feature branch whose MR was *already merged* (and source branch deleted) on the server, never realizing until commit-time preflight stops it — forcing a re-branch + re-commit + re-MR every time.
-2. **Soft conventions can't enforce** — "don't commit to master", "don't `git add -A`" are just prompts. When the agent decides not to follow them, you have **no execution-level interception**. Committing to a protected branch, staging stray sensitive files, editing on a stale branch — all happen for real.
-3. **Concurrent sessions collide** — running several CLI sessions (or several agents) on one workspace is routine, but they share checkouts and state: a second session switches the branch under the first one's feet and scrambles its uncommitted work, or one session's no-arg command silently resolves to the repo *another* session just touched. Out of the box, nothing arbitrates who owns what.
+devloop turns those boundaries into a reusable development loop: live context tells the agent where it is, controlled transactions own Git side effects, validation runs against affected Components, and managed worktrees isolate concurrent work.
 
-## How devloop keeps the lifecycle controlled
+## What the devloop plugin provides
 
-- **A state bus eliminates information lag.** The current subproject's branch / working tree / recent MRs / validation state is injected into *every* prompt, so the agent knows reality before it edits the first line.
-- **Hard intercepts turn soft conventions into execution-level boundaries.** `PreToolUse` hooks return `deny`; the agent cannot route around them.
+- **Controlled Git/PR transactions** — `gcam`, `gcamp`, and `gcampr` perform commit, commit + push, and commit + push + PR/MR respectively. New work starts from the intended target branch instead of inheriting accidental commits from the current HEAD.
+- **Affected-Component validation** — a repository may contain independent Components such as `server/`, `cli/`, or `packages/*`. devloop selects the Components touched by the change and records lint/test results at the same granularity.
+- **One validation model** — complete validation normalizes with `make fix`, then runs static-quality and behavioral checks concurrently through canonical Make targets. Lint or test alone is reported as partial validation.
+- **Current repository context** — branch, working tree, PR/MR, and validation facts are surfaced to the active session and refreshed as the development state changes.
+- **Execution-level guardrails** — high-confidence risks such as protected-branch commits, inactive-branch edits, broad staging, and unmanaged worktree creation are denied before they mutate the repository.
+- **Concurrent-session isolation** — checkout ownership prevents one session from changing another session's branch or tracked files and routes parallel work to a managed worktree.
+- **Safe PR/MR continuation** — an existing PR/MR can receive additional commits, review output, or a resumable conflict rebase without handing merge authority to the agent.
 
-Both levers share one hub: a structured state bus under `.devloop/`. State written on `git commit` / `cd` / background polling is reused across N later prompt injections and M protected-branch checks at zero extra cost.
+The stable domain spine is **PR/MR → Repo → Component**. A workspace is an optional context that groups multiple repositories; single-repository use is fully supported.
 
-Loss 3 is answered by **session-grain state** riding the same two levers: an owner lock per checkout (guests' branch switches and edits are denied, then routed to an isolated worktree form of the branch) plus a per-session repo binding (one session's fallback never resolves to another session's repo).
+For the validation contract, configuration, commands, and advanced workflows, see the [devloop plugin README](./devloop/README.md).
 
-## Design ideas worth knowing
+## Quick start
 
-**What to hard-block vs. soft-hint** — the rule: *no legal edit case → hard-block; a legal exception exists → soft-hint.* Your current branch is always in one of four states:
+Runtime requirement: **Python 3.10+**. Set `DEVLOOP_PYTHON` only when you need to force a specific interpreter.
 
-| State | Meaning | Handling |
-|-------|---------|----------|
-| protected | main / master / release* | **hard-block** commit/push |
-| healthy | normal feature branch, in progress | allow |
-| in-flight | PR/MR opened, awaiting human merge | **soft-hint** (inject one `IN-FLIGHT` line) |
-| inactive | PR/MR merged / closed | **hard-block** Edit/Write |
+### Claude Code
 
-`protected` and `inactive` hard-block cleanly — editing there has no legitimate reason. `in-flight` only hints, because there's a legal exception (you might be amending your own PR/MR) the machine can't reliably tell from new work, so it feeds the fact to the agent and lets it choose.
-
-**Structural guarantees, not just hints** — a new branch's base is decided by *intent, not by where HEAD happens to sit*: opening new work (`--branch`) always cuts from `origin/<target>`, and a freshly cut branch is asserted to carry only this run's commits before push/PR. So even if the agent ignores the `IN-FLIGHT` hint, forking off an in-flight branch can't smuggle its commits into the new PR.
-
-The source layout follows the same boundary: `devloop/domain/` owns the Workspace / Repo / Component domain, branch/PR state, and legal transitions, while `devloop/lib/` provides technical capabilities such as Git, forge, ecosystem, and config. `devloop/hooks/` and `devloop/scripts/` drive the domain from tool events and workflows, keeping LLM actions on a workspace/repo behind controlled entrypoints.
-
-**native-first** — every capability sits on the most native event primitive instead of a workaround:
-
-| Capability | Workaround (old) | devloop (native) |
-|------------|------------------|------------------|
-| project-enter awareness | regex-parse `cd` | **`CwdChanged`** auto-enter |
-| survive compaction | TTL safety-net (timed guess) | **`PostCompact`** → re-inject |
-| `AGENTS.md` changes | mtime polling | **`FileChanged`** + `watchPaths` |
-| PR/MR awareness / branch staleness | hook-heartbeat scheduler | **`monitors`** background poll |
-
-All git goes through one `gitcmd` seam, all code-review hosting through one `lib/forge` facade (GitHub / GitLab as peer adapters, picked per-repo), all user config through one `lib/config` seam. Every guard is **fail-open** — a broken guardrail at worst fails to block; it never blocks your work.
-
-## Boundary with requirement-level loops
-
-devloop owns the development loop inside a coding harness: branch work, validation, commit/push,
-PR/MR creation, review production, and execution guardrails. It emits durable development facts,
-but it does not own Requirement identity, cross-repository orchestration, long-running scheduling,
-or session wakeups. Those responsibilities belong to Baton and its
-[ReqLoop Marketplace](https://github.com/compforge/reqloop), which can observe devloop outcomes
-without turning devloop into a second control plane.
-
----
-
-## Install (Claude Code)
-
-Runtime requirement: **Python 3.10+**. devloop's launcher automatically selects the first supported
-`python3`, `python`, or versioned `python3.x` on `PATH`; set `DEVLOOP_PYTHON` to force a specific binary.
-
-```
+```text
 /plugin marketplace add https://github.com/compforge/devloop.git
 /plugin install devloop@devloop
 ```
 
-Optionally run init once (hooks also auto-init on first `cd` into a repo):
+### Codex
 
-```
-# Mode A: aggregate workspace (one root holding many git subprojects)
-"${CLAUDE_PLUGIN_ROOT}/scripts/python" "${CLAUDE_PLUGIN_ROOT}/scripts/init_workspace.py" <your-aggregate-workspace>
-
-# Mode B: a single git repo
-"${CLAUDE_PLUGIN_ROOT}/scripts/python" "${CLAUDE_PLUGIN_ROOT}/scripts/init_repo.py"
-```
-
-Forge features (PR/MR creation + state injection) need a token for your host (`GITHUB_TOKEN` / `GITLAB_TOKEN`, or the `forges` block) — see [devloop/README.md](./devloop/README.md) for the unified `~/.devloop/config.json`.
-
-### Codex / opencode
-
-Codex support is packaged through `.agents/plugins/marketplace.json` and `devloop/.codex-plugin/plugin.json`.
-
-```
+```console
 codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 
-You can also install it from `/plugins` after adding the marketplace. Start a new Codex session after installation; if Codex asks for hook review, open `/hooks` and trust the devloop hooks.
+Start a new session after installation. If Codex asks for hook review, open `/hooks` and trust the devloop hooks. Repository state is initialized automatically when the agent first enters a Git repository.
 
-Codex does not expose every Claude event that devloop uses. The Codex manifest points at `devloop/hooks/hooks.codex.json`, which uses the supported subset (`PreToolUse` / `PostToolUse` / `SessionStart` / `UserPromptSubmit` / `PostCompact`) and refreshes cwd/state from `PostToolUse` as the fallback for Claude's `CwdChanged`. `FileChanged` and `SessionEnd` have no Codex equivalent yet, so AGENTS.md reparse and owner-lock release rely on the existing prompt/TTL fallback paths there. For manual init commands under Codex, use `${PLUGIN_ROOT}` instead of `${CLAUDE_PLUGIN_ROOT}`.
+Then use outcome-oriented requests instead of assembling shell commands yourself:
 
-### Updating devloop
+```text
+validate the changes
+gcampr
+```
+
+PR/MR creation and remote state refresh require credentials for the repository host. Prefer `GITHUB_TOKEN`, `GH_TOKEN`, or `GITLAB_TOKEN`; host-specific configuration is documented in the [plugin README](./devloop/README.md).
+
+## Project validation contract
+
+Each Component exposes stable, non-interactive Make targets:
+
+```text
+make fix                  # optional normalization; may rewrite source
+make lint-ci | make lint  # read-only static-quality check
+make test                 # read-only full behavioral suite
+```
+
+Projects may additionally accept `TEST_FILES` for focused feedback on large suites, while an empty value must retain full-suite behavior. See the [validation contract](./devloop/skills/validate/references/spec.md) and the language-specific guidance for [Python](./devloop/skills/validate/references/python.md), [Go](./devloop/skills/validate/references/go.md), or [Node.js](./devloop/skills/validate/references/node.md). The plugin README explains when focused tests are selected.
+
+## Configuration
+
+All lifecycle hooks are opt-in. User configuration lives in `~/.devloop/config.json`; a repository or workspace can provide a closer `.devloop/config.json` override. The same configuration controls forge credentials, lifecycle validation/review hooks, review engine selection, and managed-worktree retention.
+
+See [`config/config.example.json`](./devloop/config/config.example.json) for the complete schema. The default review engine is [CCR](https://github.com/compforge/case-code-review); review is asynchronous and never blocks commit or PR/MR creation.
+
+## Scope and compatibility
+
+- **Harnesses:** Claude Code and Codex are supported. Claude uses its full native event set; Codex uses its available hooks with refresh and TTL fallbacks for missing events.
+- **Forges:** GitHub and GitLab are peer providers selected per repository.
+- **Ownership:** devloop owns the coding-harness development loop: repo/branch state, validation, commit/push, PR/MR creation, review delivery, and execution guardrails.
+- **Boundary:** requirement identity, cross-repository orchestration, deployment, long-running scheduling, and session wakeups belong to higher-level loops such as Baton and the [ReqLoop Marketplace](https://github.com/compforge/reqloop).
+- **opencode:** the marketplace contains a placeholder plugin, but the devloop plugin is not wired to opencode yet.
+
+## Updating
 
 Claude Code:
 
-```
+```text
 /plugin marketplace update devloop
 /plugin update devloop
 ```
 
 Codex:
 
-```
+```console
 codex plugin marketplace upgrade devloop
 codex plugin remove devloop@devloop
 codex plugin add devloop@devloop
 ```
 
-Start a new session after updating so the runtime loads the new hooks and skills. User-level devloop config stays under `~/.devloop/` and is not removed by a plugin update.
-
-opencode remains placeholder-only until its plugin/hook protocol is wired.
+Start a new session after updating so the runtime reloads hooks and skills. User configuration under `~/.devloop/` is preserved.
 
 ## Plugins
 
-| Plugin | What it is | README |
-|--------|-----------|--------|
-| `devloop` | Controlled PR/MR lifecycle for AI coding: repo/branch entry, affected-component validation, commit/push/PR, safe conflict rebase, live state, and execution-level guardrails (Claude + Codex; GitHub + GitLab) | [devloop/README.md](./devloop/README.md) |
-| `example` | Placeholder demonstrating the multi-plugin marketplace structure | [example/README.md](./example/README.md) |
+| Plugin | Purpose | Documentation |
+|---|---|---|
+| `devloop` | Controlled PR/MR development lifecycle for Claude Code and Codex | [README](./devloop/README.md) |
+| `example` | Placeholder demonstrating the multi-plugin marketplace layout | [README](./example/README.md) |
 
-## Adding a plugin
+## Documentation
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+- [devloop plugin usage](./devloop/README.md)
+- [marketplace architecture and contribution boundaries](./AGENTS.md)
+- [contributing a plugin](./CONTRIBUTING.md)

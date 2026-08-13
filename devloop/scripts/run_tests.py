@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""run-test skill 的 CLI 入口：解析 repo/components，跑各 component 的 canonical test 命令，通过则盖 test 戳。
+"""validate skill 的 behavior-check 入口：跑各 Component 的 canonical test，通过则盖 test 戳。
 
 test 逻辑见 `domain.lifecycle.checks.test`（与 lifecycle 的 pre_commit / pre_mr gate 是同一段）。
 本脚本只做 repo 解析 + 实时输出 + 退出码，并把 `--` 之后的额外参数透传给 make 以手动收窄

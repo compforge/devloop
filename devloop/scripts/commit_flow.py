@@ -605,7 +605,7 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
 
     - `pre_commit`：**将要提交的**那些文件。`--file` 给了就是它——不是「工作树里所有脏文件」：
       那是个超集，会把你压根不打算提交的 component 拖进 gate（它有存量 lint 错误就拦掉你的 commit——
-      与 #86 修的是同一类失败，只是换了扇门），还会让 lint 的 `make fix` 去改那些 component、改完又
+      与 #86 修的是同一类失败，只是换了扇门），还会让 normalize 的 `make fix` 去改那些 component、改完又
       不进本次 commit，凭空搅脏工作树。没给 `--file` → `None`：那时工作树确实**就是**将要提交
       的全部，交给 handler 读，语境本就一致。
     - `post_commit`：刚落地的那个 commit 自身。
@@ -624,15 +624,15 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
 
 
 def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecycle.DispatchResult:
-    """跑某相位的 lifecycle hook（lint/test 等 inline gate），写进 PLAN，返回 DispatchResult。
+    """跑某相位的 lifecycle validation checks / signal hooks，写进 PLAN，返回 DispatchResult。
 
     配置为空 → 静默 no-op（opt-in，零行为变化）。inline gate 失败 → 抛 SmartError 中止本次
-    git 动作。pre_commit 故意排在 staging 之前：lint 的 `make fix` 改的文件要被随后的 stage
+    git 动作。pre_commit 故意排在 staging 之前：normalize 的 `make fix` 改的文件要被随后的 stage
     收进同一个 commit。signal hook（如 code-review）不挡、把后台下游放进 `res.to_launch`，由
     调用方在 git 动作完成后用 launch_background_relays detach 起。
 
     范围（`phase_paths`）在**跑 hook 之前**算好：既让 post_commit / pre_mr 不退化成跑全仓，也让
-    同相位并发的 lint 与 test 看到同一个集合（lint 的 `make fix` 会改工作树，各自现算会分叉）。
+    normalize 与同相位并发的 lint/test 看到同一个集合（fix 会改工作树，各自现算会分叉）。
     """
     res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase))
     if not res.results:
@@ -704,7 +704,7 @@ def main(argv: list[str]) -> int:
         # git 动作完成后 detach 起：pre/post_commit 在 commit 后、pre/post_mr 在 publish 后。
         # review 的 MR 评论是机会性的——relay 跑时查到分支有开放 MR 就发，没有就只落 review.json。
         branch = prepare_branch(intent, gv, plan)
-        pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # 必在 commit 前（lint/test 阻塞门禁）
+        pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # 必在 commit 前（normalize 可能改源码）
         staged = stage_and_commit(intent, plan)
         if staged.committed:
             post_c = run_lifecycle_gate(intent, "post_commit", plan)

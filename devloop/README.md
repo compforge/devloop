@@ -1,80 +1,152 @@
 # devloop plugin
 
-**devloop 管理 AI 编码的一条 PR/MR 开发生命周期**：进入 repo → 基于 branch 开发 → 按受影响的 component 验证 → commit / push → 创建 PR/MR → 人工 merge。它把容易散落成 shell 副作用的操作收进统一入口，让 LLM 对 workspace/repo 的作用可控、可观测、可验证，减少错仓、错分支、漏验证和并发踩踏。
+**devloop 为 AI 编码 agent 提供一条受控的 PR/MR 开发闭环**：进入仓库、在正确分支开发、验证受影响的 Component、提交并推送、创建或复用 PR/MR，最终由人完成 merge。
 
-领域主链是 **`PR/MR → Repo → Component`**：每个 PR/MR 始终锚定一个 repo，repo 是 git/branch/forge 状态的边界，component 是 repo 内 lint/test 的验证单位。branch 是开发主轴；面向多 session 并发时，worktree 是 branch 的一种特殊形态。workspace 则是可选的聚合上下文，可以挂多个 repo；单仓库模式同样完整支持。
-
-devloop 通过两个控制杠杆落实这条生命周期：**Board 上下文投递**让 prompt 掌握当前 repo 的 branch、工作区、当前 PR/MR 与验证状态；**执行级硬拦截**把保护分支、过期分支编辑、绕过规范入口等非法操作直接 deny。GitHub PR 与 GitLab MR 均支持，按 repo 的 origin 自动识别。
-
-> 架构 / 扩展看 [`AGENTS.md`](./AGENTS.md)；术语看 [`CONCEPTS.md`](./CONCEPTS.md)。
-
-独立 `.devloop/` 命名空间状态，与其它工具互不干扰。当前支持 **Claude Code + Codex**；Claude 使用完整 native event，Codex 使用其 hook 子集并在少数事件上降级。
-
-## 它做什么
-
-- **PR/MR 生命周期入口**：`cd` 选择 repo，原生 `CwdChanged` 自动加载上下文；多 session 并发时，managed-worktree 脚本将 branch 以隔离 checkout 形态展开，并统一处理基线、依赖准备和安全清理。`/gcam`、`/gcamp`、`/gcampr` 依次覆盖 commit、push 与创建/复用 PR/MR；已有 PR/MR 的冲突处理走可恢复的 `smart_rebase.sh start/continue/finish`，以 rebase 前保存的远端 SHA 做精确 `force-with-lease`。新工作从目标分支建立干净基线，最终 merge 始终留给人。
-- **component 感知**（多代码目录仓）：一个 git 仓可能有多个自带工具链、可独立 lint/test 的目录——`server/` + `cli/`、`packages/*`、`cmd/*`。devloop 按**本次改动**决定跑哪些：改了 `cli/**` 就只跑 `cli` 的 lint/test，不静默回落仓根或 `server/`；改动跨多个 component 就都跑；clean tree 从仓根发起时枚举**全部** component（绝不替你猜一个）。验证戳也按 component 记——「A 过 B 挂」不会被记成整仓已验。术语见 [`CONCEPTS.md`](./CONCEPTS.md)。
-- **Board 与 PR/MR 感知**：workspace/repo 的 `.devloop/` 保存当前 branch、工作区、近期 PR/MR、验证和 session 归属等结构化运行态；hook 与 monitor 持续刷新事实，Board 按相关性选择紧凑内容并决定 session/turn 投递。状态与投递游标都自动排除在 git 提交之外。
-- **跨 loop 活跃度事实**：每个 repo 的 `.devloop/tool-calls.jsonl` 只保留最近一小时的原始 tool-call 时间线。devloop 不把工具预判成 read/write；reqloop 等消费者可按自己的策略解释次数与密度。
-- **硬拦截**（PreToolUse deny）：保护分支 commit/push、`git add -A`、直接 `git worktree add`、过期分支（PR 已 merged/closed）改文件、别的 session 占用的 checkout 上切分支或改文件（引导 worktree）、工作区根跑子项目命令、裸 `pytest`、uv 项目 `pip install`、编辑 `requirements.txt`、`lifecycle.pre_commit` 含 lint 时 lint 过期的裸 `git commit` gate。
-- **自动进项目**：`cd` 进子项目时（`CwdChanged`）自动刷新上下文、浮现 AGENTS.md References，无需额外命令。
-- **生命周期 hook**：`pre_commit / post_commit / pre_mr / post_mr` 四相位可挂 hook，挂哪相位由 config 决定；两类——**inline 门禁**（失败挡 commit/MR）与 **signal hook**（advisory、后台跑、不挡）。当前内置三个：`lint`、`test`（门禁），`review`（signal——后台跑 [ocr](https://github.com/alibaba/open-code-review) 审全量改动、结果回流会话、有开放 MR 时发评论）。机制见 [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)；code-review 细节见 [`docs/code-review.md`](./docs/code-review.md)。
-- **跨 CLI 适配**：Claude 使用完整 native event；Codex 缺少的 `CwdChanged / FileChanged / SessionEnd` 由 `PostToolUse`、TTL 与下一轮刷新路径降级补足。
-
-## Slash 命令
-
-| 命令 | 作用 |
-|------|------|
-| `/gcam "<msg>"` | 只 commit |
-| `/gcamp "<msg>"` | commit + push |
-| `/gcampr "<msg>" [--branch <name>]` | commit + push + 建/复用 PR/MR |
-
-validation 无独立 slash 命令：正常由 gcam* 的 `pre_commit` gate 自动触发；手动验证走 validate skill（自然语言“验证改动”“修下 lint”“跑下测试”）。完整验证先 normalize，再并发执行 lint/test checks；只请求其中一项属于部分验证。两条路径**共用同一套 component 选择**，所以 gate 替你跑的和你手动跑的永远是同一批 component；每次执行会自述本轮选了哪些 component、为什么（`changed files under: cli` / `clean tree, all components: …`），选错一眼可见，不用等错的测试跑完再猜。
-
-进入子项目直接 `cd`。需要并发隔离 checkout 时，agent 使用
-`python3 "<PLUGIN_ROOT>/scripts/checkout.py" <repo> --worktree <tag>`，该脚本只为受控
-worktree 生命周期保留，不作为 slash command 暴露。
-
-保护 / 过期分支上，gcam* 需 `--branch <name>`，脚本会从 `origin/<target>` 切新分支（不给会拒绝并提示）。
-
-gcam* 与 validate 都不依赖 cwd：默认解析 cwd 所在仓库，在 workspace 根则兜底到最近活跃子项目；用 `--repo <name|path>` 显式指定，无需 `cd` 前缀。
-
-已有 PR/MR 分支需要 rebase 时，使用独立事务；`finish` 只发布现有的重写历史，不需要 commit message：
-
-```bash
-bash <PLUGIN_ROOT>/scripts/smart_rebase.sh start --repo <name|path> [--target <branch>]
-# 解决冲突并 git add 后，可重复 continue
-bash <PLUGIN_ROOT>/scripts/smart_rebase.sh continue --repo <name|path>
-# 跑完相关测试后安全更新原分支
-bash <PLUGIN_ROOT>/scripts/smart_rebase.sh finish --repo <name|path>
+```text
+enter repo → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
 ```
 
-事务可用 `status` 检查；rebase 尚未完成时可用 `abort` 恢复。远端分支若在此期间被别人更新，
-`finish` 会拒绝覆盖并保留事务状态供检查。
+它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code 和 Codex。
 
-## 安装
+## 为什么需要 devloop
 
-运行时要求：**Python 3.10+**。devloop launcher 会从 PATH 自动选择首个满足版本的 `python3`、
-`python` 或带版本号的 `python3.x`；需要固定解释器时设置 `DEVLOOP_PYTHON`。
+AI agent 写代码时，很多损耗不来自代码本身，而来自开发流程缺少可靠边界：
 
-```
-# Claude Code 内
+- **上下文滞后**：agent 不知道当前仓库、分支、PR/MR 和验证状态，只能从对话历史猜测。
+- **约定无法执行**：保护分支不能提交、不能 `git add -A`、提交前要验证等规则，如果只写在 prompt 里，仍可能被绕过。
+- **并发 session 冲突**：多个 session 共用 checkout 时，切分支和编辑会互相覆盖，聚合工作区下还容易操作错仓库。
+
+devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执行级守卫约束副作用，并用 managed worktree 隔离并发开发。
+
+## 核心保证
+
+- **Git/PR 事务**：`gcam`、`gcamp`、`gcampr` 分别完成 commit、commit + push、commit + push + PR/MR。新工作从目标分支建立干净基线，已有 PR/MR 可安全追加提交或进行可恢复 rebase。
+- **Component 感知验证**：一个仓库可包含多个独立 Component，例如 `server/`、`cli/` 或 `packages/*`。devloop 根据本次改动选择 Component，并分别记录 lint/test 结果，不会用一个 Component 的通过状态覆盖另一个。
+- **运行态上下文**：Board 向当前 session 投递相关仓库的 branch、working tree、PR/MR 和验证状态；进入项目或上下文压缩后会自动刷新。
+- **执行级守卫**：阻止保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
+- **并发隔离**：checkout 被一个 session 占用后，其它 session 的分支切换和源码编辑会被引导到独立 worktree。
+
+领域主链是 **`PR/MR → Repo → Component`**。Repo 是 git、branch 和 forge 状态的边界；Component 是 lint/test 的验证单位；workspace 只是可选的多仓聚合上下文，单仓库同样完整支持。
+
+## 快速开始
+
+运行时要求：**Python 3.10+**。devloop 会从 `PATH` 自动选择满足版本要求的 Python；需要固定解释器时设置 `DEVLOOP_PYTHON`。
+
+### Claude Code
+
+```text
 /plugin marketplace add https://github.com/compforge/devloop.git
 /plugin install devloop@devloop
 ```
 
-Codex：
+### Codex
 
-```
+```console
 codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 
-也可以添加 marketplace 后，在 `/plugins` 中安装 `devloop`。安装后建议新开一个 Codex session；如果 Codex 提示需要审核 hook，打开 `/hooks` 并信任 devloop hooks。
+安装后新开一个 session。Codex 如果要求审核 hook，可在 `/hooks` 中信任 devloop hooks。
 
-更新：
+通常不需要手工初始化：第一次进入 Git 仓库时，hook 会自动创建所需的 `.devloop/` 运行态。之后直接告诉 agent：
 
+```text
+验证改动
+gcampr
 ```
+
+devloop 会选择当前仓库和受影响的 Component，完成验证、提交、推送并返回 PR/MR 地址。创建 PR/MR 和状态刷新需要对应平台的凭据，优先使用 `GITHUB_TOKEN`、`GH_TOKEN` 或 `GITLAB_TOKEN`。
+
+## Component 验证
+
+验证不是 lint/test 两种模式，而是对同一份稳定代码执行的多个质量检查：
+
+```text
+normalize: make fix
+        ↓
+stable Component content
+   ├─ static quality: make lint-ci | make lint
+   └─ behavior:       make test
+```
+
+- `make fix` 是可选的 normalize 步骤，也是唯一允许自动改写源码的验证命令。
+- normalize 完成后，lint 与 test 可以并发执行。
+- 完整验证同时检查静态质量和行为；单独要求 lint 或 test 属于部分验证，devloop 会分别报告结果。
+- lifecycle 中 lint 失败会阻止 commit/MR；test 失败目前只提示、不阻塞，因为坏测可能来自基线或环境，是否与本次 diff 相关仍需 CI 或人判断。
+
+### 项目接入契约
+
+每个 Component 通过 Makefile 暴露稳定入口：
+
+| Target | 要求 |
+|---|---|
+| `make fix` | 可选；执行 formatter/fixer，可以修改源码 |
+| `make lint-ci` 或 `make lint` | 非交互、只读，所有静态检查通过时返回 0；优先使用 `lint-ci` |
+| `make test` | 非交互、只读，默认运行完整测试套件，通过时返回 0 |
+
+项目可以额外支持 Component 相对路径组成的 `TEST_FILES`：
+
+```console
+make test TEST_FILES="tests/a.py tests/b.py"
+```
+
+`TEST_FILES` 缺失或为空时必须保持全量测试语义。提交期验证采用保守策略：测试文件不超过 20 个时始终全量执行；超过 20 个、改动包含测试文件且项目显式支持 `TEST_FILES` 时，才聚焦执行 changed tests，否则回退全量。手动完整验证仍运行完整测试套件。
+
+Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 package 或 test-name 选择。完整契约见 [`spec.md`](./skills/validate/references/spec.md)，并发和 Makefile 示例按语言查看 [Python](./skills/validate/references/python.md)、[Go](./skills/validate/references/go.md) 或 [Node.js](./skills/validate/references/node.md)。devloop 不会擅自为项目新增工具、依赖或 Make target。
+
+## 日常操作
+
+这些名称表达事务结果，不要求用户记住底层脚本。Claude Code 同时提供同名 slash command；Codex 可直接通过自然语言或 skill 名触发。
+
+| 操作 | 结果 |
+|---|---|
+| `validate` / “验证改动” | normalize 后并发运行 lint 与 test，报告完整验证结果 |
+| “修下 lint” / “跑下测试” | 只执行指定检查，并标记为部分验证 |
+| `gcam` | commit，不 push |
+| `gcamp` | commit + push，不创建新的 PR/MR |
+| `gcampr` | commit + push + 创建或复用 PR/MR |
+
+Git 事务默认处理本次相关改动，也可以通过可重复的 `--file <path>` 精确限定提交范围。保护分支或已失效分支上的新工作必须提供新 branch，devloop 会从 `origin/<target>` 建立基线，不从当前 HEAD 偷带提交。
+
+这些操作不依赖 session 当前停在哪个目录：优先解析显式 `--repo`，其次使用 cwd 所在仓库，再使用当前 session 最近绑定的仓库；无法唯一确定时会拒绝猜测。
+
+并发 checkout、rebase 和 PR/MR 管理的详细流程见：
+
+- [managed worktree](./skills/git-ops/references/worktree.md)
+- [safe rebase](./skills/git-ops/references/rebase.md)
+- [PR/MR management](./skills/git-ops/references/pr-management.md)
+
+## 配置
+
+用户级配置位于 `~/.devloop/config.json`。仓库或 workspace 可在自己的 `.devloop/config.json` 中提供局部覆盖；读取顺序是默认值、用户级配置、由外到内的本地配置，离 Repo 最近的值优先。
+
+所有 lifecycle hook 默认关闭。一个常见配置是提交前验证，并在 PR/MR 创建后异步 review：
+
+```jsonc
+{
+  "lifecycle": {
+    "default": {
+      "pre_commit": ["lint", "test"],
+      "post_commit": [],
+      "pre_mr": [],
+      "post_mr": ["review"]
+    },
+    "repos": {}
+  },
+  "review": { "tool": "ccr" },
+  "worktree": { "keep_recent": 5 }
+}
+```
+
+`review` 是异步 signal hook，不阻塞 commit 或 PR/MR；默认引擎是 [CCR](https://github.com/compforge/case-code-review)，也可以配置为 `ocr`。结果会在后续 session 中浮现；已有开放 PR/MR 时还会尝试发布 review comment。
+
+完整配置结构和 forge host 配置见 [`config/config.example.json`](./config/config.example.json)。token 建议使用环境变量；如果写入配置文件，不要提交仓库内的 `.devloop/config.json`。
+
+## 更新与手工初始化
+
+更新插件：
+
+```text
 # Claude Code
 /plugin marketplace update devloop
 /plugin update devloop
@@ -85,63 +157,29 @@ codex plugin remove devloop@devloop
 codex plugin add devloop@devloop
 ```
 
-更新后建议新开一个 session，让运行时重新加载最新 hooks 和 skills。用户级配置保存在 `~/.devloop/`，不会被 plugin 更新删掉。
+更新后新开一个 session，使运行时重新加载 hooks 和 skills。用户级配置保存在 `~/.devloop/`，不会被插件更新删除。
 
-初始化（可选——hook 首次 cd 会自动建）：
+如果需要提前注册单仓库或聚合工作区，可以手工运行：
 
-```
-# Claude Code
-"${CLAUDE_PLUGIN_ROOT}/scripts/python" "${CLAUDE_PLUGIN_ROOT}/scripts/init_repo.py"            # 单仓库
-"${CLAUDE_PLUGIN_ROOT}/scripts/python" "${CLAUDE_PLUGIN_ROOT}/scripts/init_workspace.py" <dir> # 聚合工作区
-
-# Codex
-"${PLUGIN_ROOT}/scripts/python" "${PLUGIN_ROOT}/scripts/init_repo.py"            # 单仓库
-"${PLUGIN_ROOT}/scripts/python" "${PLUGIN_ROOT}/scripts/init_workspace.py" <dir> # 聚合工作区
+```console
+# Claude Code: 将 <PLUGIN_ROOT> 替换为 ${CLAUDE_PLUGIN_ROOT}
+# Codex:      将 <PLUGIN_ROOT> 替换为 ${PLUGIN_ROOT}
+<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/init_repo.py
+<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/init_workspace.py <workspace>
 ```
 
-## 配置（`~/.devloop/config.json` + 本地覆盖）
+## 边界与兼容性
 
-devloop 对外部的依赖（连哪个 forge、用什么 token）+ 工作区注册表 + 提交门禁，**统一收在一个全局文件** `~/.devloop/config.json` 里。放用户级目录（不是 plugin 目录）是因为 plugin 目录是版本化 cache，`/plugin update` 会把写进去的东西清掉。可用环境变量 `DEVLOOP_CONFIG_DIR` 覆写目录。
+- Claude Code 使用完整 native events；Codex 缺少的 `CwdChanged`、`FileChanged`、`SessionEnd` 由现有 hook、下一轮刷新和 TTL 路径降级补足。
+- devloop 负责单个开发闭环中的 repo/branch、验证、commit/push、PR/MR、review 和执行守卫；不负责跨仓需求编排、部署或长期调度。
+- 多 Component 可以独立验证，但跨 Repo 的 fan-out 和发包依赖顺序不由 devloop 编排。
+- merge 始终由人完成；test 和 AI review 提供决策依据，不替代 CI 与人工判断。
 
-**本地覆盖（就近优先）**：任一 repo / workspace 可以在自己的 `.devloop/config.json` 里只写要改的几项（比如该 repo 用不同的 forge token）。读取时按「**离 repo 最近的赢**」分层合并：`默认值 < 全局 ~/.devloop/config.json < 上层 .devloop/config.json（由外到内，最近的覆盖）`；没写的段落自动落回外层。本地文件**只读、手写**——devloop 自己的写入（如工作区自动注册）只落全局文件。
+## 深入阅读
 
-文件不存在也能用——所有项都有默认值，hook 首次运行时会按需创建。`devloop/config/config.example.json` 是带注释占位的模板，照着填即可（同一份 schema 既可作全局，也可裁剪成本地覆盖放进某个 `.devloop/`）：
-
-```jsonc
-{
-  // 聚合工作区根目录（形态 A）。非 git 仓 + AGENTS.md 带子项目表的目录会自动注册，
-  // 这里一般留空；也可用 init_workspace.py 显式补充。
-  "workspaces": [],
-
-  // 代码评审平台，按 repo 的 origin host 索引。PR/MR 创建与状态注入需要 token；
-  // 没有匹配 token 时相关功能静默跳过，其余照常。provider 由 host 推断，type 可覆写。
-  "forges": {
-    "github.com": {
-      "type": "github",
-      "token": ""     // 也可用环境变量 GITHUB_TOKEN / GH_TOKEN（优先级更高）
-    },
-    "gitlab.example.com": {
-      "type": "gitlab",
-      "token": "",     // 也可用环境变量 GITLAB_TOKEN（优先级更高）
-      "api_host": ""   // 可选：origin 是 SSH 别名 / 镜像时，覆写真实 API host
-    }
-  },
-
-  // 生命周期 hook：相位 → [hook 名]（opt-in，默认全空 = 零行为变化）。
-  // lint/test 是阻塞门禁（失败拦 commit/MR）；review 是 advisory——后台跑 ocr 审全量改动、
-  // 结果回流会话、分支有开放 MR 时发 MR 评论，从不挡 commit（需 ocr 自备 LLM）。
-  "lifecycle": {
-    "default": { "pre_commit": [], "post_commit": [], "pre_mr": [], "post_mr": [] },
-    "repos":   { "/abs/path/to/repo": { "pre_commit": ["lint", "test"], "post_mr": ["review"] } }
-  }
-}
-```
-
-> token 以明文存在 config.json，请勿把它提交进任何仓库。全局文件在 `~/.devloop/` 下、不在项目里；若放本地覆盖到某 repo 的 `.devloop/config.json`，该目录已被 devloop 加进 `.git/info/exclude`、不会被提交。需要彻底避免落盘时改用 `GITHUB_TOKEN` / `GITLAB_TOKEN` 环境变量。
-
-## v0.1 范围 / 限制
-
-- **Codex 事件子集**：Claude 使用完整 native event；Codex 暂无 `CwdChanged / FileChanged / SessionEnd`，靠 `PostToolUse` 与已有 prompt / TTL 路径降级。
-- **forge 经 stdlib facade**：GitHub / GitLab 各一个 adapter，缝在 provider 层；未引 SDK / MCP（接口已按中立领域设计，将来低成本替换）。
-- **收敛只到 component 粒度**：跑哪些 component 已按本次改动收敛（见上〈component 感知〉）；component **内部**仍跑全量测试——按 diff 选具体测试（convergent test）留后续迭代。同理 test 失败只通报不挡 commit：判断"挂掉的测试是否与本次 diff 相关"需要 baseline-aware 分析，现阶段交给 CI / 人；lint 仍是硬拦截。
-- 多 repo 协同（跨 subproject fanout / 发包依赖顺序）留后续迭代。
+- [`CONCEPTS.md`](./CONCEPTS.md)：Workspace、Repo、Component、PR/MR 等稳定术语
+- [`docs/loop.md`](./docs/loop.md)：完整开发生命周期
+- [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)：normalize、lint/test checks 与 lifecycle hook
+- [`docs/code-review.md`](./docs/code-review.md)：异步 review 与 comment 交付
+- [`docs/board.md`](./docs/board.md)：状态组织和上下文投递
+- [`AGENTS.md`](./AGENTS.md)：架构边界与开发约定

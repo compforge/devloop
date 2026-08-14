@@ -526,6 +526,12 @@ def test_precommit_gate_scopes_to_files_being_committed():
                            target="main", base="origin/main", explicit_base=False,
                            files=["cli/a.py"], repo=R, source="test", invoke_cwd=R)
     assert sgo.phase_paths(intent, "pre_commit") == ["cli/a.py"]
+    directory_intent = sgo.GitIntent(
+        mode="commit", message="m", title="m", requested_branch=None,
+        target="main", base="origin/main", explicit_base=False,
+        files=["cli"], repo=R, source="test", invoke_cwd=R,
+    )
+    assert sgo.phase_paths(directory_intent, "pre_commit") == ["cli/a.py"]
     res = checks.lint(R, paths=sgo.phase_paths(intent, "pre_commit"))
     assert res.ok, f"legacy 不在 --file 里，不该拦下你的 commit：{res.summary}"
     assert "changed files under: cli" in res.summary and "legacy" not in res.summary
@@ -704,12 +710,47 @@ def test_lifecycle_focuses_changed_tests_only_for_large_opted_in_suites():
     result = checks.test(no_contract, paths=[changed])
     assert result.ok and "stamped" in result.summary
     assert Path(no_contract, "observed").read_text() == "full"
+    assert len(result.guidance) == 1
+    assert "未消费 TEST_FILES" in result.guidance[0]
+    assert "回退完整 make test" in result.guidance[0]
 
     manual = make_repo("dlut_focused_manual", 1, focused=True)
     result = checks.test(manual, extra=["TEST_FILES=tests/test_0.py"])
     assert result.ok and "narrowed by explicit test arguments" in result.summary
     assert Path(manual, "observed").read_text() == "tests/test_0.py"
     assert RepoContext.load(manual).validation.component(".").last_test_at is None
+
+
+def test_lifecycle_plan_surfaces_test_files_guidance_without_blocking():
+    """缺少 TEST_FILES 是项目接入建议：PLAN 当轮可见，但不能改变 gate 的 proceed。"""
+    from domain.lifecycle.base import DispatchResult, HookResult
+
+    sgo = _load_script("commit_flow")
+    intent = sgo.GitIntent(
+        mode="commit", message="m", title="m", requested_branch=None,
+        target="main", base="origin/main", explicit_base=False,
+        files=[], repo="/tmp/no-repo-needed", source="test", invoke_cwd="/tmp",
+    )
+    original = sgo.lifecycle.dispatch
+    sgo.lifecycle.dispatch = lambda *_args, **_kwargs: DispatchResult(
+        phase="pre_commit",
+        results=[HookResult(
+            "test",
+            ok=True,
+            advisory=True,
+            summary="make test passed — stamped",
+            guidance=("Makefile 未消费 TEST_FILES；本轮已回退完整 make test。",),
+        )],
+    )
+    try:
+        plan: list[str] = []
+        result = sgo.run_lifecycle_gate(intent, "pre_commit", plan)
+    finally:
+        sgo.lifecycle.dispatch = original
+
+    assert result.proceed
+    assert any("test ✓" in line for line in plan)
+    assert any("未消费 TEST_FILES" in line for line in plan)
 
 
 def test_partial_unit_lint_failure_does_not_unlock_bare_commit():

@@ -46,12 +46,15 @@ class HookResult:
     - **软提示**（advisory，如 test）：`relay=None, advisory=True`——同步跑、本轮可见，但 `ok=False`
       只**通报不阻断**（失败常因基线坏测 / 环境，与本次 diff 无关；真正的判断 CI / 人来做）。
     - **异步信号**（signal，如 review）：`relay=BackgroundSpec`——detach 起后台、永不阻断、下轮浮现。
+
+    `guidance` 与三种模式正交：它只承载当轮应展示的项目接入建议，不参与 `ok` / `proceed`。
     """
     name: str
     ok: bool                              # inline hook 的通过与否；signal hook 恒 True
     summary: str = ""
     relay: BackgroundSpec | None = None   # 非 None = signal hook，由 commit_flow detach 后台下游
     advisory: bool = False                # True = 软提示：ok=False 时通报但不阻断（不进 proceed）
+    guidance: tuple[str, ...] = ()        # 成败之外的可行动接入提示；调用入口必须当轮展示
 
 
 @dataclass(frozen=True)

@@ -603,16 +603,19 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
     退化成 repo-wide 跑**全部** component：一个你根本没碰的 component 有存量 lint 错误，就会在 commit 已
     落地之后拦掉 push 和 MR。所以范围必须在相位边界由这里算好、冻结下传。
 
-    - `pre_commit`：**将要提交的**那些文件。`--file` 给了就是它——不是「工作树里所有脏文件」：
-      那是个超集，会把你压根不打算提交的 component 拖进 gate（它有存量 lint 错误就拦掉你的 commit——
-      与 #86 修的是同一类失败，只是换了扇门），还会让 normalize 的 `make fix` 去改那些 component、改完又
-      不进本次 commit，凭空搅脏工作树。没给 `--file` → `None`：那时工作树确实**就是**将要提交
-      的全部，交给 handler 读，语境本就一致。
+    - `pre_commit`：**将要提交的**那些文件。`--file` 给了则把同一 staging scope 展开成其中真实
+      改动的叶子文件——不是「工作树里所有脏文件」：后者是超集，会把你压根不打算提交的 component
+      拖进 gate（它有存量 lint 错误就拦掉 commit），还会让 normalize 改到不进本次 commit 的文件。
+      没给 `--file` → `None`：那时工作树确实**就是**将要提交的全部，交给 handler 读即可。
     - `post_commit`：刚落地的那个 commit 自身。
     - `pre_mr` / `post_mr`：整条分支 vs target——MR 承载的是整条分支，不是最后那个 commit。
     """
     if phase == "pre_commit":
-        return intent.files or None            # 无 --file → 工作树即答案，与 handler 默认语境一致
+        return (
+            repo_model.changed_paths_in_scope(intent.repo, intent.files)
+            if intent.files
+            else None
+        )  # 无 --file → 工作树即答案，与 handler 默认语境一致
     if phase == "post_commit":
         return repo_model.committed_paths(intent.repo)
     if phase in ("pre_mr", "post_mr"):
@@ -644,6 +647,9 @@ def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecy
         return "⚠" if r.advisory else "✗"   # ⚠ = 软提示失败（不阻断）；✗ = 硬拦截失败
 
     plan.append(f"{phase}: " + ", ".join(f"{r.name} {mark(r)}" for r in res.results))
+    for result in res.results:
+        for guidance in result.guidance:
+            plan.append(f"  - {result.name}: {guidance}")
     for r in res.advisory_failures:         # 软提示：本轮通报、不阻断（如 test 挂常因基线/环境）
         plan.append(f"  ⚠ {r.name} failed (advisory, not blocking): {r.summary.splitlines()[0] if r.summary else ''}")
     if not res.proceed:

@@ -46,6 +46,8 @@ def main(argv: list[str]) -> int:
             results = [future.result() for future in futures]
         for result in results:
             print(("✓ " if result.ok else "✗ ") + result.summary)
+            for guidance in result.guidance:
+                print(f"  - {guidance}")
             ok = ok and result.ok
     return 0 if ok else 1
 

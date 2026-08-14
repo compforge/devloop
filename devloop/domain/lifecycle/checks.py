@@ -42,8 +42,13 @@ def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: b
     干净跳过」该有的样子。此时只报 reason，不缀空 detail。
     """
     detail = "; ".join(r.summary for r in results)
-    return HookResult(name, ok=all(r.ok for r in results), advisory=advisory,
-                      summary=f"{reason}; {detail}" if detail else reason)
+    return HookResult(
+        name,
+        ok=all(r.ok for r in results),
+        advisory=advisory,
+        summary=f"{reason}; {detail}" if detail else reason,
+        guidance=tuple(note for result in results for note in result.guidance),
+    )
 
 
 def _make(code_dir: str, target: str, *, capture: bool, sink: list[str]) -> int:
@@ -204,12 +209,18 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
     explicitly_narrowed = bool(extra)
     focused_files: list[str] = []
     focused = False
+    guidance: tuple[str, ...] = ()
     if paths is not None and not extra and _has_large_test_suite(component):
         focused_files = _changed_test_files(repo, component, paths)
         focused_command = component.focused_test_command(focused_files)
         if focused_command is not None:
             command = focused_command
             focused = True
+        elif focused_files and component.test_target() is not None and not component.supports_test_files():
+            guidance = (
+                f"{code_dir}/Makefile 未消费 TEST_FILES；本轮已回退完整 make test。"
+                "请让 test target 在 TEST_FILES 非空时只运行这些 Component 相对测试文件。",
+            )
     argv = [*command, *extra]
     display = " ".join(argv)
     sink: list[str] = []
@@ -230,6 +241,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 advisory=True,
                 summary=f"{display} passed — focused {len(focused_files)} changed test file(s); "
                         "component test stamp unchanged",
+                guidance=guidance,
             )
         if explicitly_narrowed:
             return HookResult(
@@ -238,9 +250,22 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 advisory=True,
                 summary=f"{display} passed — narrowed by explicit test arguments; "
                         "component test stamp unchanged",
+                guidance=guidance,
             )
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
         ctx.mark_test_passed(component.id)
-        return HookResult("test", ok=True, advisory=True, summary=f"{display} passed — stamped")
+        return HookResult(
+            "test",
+            ok=True,
+            advisory=True,
+            summary=f"{display} passed — stamped",
+            guidance=guidance,
+        )
     detail = f"\n{_tail(sink)}" if capture else ""
-    return HookResult("test", ok=False, advisory=True, summary=f"{display} failed (advisory — not blocking){detail}")
+    return HookResult(
+        "test",
+        ok=False,
+        advisory=True,
+        summary=f"{display} failed (advisory — not blocking){detail}",
+        guidance=guidance,
+    )

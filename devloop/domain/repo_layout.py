@@ -97,6 +97,14 @@ class Component:
         eco = ecosystem.detect(self.path)
         return eco.fallback_test_command(self.path) if eco else None
 
+    def supports_test_files(self) -> bool:
+        """Makefile 是否显式把 `TEST_FILES` 交给 test runner。"""
+        try:
+            makefile = (Path(self.path) / "Makefile").read_text(encoding="utf-8")
+        except OSError:
+            return False
+        return bool(re.search(r"\$\(TEST_FILES\)|\$\{TEST_FILES\}", makefile))
+
     def focused_test_command(self, test_files: list[str]) -> tuple[str, ...] | None:
         """项目显式采用 `TEST_FILES` Make 契约时，构造按测试文件收窄的命令。
 
@@ -108,11 +116,7 @@ class Component:
             return None
         if any(not re.fullmatch(r"[A-Za-z0-9_./@+:-]+", path) for path in test_files):
             return None
-        try:
-            makefile = (Path(self.path) / "Makefile").read_text(encoding="utf-8")
-        except OSError:
-            return None
-        if not re.search(r"\$\(TEST_FILES\)|\$\{TEST_FILES\}", makefile):
+        if not self.supports_test_files():
             return None
         return ("make", target, f"TEST_FILES={' '.join(test_files)}")
 

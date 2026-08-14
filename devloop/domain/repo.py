@@ -132,6 +132,37 @@ def changed_paths(git_root: str | Path) -> list[str]:
     return _working_paths_or_unknown(git_root) or []
 
 
+def changed_paths_in_scope(
+    git_root: str | Path,
+    scopes: list[str],
+) -> list[str] | None:
+    """展开显式 staging scope，返回其中真实发生改动的仓相对文件。
+
+    `git add -- cli` 接受目录，但 validation 不能把 `cli` 当作一份测试文件。相位边界需要的事实是
+    这次 scope 最终会提交哪些叶子文件，所以在 staging 前用同一 working-tree diff 展开目录。
+    git 查询失败返回 None，让 gate 保守回退全量，而不是拿目录名伪装成精确范围。
+    """
+    changed = _working_paths_or_unknown(git_root)
+    if changed is None:
+        return None
+    normalized = [scope.strip().rstrip("/") or "." for scope in scopes if scope.strip()]
+    if not normalized:
+        return []
+    selected: list[str] = []
+    for scope in normalized:
+        matches = [
+            path
+            for path in changed
+            if scope == "." or path == scope or path.startswith(f"{scope}/")
+        ]
+        # 没有 working-tree match 时保留显式 scope：调用方可能在测试 phase_paths 的其它相位语义，
+        # 或 git 尚未把目标投影成 diff。保留它会多验证，不能把已知 scope 静默缩成空集合。
+        for path in matches or [scope]:
+            if path not in selected:
+                selected.append(path)
+    return selected
+
+
 def component_fingerprint(git_root: str | Path, component: repo_layout.Component) -> str | None:
     """`component` 当前待验证内容的指纹——**lint 通行证绑定它**。算不出 → `None`（gate 按未验证处理）。
 

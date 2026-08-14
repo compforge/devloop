@@ -131,16 +131,18 @@ handler 手里只有 `repo`。想知道「本次改动涉及哪些 component」�
 冻结还顺带解决一个并发问题：normalize 会改工作树，后续并发 checks 各自现算范围就可能得到
 **不同**的集合。算一次、传下去，它们必然一致。
 
-可重复的 `--file` 尤其要进 pre_commit 的范围：它是「工作树所有脏文件」的**子集**。拿超集当范围，会把你压根不打算提交的 component 拖进 gate——它有存量 lint 错误就拦掉你的 commit（与本表存在的理由同一类失败，只是换了扇门），且 normalize 会去改那些 component、改完又不进本次 commit，凭空搅脏工作树。故路径列表在 `commit_flow.main` 归一**一次**（仓根相对），gate 与 staging 共用同一份——各自归一必然漂。
+可重复的 `--file` 尤其要进 pre_commit 的范围：它是「工作树所有脏文件」的**子集**。拿超集当范围，会把你压根不打算提交的 component 拖进 gate——它有存量 lint 错误就拦掉你的 commit（与本表存在的理由同一类失败，只是换了扇门），且 normalize 会去改那些 component、改完又不进本次 commit，凭空搅脏工作树。故 staging 使用归一后的 scope，gate 再从同一 scope 展开真实 changed leaf files；`--file cli` 可以继续用于 staging，同时 test handler 能得到 `cli/tests/x.test.ts`，两边不会漂到 scope 之外。
 
-### 小测试套件优先全量
+### 测试入口的事后优化提示
 
-test handler 从相位已经冻结的 path list 中识别改动测试。Component 的测试文件不超过内置小套件
-阈值时始终执行完整 `make test`；超过阈值且 Makefile 显式消费 `TEST_FILES` 时，才通过
-`make test TEST_FILES="..."` 执行改动测试。没有改动测试或项目未采用该 Make 契约时回退全量。
+test handler 从相位已经冻结的 path list 中识别改动测试。Makefile 显式消费 `TEST_FILES` 且存在
+改动测试时，通过 `make test TEST_FILES="..."` 聚焦执行；没有改动测试时运行完整测试。项目缺少
+`make test` 时提示补充统一入口；完整 Make 测试运行超过 10 秒且尚未采用 `TEST_FILES` 契约时，
+在运行结束后提示补充支持。guidance 只反馈已经观察到的接入或性能问题，不参与 gate 的
+`ok` / `proceed`，不会阻断 commit 或 MR。
 
-focused 结果只说明本轮选中的测试通过，不更新 Component 的全量 test validation；手工
-`run_tests.py` 没有 lifecycle phase scope，也继续执行全量测试。
+focused 结果只说明本轮选中的测试通过，不更新 Component 的全量 test validation。手工
+`run_tests.py` 使用 working-tree 改动作为 scope；完整 `run_validate.py` 仍执行全量测试。
 
 **`None` 与 `[]` 是两种语义，不能抹平**：`None` = 不知道范围 → 全跑（保守）；`[]` = 知道且
 为空 → 0 个 component、干净跳过。git 算不出时（如 `origin/<target>` 尚未 fetch）一律返回 `None`

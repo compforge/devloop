@@ -2,8 +2,8 @@
 """validate skill 的 behavior-check 入口：跑各 Component 的 canonical test，通过则盖 test 戳。
 
 test 逻辑见 `domain.lifecycle.checks.test`（与 lifecycle 的 pre_commit / pre_mr gate 是同一段）。
-本脚本只做 repo 解析 + 实时输出 + 退出码，并把 `--` 之后的额外参数透传给 make 以手动收窄
-范围（按改动收敛 test 选择是后续优化）。
+本脚本只做 repo 解析 + 实时输出 + 退出码，并把 working-tree 改动范围交给公共 test check；
+`--` 之后的显式参数优先，由调用者手动决定收窄方式。
 
 Usage: run_tests.py [--repo R | R] [-- <额外 make/test 参数>]
 (R = 路径或 workspace 子项目名；默认 = cwd 的 repo，回退到 workspace 最近活跃 repo。)
@@ -34,6 +34,7 @@ def main(argv: list[str]) -> int:
     ns = ap.parse_args(argv)
     resolved, how = cli.resolve_repo_or_exit(ns, "run_tests")
     repo = resolved.git_root
+    changed_paths = repo_model.changed_paths(repo)
     ws = repo_model.select_components(repo, explicit=resolved.target_path)
     if how != "cwd":
         print(f"run_tests: repo = {repo} ({how})")
@@ -46,8 +47,16 @@ def main(argv: list[str]) -> int:
     # 重探默认 component 盖掉选择。任一 component 失败即整体非 0。
     ok = True
     for component in ws.components:
-        res = checks.test(repo, capture=False, extra=extra, component=component)   # capture=False：实时走终端
+        res = checks.test(
+            repo,
+            capture=False,
+            extra=extra,
+            component=component,
+            paths=changed_paths or None,
+        )
         print(("✓ " if res.ok else "✗ ") + res.summary)
+        for guidance in res.guidance:
+            print(f"  - {guidance}")
         ok = ok and res.ok
     return 0 if ok else 1
 

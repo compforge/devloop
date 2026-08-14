@@ -13,10 +13,10 @@ handler 契约：`fn(repo, paths) -> HookResult`（`paths` = 相位边界冻结�
 """
 from __future__ import annotations
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
+from time import monotonic
 
 from lib import ecosystem
 from domain import repo as repo_model
@@ -25,11 +25,7 @@ from domain.repo_layout import Component
 from domain.lifecycle.base import HookResult
 
 _TAIL_LINES = 40   # 失败时回带的输出尾行数（够定位、不淹没 PLAN）
-_FULL_SUITE_TEST_FILE_LIMIT = 20
-_TEST_SCAN_SKIP = {
-    ".git", ".venv", "venv", "node_modules", "vendor", "dist", "build", "target",
-    "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-}
+_SLOW_FULL_TEST_SECONDS = 10.0
 
 
 def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: bool = False) -> HookResult:
@@ -42,8 +38,13 @@ def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: b
     干净跳过」该有的样子。此时只报 reason，不缀空 detail。
     """
     detail = "; ".join(r.summary for r in results)
-    return HookResult(name, ok=all(r.ok for r in results), advisory=advisory,
-                      summary=f"{reason}; {detail}" if detail else reason)
+    return HookResult(
+        name,
+        ok=all(r.ok for r in results),
+        advisory=advisory,
+        summary=f"{reason}; {detail}" if detail else reason,
+        guidance=tuple(note for result in results for note in result.guidance),
+    )
 
 
 def _make(code_dir: str, target: str, *, capture: bool, sink: list[str]) -> int:
@@ -75,22 +76,6 @@ def _environment_failure(name: str, component: Component, *, advisory: bool = Fa
         return None
     return HookResult(name, ok=False, advisory=advisory,
                       summary=f"environment setup failed in {component.path}: {problem}")
-
-
-def _has_large_test_suite(component: Component) -> bool:
-    """测试文件超过内置小套件阈值时才值得 focused；扫描到第 21 个立即停止。"""
-    eco = ecosystem.detect(component.path)
-    if eco is None:
-        return False
-    found = 0
-    for root, dirs, files in os.walk(component.path):
-        dirs[:] = [name for name in dirs if name not in _TEST_SCAN_SKIP and not name.startswith(".")]
-        for name in files:
-            if eco.is_test_file(Path(root) / name):
-                found += 1
-                if found > _FULL_SUITE_TEST_FILE_LIMIT:
-                    return True
-    return False
 
 
 def _changed_test_files(repo: str, component: Component, paths: list[str]) -> list[str]:
@@ -193,9 +178,21 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         ]
         return _aggregate("test", ws.reason, results, advisory=True)
     code_dir = component.path
+    make_target = component.test_target()
     command = component.test_command()
+    guidance: tuple[str, ...] = ()
+    if make_target is None:
+        guidance = (
+            f"{code_dir}/Makefile 未提供 test target；请补充非交互、只读的 make test 入口。",
+        )
     if command is None:
-        return HookResult("test", ok=True, advisory=True, summary=f"no test command in {code_dir} — skipped")
+        return HookResult(
+            "test",
+            ok=True,
+            advisory=True,
+            summary=f"no test command in {code_dir} — skipped",
+            guidance=guidance,
+        )
     env_failure = _environment_failure("test", component, advisory=True)
     if env_failure is not None:
         return env_failure
@@ -204,7 +201,8 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
     explicitly_narrowed = bool(extra)
     focused_files: list[str] = []
     focused = False
-    if paths is not None and not extra and _has_large_test_suite(component):
+    supports_test_files = make_target is not None and component.supports_test_files()
+    if paths is not None and not extra and supports_test_files:
         focused_files = _changed_test_files(repo, component, paths)
         focused_command = component.focused_test_command(focused_files)
         if focused_command is not None:
@@ -214,6 +212,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
     display = " ".join(argv)
     sink: list[str] = []
     header = f"--- {display} (cwd={code_dir}) ---"
+    started_at = monotonic()
     if capture:
         sink.append(header)
         r = subprocess.run(argv, cwd=code_dir, capture_output=True, text=True)
@@ -222,6 +221,12 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
     else:
         print(header)
         rc = subprocess.run(argv, cwd=code_dir).returncode
+    elapsed = monotonic() - started_at
+    if not extra and make_target is not None and not supports_test_files and elapsed > _SLOW_FULL_TEST_SECONDS:
+        guidance += (
+            f"make {make_target} 完整运行耗时 {elapsed:.1f}s，且 Makefile 未消费 TEST_FILES；"
+            "请让 test target 在 TEST_FILES 非空时只运行这些 Component 相对测试文件。",
+        )
     if rc == 0:
         if focused:
             return HookResult(
@@ -230,6 +235,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 advisory=True,
                 summary=f"{display} passed — focused {len(focused_files)} changed test file(s); "
                         "component test stamp unchanged",
+                guidance=guidance,
             )
         if explicitly_narrowed:
             return HookResult(
@@ -238,9 +244,22 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 advisory=True,
                 summary=f"{display} passed — narrowed by explicit test arguments; "
                         "component test stamp unchanged",
+                guidance=guidance,
             )
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
         ctx.mark_test_passed(component.id)
-        return HookResult("test", ok=True, advisory=True, summary=f"{display} passed — stamped")
+        return HookResult(
+            "test",
+            ok=True,
+            advisory=True,
+            summary=f"{display} passed — stamped",
+            guidance=guidance,
+        )
     detail = f"\n{_tail(sink)}" if capture else ""
-    return HookResult("test", ok=False, advisory=True, summary=f"{display} failed (advisory — not blocking){detail}")
+    return HookResult(
+        "test",
+        ok=False,
+        advisory=True,
+        summary=f"{display} failed (advisory — not blocking){detail}",
+        guidance=guidance,
+    )

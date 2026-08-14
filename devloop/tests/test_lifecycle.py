@@ -526,6 +526,12 @@ def test_precommit_gate_scopes_to_files_being_committed():
                            target="main", base="origin/main", explicit_base=False,
                            files=["cli/a.py"], repo=R, source="test", invoke_cwd=R)
     assert sgo.phase_paths(intent, "pre_commit") == ["cli/a.py"]
+    directory_intent = sgo.GitIntent(
+        mode="commit", message="m", title="m", requested_branch=None,
+        target="main", base="origin/main", explicit_base=False,
+        files=["cli"], repo=R, source="test", invoke_cwd=R,
+    )
+    assert sgo.phase_paths(directory_intent, "pre_commit") == ["cli/a.py"]
     res = checks.lint(R, paths=sgo.phase_paths(intent, "pre_commit"))
     assert res.ok, f"legacy 不在 --file 里，不该拦下你的 commit：{res.summary}"
     assert "changed files under: cli" in res.summary and "legacy" not in res.summary
@@ -659,11 +665,8 @@ def test_lifecycle_checks_follow_changed_component():
     assert "make test passed" in result.summary
 
 
-def test_lifecycle_focuses_changed_tests_only_for_large_opted_in_suites():
-    """最多 20 个测试时全量；第 21 个起，Makefile 显式消费 TEST_FILES 才按 diff 聚焦。
-
-    focused 不是 Component 全量验证，不能盖原有 test stamp。没有 Make 契约则安全回退全量。
-    """
+def test_lifecycle_focuses_changed_tests_when_makefile_supports_test_files():
+    """Makefile 显式消费 TEST_FILES 时按 diff 聚焦；focused 结果不能盖全量 test stamp。"""
     from domain.context import RepoContext
     from domain.lifecycle import checks
 
@@ -695,21 +698,88 @@ def test_lifecycle_focuses_changed_tests_only_for_large_opted_in_suites():
     small = make_repo("dlut_focused_small", 20, focused=True)
     Path(small, changed.replace("20", "19")).write_text("def test_x(): assert True\n")
     result = checks.test(small, paths=[changed.replace("20", "19")])
-    assert result.ok and "stamped" in result.summary
-    assert Path(small, "observed").read_text() == ""
-    assert RepoContext.load(small).validation.component(".").last_test_at is not None
+    assert result.ok and "focused 1 changed test file" in result.summary
+    assert Path(small, "observed").read_text() == changed.replace("20", "19")
+    assert RepoContext.load(small).validation.component(".").last_test_at is None
 
     no_contract = make_repo("dlut_focused_no_contract", 21, focused=False)
     Path(no_contract, changed).write_text("def test_x(): assert True\n")
     result = checks.test(no_contract, paths=[changed])
     assert result.ok and "stamped" in result.summary
     assert Path(no_contract, "observed").read_text() == "full"
+    assert result.guidance == ()
+
+    original_monotonic = checks.monotonic
+    ticks = iter((0.0, 10.1))
+    checks.monotonic = lambda: next(ticks)
+    try:
+        result = checks.test(no_contract, paths=[changed])
+    finally:
+        checks.monotonic = original_monotonic
+    assert result.ok and len(result.guidance) == 1
+    assert "完整运行耗时 10.1s" in result.guidance[0]
+    assert "未消费 TEST_FILES" in result.guidance[0]
 
     manual = make_repo("dlut_focused_manual", 1, focused=True)
     result = checks.test(manual, extra=["TEST_FILES=tests/test_0.py"])
     assert result.ok and "narrowed by explicit test arguments" in result.summary
     assert Path(manual, "observed").read_text() == "tests/test_0.py"
     assert RepoContext.load(manual).validation.component(".").last_test_at is None
+
+
+def test_lifecycle_guides_missing_make_test_without_blocking():
+    """缺少 make test 是事后接入建议；fallback 可继续跑，完全无命令也只跳过。"""
+    from domain.lifecycle import checks
+    from domain.repo_layout import Component
+
+    fallback = "/tmp/dlut_missing_make_test_fallback"
+    shutil.rmtree(fallback, ignore_errors=True)
+    os.makedirs(fallback)
+    Path(fallback, "go.mod").write_text("module example.com/x\n\ngo 1.22\n")
+    Path(fallback, "x.go").write_text("package x\n")
+    result = checks.test(fallback, component=Component.at(fallback, fallback))
+    assert result.ok and result.advisory
+    assert "go test ./... passed" in result.summary
+    assert len(result.guidance) == 1 and "补充非交互、只读的 make test" in result.guidance[0]
+
+    empty = "/tmp/dlut_missing_make_test_empty"
+    shutil.rmtree(empty, ignore_errors=True)
+    os.makedirs(empty)
+    result = checks.test(empty, component=Component.at(empty, empty))
+    assert result.ok and "skipped" in result.summary
+    assert len(result.guidance) == 1 and "补充非交互、只读的 make test" in result.guidance[0]
+
+
+def test_lifecycle_plan_surfaces_test_files_guidance_without_blocking():
+    """缺少 TEST_FILES 是项目接入建议：PLAN 当轮可见，但不能改变 gate 的 proceed。"""
+    from domain.lifecycle.base import DispatchResult, HookResult
+
+    sgo = _load_script("commit_flow")
+    intent = sgo.GitIntent(
+        mode="commit", message="m", title="m", requested_branch=None,
+        target="main", base="origin/main", explicit_base=False,
+        files=[], repo="/tmp/no-repo-needed", source="test", invoke_cwd="/tmp",
+    )
+    original = sgo.lifecycle.dispatch
+    sgo.lifecycle.dispatch = lambda *_args, **_kwargs: DispatchResult(
+        phase="pre_commit",
+        results=[HookResult(
+            "test",
+            ok=True,
+            advisory=True,
+            summary="make test passed — stamped",
+            guidance=("Makefile 未消费 TEST_FILES；本轮已回退完整 make test。",),
+        )],
+    )
+    try:
+        plan: list[str] = []
+        result = sgo.run_lifecycle_gate(intent, "pre_commit", plan)
+    finally:
+        sgo.lifecycle.dispatch = original
+
+    assert result.proceed
+    assert any("test ✓" in line for line in plan)
+    assert any("未消费 TEST_FILES" in line for line in plan)
 
 
 def test_partial_unit_lint_failure_does_not_unlock_bare_commit():

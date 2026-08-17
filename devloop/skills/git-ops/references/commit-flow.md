@@ -24,7 +24,9 @@ overwriting human edits.
 ## Scope and branch
 
 - Pass `--repo <name|path>` from a workspace root or when the target repo is ambiguous.
-- Pass `--branch <name>` for new work and whenever context shows `PROTECTED` or `INACTIVE`.
+- Prefer the dedicated [[branch|branch flow]] before editing new work. Pass `--branch <name>` here
+  only when changes already exist and intentionally belong on a fresh branch, or when one atomic
+  commit transaction must create the branch.
 - Pass `--target <branch>` only when the destination differs from the repository default.
 - Repeat `--file <path>` when unrelated or untracked files exist; otherwise only tracked modifications
   are staged. Paths are resolved against the repo root. Never use `git add -A`.

@@ -111,7 +111,15 @@ def normalize(repo: str, *, capture: bool = True, component: Component | None = 
         results = [normalize(repo, capture=capture, component=u) for u in ws.components]
         return _aggregate("normalize", ws.reason, results)
     if not component.has_target("fix"):
-        return HookResult("normalize", ok=True, summary=f"no make fix target in {component.path} — skipped")
+        return HookResult(
+            "normalize",
+            ok=True,
+            summary=f"no make fix target in {component.path} — skipped",
+            guidance=(
+                f"{component.path}/Makefile 未提供 fix target；"
+                "请补充可重复执行的 make fix 入口，作为 lint 前唯一允许改写源码的 normalize 步骤。",
+            ),
+        )
     env_failure = _environment_failure("normalize", component)
     if env_failure is not None:
         return env_failure

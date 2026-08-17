@@ -35,7 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from domain import lifecycle, repo as repo_model  # noqa: E402
+from domain import branch as branch_domain, lifecycle, repo as repo_model  # noqa: E402
 from domain.context import RepoContext, gate, prstate, record_active_repo, store
 from domain.forge import Forge, ForgeError, PullRequest, pr_label  # noqa: E402
 from lib import cli, git_state, gitcmd  # noqa: E402
@@ -97,35 +97,6 @@ def run(repo: str, *args: str, timeout: int = 30) -> str:
     if not r.ok:
         raise SmartError(f"git {' '.join(args)} failed: {r.err or r.out}")
     return r.out
-
-
-def cut_new_branch(repo: str, name: str, base: str, plan: list[str]) -> None:
-    # `base` is the ref the new branch is cut from: `origin/<target>` by default (a fresh,
-    # independent feature) or an explicit `--base` ref for intentional stacking. Fetch first
-    # when cutting off a remote-tracking ref so we branch off the latest tip, not a stale local copy.
-    if base.startswith("origin/"):
-        gitcmd.git(repo, "fetch", "origin", base.split("/", 1)[1], timeout=30)
-    # Carry uncommitted tracked edits onto the fresh branch. A dirty tree whose files differ
-    # between HEAD and base makes `checkout -b` refuse ("would be overwritten"), which used to
-    # strand work done *before* the branch was decided — e.g. a version bump run on whichever
-    # branch HEAD happened to sit on, then `--branch` to a fresh one. Stash → cut → pop lets that
-    # work follow you over, so edit-then-cut works as well as cut-then-edit (order stops mattering).
-    st = gitcmd.git(repo, "stash", "push", "-m", f"devloop: cutting {name}")
-    stashed = st.ok and "No local changes" not in (st.out + st.err)
-    r = gitcmd.git(repo, "checkout", "-b", name, base)
-    if not r.ok:
-        if stashed:
-            gitcmd.git(repo, "stash", "pop")   # restore the working tree on the original branch
-        raise SmartError(f"could not cut '{name}' off {base}: {r.err}")
-    if stashed:
-        pop = gitcmd.git(repo, "stash", "pop")
-        if not pop.ok:
-            raise SmartError(
-                f"cut '{name}' off {base} but reapplying your local changes conflicted: {pop.err}\n"
-                "The changes are partially applied with conflict markers and kept in `git stash` — "
-                "resolve the conflicts, then `git stash drop`."
-            )
-    plan.append(f"cut new branch '{name}' off {base}" + (" (carried over local changes)" if stashed else ""))
 
 
 def decide_branch(
@@ -435,12 +406,18 @@ def prepare_branch(intent: GitIntent, gv: gate.GateView, plan: list[str]) -> Bra
             f"pass --branch <name> to cut a fresh branch off {intent.base}."
         )
     if action == "cut":
-        cut_new_branch(intent.repo, intent.requested_branch, intent.base, plan)
-        # Record where we forked from — git doesn't durably keep it, so devloop captures it at
-        # the one moment it's known exactly. Sticky across later refreshes (see repo.py).
-        fork = intent.base.split("/", 1)[1] if intent.base.startswith("origin/") else intent.base
-        RepoContext.refresh_branch(intent.repo).set_fork_from(fork)
-        plan.append(f"recorded fork_from={fork}")
+        try:
+            created = branch_domain.create(
+                intent.repo,
+                intent.requested_branch,
+                intent.base,
+                carry_changes=True,
+            )
+        except branch_domain.BranchError as exc:
+            raise SmartError(str(exc)) from exc
+        carried = " (carried over local changes)" if created.carried_changes else ""
+        plan.append(f"cut new branch '{created.name}' off {created.base}{carried}")
+        plan.append(f"recorded fork_from={created.fork_from}")
         return BranchResult(branch=intent.requested_branch, cut=True)
     if gv.in_flight():
         # continuing onto a branch whose PR is still open — the loop's between-rounds state.

@@ -44,6 +44,8 @@ def main(argv: list[str]) -> int:
             print("✗ " + prepared.summary)
             ok = False
             continue
+        for guidance in prepared.guidance:
+            print(f"  - {guidance}")
         res = checks.lint(repo, capture=False, component=component)   # capture=False：实时走终端
         print(("✓ " if res.ok else "✗ ") + res.summary)
         ok = ok and res.ok

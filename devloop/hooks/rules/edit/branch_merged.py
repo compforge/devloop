@@ -33,8 +33,8 @@ class BranchMergedGuardRule(Rule):
                     f"⚠️  Branch '{cur}' is no longer active ({pr_str} on origin/{tgt}).\n"
                     "Editing this stale branch wastes work — changes won't reach a fresh MR.\n"
                     f"Cut a new branch from latest origin/{tgt} first:\n"
-                    f"  /gcampr <new-feature-name> 'your commit msg'\n"
-                    f"or:  git fetch origin {tgt} && git checkout -b <name> origin/{tgt}"
+                    f"  <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/branch.py "
+                    f"create <name> --repo {git_root} --target {tgt}"
                 ),
                 locator=target.path,
             )

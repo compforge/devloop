@@ -1,0 +1,30 @@
+{
+  "name": "code-taste",
+  "version": "0.1.0",
+  "description": "Engineering judgment for architecture, boundaries, naming, maintainability, documentation, and code review.",
+  "author": {
+    "name": "compforge",
+    "url": "https://github.com/compforge"
+  },
+  "license": "MIT",
+  "keywords": [
+    "architecture",
+    "code-review",
+    "design",
+    "maintainability",
+    "naming",
+    "refactoring"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Code Taste",
+    "shortDescription": "Architecture, boundaries, naming, maintainability, and review",
+    "longDescription": "Applies judgment-first engineering principles before implementation: clarify the original requirement, control complexity, shape models and boundaries, and review code at the appropriate depth.",
+    "defaultPrompt": "Use code-taste to clarify the requirement, choose the appropriate review depth, and assess the design before implementation.",
+    "developerName": "compforge",
+    "category": "Developer Workflow",
+    "capabilities": [
+      "Read"
+    ]
+  }
+}

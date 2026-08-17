@@ -1,6 +1,6 @@
 # devloop
 
-跨 CLI 的 plugin marketplace。一个 marketplace 仓库 + 多个 plugin 子目录 + 各 CLI 各自的 manifest。本仓库**不是单 plugin 仓库**——根目录的 `devloop/` / `example/` 等子目录每个都是独立 plugin。`devloop` 是第一个真实 plugin，`example` 是占位（表明本仓库初衷即多 plugin）。
+跨 CLI 的 plugin marketplace。一个 marketplace 仓库 + 多个 plugin 子目录 + 各 CLI 各自的 manifest。本仓库**不是单 plugin 仓库**——根目录的 `devloop/` / `code-taste/` / `example/` 等子目录每个都是独立 plugin。`devloop` 承载开发闭环，`code-taste` 提供设计判断 skill，`example` 是占位示例。
 
 ---
 
@@ -44,6 +44,12 @@ devloop/                              # ← 仓库根（marketplace）
 │   ├── config/                       #     用户配置模板（config.json：workspaces / gitlab / precommit）
 │   ├── monitors/monitors.json        #     MR-sweep 后台轮询
 │   └── README.md / AGENTS.md / CONCEPTS.md
+│
+├── code-taste/                       # plugin: 架构、边界、命名与可维护性判断（skill-only）
+│   ├── .claude-plugin/plugin.json    #     Claude manifest
+│   ├── .codex-plugin/plugin.json     #     Codex manifest
+│   ├── skills/code-taste/            #     共享 skill 与分层 references
+│   └── README.md
 │
 ├── example/                          # plugin: 占位演示，证明这是多 plugin marketplace
 │   ├── .claude-plugin/plugin.json    #     Claude ✅

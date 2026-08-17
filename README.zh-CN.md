@@ -2,7 +2,7 @@
 
 # devloop
 
-**为 AI 编码管理一条受控的 PR/MR 开发生命周期。** 本仓库是跨 CLI 的 plugin marketplace；主力 plugin `devloop` 引导 Claude Code 和 Codex 完成进入 repo、基于 branch 开发、按受影响 Component 验证、commit/push 与创建 PR/MR，最终 merge 始终留给人。**GitHub（PR）与 GitLab（MR）都支持**，按 repo 的 origin 自动识别；`example` 保留为多 plugin marketplace 的占位示例。
+**为 AI 编码管理一条受控的 PR/MR 开发生命周期。** 本仓库是跨 CLI 的 plugin marketplace；主力 plugin `devloop` 引导 Claude Code 和 Codex 完成进入 repo、基于 branch 开发、按受影响 Component 验证、commit/push 与创建 PR/MR，最终 merge 始终留给人。**GitHub（PR）与 GitLab（MR）都支持**，按 repo 的 origin 自动识别；`code-taste` 作为独立 skill-only plugin 提供架构、边界、命名与可维护性判断，`example` 保留为占位示例。
 
 > 当前支持 Claude Code 和 Codex。设计理念 / 架构见 [AGENTS.md](./AGENTS.md)，各 plugin 细节见各自目录的 README。
 
@@ -132,6 +132,7 @@ opencode 仍是占位，等其 plugin / hook 协议接入后再启用。
 | Plugin | 简介 | README |
 |--------|------|--------|
 | `devloop` | 面向 AI 编码的受控 PR/MR 生命周期：repo/branch 入口、受影响 Component 验证、commit/push/PR、实时状态与执行级护栏（Claude + Codex；GitHub + GitLab） | [devloop/README.md](./devloop/README.md) |
+| `code-taste` | 架构、边界、命名、可维护性、文档与 Code Review 判断 | [code-taste/README.md](./code-taste/README.md) |
 | `example` | 占位 plugin，演示多 plugin marketplace 结构 | [example/README.md](./example/README.md) |
 
 ## 新增 plugin

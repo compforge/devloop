@@ -750,6 +750,42 @@ def test_lifecycle_guides_missing_make_test_without_blocking():
     assert len(result.guidance) == 1 and "补充非交互、只读的 make test" in result.guidance[0]
 
 
+def test_lifecycle_guides_missing_make_fix_without_blocking():
+    """缺少 make fix 是 normalize 接入建议；手动入口与 lifecycle gate 都必须当轮展示。"""
+    from domain import lifecycle as lc
+    from domain.lifecycle import checks
+    from domain.repo_layout import Component
+
+    repo = str(Path("/tmp/dlut_missing_make_fix").resolve())
+    shutil.rmtree(repo, ignore_errors=True)
+    os.makedirs(repo)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t.t")
+    _git(repo, "config", "user.name", "t")
+    Path(repo, "Makefile").write_text("lint:\n\ttrue\n")
+    Path(repo, "pyproject.toml").write_text("[project]\nname = 'x'\nversion = '0'\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-qm", "init")
+
+    result = checks.normalize(repo, component=Component.at(repo, repo))
+    assert result.ok and "skipped" in result.summary
+    assert len(result.guidance) == 1 and "补充可重复执行的 make fix" in result.guidance[0]
+
+    dispatched = lc.dispatch("pre_commit", repo, names=["lint"])
+    assert dispatched.proceed
+    assert len(dispatched.results) == 1
+    assert dispatched.results[0].guidance == result.guidance
+
+    import contextlib
+    import io
+
+    runner = _load_script("run_validate")
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        assert runner.main(["--repo", repo]) == 0
+    assert "补充可重复执行的 make fix" in output.getvalue()
+
+
 def test_lifecycle_plan_surfaces_test_files_guidance_without_blocking():
     """缺少 TEST_FILES 是项目接入建议：PLAN 当轮可见，但不能改变 gate 的 proceed。"""
     from domain.lifecycle.base import DispatchResult, HookResult

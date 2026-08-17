@@ -26,8 +26,9 @@ the task explicitly targets that version.
 
 ## Mutation rules
 
-1. Use `--branch` for new work; it cuts from freshly fetched `origin/<target>`. Omit it only to
-   continue the current branch. Stacking requires explicit `--base`.
+1. Start new work with the branch-create transaction before editing. Commit-time `--branch` remains
+   the compatibility path for intentional edit-then-cut flows. Both cut from freshly fetched
+   `origin/<target>`; stacking requires explicit `--base`.
 2. Preserve existing branches and worktrees as-is. Rebase/reset is a separate explicit operation.
 3. Revalidate forge, remote, and lease state at the mutation boundary; injected context is guidance,
    while the owning script's live check is authoritative.
@@ -38,6 +39,7 @@ the task explicitly targets that version.
 
 ## Routes
 
+- Start new work on a fresh feature branch → read [[references/branch|branch flow]].
 - Commit, push, or create/reuse a PR/MR → read [[references/commit-flow|commit flow]].
 - Create or resume an isolated checkout → read [[references/worktree|managed worktrees]].
 - Rebase an existing PR/MR branch → read [[references/rebase|safe rebase]].

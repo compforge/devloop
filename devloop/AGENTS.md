@@ -41,6 +41,7 @@ devloop/
 ├── .claude-plugin/plugin.json     # Claude manifest（靠目录约定自动发现）
 ├── domain/                         # 领域 owner：模型、状态变化与生命周期规则
 │   ├── repo.py                    #   ★Repo 模型 + cwd 无关解析 + WorkSet（本轮 components）
+│   ├── branch.py                  #   ★Branch 创建事务：fresh base / owner / dirty carry / fork_from
 │   ├── workspace.py               #   ★Workspace 注册、发现与归属
 │   ├── repo_layout.py             #   ★Component 模型 + repo/component 路径边界
 │   ├── context/                   #   ★状态源：repo/workspace/session、gate/prstate
@@ -71,7 +72,7 @@ devloop/
 │   ├── posttool_git_refresh.py       # PostToolUse：git 状态命令后刷新 branch 段
 │   ├── sessionend_release.py      # SessionEnd：释放本 session 的 owner 锁（正常退出路径）
 │   └── pretool_*.py               # 命令/编辑硬拦截（guard harness；含 owner 锁与裸 worktree add 拦截）
-├── scripts/                        # 工作流驱动 adapter：enter / commit_flow + smart_* / pr / release / lint/test/review / init_*
+├── scripts/                        # 工作流驱动 adapter：enter / branch / commit_flow + smart_* / pr / release / lint/test/review / init_*
 ├── monitors/monitors.json          # ★PR-sweep 后台轮询（替代 hook 心跳 scheduler）
 ├── commands/                       # slash：enter / gcam / gcamp / gcampr（validation 归 skill，gate 自动触发）
 ├── skills/                         # git-ops / gcam / gcamp / gcampr / validate
@@ -85,7 +86,7 @@ devloop/
 1. **领域归属沿 `PR/MR → Repo → Component`**：PR/MR 与 branch 生命周期归 Repo，验证范围与验证结果归 Component；Workspace 只聚合上下文。不得重新引入“一个 repo 只有一个代码目录”的假设，具体选择与身份语义见 [`CONCEPTS.md`](./CONCEPTS.md)。
 2. **入口驱动领域，依赖不反向**：`hooks/scripts → domain/lib`；`domain/` 持有业务事实和合法变化，`lib/` 只提供 Git、forge、配置等技术能力。Git、forge、配置分别经统一 seam，入口不得散调外部协议或复制领域判断。
 3. **状态源提供事实，Board 决定组织和投递，guard 读取 live truth**：AGENTS.md 是文字知识源，`.devloop/` 是结构化运行态；Repo、Branch、WorkingTree 与 Session 状态按归属和写入者隔离，验证戳按 Component 记录。Board 只维护 per-session 投递游标，不复制业务事实，也不参与硬门禁判定。详见 [`docs/board.md`](./docs/board.md) 与 [`CONCEPTS.md`](./CONCEPTS.md)。
-4. **生命周期动作走唯一入口，合法例外才软提示**：commit/push/PR 走 `commit_flow`/smart 脚本；checkout 选择及 worktree 形态的创建、复用和清理走 `checkout.py`。保护分支、失活分支、guest session 等无合法编辑路径的情况硬拦截，有合法例外的 in-flight PR/MR 只注入提示。具体流程见 [`docs/loop.md`](./docs/loop.md) 与 [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)。
+4. **生命周期动作走唯一入口，合法例外才软提示**：新工作在编辑前走 `branch.py create`，branch 创建规则归 `domain.branch`；commit/push/PR 走 `commit_flow`/smart 脚本并复用同一 branch 事务；checkout 选择及 worktree 形态的创建、复用和清理走 `checkout.py`。保护分支、失活分支、guest session 等无合法编辑路径的情况硬拦截，有合法例外的 in-flight PR/MR 只注入提示。具体流程见 [`docs/loop.md`](./docs/loop.md) 与 [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)。
 5. **devloop 产出开发事实，不拥有长期 loop 或会话唤醒**：monitor、review 和生命周期脚本只维护结构化状态或外部 PR/MR 结果；Baton/reqloop 负责持久观察、调度和后续工作。不要在 Harness Plugin 内重建通知 transport、waiter 或 re-arm 流程。
 
 ---

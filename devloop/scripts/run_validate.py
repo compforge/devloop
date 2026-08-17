@@ -38,6 +38,8 @@ def main(argv: list[str]) -> int:
             print("✗ " + prepared.summary)
             ok = False
             continue
+        for guidance in prepared.guidance:
+            print(f"  - {guidance}")
         with ThreadPoolExecutor(max_workers=2) as executor:
             futures = [
                 executor.submit(checks.lint, repo, component=component),

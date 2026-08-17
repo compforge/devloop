@@ -3,7 +3,7 @@
 **devloop 为 AI 编码 agent 提供一条受控的 PR/MR 开发闭环**：进入仓库、在正确分支开发、验证受影响的 Component、提交并推送、创建或复用 PR/MR，最终由人完成 merge。
 
 ```text
-enter repo → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
+enter repo → start branch → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
 ```
 
 它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code 和 Codex。
@@ -20,7 +20,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 
 ## 核心保证
 
-- **Git/PR 事务**：`gcam`、`gcamp`、`gcampr` 分别完成 commit、commit + push、commit + push + PR/MR。新工作从目标分支建立干净基线，已有 PR/MR 可安全追加提交或进行可恢复 rebase。
+- **Git/PR 事务**：独立的 branch-create 事务在编辑前从目标分支建立干净基线；`gcam`、`gcamp`、`gcampr` 分别完成 commit、commit + push、commit + push + PR/MR。已有 PR/MR 可安全追加提交或进行可恢复 rebase。
 - **Component 感知验证**：一个仓库可包含多个独立 Component，例如 `server/`、`cli/` 或 `packages/*`。devloop 根据本次改动选择 Component，并分别记录 lint/test 结果，不会用一个 Component 的通过状态覆盖另一个。
 - **运行态上下文**：Board 向当前 session 投递相关仓库的 branch、working tree、PR/MR 和验证状态；进入项目或上下文压缩后会自动刷新。
 - **执行级守卫**：阻止保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
@@ -69,7 +69,7 @@ stable Component content
    └─ behavior:       make test
 ```
 
-- `make fix` 是可选的 normalize 步骤，也是唯一允许自动改写源码的验证命令。
+- `make fix` 是可选的 normalize 步骤，也是唯一允许自动改写源码的验证命令；缺失时不阻断验证，但会提示项目补充统一入口。
 - normalize 完成后，lint 与 test 可以并发执行。
 - 完整验证同时检查静态质量和行为；单独要求 lint 或 test 属于部分验证，devloop 会分别报告结果。
 - lifecycle 中 lint 失败会阻止 commit/MR；test 失败目前只提示、不阻塞，因为坏测可能来自基线或环境，是否与本次 diff 相关仍需 CI 或人判断。
@@ -100,13 +100,14 @@ Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 pack
 
 | 操作 | 结果 |
 |---|---|
+| “新建分支 `<name>`” | 刷新目标分支并在编辑前创建、占有新的开发分支 |
 | `validate` / “验证改动” | normalize 后并发运行 lint 与 test，报告完整验证结果 |
 | “修下 lint” / “跑下测试” | 只执行指定检查，并标记为部分验证 |
 | `gcam` | commit，不 push |
 | `gcamp` | commit + push，不创建新的 PR/MR |
 | `gcampr` | commit + push + 创建或复用 PR/MR |
 
-Git 事务默认处理本次相关改动，也可以通过可重复的 `--file <path>` 精确限定提交范围。保护分支或已失效分支上的新工作必须提供新 branch，devloop 会从 `origin/<target>` 建立基线，不从当前 HEAD 偷带提交。
+新工作优先在编辑前通过 branch-create 事务建立分支。它默认要求 clean working tree；已有改动确实属于新分支时才显式使用 `--carry-changes`。Git 提交事务默认处理本次相关改动，也可以通过可重复的 `--file <path>` 精确限定提交范围；兼容的 commit-time `--branch` 同样从 `origin/<target>` 建立基线，不从当前 HEAD 偷带提交。
 
 这些操作不依赖 session 当前停在哪个目录：优先解析显式 `--repo`，其次使用 cwd 所在仓库，再使用当前 session 最近绑定的仓库；无法唯一确定时会拒绝猜测。
 

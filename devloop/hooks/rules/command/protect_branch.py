@@ -54,8 +54,9 @@ class ProtectBranchRule(Rule):
                 severity=Severity.DENY,
                 message=(
                     f"⚠️  Refusing `git commit/push` on protected branch '{gv.branch or '?'}'{where}.\n"
-                    f"Create a feature branch first: `git checkout -b <name> origin/{gv.target}` "
-                    f"(or use /gcampr to do it properly)."
+                    "Create a feature branch before editing: "
+                    f"`<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/branch.py create "
+                    f"<name> --repo {git_root} --target {gv.target}`."
                 ),
                 locator=" ".join(target.argv),
             )

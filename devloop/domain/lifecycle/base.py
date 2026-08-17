@@ -143,6 +143,7 @@ def dispatch(
         return DispatchResult(phase=phase, results=[])
 
     preparation_failures: dict[str, HookResult] = {}
+    preparation_guidance: dict[str, tuple[str, ...]] = {}
     if registry is None:
         # 真实内置 checks 先完成各自声明的 preparation，再进入并发区；测试注入 registry 不触盘。
         for name in names:
@@ -152,7 +153,14 @@ def dispatch(
             try:
                 prepared = preparer(repo, paths=paths)
                 if not prepared.ok:
-                    preparation_failures[name] = HookResult(name, ok=False, summary=prepared.summary)
+                    preparation_failures[name] = HookResult(
+                        name,
+                        ok=False,
+                        summary=prepared.summary,
+                        guidance=prepared.guidance,
+                    )
+                elif prepared.guidance:
+                    preparation_guidance[name] = prepared.guidance
             except Exception as e:  # gate fail-closed
                 preparation_failures[name] = HookResult(name, ok=False, summary=f"preparation errored: {e}")
 
@@ -167,7 +175,18 @@ def dispatch(
             # keyword-only（`lint`/`test` 把它放在 `*,` 之后，与 capture/component 同列）。位置传在
             # 后者上炸 TypeError，而 gate 的 fail-closed 会把异常收敛成 ok=False——那不是崩，
             # 是**静默挡掉每一次 commit**。契约规定的是参数名，不是它的位置。
-            return handler(repo, paths=paths)
+            result = handler(repo, paths=paths)
+            guidance = preparation_guidance.get(name, ())
+            if not guidance:
+                return result
+            return HookResult(
+                name=result.name,
+                ok=result.ok,
+                summary=result.summary,
+                relay=result.relay,
+                advisory=result.advisory,
+                guidance=(*guidance, *result.guidance),
+            )
         except Exception as e:  # gate fail-closed
             return HookResult(name=name, ok=False, summary=f"{name} errored: {e}")
 

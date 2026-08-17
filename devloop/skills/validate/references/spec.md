@@ -15,7 +15,8 @@ stable Component content
 `make fix` is optional preparation, not a validation check. It is the only validation command allowed
 to rewrite tracked source; fixer steps that can touch the same files remain ordered. Its exit code is
 advisory because some fixers report that they changed files. Checks begin only after normalize finishes
-and may run concurrently because they observe the same stable content.
+and may run concurrently because they observe the same stable content. If the target is absent,
+validation remains non-blocking but reports actionable guidance to add this canonical normalize entry.
 
 Complete validation runs every required check. Running lint or test alone is partial validation: it may
 update that check's own stamp, but must not be presented as complete Component validation.

@@ -3,12 +3,21 @@
   "owner": {
     "name": "compforge"
   },
-  "description": "Cross-CLI plugin marketplace for developer-efficiency workflows. devloop is the first real plugin; example is a placeholder for the multi-plugin intent.",
+  "description": "Cross-CLI developer-workflow marketplace for devloop and code-taste; example remains a layout placeholder.",
   "plugins": [
     {
       "name": "devloop",
       "source": "./devloop",
       "description": "Dev-loop workflow, native-first rebuild built on native Claude Code events (CwdChanged / PostCompact / FileChanged / monitors): git/PR (GitHub + GitLab) + cwd-aware enter + lint/test gates + .devloop/context.json state layer auto-injected into every prompt.",
+      "author": {
+        "name": "compforge",
+        "url": "https://github.com/compforge"
+      }
+    },
+    {
+      "name": "code-taste",
+      "source": "./code-taste",
+      "description": "Engineering judgment for architecture, boundaries, naming, maintainability, documentation, and code review.",
       "author": {
         "name": "compforge",
         "url": "https://github.com/compforge"

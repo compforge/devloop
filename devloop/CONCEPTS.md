@@ -48,7 +48,7 @@ devloop 循环（`enter → 提需求 → 开发 → commit/PR → 人工 merge 
 
 一轮生命线全图与各拍的 hook/script 时序见 `docs/loop.md`。
 
-**fork-off 的真正防线在提交期，而非提示**——`commit_flow` 的 **base 由意图定，不由 HEAD 当前态定**：开新工作（`--branch`）**永远** cut 自 `origin/<target>`（或显式 `--base` 栈式），与当前停在哪个态无关；新分支只许带本轮提交，夹带外来 commit 在 push/MR 前被自检拦下。这是结构性保证：哪怕 AI 没看提示，从 in-flight 分支 fork 也不会把它的提交带进新 PR。提示负责"别把新活提交到在途 PR 上"，base 规则负责"别 fork 出夹带"。
+**fork-off 的真正防线是 Branch 事务，而非提示**——`domain.branch` 的 **base 由意图定，不由 HEAD 当前态定**：开新工作在编辑前通过 `branch.py create` cut 自刷新后的 `origin/<target>`（或显式 `--base` 栈式）；兼容的 commit-time `--branch` 也复用同一事务。新分支只许带本轮提交，夹带外来 commit 在 push/MR 前被自检拦下。这是结构性保证：哪怕 AI 没看提示，从 in-flight 分支 fork 也不会把它的提交带进新 PR。提示负责“别把新活提交到在途 PR 上”，Branch 事务负责“别 fork 出夹带”。
 
 ## Owner / guest session（checkout 占有）
 

@@ -6,8 +6,8 @@
 
 ```
 <plugin-name>/
-├── .claude-plugin/plugin.json     # Claude manifest (本期必需)
-├── .codex-plugin/plugin.json      # Codex 占位 (内容写最小可解析 JSON + _status 字段)
+├── .claude-plugin/plugin.json     # Claude manifest（支持 Claude 时必需）
+├── .codex-plugin/plugin.json      # Codex manifest（支持 Codex 时必需）
 ├── skills/                        # 可选：SKILL.md 子目录
 ├── commands/                      # 可选：slash 命令
 ├── domain/                        # 可选：领域模型、状态变化与生命周期规则
@@ -38,8 +38,9 @@
 
 新 plugin 加好后：
 1. 在 `.claude-plugin/marketplace.json` 的 `plugins` 数组追加一项
-2. 同步追加到 `.codex-plugin/marketplace.json`（占位）和 `.opencode/marketplace.json`（占位）
-3. 更新仓库根 `README.md` 的 plugin 清单
+2. 在 Codex 标准索引 `.agents/plugins/marketplace.json` 的 `plugins` 数组追加一项
+3. 只有 plugin 实际支持 opencode 时，才追加到 `.opencode/marketplace.json`
+4. 更新仓库根 `README.md` 的 plugin 清单
 
 ## Hook 编写规范
 

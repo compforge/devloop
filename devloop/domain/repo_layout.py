@@ -168,6 +168,17 @@ def owning_component(target: str | Path, git_root: str | Path) -> Component | No
     root = Path(git_root).resolve()
     p = Path(target).resolve()
     cur = p if p.is_dir() else p.parent
+
+    # `discover_components` 不进入嵌套 repo，按 changed path 投影 component 时也必须遵守同一边界。
+    # gitlink 的工作树目录里可能恰好有 package.json/pyproject.toml；若从目录自身开始找 owner，
+    # 就会把 submodule 当作父仓 component，再重复运行一遍子仓的全量 lint/test。gitlink 指针是父仓
+    # 的输入，因此跳过整个嵌套 repo，从它的父目录继续寻找父仓 owner。
+    nested = cur
+    while nested != root and root in nested.parents:
+        if (nested / ".git").exists():
+            cur = nested.parent
+            break
+        nested = nested.parent
     # 只在 git_root 严格子目录里向上走；命中项目清单即为该 component。
     while cur != root and root in cur.parents:
         if _is_component(cur):

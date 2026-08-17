@@ -495,6 +495,34 @@ def test_shared_paths_own_no_unit_so_a_docs_change_validates_nothing():
     assert sorted(u.id for u in repo_model.select_components(G, paths=["README.md"]).components) == ["."]
 
 
+def test_nested_repo_is_not_projected_as_a_parent_repo_component():
+    """gitlink 只影响父仓 component，不能因为子仓里有项目清单就重复验证整个子仓。"""
+    from domain import repo as repo_model
+    from domain.lifecycle import checks
+
+    R = str(Path("/tmp/dlut_nested_repo_component").resolve())
+    shutil.rmtree(R, ignore_errors=True)
+    os.makedirs(f"{R}/doctor")
+    _git(R, "init", "-q", "-b", "main")
+    _git(R, "config", "user.email", "t@t.t")
+    _git(R, "config", "user.name", "t")
+    Path(f"{R}/go.mod").write_text("module parent\n")
+    Path(f"{R}/Makefile").write_text("test:\n\t@printf parent > observed\n")
+    # `.git` 可为目录（nested repo）或文件（submodule/worktree）；两者都是当前 repo 的边界。
+    Path(f"{R}/doctor/.git").write_text("gitdir: ../.git/modules/doctor\n")
+    Path(f"{R}/doctor/pyproject.toml").write_text(
+        "[project]\nname = 'doctor'\nversion = '0'\n"
+    )
+    Path(f"{R}/doctor/Makefile").write_text("test:\n\tfalse\n")
+
+    ws = repo_model.select_components(R, paths=["doctor"])
+    assert [component.id for component in ws.components] == ["."]
+    result = checks.test(R, paths=["doctor"])
+    assert result.ok, result.summary
+    assert Path(R, "observed").read_text() == "parent"
+    assert "doctor" not in result.summary
+
+
 def test_precommit_gate_scopes_to_files_being_committed():
     """`--file` 划定的就是 pre_commit 的验证范围：只验你真要提交的那些 component。
 

@@ -47,17 +47,29 @@ def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: b
     )
 
 
-def _make(code_dir: str, target: str, *, capture: bool, sink: list[str]) -> int:
-    """跑 `make <target>`。capture=False → 走父进程 stdout（实时）；True → 收口进 sink。"""
+def _progress(check: str, component: Component, state: str, elapsed: float | None = None) -> None:
+    """并发 capture 时只打印一行边界事件，保留实时感且不让子进程输出互相穿插。"""
+    timing = f" ({elapsed:.1f}s)" if elapsed is not None else ""
+    print(f"[validate] {check} {component.id}: {state}{timing}", flush=True)
+
+
+def _make(component: Component, target: str, *, capture: bool, sink: list[str]) -> tuple[int, float]:
+    """跑 `make <target>`，返回退出码与耗时。capture=True 时输出简短实时进度。"""
+    code_dir = component.path
     header = f"--- make {target} (cwd={code_dir}) ---"
+    started_at = monotonic()
     if capture:
+        _progress(target, component, "started")
         sink.append(header)
         r = subprocess.run(["make", target], cwd=code_dir, capture_output=True, text=True)
         sink.append(r.stdout)
         sink.append(r.stderr)
-        return r.returncode
+        elapsed = monotonic() - started_at
+        _progress(target, component, "passed" if r.returncode == 0 else "failed", elapsed)
+        return r.returncode, elapsed
     print(header)
-    return subprocess.run(["make", target], cwd=code_dir).returncode
+    rc = subprocess.run(["make", target], cwd=code_dir).returncode
+    return rc, monotonic() - started_at
 
 
 def _tail(sink: list[str]) -> str:
@@ -125,9 +137,9 @@ def normalize(repo: str, *, capture: bool = True, component: Component | None = 
         return env_failure
 
     sink: list[str] = []
-    rc = _make(component.path, "fix", capture=capture, sink=sink)
+    rc, elapsed = _make(component, "fix", capture=capture, sink=sink)
     suffix = "" if rc == 0 else f" (exit {rc}; lint remains authoritative)"
-    return HookResult("normalize", ok=True, summary=f"make fix completed{suffix}")
+    return HookResult("normalize", ok=True, summary=f"make fix completed in {elapsed:.1f}s{suffix}")
 
 
 def lint(repo: str, *, capture: bool = True, component: Component | None = None,
@@ -154,15 +166,19 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
 
     sink: list[str] = []
     shutil.rmtree(Path(code_dir) / ".mypy_cache", ignore_errors=True)
-    rc = _make(code_dir, target, capture=capture, sink=sink)
+    rc, elapsed = _make(component, target, capture=capture, sink=sink)
     if rc == 0:
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
         # 指纹在**此刻**算：`make fix` 刚改过文件，跑之前算的指纹配不上刚被验过的这棵树——
         # 盖上去就等于给一份没验过的内容发通行证。
         ctx.mark_lint_passed(component.id, repo_model.component_fingerprint(repo, component) or "")
-        return HookResult("lint", ok=True, summary=f"make {target} passed — stamped")
+        return HookResult("lint", ok=True, summary=f"make {target} passed in {elapsed:.1f}s — stamped")
     detail = f"\n{_tail(sink)}" if capture else ""
-    return HookResult("lint", ok=False, summary=f"make {target} failed (only `make fix` may edit files){detail}")
+    return HookResult(
+        "lint",
+        ok=False,
+        summary=f"make {target} failed after {elapsed:.1f}s (only `make fix` may edit files){detail}",
+    )
 
 
 def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
@@ -222,6 +238,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
     header = f"--- {display} (cwd={code_dir}) ---"
     started_at = monotonic()
     if capture:
+        _progress("test", component, "started")
         sink.append(header)
         r = subprocess.run(argv, cwd=code_dir, capture_output=True, text=True)
         sink += [r.stdout, r.stderr]
@@ -230,6 +247,8 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         print(header)
         rc = subprocess.run(argv, cwd=code_dir).returncode
     elapsed = monotonic() - started_at
+    if capture:
+        _progress("test", component, "passed" if rc == 0 else "failed", elapsed)
     if not extra and make_target is not None and not supports_test_files and elapsed > _SLOW_FULL_TEST_SECONDS:
         guidance += (
             f"make {make_target} 完整运行耗时 {elapsed:.1f}s，且 Makefile 未消费 TEST_FILES；"
@@ -241,7 +260,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 "test",
                 ok=True,
                 advisory=True,
-                summary=f"{display} passed — focused {len(focused_files)} changed test file(s); "
+                summary=f"{display} passed in {elapsed:.1f}s — focused {len(focused_files)} changed test file(s); "
                         "component test stamp unchanged",
                 guidance=guidance,
             )
@@ -250,7 +269,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 "test",
                 ok=True,
                 advisory=True,
-                summary=f"{display} passed — narrowed by explicit test arguments; "
+                summary=f"{display} passed in {elapsed:.1f}s — narrowed by explicit test arguments; "
                         "component test stamp unchanged",
                 guidance=guidance,
             )
@@ -260,7 +279,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
             "test",
             ok=True,
             advisory=True,
-            summary=f"{display} passed — stamped",
+            summary=f"{display} passed in {elapsed:.1f}s — stamped",
             guidance=guidance,
         )
     detail = f"\n{_tail(sink)}" if capture else ""
@@ -268,6 +287,6 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         "test",
         ok=False,
         advisory=True,
-        summary=f"{display} failed (advisory — not blocking){detail}",
+        summary=f"{display} failed after {elapsed:.1f}s (advisory — not blocking){detail}",
         guidance=guidance,
     )

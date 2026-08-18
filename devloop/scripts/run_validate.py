@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -31,27 +30,12 @@ def main(argv: list[str]) -> int:
     print(f"run_validate: components = {names}  [{workset.reason}]")
     record_active_repo(repo)
 
-    ok = True
-    for component in workset.components:
-        prepared = checks.normalize(repo, capture=False, component=component)
-        if not prepared.ok:
-            print("✗ " + prepared.summary)
-            ok = False
-            continue
-        for guidance in prepared.guidance:
+    results = checks.validate_components(repo, workset)
+    for result in results:
+        print(("✓ " if result.ok else "✗ ") + result.summary)
+        for guidance in result.guidance:
             print(f"  - {guidance}")
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [
-                executor.submit(checks.lint, repo, component=component),
-                executor.submit(checks.test, repo, component=component),
-            ]
-            results = [future.result() for future in futures]
-        for result in results:
-            print(("✓ " if result.ok else "✗ ") + result.summary)
-            for guidance in result.guidance:
-                print(f"  - {guidance}")
-            ok = ok and result.ok
-    return 0 if ok else 1
+    return 0 if all(result.ok for result in results) else 1
 
 
 if __name__ == "__main__":

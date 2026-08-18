@@ -11,6 +11,7 @@ import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from types import SimpleNamespace
 
 from _testkit import _git, _hook_input, _load_hook, _load_script, run_main  # noqa: E402  (bootstrap first)
@@ -691,6 +692,56 @@ def test_lifecycle_checks_follow_changed_component():
     assert result.ok and result.advisory
     assert "changed files under: cli" in result.summary
     assert "make test passed" in result.summary
+
+
+def test_component_tests_run_in_parallel_and_stamp_after_join():
+    """test fan-out 要并发执行，但 validation 仍由父线程 join 后一次写入，不能丢 component 戳。"""
+    from domain import repo as repo_model
+    from domain.context import RepoContext
+    from domain.lifecycle import checks
+    from domain.lifecycle.base import HookResult
+    from domain.repo_layout import Component
+
+    root = "/tmp/dlut_parallel_component_tests"
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(f"{root}/python")
+    os.makedirs(f"{root}/typescript")
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "config", "user.email", "t@t.t")
+    _git(root, "config", "user.name", "t")
+    Path(f"{root}/python/pyproject.toml").write_text("[project]\nname='p'\nversion='0'\n")
+    Path(f"{root}/typescript/package.json").write_text('{"name":"t"}\n')
+    _git(root, "add", "-A")
+    _git(root, "commit", "-qm", "init")
+    RepoContext.refresh_all(root)
+
+    components = (
+        Component.at(f"{root}/python", root),
+        Component.at(f"{root}/typescript", root),
+    )
+    barrier = Barrier(len(components))
+    original_select = checks.repo_model.select_components
+    original_test_component = checks._test_component
+
+    def fake_test_component(_repo, *, component, **_kwargs):
+        barrier.wait(timeout=5)
+        return HookResult("test", ok=True, advisory=True, summary=component.id), True
+
+    checks.repo_model.select_components = lambda *_args, **_kwargs: repo_model.WorkSet(
+        components, "parallel components",
+    )
+    checks._test_component = fake_test_component
+    try:
+        result = checks.test(root, paths=["python/a.py", "typescript/a.ts"])
+    finally:
+        checks.repo_model.select_components = original_select
+        checks._test_component = original_test_component
+
+    assert result.ok and result.summary == "parallel components; python; typescript"
+    validation = RepoContext.load(root).validation
+    python_at = validation.component("python").last_test_at
+    typescript_at = validation.component("typescript").last_test_at
+    assert python_at is not None and python_at == typescript_at
 
 
 def test_lifecycle_focuses_changed_tests_when_makefile_supports_test_files():

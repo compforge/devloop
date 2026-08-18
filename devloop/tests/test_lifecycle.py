@@ -790,6 +790,46 @@ def test_validate_components_normalizes_workset_before_parallel_checks():
     assert [result.name for result in results] == ["normalize", "lint", "test"]
 
 
+def test_run_tests_streams_one_component_and_captures_parallel_components():
+    """手工 test 的常见单 Component 路径实时输出，并行时才 capture 防交错。"""
+    from domain import repo as repo_model
+    from domain.lifecycle.base import HookResult
+    from domain.repo_layout import Component
+
+    root = "/tmp/dlut_run_tests_capture"
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(root)
+    _git(root, "init", "-q", "-b", "main")
+    runner = _load_script("run_tests")
+    components = (
+        Component.at(f"{root}/python", root),
+        Component.at(f"{root}/typescript", root),
+    )
+    captures: list[bool] = []
+    selected = iter((
+        repo_model.WorkSet(components[:1], "one component"),
+        repo_model.WorkSet(components, "parallel components"),
+    ))
+    original_select = runner.repo_model.select_components
+    original_test_components = runner.checks.test_components
+
+    runner.repo_model.select_components = lambda *_args, **_kwargs: next(selected)
+
+    def fake_test_components(_repo, _workset, *, capture, **_kwargs):
+        captures.append(capture)
+        return HookResult("test", ok=True, advisory=True, summary="passed")
+
+    runner.checks.test_components = fake_test_components
+    try:
+        assert runner.main(["--repo", root]) == 0
+        assert runner.main(["--repo", root]) == 0
+    finally:
+        runner.repo_model.select_components = original_select
+        runner.checks.test_components = original_test_components
+
+    assert captures == [False, True]
+
+
 def test_lifecycle_focuses_changed_tests_when_makefile_supports_test_files():
     """Makefile 显式消费 TEST_FILES 时按 diff 聚焦；focused 结果不能盖全量 test stamp。"""
     from domain.context import RepoContext

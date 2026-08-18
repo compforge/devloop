@@ -43,12 +43,11 @@ def main(argv: list[str]) -> int:
     print(f"run_tests: components = {names}  [{ws.reason}]")
     record_active_repo(repo)
 
-    # WorkSet 已经冻结了本轮 component；交给公共 fan-out 并行测试，避免 CLI
-    # 逐个串行，也不让 check 重新选择 component。
+    # 单 Component 保留手工入口的实时输出；多 Component 并行时 capture，避免日志互相穿插。
     result = checks.test_components(
         repo,
         ws,
-        capture=True,
+        capture=len(ws.components) > 1,
         extra=extra,
         paths=changed_paths or None,
     )

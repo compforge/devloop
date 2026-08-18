@@ -7,7 +7,8 @@
 This repository is a cross-CLI plugin marketplace. Its flagship plugin, `devloop`, helps Claude Code and Codex complete branch-based development without losing control of repository state, validation, Git mutations, or concurrent sessions.
 
 The marketplace also distributes `code-taste`, a skill-only plugin for architecture, boundaries,
-naming, maintainability, documentation, and code review.
+naming, maintainability, documentation, and code review, plus `quality`, a skill-only plugin for
+evidence-driven project quality evaluation.
 
 ```text
 enter repo → start branch → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
@@ -119,6 +120,7 @@ Start a new session after updating so the runtime reloads hooks and skills. User
 |---|---|---|
 | `devloop` | Controlled PR/MR development lifecycle for Claude Code and Codex | [README](./devloop/README.md) |
 | `code-taste` | Engineering judgment for architecture, boundaries, naming, maintainability, and review | [README](./code-taste/README.md) |
+| `quality` | Discover and run project-owned quality capabilities; initially E2E | [README](./quality/README.md) |
 | `example` | Placeholder demonstrating the multi-plugin marketplace layout | [README](./example/README.md) |
 
 ## Documentation

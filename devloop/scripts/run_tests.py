@@ -43,22 +43,19 @@ def main(argv: list[str]) -> int:
     print(f"run_tests: components = {names}  [{ws.reason}]")
     record_active_repo(repo)
 
-    # 对本轮命中的每个 component 各跑各的 test（多代码目录仓可能多个），不让 checks 从 git_root
-    # 重探默认 component 盖掉选择。任一 component 失败即整体非 0。
-    ok = True
-    for component in ws.components:
-        res = checks.test(
-            repo,
-            capture=False,
-            extra=extra,
-            component=component,
-            paths=changed_paths or None,
-        )
-        print(("✓ " if res.ok else "✗ ") + res.summary)
-        for guidance in res.guidance:
-            print(f"  - {guidance}")
-        ok = ok and res.ok
-    return 0 if ok else 1
+    # WorkSet 已经冻结了本轮 component；交给公共 fan-out 并行测试，避免 CLI
+    # 逐个串行，也不让 check 重新选择 component。
+    result = checks.test_components(
+        repo,
+        ws,
+        capture=True,
+        extra=extra,
+        paths=changed_paths or None,
+    )
+    print(("✓ " if result.ok else "✗ ") + result.summary)
+    for guidance in result.guidance:
+        print(f"  - {guidance}")
+    return 0 if result.ok else 1
 
 
 if __name__ == "__main__":

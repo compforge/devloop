@@ -720,21 +720,20 @@ def test_component_tests_run_in_parallel_and_stamp_after_join():
         Component.at(f"{root}/typescript", root),
     )
     barrier = Barrier(len(components))
-    original_select = checks.repo_model.select_components
     original_test_component = checks._test_component
 
     def fake_test_component(_repo, *, component, **_kwargs):
         barrier.wait(timeout=5)
         return HookResult("test", ok=True, advisory=True, summary=component.id), True
 
-    checks.repo_model.select_components = lambda *_args, **_kwargs: repo_model.WorkSet(
-        components, "parallel components",
-    )
     checks._test_component = fake_test_component
     try:
-        result = checks.test(root, paths=["python/a.py", "typescript/a.ts"])
+        result = checks.test_components(
+            root,
+            repo_model.WorkSet(components, "parallel components"),
+            paths=["python/a.py", "typescript/a.ts"],
+        )
     finally:
-        checks.repo_model.select_components = original_select
         checks._test_component = original_test_component
 
     assert result.ok and result.summary == "parallel components; python; typescript"
@@ -742,6 +741,53 @@ def test_component_tests_run_in_parallel_and_stamp_after_join():
     python_at = validation.component("python").last_test_at
     typescript_at = validation.component("typescript").last_test_at
     assert python_at is not None and python_at == typescript_at
+
+
+def test_validate_components_normalizes_workset_before_parallel_checks():
+    """手工 validate 复用 WorkSet：先完成全部写阶段，再并发 lint/test。"""
+    from domain import repo as repo_model
+    from domain.lifecycle import checks
+    from domain.lifecycle.base import HookResult
+    from domain.repo_layout import Component
+
+    components = (
+        Component.at("/tmp/dlut_validate/python", "/tmp/dlut_validate"),
+        Component.at("/tmp/dlut_validate/typescript", "/tmp/dlut_validate"),
+    )
+    workset = repo_model.WorkSet(components, "selected components")
+    normalized: list[str] = []
+    checks_started = Barrier(2)
+    original_normalize = checks.normalize
+    original_lint_components = checks.lint_components
+    original_test_components = checks.test_components
+
+    def fake_normalize(_repo, *, component, **_kwargs):
+        normalized.append(component.id)
+        return HookResult("normalize", ok=True, summary=component.id)
+
+    def fake_lint_components(_repo, selected, **_kwargs):
+        assert tuple(normalized) == tuple(unit.id for unit in components)
+        assert selected.components == components
+        checks_started.wait(timeout=5)
+        return HookResult("lint", ok=True, summary="lint")
+
+    def fake_test_components(_repo, selected, **_kwargs):
+        assert tuple(normalized) == tuple(unit.id for unit in components)
+        assert selected.components == components
+        checks_started.wait(timeout=5)
+        return HookResult("test", ok=True, advisory=True, summary="test")
+
+    checks.normalize = fake_normalize
+    checks.lint_components = fake_lint_components
+    checks.test_components = fake_test_components
+    try:
+        results = checks.validate_components("/tmp/dlut_validate", workset)
+    finally:
+        checks.normalize = original_normalize
+        checks.lint_components = original_lint_components
+        checks.test_components = original_test_components
+
+    assert [result.name for result in results] == ["normalize", "lint", "test"]
 
 
 def test_lifecycle_focuses_changed_tests_when_makefile_supports_test_files():

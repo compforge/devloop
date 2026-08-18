@@ -144,6 +144,12 @@ def normalize(repo: str, *, capture: bool = True, component: Component | None = 
     return HookResult("normalize", ok=True, summary=f"make fix completed in {elapsed:.1f}s{suffix}")
 
 
+def lint_components(repo: str, workset: repo_model.WorkSet, *, capture: bool = True) -> HookResult:
+    """顺序 lint 已选中的 Component；每个 Component 仍在通过时独立盖戳。"""
+    results = [lint(repo, capture=capture, component=unit) for unit in workset.components]
+    return _aggregate("lint", workset.reason, results)
+
+
 def lint(repo: str, *, capture: bool = True, component: Component | None = None,
          paths: list[str] | None = None) -> HookResult:
     """跑只读 lint target；通过则给当前内容指纹盖 lint 戳。
@@ -156,8 +162,7 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     """
     if component is None:
         ws = repo_model.select_components(repo, paths=paths)
-        results = [lint(repo, capture=capture, component=u) for u in ws.components]
-        return _aggregate("lint", ws.reason, results)
+        return lint_components(repo, ws, capture=capture)
     code_dir = component.path
     target = component.lint_target()
     if target is None:
@@ -183,6 +188,41 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     )
 
 
+def test_components(
+    repo: str,
+    workset: repo_model.WorkSet,
+    *,
+    capture: bool = True,
+    extra: list[str] | None = None,
+    paths: list[str] | None = None,
+) -> HookResult:
+    """有界并行测试已选中的 Component，并在 join 后批量写 test stamp。"""
+    def run(unit: Component) -> tuple[HookResult, bool]:
+        return _test_component(
+            repo, capture=capture, extra=extra, component=unit, paths=paths,
+        )
+
+    # Component 是相互独立的验证单位；worker 只执行命令、不写 validation segment，
+    # join 后由父线程一次落盘，避免多个 component 覆写同一份 test.json。
+    if len(workset.components) > 1:
+        with ThreadPoolExecutor(
+            max_workers=min(_MAX_COMPONENT_TEST_WORKERS, len(workset.components)),
+        ) as executor:
+            outcomes = list(executor.map(run, workset.components))
+    else:
+        outcomes = [run(unit) for unit in workset.components]
+    results = [result for result, _ in outcomes]
+    passed = [
+        unit.id
+        for unit, (_, should_stamp) in zip(workset.components, outcomes)
+        if should_stamp
+    ]
+    if passed:
+        ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
+        ctx.mark_tests_passed(passed)
+    return _aggregate("test", workset.reason, results, advisory=True)
+
+
 def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
          component: Component | None = None, paths: list[str] | None = None) -> HookResult:
     """跑 component 的 canonical test 命令（Make target 或 Go module 的 `go test ./...`）；
@@ -198,29 +238,9 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         # lifecycle 传入的 paths 是相位边界冻结的 scope；pre_commit 未显式 --file 时才现读工作树。
         # 把同一份列表继续传到 component，避免 test 再引入第二套 diff 查询。
         effective_paths = paths if paths is not None else repo_model.changed_paths(repo)
-        def run(unit: Component) -> tuple[HookResult, bool]:
-            return _test_component(
-                repo, capture=capture, extra=extra, component=unit, paths=effective_paths,
-            )
-        # Component 是相互独立的验证单位；有界并行避免大型 monorepo 无限制拉起子进程。
-        # worker 只执行命令、不写 validation segment，join 后由父线程一次落盘，守住单 writer。
-        if len(ws.components) > 1:
-            with ThreadPoolExecutor(
-                max_workers=min(_MAX_COMPONENT_TEST_WORKERS, len(ws.components)),
-            ) as executor:
-                outcomes = list(executor.map(run, ws.components))
-        else:
-            outcomes = [run(unit) for unit in ws.components]
-        results = [result for result, _ in outcomes]
-        passed = [
-            unit.id
-            for unit, (_, should_stamp) in zip(ws.components, outcomes)
-            if should_stamp
-        ]
-        if passed:
-            ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
-            ctx.mark_tests_passed(passed)
-        return _aggregate("test", ws.reason, results, advisory=True)
+        return test_components(
+            repo, ws, capture=capture, extra=extra, paths=effective_paths,
+        )
     result, should_stamp = _test_component(
         repo, capture=capture, extra=extra, component=component, paths=paths,
     )
@@ -228,6 +248,26 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
         ctx.mark_test_passed(component.id)
     return result
+
+
+def validate_components(repo: str, workset: repo_model.WorkSet) -> list[HookResult]:
+    """先顺序 normalize，再并发执行已选 Component 的 lint 与全量 test。"""
+    prepared: list[HookResult] = []
+    runnable: list[Component] = []
+    for component in workset.components:
+        result = normalize(repo, capture=False, component=component)
+        prepared.append(result)
+        if result.ok:
+            runnable.append(component)
+
+    checks_workset = repo_model.WorkSet(tuple(runnable), workset.reason)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(lint_components, repo, checks_workset),
+            executor.submit(test_components, repo, checks_workset),
+        ]
+        checked = [future.result() for future in futures]
+    return [_aggregate("normalize", workset.reason, prepared), *checked]
 
 
 def _test_component(repo: str, *, capture: bool, extra: list[str] | None,

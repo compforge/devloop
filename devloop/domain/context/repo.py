@@ -202,9 +202,10 @@ class Validation:
     「没测过」而其实测过，是记录失真。拆开之后各写各的文件，这一类**结构上不可能**（store 的原话），
     不需要锁、也不需要「写前重读合并」那种把不可能降级成窗口更窄的 race 的做法。
 
-    为什么 component 不拆成目录：component **不是 writer**（同一个 check 内部 fan-out 是顺序的），拆了不解决
-    这个 race；且 component id 不是安全路径分量（根 component 是 `.`、`eval/reviewbench` 带斜杠），当目录还得
-    枚举目录才能读回全集。当 JSON key 三个问题都没有。
+    为什么 component 不拆成目录：component **不是 writer**。test 的 component fan-out 虽并行执行，
+    worker 只返回结果；父线程 join 后一次批量覆写 test 段，仍是单 writer。拆目录不解决其它 race，且
+    component id 不是安全路径分量（根 component 是 `.`、`eval/reviewbench` 带斜杠），当目录还得枚举目录
+    才能读回全集。当 JSON key 三个问题都没有。
     """
     components: dict[str, ComponentValidation] = field(default_factory=dict)
 
@@ -432,7 +433,13 @@ class RepoContext:
         self._save_lint()
 
     def mark_test_passed(self, cid: str) -> None:
-        self.validation.of(cid).last_test_at = base.now()
+        self.mark_tests_passed([cid])
+
+    def mark_tests_passed(self, cids: list[str]) -> None:
+        """同一轮并行 test join 后批量盖戳，只覆写一次 test segment。"""
+        passed_at = base.now()
+        for cid in cids:
+            self.validation.of(cid).last_test_at = passed_at
         self._save_test()
 
     def set_branch_pr_number(self, number: int | None) -> None:

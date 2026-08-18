@@ -13,6 +13,7 @@ handler 契约：`fn(repo, paths) -> HookResult`（`paths` = 相位边界冻结�
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,6 +27,7 @@ from domain.lifecycle.base import HookResult
 
 _TAIL_LINES = 40   # 失败时回带的输出尾行数（够定位、不淹没 PLAN）
 _SLOW_FULL_TEST_SECONDS = 10.0
+_MAX_COMPONENT_TEST_WORKERS = 8
 
 
 def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: bool = False) -> HookResult:
@@ -196,11 +198,41 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         # lifecycle 传入的 paths 是相位边界冻结的 scope；pre_commit 未显式 --file 时才现读工作树。
         # 把同一份列表继续传到 component，避免 test 再引入第二套 diff 查询。
         effective_paths = paths if paths is not None else repo_model.changed_paths(repo)
-        results = [
-            test(repo, capture=capture, extra=extra, component=u, paths=effective_paths)
-            for u in ws.components
+        def run(unit: Component) -> tuple[HookResult, bool]:
+            return _test_component(
+                repo, capture=capture, extra=extra, component=unit, paths=effective_paths,
+            )
+        # Component 是相互独立的验证单位；有界并行避免大型 monorepo 无限制拉起子进程。
+        # worker 只执行命令、不写 validation segment，join 后由父线程一次落盘，守住单 writer。
+        if len(ws.components) > 1:
+            with ThreadPoolExecutor(
+                max_workers=min(_MAX_COMPONENT_TEST_WORKERS, len(ws.components)),
+            ) as executor:
+                outcomes = list(executor.map(run, ws.components))
+        else:
+            outcomes = [run(unit) for unit in ws.components]
+        results = [result for result, _ in outcomes]
+        passed = [
+            unit.id
+            for unit, (_, should_stamp) in zip(ws.components, outcomes)
+            if should_stamp
         ]
+        if passed:
+            ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
+            ctx.mark_tests_passed(passed)
         return _aggregate("test", ws.reason, results, advisory=True)
+    result, should_stamp = _test_component(
+        repo, capture=capture, extra=extra, component=component, paths=paths,
+    )
+    if should_stamp:
+        ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
+        ctx.mark_test_passed(component.id)
+    return result
+
+
+def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
+                    component: Component, paths: list[str] | None) -> tuple[HookResult, bool]:
+    """执行一个 Component 的 test；bool 表示 join 后是否应写入全量 test 戳。"""
     code_dir = component.path
     make_target = component.test_target()
     command = component.test_command()
@@ -216,10 +248,10 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
             advisory=True,
             summary=f"no test command in {code_dir} — skipped",
             guidance=guidance,
-        )
+        ), False
     env_failure = _environment_failure("test", component, advisory=True)
     if env_failure is not None:
-        return env_failure
+        return env_failure, False
 
     extra = extra or []
     explicitly_narrowed = bool(extra)
@@ -263,7 +295,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 summary=f"{display} passed in {elapsed:.1f}s — focused {len(focused_files)} changed test file(s); "
                         "component test stamp unchanged",
                 guidance=guidance,
-            )
+            ), False
         if explicitly_narrowed:
             return HookResult(
                 "test",
@@ -272,16 +304,14 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
                 summary=f"{display} passed in {elapsed:.1f}s — narrowed by explicit test arguments; "
                         "component test stamp unchanged",
                 guidance=guidance,
-            )
-        ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
-        ctx.mark_test_passed(component.id)
+            ), False
         return HookResult(
             "test",
             ok=True,
             advisory=True,
             summary=f"{display} passed in {elapsed:.1f}s — stamped",
             guidance=guidance,
-        )
+        ), True
     detail = f"\n{_tail(sink)}" if capture else ""
     return HookResult(
         "test",
@@ -289,4 +319,4 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         advisory=True,
         summary=f"{display} failed after {elapsed:.1f}s (advisory — not blocking){detail}",
         guidance=guidance,
-    )
+    ), False

@@ -11,7 +11,6 @@ never a forge-specific credentials path.
   pr list     [--limit N] [--branch B] [--repo R]            recent MRs, or just this branch's
   pr update   <n> [--title|--description|--target-branch] [--repo R]
   pr close    <n> [--repo R]                                 close without merging
-  pr findings <n> [--pending] [--repo R]                     published findings + ccr:label verdicts
   pr reply    <n> <comment-id> <body> [--repo R]             reply in a comment's thread
 
 Deliberately NO `create`: opening an MR is a commit+push transaction under the branch/staging
@@ -26,9 +25,7 @@ from pathlib import Path
 _SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS.parent))
 
-from domain import review_feedback  # noqa: E402
 from domain.forge import (  # noqa: E402
-    CommentResolution,
     ForgeError,
     MergeReadiness,
     parse_pr_number,
@@ -140,36 +137,8 @@ def cmd_close(ns) -> int:
     return 0
 
 
-def cmd_findings(ns) -> int:
-    """List the review findings published to a PR/MR, each with its `ccr:label` verdict or
-    `PENDING`. The labeling loop's read half — it exists so the skill has ONE provider-neutral
-    command instead of a `gh api` line plus a GitLab one, and so the fp↔verdict join lives in
-    `review_feedback`, not re-improvised in prose per agent."""
-    forge = _forge_or_exit(ns, "pr findings")
-    number = _number_or_exit(ns.number, "pr findings")
-    try:
-        found = review_feedback.findings(forge.comments(number))
-    except ForgeError as e:
-        print(f"pr findings: {e}", file=sys.stderr)
-        return 1
-    if ns.pending:
-        found = [f for f in found if f.pending]
-    if not found:
-        print("no published findings" + (" pending a verdict" if ns.pending else ""))
-        return 0
-    for f in found:
-        loc = f.comment.path + (f":{f.comment.line}" if f.comment.line else "")
-        # comment-id is what `pr reply` takes — printed so the two commands chain by copy.
-        print(f"{f.comment.id}  [{f.label or 'PENDING'}]  {loc or '?'}  ccr:fp={f.fp}")
-        body = (f.comment.body or "").strip().replace("\n", " ")
-        print(f"    {body[:200]}")
-    return 0
-
-
 def cmd_reply(ns) -> int:
-    """Reply in a comment's thread — how a `ccr:label=<verdict>` verdict lands on the finding
-    it judges. Takes a comment id from `pr findings`; after the durable reply lands, a
-    resolvable thread is best-effort resolved so it no longer blocks merging."""
+    """Reply in a comment's thread without applying review-domain side effects."""
     forge = _forge_or_exit(ns, "pr reply")
     number = _number_or_exit(ns.number, "pr reply")
     try:
@@ -182,21 +151,7 @@ def cmd_reply(ns) -> int:
     except ForgeError as e:
         print(f"pr reply: {e}", file=sys.stderr)
         return 1
-    suffix = ""
-    if (
-        review_feedback.label_verdict(ns.body)
-        and target.resolve_ref
-        and target.resolution is not CommentResolution.RESOLVED
-    ):
-        try:
-            forge.resolve_comment(number, target)
-            suffix = "; discussion resolved"
-        except ForgeError as e:
-            # The verdict is already durable. Do not report the whole operation as failed
-            # (which invites a duplicate label reply); surface the remaining merge blocker.
-            print(f"pr reply: label posted, but discussion resolve failed: {e}", file=sys.stderr)
-            suffix = "; discussion still unresolved"
-    print(f"replied to {ns.comment_id} on {pr_label(forge.provider, number)}{suffix}")
+    print(f"replied to {ns.comment_id} on {pr_label(forge.provider, number)}")
     return 0
 
 
@@ -231,15 +186,9 @@ def main(argv: list[str]) -> int:
     cli.add_repo_arg(p_close)
     p_close.set_defaults(fn=cmd_close)
 
-    p_find = sub.add_parser("findings", help="published review findings + their ccr:label verdicts")
-    p_find.add_argument("number", metavar="number|url")
-    p_find.add_argument("--pending", action="store_true", help="only findings without a verdict")
-    cli.add_repo_arg(p_find)
-    p_find.set_defaults(fn=cmd_findings)
-
-    p_reply = sub.add_parser("reply", help="reply in a comment's thread (e.g. a ccr:label verdict)")
+    p_reply = sub.add_parser("reply", help="reply in a comment's thread")
     p_reply.add_argument("number", metavar="number|url")
-    p_reply.add_argument("comment_id", metavar="comment-id", help="from `pr findings`")
+    p_reply.add_argument("comment_id", metavar="comment-id", help="from `pr show`")
     p_reply.add_argument("body")
     cli.add_repo_arg(p_reply)
     p_reply.set_defaults(fn=cmd_reply)

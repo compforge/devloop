@@ -18,7 +18,7 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   哪行状态一动（HEAD sha、PR 状态）就整块重发,事件行被反复重投,agent 于是反复 triage 同一批
   已处理的 findings。同理 **PostCompact 不复活它**:compaction 掉的是「说过的话」,状态必须
   重说（否则 agent 拿着已不成立的分支/PR 图像动手）,事件重投则是让人重做已做的事。
-  待打标 nudge 同理,只是 cap=3 而非 1(见 `context/base.py` 的 `Nudge`)。
+  Finding 待判定 nudge 同理,只是 cap=3 而非 1(见 `context/base.py` 的 `Nudge`)。
 - **post_mr 的额外能力 = MR 评论**:relay 在 git 动作后跑时,查分支是否有开放 MR;有就
   发评论（典型是 `post_mr`——MR 刚建好;或往在途 MR 追加提交时也会命中）。
   没有 MR 就只落 review.json。所以 **MR 评论是机会性的,不是 phase 硬绑**。
@@ -34,20 +34,19 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   是 file-level（"这文件缺测试"）——后者不是信息缺失,本来就没有哪一行可指,直接锚文件。
   line-level 锚不上时（最常见:context 行 finding,行不在当前 diff 里）先退一级到文件锚,
   两级都锚不上再尝试无锚 review comment，仍不支持才进汇总。多这些层级的理由是
-  **可打标性**:独立 review comment 能被回复 `ccr:label=`,汇总里的 finding 只是一行文本、
+  **可判定性**:独立 review comment 能持久化 Verdict,汇总里的 finding 只是一行文本、
   没有可回复的对象,等于退出 ground truth 回收。
 - **单条 finding 展示自己的 ready time**：CCR Session JSONL 是时间事实源；devloop 按
   `hypothesis_id` / `origin_unit` 连接 Finding 与其 Unit ready point，在独立 thread 上展示
   `ready in …`。它表示该 Unit 从形成完毕到 Finding 可交付的端到端 latency，不把并发 Execution
   duration 相加；汇总 header 的 `cost` 仍表示整次 review 的总耗时。
-- **打标闭环锚在 forge 上,不落本地**:finding comment 带 `ccr:fp=` 指纹,verdict 以
+- **Finding/Verdict 关系锚在 forge 上,不落本地**:finding comment 带 `ccr:fp=` 指纹,Verdict 以
   `ccr:label=` 回复落在其下；Forge adapter 把平台线程整理成 top-level Comment + replies，
   `domain/review_feedback.py` 直接读取。指纹跟着持久对象（comment body）走,所以换机器 /
   换 worktree / 换 session 都接得上;
   本地存一份 fp→comment-id 表只会是这份数据的陈旧副本,丢了还会把 join 悄悄弄断。
-  待打标数（`Review findings: N 条待打标`）由此派生,刻意不用 review.json 的 finding 数——
-  那是「上次 review 出了几条」而非「还剩几条没标」:标完了它照喊,review.json 一被下轮覆盖
-  它就没了,而 MR 上没标的 finding 还挂着。
+  待判定数（`Review findings: N 条待判定`）由此派生,刻意不用 review.json 的 finding 数——
+  那是「上次 review 出了几条」而非「还剩几条没有 Verdict」。
 - **signal hook,不挡 commit**:review 跑得久,且写码 AI 与 review AI 同源——结论仅供参考、
   **merge 必须人拍**。故不像 lint/test 那样 inline 挡。
 - **detach、不靠 agent 起后台**:dispatch(subprocess)不能起「跑完唤醒 session」的 harness 后台
@@ -75,14 +74,20 @@ CCR 的 stdout JSONL 是调用方交付协议；Session JSONL 仍只是 CCR 内�
 Session 猜测哪些中间结论可发布。`finding` 事件已经完成 Trial、定位和持久化，因此可以立即发布；若整轮
 随后超时，已发布 finding 与 review.json 中的增量结果仍保留。OCR 没有流式协议时继续走原有批量适配。
 
-打标（异步、人/agent 触发，见 `skills/label-review`）：
+Finding 判定与处理（异步、人/agent 触发，见 `skills/review`）：
 ```
-poll_pr（monitor / gcampr）→ forge.comments(n) → review_feedback.pending → pr.json.label_pending
-下一轮注入：`Review findings: N 条待打标`
-agent：pr findings <n> --pending → 逐条对照真实 diff 求证 → pr reply <n> <id> 'ccr:label=…'
+poll_pr（monitor / gcampr）→ forge.comments(n) → review_feedback.pending → pr.json.pending_review_verdicts
+下一轮注入：`Review findings: N 条待判定`
+agent：review findings <n> --pending → 逐条对照真实 diff 求证 → review label <n> <id> <verdict>
+      → 真问题修复、验证并发布 / 误报附反证 → review resolve <n> <id> [--fixed]
 后续集中采集：查 API join「ccr:fp 的 finding comment ← ccr:label 的回复」→ ground truth
 ```
-```
+
+**Verdict 与 Handling 是两件事**：Verdict 判断 Finding 是否成立及其严重度，不受当前
+是否已修复影响；Handling 记录代码上如何处理。`review label` 只写 Verdict，不 resolve
+thread；`review resolve` 是独立动作，`important` / `minor` 只有在修复已发布后才接受
+`--fixed`。这样“真问题已判定但尚未修复”不会被误关闭，merge readiness 仍可根据未解决
+discussion 独立反映处理进度。
 
 **给引擎喂上下文以提准**（`--background`，注入到每个文件的 review prompt）：run_review 自动从
 本次提交说明 + MR 标题/描述拼出（detach 进程经 git log / forge 自取，不依赖会话）。每段有上限
@@ -100,8 +105,9 @@ path 退化。发布阶段再按稳定 fingerprint 跳过已有未解决 thread 
 关键对象（锚点）：`domain/lifecycle/review.py`（`review` handler，返回 relay）、`commit_flow`
 （`launch_background_relays`，各相位 git 动作后 detach 起）、`scripts/run_review.py`（后台执行体：
 审全量 diff + 机会性发评论，经 `lib/review_engine.py` 协议调引擎）、`lib/review_engine.py`（**review
-tool 协议** `ReviewEngine` + `ReviewResult` + ocr/ccr adapter）、`domain/review_feedback.py`（fp↔label
-join + Forge comments→history 投影，纯函数、无 HTTP）、`scripts/pr.py`（`pr findings` / `pr reply`：打标闭环的读写两半）、
+tool 协议** `ReviewEngine` + `ReviewResult` + ocr/ccr adapter）、`domain/review_feedback.py`（Finding↔Verdict
+join + Forge comments→history 投影，纯函数、无 HTTP）、`scripts/review.py`（ReviewRun / Finding /
+Verdict / resolve 的 provider-neutral 入口）、
 `forge.comment`（写评论原语，gitlab notes / github issue comment）、
 `.devloop/review.json`（结果段）、`context/repo.py` 的 `Review:` 注入行（pull）。
 
@@ -202,14 +208,11 @@ review 跑完后，**下一轮**注入上下文会出现一行 `Review:`（来�
 - `Review: … N file(s) failed …` 或 `review errored` → 引擎有文件没 review 成（LLM 超时 / token
   超限等）。告知用户「review 未完整覆盖」，要细节读 `.devloop/review.json` 的 `warnings`；可
   重跑或缩小范围。**不是 clean**——别当没问题。
-- `Review: N finding(s) …` → 值得通报时，读 `.devloop/review.json`：
-  1. 对每条 `comment` 判优先级（引擎不给 severity，agent 判）：
-     **High**（明确 bug / 安全 / 数据丢失 / 崩溃，或有精确修法）、**Medium**（依赖上下文的顾虑、
-     性能 / 可维护性、需人工实现的修复）、**Low**（疑似误报 / 吹毛求疵——静默丢弃）。
-  2. 按 High / Medium **简明通报**（`start_line==end_line==0` 表示定位失败，读该文件按 content 定位），
-     然后**把控制权交还**——别自动展开一长串修复把会话占住。
-  3. **默认只通报、不动手**。仅当用户明确要"review 并修" → 才改 High/Medium。**review 从不代替人
-     merge，也不替 session 决定下一步。**
+- `Review: N finding(s) …` → 值得通报时，读 `.devloop/review.json`，对照真实 diff / 代码求证后
+  使用同一套 Verdict 词表：`important` / `minor` / `debatable` / `wrong` / `repeat`。
+  本地结果与 Forge Finding 的交付 surface 不同，但不应再建一套 High/Medium/Low 真相分类。
+  简明通报成立的 `important` / `minor` 与必要的 `debatable`，再把控制权交还；仅当用户
+  明确要“review 并修”或“处理 findings”才修改代码。Review 从不代替人 merge。
 
 注:`Review:` 注入行有内容哈希 dedup——同一份 review.json 不会每轮重复刷;新 commit 触发新
 review 才变。`status=skipped`（引擎/LLM 没配）不进注入,避免噪声。

@@ -25,7 +25,7 @@ from .model import (
     RepoIdentityCard,
     RepoReferencesCard,
     ReviewCard,
-    ReviewLabelCard,
+    PendingReviewFindingsCard,
     SubprojectCard,
     ValidationCard,
     WorkspaceCard,
@@ -129,12 +129,15 @@ def _repo_items(root: str, repo: RepoContext, stale_binding_hours: float | None)
     review = _review(repo, scope)
     if review:
         items.append(review)
-    if repo.label_pending:
+    if repo.pending_review_verdicts:
         items.append(BoardItem(
-            type=BoardItemType.REPO_REVIEW_LABEL,
+            type=BoardItemType.REPO_REVIEW_FINDINGS,
             kind=BoardItemKind.EVENT,
             scope=scope,
-            payload=ReviewLabelCard(repo.label_pending, repo.label_pending_key),
+            payload=PendingReviewFindingsCard(
+                repo.pending_review_verdicts,
+                repo.pending_review_verdicts_key,
+            ),
         ))
 
     if repo.prs:

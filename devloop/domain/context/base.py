@@ -41,9 +41,9 @@ REVIEW_STALE_SEC = 1800       # review.json stuck at "running" longer than this 
                               # almost certainly died mid-flight (sleep/OOM/kill); surface as stale, not running
 DEFAULT_BRANCH_TTL_SEC = 86400  # repo default branch is near-immutable → only re-fetch from the forge
                                 # once a day (refresh_all runs far more often; this gates the network call)
-LABEL_NUDGE_CAP = 3           # Board asks for a verdict on the SAME pending finding set, then
+REVIEW_FINDING_NUDGE_CAP = 3  # Board asks for Verdicts on the SAME pending Finding set, then
                               # goes quiet. Not ignoring you: 3 asks is enough to have
-                              # been heard, and labeling is advisory (ground truth, never a blocker).
+                              # been heard, and adjudication is advisory (ground truth, never a blocker).
 REVIEW_NUDGE_CAP = 1          # times to report the SAME review result. One: it's an event, not
                               # state — re-telling it makes the agent re-triage findings it已
                               # 处理过。A re-run (new sha/status/counts) is a new event → tells again.

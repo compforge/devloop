@@ -105,7 +105,7 @@ Board 的边界是：**状态源提供事实，Board 决定如何组织和投递
 
 `<dev-root>/.devloop/board/sessions/<session_id>.json` 只记录该 session 已收到的
 item 签名、次数与时间，不复制业务事实。PostCompact 只清状态 item 的投递记忆；
-review 结果、待打标提醒等 event 保持已消费状态，`ui_only` 不产生投递游标。完整
+review 结果、Finding 待判定提醒等 event 保持已消费状态，`ui_only` 不产生投递游标。完整
 设计见 [`docs/board.md`](./docs/board.md)。
 
 schema / TTL / cap 数值在 `domain/context/base.py`，不在文档复述。

@@ -5,7 +5,12 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 
 from domain.context import base, store
-from domain.context.base import LABEL_NUDGE_CAP, REVIEW_NUDGE_CAP, SESSION_TTL_SEC, TURN_TTL_SEC
+from domain.context.base import (
+    REVIEW_FINDING_NUDGE_CAP,
+    REVIEW_NUDGE_CAP,
+    SESSION_TTL_SEC,
+    TURN_TTL_SEC,
+)
 from domain.context.session import session_name
 
 from .model import BoardItem, BoardItemType, BoardView
@@ -56,10 +61,10 @@ class DeliveryPolicy:
             max_deliveries=REVIEW_NUDGE_CAP,
             replay_after_compact=False,
         ),
-        BoardItemType.REPO_REVIEW_LABEL: DeliveryRule(
+        BoardItemType.REPO_REVIEW_FINDINGS: DeliveryRule(
             _PROMPT_AND_UI,
             PromptScope.TURN,
-            max_deliveries=LABEL_NUDGE_CAP,
+            max_deliveries=REVIEW_FINDING_NUDGE_CAP,
             replay_after_compact=False,
         ),
         BoardItemType.REPO_PR_HISTORY: DeliveryRule(_UI_ONLY),

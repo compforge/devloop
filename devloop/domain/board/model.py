@@ -14,7 +14,7 @@ class BoardItemType(str, Enum):
     REPO_VALIDATION = "repo.validation"
     REPO_PR_BLOCKED = "repo.pr-blocked"
     REPO_REVIEW = "repo.review"
-    REPO_REVIEW_LABEL = "repo.review-label"
+    REPO_REVIEW_FINDINGS = "repo.review-findings"
     REPO_PR_HISTORY = "repo.pr-history"
 
 
@@ -110,9 +110,9 @@ class ReviewCard:
 
 
 @dataclass(frozen=True)
-class ReviewLabelCard:
-    pending: int
-    pending_set: str
+class PendingReviewFindingsCard:
+    count: int
+    set_key: str
 
 
 @dataclass(frozen=True)
@@ -138,7 +138,7 @@ BoardPayload = (
     | ValidationCard
     | PrBlockedCard
     | ReviewCard
-    | ReviewLabelCard
+    | PendingReviewFindingsCard
     | PrHistoryCard
 )
 

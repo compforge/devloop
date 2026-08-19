@@ -15,7 +15,7 @@ from .model import (
     RepoIdentityCard,
     RepoReferencesCard,
     ReviewCard,
-    ReviewLabelCard,
+    PendingReviewFindingsCard,
     ValidationCard,
     WorkspaceCard,
 )
@@ -46,8 +46,8 @@ def render_item(item: BoardItem) -> str:
         return f"MERGE-BLOCKED: {payload.label} — {blurbs[payload.readiness]}"
     if isinstance(payload, ReviewCard):
         return _review(payload)
-    if isinstance(payload, ReviewLabelCard):
-        return f"Review findings: {payload.pending} 条待打标 — `ccr:label=`（label-review skill）"
+    if isinstance(payload, PendingReviewFindingsCard):
+        return f"Review findings: {payload.count} 条待判定 — use the `review` skill"
     if isinstance(payload, PrHistoryCard):
         labels = [
             f"{_pr_label(payload.provider, pr.number)} {pr.state or '?'} "

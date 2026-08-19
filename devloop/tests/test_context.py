@@ -74,16 +74,17 @@ def test_turn_block_stable_across_clock_when_state_unchanged():
     ctx = RepoContext.refresh_all(R)
     G, branch = ctx.repo.repo_dir, ctx.branch.local.name
 
-    # 把带时间语义的行都摆上：review(running,未到 stale 阈值) + 待打标 nudge + validation
+    # 把带时间语义的行都摆上：review(running,未到 stale 阈值) + 待判定 nudge + validation
     store.save_segment(G, store.branch_segment(branch, "review"),
                        {"status": "running", "count": 0, "reviewed_sha": "abcdef1234567",
                         "generated_at": base.now(), "comments": []})
     store.save_segment(G, "pr", {"branch": branch, "provider": "github",
-                                 "label_pending": 2, "label_pending_key": "setA"})
+                                 "pending_review_verdicts": 2,
+                                 "pending_review_verdicts_key": "setA"})
     RepoContext.load(G).mark_lint_passed(".", "fp1")   # Validation: <component>: lint=<绝对时间戳>
 
     t1 = RepoContext.load(G).turn_text()
-    assert "Review: running" in t1 and "待打标" in t1 and "lint=" in t1   # 别测了个空 block
+    assert "Review: running" in t1 and "待判定" in t1 and "lint=" in t1   # 别测了个空 block
 
     orig_now = base.now
     base.now = lambda: orig_now() + 600           # 10 分钟后，什么都没做，跨不过任何阈值

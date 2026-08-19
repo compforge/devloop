@@ -251,9 +251,9 @@ class RepoContext:
     provider: str = ""   # repo-level forge ("github"/"gitlab"); drives display vocabulary
     merge_readiness: str | None = None   # current branch's open-MR readiness — a pr.json hint
                                          # (MergeReadiness value); re-checked live before a merge
-    label_pending: int | None = None     # open MR's findings still awaiting a ccr:label verdict
-                                         # — a pr.json hint; None = no open MR / poll failed
-    label_pending_key: str = ""          # identity of that pending set — nudge decay key
+    pending_review_verdicts: int | None = None  # open MR's Findings awaiting a Verdict;
+                                                # pr.json hint, None = no open MR / poll failed
+    pending_review_verdicts_key: str = ""       # identity of that pending set — nudge decay key
     updated_at: float = 0.0
 
     # ── load (merge segments) ──────────────────────────────────────────────────
@@ -297,8 +297,12 @@ class RepoContext:
             prs=[PullRequest.from_dict(p) for p in (pr.get("prs") or []) if p.get("number") is not None],
             provider=pr.get("provider", ""),
             merge_readiness=(pr.get("merge_readiness") if on_branch else None),
-            label_pending=(pr.get("label_pending") if on_branch else None),
-            label_pending_key=((pr.get("label_pending_key") or "") if on_branch else ""),
+            pending_review_verdicts=(
+                pr.get("pending_review_verdicts") if on_branch else None
+            ),
+            pending_review_verdicts_key=(
+                (pr.get("pending_review_verdicts_key") or "") if on_branch else ""
+            ),
             updated_at=float(meta.get("updated_at", 0) or 0),
         )
         if not ctx.repo.repo_dir:

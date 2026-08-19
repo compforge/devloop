@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import replace
 
 from _testkit import _FakeForge, _git, _load_script, run_main  # noqa: E402  (bootstrap first)
 from domain.context import Cadence, PullRequest  # noqa: E402
@@ -158,12 +159,10 @@ def test_pr_cli_dispatch():
         prcli.cli.resolve_repo_or_exit = orig_resolve
 
 
-def test_pr_cli_findings_and_reply():
-    """`pr findings` / `pr reply` 是打标闭环的读写两半:一条 provider-neutral 命令,让 skill
-    不必分 GitHub/GitLab 各写一套 API 姿势。reply 用 findings 打印的 comment id 定位,线程
-    在这里解析——调用方不碰 provider 的 threading 模型。"""
+def test_review_cli_separates_verdict_from_resolution():
+    """The review CLI owns typed Verdicts; recording one never resolves its thread."""
     from domain.forge import Comment, CommentResolution
-    prcli = _load_script("pr")
+    reviewcli = _load_script("review")
 
     class _F(_FakeForge):
         def __init__(self, prs):
@@ -199,18 +198,72 @@ def test_pr_cli_findings_and_reply():
     class _R:
         git_root = "/x"
 
+    orig_forge = reviewcli.forge_for_repo
+    orig_resolve = reviewcli.cli.resolve_repo_or_exit
+    try:
+        reviewcli.forge_for_repo = lambda repo: fake
+        reviewcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
+        assert reviewcli.main(["findings", "5"]) == 0
+        assert reviewcli.main(["findings", "5", "--pending"]) == 0
+        assert reviewcli.main([
+            "label", "5", "30", "minor", "--reason", "真问题，待修复",
+        ]) == 0
+        assert fake.replied == [(5, "30", "ccr:label=minor — 真问题，待修复")]
+        assert fake.resolved == []
+
+        # The fake Forge does not mutate its comment snapshot after a reply, so expose the
+        # recorded Verdict when testing the later, independent resolution action.
+        original_comments = fake.comments
+        fake.comments = lambda number: [
+            replace(finding, replies=[Comment(body="ccr:label=minor — 真问题")])
+            if finding.id == "30" else finding
+            for finding in original_comments(number)
+        ]
+        assert reviewcli.main(["resolve", "5", "30"]) == 1
+        assert fake.resolved == []
+        assert reviewcli.main(["resolve", "5", "30", "--fixed"]) == 0
+        assert fake.resolved == [(5, "30")]
+        assert reviewcli.main([
+            "missed", "5", "--path", "c.py", "--line", "9", "--reason", "遗漏边界",
+        ]) == 0
+        assert fake.diff_posted[-1][:3] == (5, "c.py", 9)
+        assert fake.diff_posted[-1][3] == "ccr:missed — 遗漏边界"
+        assert reviewcli.main([
+            "label", "5", "999", "wrong", "--reason", "not found",
+        ]) == 1
+    finally:
+        reviewcli.forge_for_repo = orig_forge
+        reviewcli.cli.resolve_repo_or_exit = orig_resolve
+
+
+def test_pr_reply_has_no_review_side_effects():
+    """Generic PR replies stay generic even when their body resembles a review label."""
+    from domain.forge import Comment
+    prcli = _load_script("pr")
+
+    class _F(_FakeForge):
+        def __init__(self, prs):
+            super().__init__(prs)
+            self.replied = []
+
+        def comments(self, number):
+            return [Comment(id="30", reply_ref="30", body="discussion")]
+
+        def reply(self, number, target, body):
+            self.replied.append((number, target.id, body))
+
+    fake = _F([PullRequest(number=5, state="open")])
+
+    class _R:
+        git_root = "/x"
+
     orig_forge, orig_resolve = prcli.forge_for_repo, prcli.cli.resolve_repo_or_exit
     try:
         prcli.forge_for_repo = lambda repo: fake
         prcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
-        assert prcli.main(["findings", "5"]) == 0
-        assert prcli.main(["findings", "5", "--pending"]) == 0
-        assert prcli.main(["reply", "5", "30", "ccr:label=minor — 补了"]) == 0
-        assert fake.replied == [(5, "30", "ccr:label=minor — 补了")]
-        assert fake.resolved == [(5, "30")]
-        assert prcli.main(["reply", "5", "30", "普通讨论回复"]) == 0
-        assert fake.resolved == [(5, "30")]  # only a valid ccr:label closes the discussion
-        assert prcli.main(["reply", "5", "999", "x"]) == 1      # 不存在的 comment id → 报错,不静默
+        assert prcli.main(["reply", "5", "30", "ccr:label=minor — just text"]) == 0
+        assert fake.replied == [(5, "30", "ccr:label=minor — just text")]
+        assert prcli.main(["reply", "5", "999", "x"]) == 1
     finally:
         prcli.forge_for_repo = orig_forge
         prcli.cli.resolve_repo_or_exit = orig_resolve

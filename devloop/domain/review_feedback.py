@@ -1,8 +1,9 @@
 """Review feedback — verdict joins and continuous-review history.
 
 The durable relationship, entirely on the forge: `run_review` publishes each finding as a
-replyable comment carrying a `ccr:fp=<fp>` footer; an agent/human later replies to that comment
-with `ccr:label=<verdict>`. This module joins the two back together over `Forge.comments()`.
+replyable comment carrying a `ccr:fp=<fp>` footer; an agent/human later records a Verdict by
+replying with `ccr:label=<verdict>`. This module joins the two back together over
+`Forge.comments()`.
 
 Nothing here is persisted as a source of truth, on purpose. The join key (`fp`) travels inside
 the comment bodies, so the pair is recoverable from the API alone — from any machine, any
@@ -25,10 +26,11 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass
+from typing import Literal, cast
 
 from domain.forge import Comment, CommentResolution
 
-# Body conventions written by run_review (`ccr:fp=`) and the label-review skill (`ccr:label=`).
+# Body conventions written by run_review (`ccr:fp=`) and the review skill (`ccr:label=`).
 # Kept as loose scans, not anchored matches: both footers are embedded in prose/markdown
 # (`<sub>ccr:fp=abc</sub>`, "ccr:label=wrong — 反证是 …").
 _FP_RE = re.compile(r"ccr:fp=([A-Za-z0-9_-]+)")
@@ -36,9 +38,12 @@ _LABEL_RE = re.compile(r"ccr:label=([A-Za-z]+)")
 _HISTORY_RE = re.compile(r"<!--\s*ccr:history=([A-Za-z0-9_-]+)\s*-->")
 _FOOTER_RE = re.compile(r"\n*\s*<sub>[^<]*ccr:fp=.*?</sub>\s*$", re.DOTALL)
 
-# The verdict vocabulary the skill writes. Anything else is treated as unlabeled rather than
-# accepted: a typo'd verdict must show up as still-pending, not silently pollute ground truth.
-VERDICTS = ("important", "minor", "debatable", "wrong", "repeat")
+Verdict = Literal["important", "minor", "debatable", "wrong", "repeat"]
+
+# The durable Verdict vocabulary. `ccr:label=` is only its Forge wire encoding; callers should
+# use `verdict_reply()` rather than formatting the protocol themselves.
+VERDICTS: tuple[Verdict, ...] = ("important", "minor", "debatable", "wrong", "repeat")
+CONFIRMED_VERDICTS = frozenset({"important", "minor"})
 
 
 @dataclass
@@ -46,17 +51,29 @@ class Finding:
     """A published finding comment joined with its verdict reply (if any)."""
     fp: str
     comment: Comment
-    label: str = ""            # "" = pending a verdict
+    verdict: Verdict | None = None
 
     @property
     def pending(self) -> bool:
-        return not self.label
+        return self.verdict is None
 
 
-def label_verdict(body: str) -> str:
-    """Return a recognized `ccr:label` verdict, or "" for ordinary/invalid replies."""
+def parse_verdict(body: str) -> Verdict | None:
+    """Parse the Verdict encoded in a reply; ordinary and malformed replies have none."""
     match = _LABEL_RE.search(body or "")
-    return match.group(1) if match and match.group(1) in VERDICTS else ""
+    if not match or match.group(1) not in VERDICTS:
+        return None
+    return cast(Verdict, match.group(1))
+
+
+def verdict_reply(verdict: Verdict, reason: str) -> str:
+    """Encode a Verdict for the Forge transport after validating its required rationale."""
+    reason = reason.strip()
+    if verdict not in VERDICTS:
+        raise ValueError(f"unknown review verdict: {verdict}")
+    if not reason:
+        raise ValueError("a review verdict requires a reason")
+    return f"ccr:label={verdict} — {reason}"
 
 
 def history_marker(*, key: str, msg: str, sha: str = "", fp: str = "") -> str:
@@ -93,20 +110,25 @@ def _legacy_message(body: str) -> str:
     return text
 
 
-def _history_message(msg: str, comment: Comment, label: str, reply_body: str) -> str:
+def _history_message(
+    msg: str,
+    comment: Comment,
+    verdict: Verdict | None,
+    reply_body: str,
+) -> str:
     parts = [msg.strip()]
-    if label == "wrong":
+    if verdict == "wrong":
         parts.append(
             "Previous verdict: wrong (false positive). Do not repeat it unless the current "
             "revision provides new concrete evidence."
         )
-    elif label == "repeat":
+    elif verdict == "repeat":
         parts.append(
             "Previous verdict: repeat (already delivered in an earlier MR comment). "
             "Do not deliver it again."
         )
-    elif label:
-        parts.append(f"Previous verdict: {label}.")
+    elif verdict:
+        parts.append(f"Previous verdict: {verdict}.")
     if reply_body:
         parts.append("Reviewer feedback: " + reply_body.strip())
     if comment.resolution == CommentResolution.RESOLVED:
@@ -129,10 +151,10 @@ def history_feed(comments: list[Comment]) -> dict[str, list[dict[str, str]]]:
         if not (comment.body or "").startswith("🤖 **devloop code-review**"):
             continue
         reply = next(
-            ((label_verdict(r.body), r.body) for r in comment.replies if label_verdict(r.body)),
-            ("", ""),
+            ((parse_verdict(r.body), r.body) for r in comment.replies if parse_verdict(r.body)),
+            (None, ""),
         )
-        label, reply_body = reply
+        verdict, reply_body = reply
         decoded = [
             value
             for raw in _HISTORY_RE.findall(comment.body or "")
@@ -149,7 +171,7 @@ def history_feed(comments: list[Comment]) -> dict[str, list[dict[str, str]]]:
             fp = str(value.get("fp") or "")
             identity = fp or f"{value['key']}\0{value['msg']}"
             item = {
-                "msg": _history_message(str(value["msg"]), comment, label, reply_body),
+                "msg": _history_message(str(value["msg"]), comment, verdict, reply_body),
             }
             if value.get("sha"):
                 item["sha"] = str(value["sha"])
@@ -174,12 +196,12 @@ def suppress_delivery_fingerprints(comments: list[Comment]) -> set[str]:
     for comment in comments:
         if not (comment.body or "").startswith("🤖 **devloop code-review**"):
             continue
-        label = next(
+        verdict = next(
             (verdict for reply in comment.replies
-             if (verdict := label_verdict(reply.body))),
-            "",
+             if (verdict := parse_verdict(reply.body))),
+            None,
         )
-        if comment.resolution == CommentResolution.RESOLVED and label not in {"wrong", "repeat"}:
+        if comment.resolution == CommentResolution.RESOLVED and verdict not in {"wrong", "repeat"}:
             continue
         fps = {
             str(value.get("fp"))
@@ -205,9 +227,9 @@ def findings(comments: list[Comment]) -> list[Finding]:
         m = _FP_RE.search(c.body or "")
         if not m:
             continue
-        label = next((verdict for reply in c.replies
-                      if (verdict := label_verdict(reply.body))), "")
-        found.append(Finding(fp=m.group(1), comment=c, label=label))
+        verdict = next((verdict for reply in c.replies
+                        if (verdict := parse_verdict(reply.body))), None)
+        found.append(Finding(fp=m.group(1), comment=c, verdict=verdict))
     return found
 
 

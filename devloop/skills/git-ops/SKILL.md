@@ -47,4 +47,5 @@ the task explicitly targets that version.
 - Create or inspect a release → read [[references/release|release flow]].
 
 Commit-triggered code review is advisory and automatic. Report a surfaced result without taking
-over the session; use the `label-review` skill only when findings need verdict labels.
+over the session; use the `review` skill for ReviewRun status, Finding Verdicts, fixes, and thread
+resolution.

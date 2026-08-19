@@ -25,7 +25,7 @@ from .model import (
     RepoIdentityCard,
     RepoReferencesCard,
     ReviewCard,
-    ReviewLabelCard,
+    PendingReviewFindingsCard,
     SubprojectCard,
     ValidationCard,
     WorkspaceCard,

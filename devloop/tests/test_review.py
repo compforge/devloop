@@ -349,9 +349,9 @@ def test_review_line_told_once_per_result():
     assert tell() is False                                     # stale 也只讲一次
 
 
-def test_label_pending_nudge_is_forge_derived():
-    """待打标 nudge 的数来自 pr.json（forge 派生的 pending），不是 review.json 的 finding 数。
-    两个关键性质：(1) review.json 说有 2 条 finding、但都标完了(pending=0) → 不再喊;
+def test_pending_review_verdict_nudge_is_forge_derived():
+    """待判定 nudge 的数来自 pr.json（forge 派生的 pending），不是 review.json 的 finding 数。
+    两个关键性质：(1) review.json 说有 2 条 finding、但都判定了(pending=0) → 不再喊;
     (2) review.json 整个没了 / 被下轮覆盖 → nudge 照样在,因为 pending 锚在 forge 上。"""
     from domain.context import RepoContext, store
     G = "/tmp/dlut_labelnudge"; shutil.rmtree(G, ignore_errors=True); os.makedirs(G)
@@ -366,27 +366,28 @@ def test_label_pending_nudge_is_forge_derived():
                                                     "generated_at": 1.0, **kw})
 
     revseg(status="success", count=2)
-    prseg(label_pending=2); assert "2 条待打标" in RepoContext.load(R).turn_text()
-    prseg(label_pending=0); assert "待打标" not in RepoContext.load(R).turn_text()   # 标完 → 不喊
-    prseg(label_pending=None); assert "待打标" not in RepoContext.load(R).turn_text()  # 无开着的 MR / poll 失败
+    prseg(pending_review_verdicts=2); assert "2 条待判定" in RepoContext.load(R).turn_text()
+    prseg(pending_review_verdicts=0); assert "待判定" not in RepoContext.load(R).turn_text()
+    prseg(pending_review_verdicts=None); assert "待判定" not in RepoContext.load(R).turn_text()
 
     # review.json 没了（下轮覆盖 / 换机器 / worktree 删了）→ nudge 仍在：MR 上没标的还挂着
     store.save_segment(R, _rseg, {})
-    prseg(label_pending=3); t = RepoContext.load(R).turn_text()
-    assert "3 条待打标" in t and "Review:" not in t
+    prseg(pending_review_verdicts=3); t = RepoContext.load(R).turn_text()
+    assert "3 条待判定" in t and "Review:" not in t
 
     # pr.json 是 branch-keyed：切走后不认（与 pr_number / merge_readiness 同一条约定）
-    prseg(label_pending=3); store.save_segment(R, "pr", {"branch": "other", "label_pending": 3})
-    assert "待打标" not in RepoContext.load(R).turn_text()
+    prseg(pending_review_verdicts=3)
+    store.save_segment(R, "pr", {"branch": "other", "pending_review_verdicts": 3})
+    assert "待判定" not in RepoContext.load(R).turn_text()
 
 
-def test_label_nudge_decays_then_reopens_on_new_findings():
-    """待打标是**要人干活**的行，不是状态行：同一批 finding 问满 LABEL_NUDGE_CAP 次就闭嘴
+def test_review_finding_nudge_decays_then_reopens_on_new_findings():
+    """待判定是**要人干活**的行，不是状态行：同一批 finding 问满 cap 次就闭嘴
     （不理也是一种回答）；来了新的一批（pending set 变了）才重新开口。turn Cadence 顶不了
     这件事——它按整块 hash 去重，随便哪行状态一动就整块重发，chore 行会永远跟着喊。"""
     from domain.board import BoardRuntime
     from domain.context import RepoContext, store
-    from domain.context.base import LABEL_NUDGE_CAP
+    from domain.context.base import REVIEW_FINDING_NUDGE_CAP
     G = "/tmp/dlut_nudgedecay"; shutil.rmtree(G, ignore_errors=True); os.makedirs(G)
     _git(G, "init", "-q"); _git(G, "config", "user.email", "t@t.t"); _git(G, "config", "user.name", "t")
     Path(f"{G}/a.txt").write_text("x"); _git(G, "add", "-A"); _git(G, "commit", "-q", "-m", "init")
@@ -400,19 +401,19 @@ def test_label_nudge_decays_then_reopens_on_new_findings():
         text = BoardRuntime.from_facts(
             R, "label-test", repo=RepoContext.load(R)
         ).deliver_prompt()
-        return bool(text and "待打标" in text)
+        return bool(text and "待判定" in text)
 
-    prseg(label_pending=3, label_pending_key="setA")
-    assert [ask() for _ in range(LABEL_NUDGE_CAP)] == [True] * LABEL_NUDGE_CAP   # 问满 cap
+    prseg(pending_review_verdicts=3, pending_review_verdicts_key="setA")
+    assert [ask() for _ in range(REVIEW_FINDING_NUDGE_CAP)] == [True] * REVIEW_FINDING_NUDGE_CAP
     assert ask() is False and ask() is False                                     # 之后闭嘴
 
     # 新一轮 review 带来新 finding → set 变了 → 重新开口，且计数重来
-    prseg(label_pending=5, label_pending_key="setB")
-    assert [ask() for _ in range(LABEL_NUDGE_CAP)] == [True] * LABEL_NUDGE_CAP
+    prseg(pending_review_verdicts=5, pending_review_verdicts_key="setB")
+    assert [ask() for _ in range(REVIEW_FINDING_NUDGE_CAP)] == [True] * REVIEW_FINDING_NUDGE_CAP
     assert ask() is False
 
     # 标掉一条 → set 又变了 → 继续喊：agent 在推进，值得跟；闭嘴只针对「原地不动」
-    prseg(label_pending=4, label_pending_key="setC")
+    prseg(pending_review_verdicts=4, pending_review_verdicts_key="setC")
     assert ask() is True
 
 def test_launch_background_relays():
@@ -664,7 +665,7 @@ def test_review_feedback_joins_fp_to_label():
                 body="缺测试 <sub>ccr:fp=fp2</sub>"),   # file-level
     ]
     fs = findings(cs)
-    assert [(f.fp, f.label) for f in fs] == [("fp1", "wrong"), ("fp2", "")]   # 汇总 note 未入列
+    assert [(f.fp, f.verdict) for f in fs] == [("fp1", "wrong"), ("fp2", None)]
     assert [f.fp for f in pending(cs)] == ["fp2"]
     assert fs[1].comment.path == "b.py" and fs[1].comment.line is None
 
@@ -683,7 +684,7 @@ def test_review_feedback_joins_fp_to_label():
         body="x <sub>ccr:fp=fp-repeat</sub>",
         replies=[Comment(id="43", body="ccr:label=repeat — see comment 20")],
     )]
-    assert [(f.fp, f.label) for f in findings(repeat)] == [("fp-repeat", "repeat")]
+    assert [(f.fp, f.verdict) for f in findings(repeat)] == [("fp-repeat", "repeat")]
     assert pending(repeat) == []
 
     # pending_key 认 fp 集合、不认条数：标掉一条又新来一条 → 数没变但活变了 → key 必须变
@@ -700,6 +701,9 @@ def test_review_feedback_joins_fp_to_label():
     selfref = [Comment(id="50", reply_ref="50",
                        body="讲讲 ccr:label=wrong 的用法 <sub>ccr:fp=fp4</sub>")]
     assert [f.fp for f in pending(selfref)] == ["fp4"]
+
+    from domain.review_feedback import parse_verdict, verdict_reply
+    assert parse_verdict(verdict_reply("important", "real defect")) == "important"
 
 
 def test_review_feedback_history_marker_and_legacy_path():

@@ -9,7 +9,15 @@ here — it's `base.build_window`, composed over `recent` + `get`.
 from __future__ import annotations
 
 from ._rest import RestClient
-from domain.forge import Comment, Forge, ForgeError, ForgeNotFound, PullRequest, Release
+from domain.forge import (
+    Comment,
+    CommentResolution,
+    Forge,
+    ForgeError,
+    ForgeNotFound,
+    PullRequest,
+    Release,
+)
 
 
 class GitHubForge(Forge):
@@ -18,17 +26,84 @@ class GitHubForge(Forge):
     def __init__(self, host: str, owner: str, name: str, token: str, *, timeout: int = 10):
         # github.com → api.github.com; GitHub Enterprise → https://<host>/api/v3
         api = "https://api.github.com" if host == "github.com" else f"https://{host}/api/v3"
-        self.owner, self.name = owner, name
-        self.c = RestClient(
-            f"{api}/repos/{owner}/{name}",
-            {
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
-            timeout=timeout,
+        graphql_api = (
+            "https://api.github.com/graphql"
+            if host == "github.com"
+            else f"https://{host}/api/graphql"
         )
+        self.owner, self.name = owner, name
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        self.c = RestClient(f"{api}/repos/{owner}/{name}", headers, timeout=timeout)
+        self.g = RestClient(graphql_api, headers, timeout=timeout)
         self._head_sha_memo: dict[int, str] = {}  # PR number → head sha（同一轮 N 条 inline 共用）
+
+    def _graphql(self, query: str, variables: dict) -> dict:
+        response = self.g.post("", {"query": query, "variables": variables})
+        if not isinstance(response, dict):
+            raise ForgeError("GitHub GraphQL returned a non-object response")
+        errors = response.get("errors") or []
+        if errors:
+            messages = [
+                str(error.get("message") or error) if isinstance(error, dict) else str(error)
+                for error in errors
+            ]
+            raise ForgeError(f"GitHub GraphQL: {'; '.join(messages)}")
+        data = response.get("data")
+        if not isinstance(data, dict):
+            raise ForgeError("GitHub GraphQL response has no data object")
+        return data
+
+    def _review_threads(self, number: int) -> dict[str, tuple[str, bool]]:
+        """REST exposes review-comment ids but only GraphQL exposes resolvable threads."""
+        query = """
+        query ReviewThreads($owner: String!, $name: String!, $number: Int!, $cursor: String) {
+          repository(owner: $owner, name: $name) {
+            pullRequest(number: $number) {
+              reviewThreads(first: 100, after: $cursor) {
+                nodes {
+                  id
+                  isResolved
+                  comments(first: 1) { nodes { fullDatabaseId } }
+                }
+                pageInfo { hasNextPage endCursor }
+              }
+            }
+          }
+        }
+        """
+        threads: dict[str, tuple[str, bool]] = {}
+        cursor = None
+        while True:
+            data = self._graphql(
+                query,
+                {
+                    "owner": self.owner,
+                    "name": self.name,
+                    "number": number,
+                    "cursor": cursor,
+                },
+            )
+            connection = (
+                ((data.get("repository") or {}).get("pullRequest") or {}).get("reviewThreads")
+            )
+            if not isinstance(connection, dict):
+                raise ForgeError(f"PR #{number}: GitHub GraphQL response has no reviewThreads")
+            for thread in connection.get("nodes") or []:
+                nodes = ((thread.get("comments") or {}).get("nodes") or [])
+                comment_id = str((nodes[0] if nodes else {}).get("fullDatabaseId") or "")
+                thread_id = str(thread.get("id") or "")
+                if comment_id and thread_id:
+                    threads[comment_id] = (thread_id, bool(thread.get("isResolved")))
+            page_info = connection.get("pageInfo") or {}
+            if not page_info.get("hasNextPage"):
+                return threads
+            cursor = page_info.get("endCursor")
+            if not cursor:
+                raise ForgeError(f"PR #{number}: GitHub reviewThreads pagination has no cursor")
 
     def _to_pr(self, d: dict) -> PullRequest:
         # `merged` is only on the single-PR response; list items carry `merged_at`.
@@ -122,6 +197,7 @@ class GitHubForge(Forge):
         # review replies here so callers receive one top-level Comment per interaction.
         issue = self.c.get_all(f"issues/{number}/comments")
         review = self.c.get_all(f"pulls/{number}/comments")
+        thread_refs = self._review_threads(number)
         replies: dict[str, list[dict]] = {}
         roots = []
         for row in review:
@@ -136,6 +212,14 @@ class GitHubForge(Forge):
             cid = str(root.get("id") or "")
             comment = self._to_comment(root, anchored=True)
             comment.reply_ref = cid
+            thread_ref = thread_refs.get(cid)
+            if thread_ref:
+                comment.resolve_ref = thread_ref[0]
+                comment.resolution = (
+                    CommentResolution.RESOLVED
+                    if thread_ref[1]
+                    else CommentResolution.UNRESOLVED
+                )
             comment.replies = [
                 self._to_comment(row, anchored=True)
                 for row in sorted(
@@ -197,3 +281,20 @@ class GitHubForge(Forge):
             raise ForgeError(f"PR #{number}: comment {target.id or '?'} is a conversation "
                              "comment — GitHub can only reply to review comments")
         self.c.post(f"pulls/{number}/comments/{target.reply_ref}/replies", {"body": body})
+
+    def resolve_comment(self, number: int, target: Comment) -> None:
+        if not target.resolve_ref:
+            raise ForgeError(f"PR #{number}: comment {target.id or '?'} is not resolvable")
+        mutation = """
+        mutation ResolveReviewThread($thread: ID!) {
+          resolveReviewThread(input: {threadId: $thread}) {
+            thread { id isResolved }
+          }
+        }
+        """
+        data = self._graphql(mutation, {"thread": target.resolve_ref})
+        thread = ((data.get("resolveReviewThread") or {}).get("thread") or {})
+        if not thread.get("isResolved"):
+            raise ForgeError(
+                f"PR #{number}: GitHub did not resolve review thread {target.resolve_ref}"
+            )

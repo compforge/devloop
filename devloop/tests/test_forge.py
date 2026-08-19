@@ -5,10 +5,12 @@ Standalone: `python3 devloop/tests/test_forge.py`（也 pytest-collectable）；
 """
 from __future__ import annotations
 
+import io
 import os
 import shutil
 import subprocess
 import sys
+from contextlib import redirect_stdout
 from dataclasses import replace
 
 from _testkit import _FakeForge, _git, _load_script, run_main  # noqa: E402  (bootstrap first)
@@ -159,6 +161,34 @@ def test_pr_cli_dispatch():
         prcli.cli.resolve_repo_or_exit = orig_resolve
 
 
+def test_pr_show_exposes_replyable_comment_ids():
+    """`pr show` exposes the top-level comment id consumed by `pr reply`."""
+    from domain.forge import Comment
+    prcli = _load_script("pr")
+
+    class _F(_FakeForge):
+        def comments(self, number):
+            return [Comment(id="30", author="reviewer", body="please fix")]
+
+    fake = _F([PullRequest(number=5, state="open", source_branch="feat/x")])
+
+    class _R:
+        git_root = "/x"
+
+    orig_forge = prcli.forge_for_repo
+    orig_resolve = prcli.cli.resolve_repo_or_exit
+    try:
+        prcli.forge_for_repo = lambda repo: fake
+        prcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            assert prcli.main(["show", "5"]) == 0
+        assert "- 30  reviewer: please fix" in output.getvalue()
+    finally:
+        prcli.forge_for_repo = orig_forge
+        prcli.cli.resolve_repo_or_exit = orig_resolve
+
+
 def test_review_cli_separates_verdict_from_resolution():
     """The review CLI owns typed Verdicts; recording one never resolves its thread."""
     from domain.forge import Comment, CommentResolution
@@ -205,6 +235,10 @@ def test_review_cli_separates_verdict_from_resolution():
         reviewcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
         assert reviewcli.main(["findings", "5"]) == 0
         assert reviewcli.main(["findings", "5", "--pending"]) == 0
+        assert reviewcli.main([
+            "label", "5", "30", "minor", "--reason", "  ",
+        ]) == 1
+        assert fake.replied == []
         assert reviewcli.main([
             "label", "5", "30", "minor", "--reason", "真问题，待修复",
         ]) == 0

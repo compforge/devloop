@@ -84,7 +84,7 @@ def cmd_show(ns) -> int:
         print(f"  comments ({count}):")
         for c in comments[:20]:
             body = (c.body or "").strip().replace("\n", " ")
-            print(f"    - {c.author}: {body[:120]}")
+            print(f"    - {c.id or '?'}  {c.author}: {body[:120]}")
             for reply in c.replies:
                 body = (reply.body or "").strip().replace("\n", " ")
                 print(f"      ↳ {reply.author}: {body[:120]}")

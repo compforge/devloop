@@ -558,6 +558,19 @@ def test_forge_comments_union_both_surfaces():
         def __init__(self, by_path): self._by = by_path; self.gets = []
         def get_all(self, path, **kw): self.gets.append(path); return self._by.get(path, [])
 
+    class _Graph:
+        def __init__(self): self.calls = []
+        def post(self, path, body):
+            self.calls.append((path, body))
+            return {"data": {"repository": {"pullRequest": {"reviewThreads": {
+                "nodes": [{
+                    "id": "PRRT_1",
+                    "isResolved": False,
+                    "comments": {"nodes": [{"fullDatabaseId": "20"}]},
+                }],
+                "pageInfo": {"hasNextPage": False, "endCursor": None},
+            }}}}}
+
     gh = GitHubForge("api.github.com", "o", "r", "t")
     gh.c = _Cap({
         "issues/7/comments": [
@@ -571,13 +584,19 @@ def test_forge_comments_union_both_surfaces():
              "created_at": "2026-07-03T00:00:00Z"},
         ],
     })
+    gh.g = _Graph()
     cs = gh.comments(7)
     assert sorted(gh.c.gets) == ["issues/7/comments", "pulls/7/comments"]   # 两个面都读了
     assert [c.body for c in cs] == ["summary", "finding ccr:fp=abc"]
     assert (cs[0].id, cs[0].replyable, cs[0].path) == ("1", False, "")
-    assert (cs[1].id, cs[1].reply_ref) == ("20", "20")
+    assert (cs[1].id, cs[1].reply_ref, cs[1].resolve_ref) == ("20", "20", "PRRT_1")
+    assert cs[1].resolution is CommentResolution.UNRESOLVED
     assert [reply.body for reply in cs[1].replies] == ["ccr:label=wrong"]
     assert cs[1].replies[0].line == 5  # null line 回落 original_line（写时的位置）
+    _, graphql_body = gh.g.calls[0]
+    assert graphql_body["variables"] == {
+        "owner": "o", "name": "r", "number": 7, "cursor": None,
+    }
 
     gl = GitLabForge("h", "o/r", "t")
     gl.c = _Cap({"merge_requests/7/discussions": [
@@ -602,6 +621,47 @@ def test_forge_comments_union_both_surfaces():
     assert (cs[1].path, cs[1].line) == ("a.py", 5)
     assert cs[1].resolution is CommentResolution.UNRESOLVED
     assert cs[0].resolution is CommentResolution.UNSUPPORTED
+
+
+def test_github_review_threads_paginate_and_report_resolution():
+    """GitHub's resolvable handle/state live on paginated GraphQL review threads."""
+    from lib.forge.github import GitHubForge
+
+    def response(nodes, *, next_cursor=None):
+        return {"data": {"repository": {"pullRequest": {"reviewThreads": {
+            "nodes": nodes,
+            "pageInfo": {
+                "hasNextPage": next_cursor is not None,
+                "endCursor": next_cursor,
+            },
+        }}}}}
+
+    class _Graph:
+        def __init__(self):
+            self.calls = []
+            self.responses = [
+                response([{
+                    "id": "PRRT_1",
+                    "isResolved": False,
+                    "comments": {"nodes": [{"fullDatabaseId": "20"}]},
+                }], next_cursor="page-2"),
+                response([{
+                    "id": "PRRT_2",
+                    "isResolved": True,
+                    "comments": {"nodes": [{"fullDatabaseId": "30"}]},
+                }]),
+            ]
+        def post(self, path, body):
+            self.calls.append((path, body))
+            return self.responses.pop(0)
+
+    gh = GitHubForge("github.com", "o", "r", "t")
+    gh.g = _Graph()
+    assert gh._review_threads(7) == {
+        "20": ("PRRT_1", False),
+        "30": ("PRRT_2", True),
+    }
+    assert [body["variables"]["cursor"] for _, body in gh.g.calls] == [None, "page-2"]
 
 
 def test_forge_reply_endpoint():
@@ -641,8 +701,9 @@ def test_forge_reply_endpoint():
 
 
 def test_forge_resolve_comment_endpoint():
-    """GitLab resolves the provider interaction behind a comment via opaque resolve_ref."""
+    """Each provider resolves the interaction behind a comment via opaque resolve_ref."""
     from domain.forge import Comment, ForgeError
+    from lib.forge.github import GitHubForge
     from lib.forge.gitlab import GitLabForge
 
     class _Cap:
@@ -653,11 +714,50 @@ def test_forge_resolve_comment_endpoint():
     gl.resolve_comment(7, Comment(id="20", resolve_ref="d2"))
     assert gl.c.calls == [("merge_requests/7/discussions/d2", {"resolved": True})]
 
+    class _Graph:
+        def __init__(self): self.calls = []
+        def post(self, path, body):
+            self.calls.append((path, body))
+            return {"data": {"resolveReviewThread": {
+                "thread": {"id": "PRRT_1", "isResolved": True},
+            }}}
+
+    gh = GitHubForge("github.com", "o", "r", "t")
+    gh.g = _Graph()
+    gh.resolve_comment(7, Comment(id="20", resolve_ref="PRRT_1"))
+    path, body = gh.g.calls[0]
+    assert path == "" and body["variables"] == {"thread": "PRRT_1"}
+    assert "resolveReviewThread" in body["query"]
+
     try:
         gl.resolve_comment(7, Comment(id="1"))
         raise AssertionError("non-resolvable comment should raise")
     except ForgeError:
         pass
+
+    try:
+        gh.resolve_comment(7, Comment(id="1"))
+        raise AssertionError("non-resolvable GitHub comment should raise")
+    except ForgeError:
+        pass
+
+
+def test_github_graphql_surfaces_api_errors():
+    """GraphQL can return HTTP 200 with an errors body; do not treat it as success."""
+    from domain.forge import ForgeError
+    from lib.forge.github import GitHubForge
+
+    class _Graph:
+        def post(self, path, body):
+            return {"data": None, "errors": [{"message": "Resource not accessible"}]}
+
+    gh = GitHubForge("github.com", "o", "r", "t")
+    gh.g = _Graph()
+    try:
+        gh._graphql("query { viewer { login } }", {})
+        raise AssertionError("GraphQL errors should raise")
+    except ForgeError as error:
+        assert "Resource not accessible" in str(error)
 
 
 def test_forge_default_branch():

@@ -108,6 +108,10 @@ def cmd_findings(ns) -> int:
 
 
 def cmd_label(ns) -> int:
+    reason = ns.reason.strip()
+    if not reason:
+        print("review label: --reason cannot be empty", file=sys.stderr)
+        return 1
     forge = _forge_or_exit(ns, "review label")
     number = _number_or_exit(ns.number, "review label")
     found = _findings(forge, number, "review label")
@@ -127,7 +131,7 @@ def cmd_label(ns) -> int:
             file=sys.stderr,
         )
         return 1
-    body = review_feedback.verdict_reply(ns.verdict, ns.reason)
+    body = review_feedback.verdict_reply(ns.verdict, reason)
     try:
         forge.reply(number, finding.comment, body)
     except ForgeError as exc:

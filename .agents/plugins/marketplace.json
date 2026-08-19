@@ -3,7 +3,7 @@
   "owner": {
     "name": "compforge"
   },
-  "description": "Cross-CLI developer-workflow marketplace for devloop and code-taste; example remains a layout placeholder.",
+  "description": "Cross-CLI developer-workflow marketplace for devloop, code-taste, and quality; example remains a layout placeholder.",
   "plugins": [
     {
       "name": "devloop",
@@ -40,6 +40,24 @@
       },
       "category": "Developer Workflow",
       "keywords": ["architecture", "code-review", "design", "maintainability", "naming", "refactoring"]
+    },
+    {
+      "name": "quality",
+      "source": {
+        "source": "local",
+        "path": "./quality"
+      },
+      "description": "Evidence-driven quality skills that discover and run project-owned verification capabilities.",
+      "author": {
+        "name": "compforge",
+        "url": "https://github.com/compforge"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Workflow",
+      "keywords": ["quality", "e2e", "testing", "verification", "evidence"]
     },
     {
       "name": "example",

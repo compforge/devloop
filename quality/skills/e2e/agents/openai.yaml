@@ -1,0 +1,4 @@
+interface:
+  display_name: "E2E Quality"
+  short_description: "Run and interpret project-owned E2E tests"
+  default_prompt: "Use $e2e to discover, run, and report the existing project E2E tests."

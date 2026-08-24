@@ -32,7 +32,7 @@ Read the project's AGENTS.md and README first, then locate:
 - the canonical command, exact case registry or listing mechanism, configuration, fixtures, and
   recent result artifacts;
 - the runner revision and the identity of the system under test, including the requested target or
-  environment;
+  environment, where the runner executes, and how it reaches that target;
 - project-declared prerequisites, material execution conditions, side effects, cleanup, and
   available evidence;
 - existing coverage relevant to the user's goal and the smallest sufficient case selection.
@@ -43,7 +43,8 @@ knowledge takes precedence over generic framework habits.
 
 Classify discovery as:
 
-- `ready`: an executable suite, target, selected cases, and required inputs are available;
+- `ready`: an executable suite, selected cases, required inputs, and a verified connection from the
+  runner to the intended target are available;
 - `blocked`: the suite exists but a required target, credential, dependency, service, device, or
   other prerequisite is unavailable;
 - `no_capability`: no executable project-owned E2E suite can be found.
@@ -53,10 +54,16 @@ source review, or a compile-only check into execution evidence.
 
 ## Prepare and control the testbed
 
-When selected cases require target preparation, fixtures, temporary conditions, fault injection,
-chaos experiments, or restoration, read [references/testbed.md](references/testbed.md) completely.
-Use project-owned setup and cleanup mechanisms, verify prepared conditions from observable state,
-and keep effects within the authorized target and blast radius.
+Before a live run, resolve where the runner and target execute, establish the project-declared
+connection between them, and verify the exact application endpoint from the runner. The target may
+be a local process or a remote environment such as Kubernetes; a target name, control-plane login,
+or configured URL alone is not data-plane readiness.
+
+Read [references/testbed.md](references/testbed.md) completely when establishing a non-trivial
+target connection or when selected cases require target preparation, fixtures, temporary
+conditions, fault injection, chaos experiments, or restoration. Use project-owned setup and
+cleanup mechanisms, verify prepared conditions from observable state, and keep effects within the
+authorized target and blast radius.
 
 ## Run and interpret
 
@@ -70,6 +77,9 @@ suite only when the user, a project gate, or the affected boundary requires it.
   environment changes unless the user authorizes them.
 - Capture the exact command, exit status, native verdict, and relevant logs, screenshots, traces,
   reports, cleanup outcomes, or other project-declared evidence.
+- Treat target-connection failures as testbed `error` or `blocked`, not product assertion failures.
+  If a verified alternate connection path is used, preserve the first error and report the rerun as
+  execution under a changed testbed rather than silently retrying for green.
 - Use native result semantics. Keep `passed`, `failed`, `skipped`, `error`, `blocked`, and
   `no_capability` distinct; an online case that skipped is not a live pass.
 - Separate verdict from coverage. `passed` means the executed assertions passed under the realized
@@ -106,6 +116,7 @@ behavior.
 Lead with the decision-relevant result, then report:
 
 - the project, runner revision, system-under-test identity, target, and E2E boundary;
+- the runner location, target connection path, and application-level connectivity evidence;
 - the prepared testbed, fault or chaos conditions, and readiness evidence relevant to the verdict;
 - the canonical entrypoint and exact cases executed;
 - the native verdict and supporting evidence;

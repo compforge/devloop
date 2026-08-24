@@ -15,6 +15,7 @@ commands or copy project-only facts into the plugin.
 Before changing the target, identify:
 
 - the system-under-test identity and the target in which the case will run;
+- where the runner executes and the application data-plane path from that runner to the target;
 - state that must already exist and the observable source of truth for it;
 - fixtures the test will create, reuse, mutate, and remove;
 - temporary conditions the scenario must apply and later reverse;
@@ -26,6 +27,45 @@ Do not infer readiness from a setup command's exit code alone. Check the state a
 scenario depends on: a resource exists and is usable, an identity has the intended access, a
 dependency exposes the requested behavior, or an injected condition is observable from the tested
 boundary.
+
+## Connect the runner to the target
+
+An environment selection is not yet an executable testbed. E2E requires the runner to reach the
+exact application endpoint of the intended system under test. Keep the runner location, target
+location, and connection path explicit because each can fail independently.
+
+Common target shapes include:
+
+- **Local target:** start or discover the service through the project's canonical local entrypoint,
+  then probe the same host, port, and protocol that the cases will use.
+- **Remote target:** use the project- or environment-owned access path, such as an ingress, VPN,
+  tunnel, port-forward, or in-environment runner. For Kubernetes, successful API or `kubectl`
+  access proves control-plane reachability only; it does not prove that the runner can exchange
+  application traffic with a Service or Pod endpoint.
+
+Prefer the project's documented connection mechanism and resolve the endpoint from target state
+instead of guessing a hostname, namespace, address, or port. From the actual runner, perform a
+cheap application-level readiness probe and record evidence that identifies the intended target
+without exposing credentials. When relevant, independently confirm the deployed revision and
+service health from the target's own observable state.
+
+If connection setup or traffic fails:
+
+1. Distinguish an unavailable target, an unavailable runner-to-target path, and a runner execution
+   error before assigning a product verdict.
+2. Observe the target independently of the failed path when possible. A healthy local process or
+   remote workload with completed request logs is evidence against treating a client-side reset as
+   a product assertion failure, but it does not by itself make the E2E case pass.
+3. Treat an alternate endpoint or transport as a testbed change. Verify it before rerunning,
+   preserve the original execution error, and explain that the rerun uses a different realized
+   connection. This is a retry after correcting execution conditions, not a retry merely to obtain
+   green.
+4. Stop temporary tunnels, port-forwards, proxy processes, or other connection helpers at the end
+   of the run, and verify that test-owned target resources are also cleaned up.
+
+Do not deploy, restart, scale, switch, or reconfigure a remote target merely to make it reachable
+unless the user authorized that environment change. Connection plumbing is part of testbed
+preparation, not fault injection or proof that business assertions passed.
 
 ## Distinguish preparation kinds
 
@@ -49,7 +89,8 @@ a fixture creation error, and a failed injection require different evidence and 
 ## Follow the testbed lifecycle
 
 1. Read the project-owned runbook, fixture, or setup entrypoint nearest to the selected E2E cases.
-2. Describe the minimum state required by the scenario and how each condition will be observed.
+2. Resolve the runner, target, connection path, and minimum state required by the scenario; describe
+   how each condition will be observed from the relevant side.
 3. Check scope and authorization before creating identities, deploying revisions, mutating shared
    state, injecting faults, or consuming material capacity.
 4. Prepare preconditions and test-owned fixtures through the project's canonical mechanisms.
@@ -104,6 +145,7 @@ Retain enough evidence to reconstruct the realized testbed without copying secre
 environment details into this skill:
 
 - system-under-test and target identity;
+- runner location, connection path, endpoint identity, and application-level readiness evidence;
 - pre-existing conditions that were checked;
 - fixtures created or reused and their stable run identity;
 - transient controls, fault injections, or chaos experiments applied, including the hypothesis,

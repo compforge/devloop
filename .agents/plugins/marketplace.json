@@ -47,7 +47,7 @@
         "source": "local",
         "path": "./quality"
       },
-      "description": "Evidence-driven skills for project-owned E2E and agent trajectory quality capabilities.",
+      "description": "Evidence-driven skills for project-owned E2E, performance, and agent trajectory quality capabilities.",
       "author": {
         "name": "compforge",
         "url": "https://github.com/compforge"
@@ -57,7 +57,7 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Developer Workflow",
-      "keywords": ["quality", "e2e", "trajectory", "agent-evaluation", "testing", "verification", "evidence"]
+      "keywords": ["quality", "e2e", "performance", "load-testing", "capacity", "trajectory", "agent-evaluation", "testing", "verification", "evidence"]
     },
     {
       "name": "example",

@@ -1,4 +1,4 @@
 interface:
   display_name: "E2E Quality"
-  short_description: "Run and interpret project-owned E2E tests"
-  default_prompt: "Use $e2e to discover, run, and report the existing project E2E tests."
+  short_description: "Operate and grow project-owned E2E coverage"
+  default_prompt: "Use $e2e to operate this project's existing E2E capability and add bounded coverage when requested."

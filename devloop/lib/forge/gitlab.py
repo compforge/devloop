@@ -165,8 +165,11 @@ class GitLabForge(Forge):
             comment = self._to_comment(root)
             comment.replies = [self._to_comment(note) for note in notes[1:]]
             comment.reply_ref = str(discussion.get("id") or "")
-            if root.get("resolvable"):
-                comment.resolve_ref = comment.reply_ref
+            # The MR discussion endpoint is the authority for resolution. Some self-managed
+            # GitLab versions omit `resolvable` from the list response even though PUT on the
+            # discussion works, so do not let that advisory field hide the mutation handle.
+            comment.resolve_ref = comment.reply_ref
+            if "resolved" in root:
                 comment.resolution = (
                     CommentResolution.RESOLVED
                     if root.get("resolved")

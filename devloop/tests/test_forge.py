@@ -609,10 +609,16 @@ def test_forge_comments_union_both_surfaces():
             {"id": 21, "author": {"username": "amy"}, "body": "ccr:label=wrong"},
             {"id": 99, "system": True, "body": "changed the description"},
         ]},
+        {"id": "d3", "individual_note": False, "notes": [
+            {"id": 30, "author": {"username": "bot"},
+             "body": "fallback finding ccr:fp=def"},
+        ]},
     ]})
     cs = gl.comments(7)
     assert gl.c.gets == ["merge_requests/7/discussions"]                    # 一次就够，不用第二个面
-    assert [c.body for c in cs] == ["summary", "finding ccr:fp=abc"]
+    assert [c.body for c in cs] == [
+        "summary", "finding ccr:fp=abc", "fallback finding ccr:fp=def",
+    ]
     assert not cs[0].replyable             # individual_note 是普通 note 的包装，回不进去
     assert (cs[1].id, cs[1].reply_ref, cs[1].resolve_ref) == ("20", "d2", "d2")
     assert [(reply.id, reply.body) for reply in cs[1].replies] == [
@@ -621,6 +627,10 @@ def test_forge_comments_union_both_surfaces():
     assert (cs[1].path, cs[1].line) == ("a.py", 5)
     assert cs[1].resolution is CommentResolution.UNRESOLVED
     assert cs[0].resolution is CommentResolution.UNSUPPORTED
+    # Older/self-managed GitLab can omit resolvability fields. The discussion id still reaches
+    # the authoritative resolve endpoint; only its cached state remains unknown.
+    assert (cs[2].reply_ref, cs[2].resolve_ref) == ("d3", "d3")
+    assert cs[2].resolution is CommentResolution.UNSUPPORTED
 
 
 def test_github_review_threads_paginate_and_report_resolution():

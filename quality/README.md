@@ -6,7 +6,8 @@ replace the frameworks and project assets that make verification executable.
 
 The bundled skills currently cover two independent quality views:
 
-- `e2e` discovers, runs, and interprets a project's existing end-to-end tests;
+- `e2e` operates a project's existing end-to-end capability and incrementally adds project-owned
+  coverage when requested;
 - `trajectory` evaluates agent decisions and actions, compares effect and cost, finds the next
   evidence-backed problem, and organizes controlled tuning experiments.
 
@@ -16,11 +17,13 @@ Each skill connects three layers without merging their ownership:
    artifact, and reporting primitives;
 2. each project owns its real cases or recordings, adapters, labels, Evaluators, Measurers,
    acceptance criteria, and canonical entrypoints;
-3. the skill discovers and operates that project capability, interprets its evidence, and preserves
-   project-specific knowledge beside the assets that need it.
+3. the skill discovers and operates that project capability, interprets its evidence, helps evolve
+   project-owned assets when requested, and preserves project-specific knowledge beside them.
 
-If no runnable project-owned capability exists, a skill returns `no_capability` rather than
-inventing tests or evaluations, or presenting source review as execution evidence.
+During assessment, if no runnable project-owned capability exists, a skill returns `no_capability`
+rather than inventing tests or evaluations, or presenting source review as execution evidence.
+Explicit coverage work may evolve an existing project-owned capability; it does not make an absent
+suite look executable.
 
 ## Operating model
 
@@ -79,11 +82,14 @@ Ask for the outcome instead of naming a framework command:
 Run this project's E2E tests and report the result.
 Check whether the test environment passes E2E.
 Find and execute the existing E2E capability; tell me if the project has none.
+Add one bounded E2E case for this regression and run the nearest relevant checks.
 Evaluate this project's agent trajectories and compare effect and cost with the baseline.
 Find the next trajectory problem worth optimizing.
 For this high-token trajectory problem, identify likely causes and controlled experiments.
 ```
 
-The skills operate existing project-owned quality assets. They do not invent missing tests,
-recordings, labels, or evaluators; deploy environments without authorization; modify agent behavior
-unless asked; or turn unavailable coverage into a pass.
+The skills operate existing project-owned quality assets. Assessment does not invent missing tests,
+recordings, labels, or evaluators. When the user asks to grow coverage, changes remain in the
+project-owned capability and move toward broader coverage incrementally. The skills do not deploy
+environments without authorization, modify agent behavior unless asked, or turn unavailable
+coverage into a pass.

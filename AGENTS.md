@@ -56,7 +56,7 @@ devloop/                              # ← 仓库根（marketplace）
 ├── quality/                          # plugin: 基于项目真实测试资产的质量评估（skill-only）
 │   ├── .claude-plugin/plugin.json    #     Claude manifest
 │   ├── .codex-plugin/plugin.json     #     Codex manifest
-│   ├── skills/e2e/                   #     发现、执行并解释项目已有 E2E 能力
+│   ├── skills/e2e/                   #     操作项目已有 E2E 能力，并渐进补充项目自有覆盖
 │   ├── skills/trajectory/            #     评估 Agent 轨迹并组织效果/成本调优
 │   └── README.md
 │

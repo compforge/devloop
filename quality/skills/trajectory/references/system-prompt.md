@@ -1,7 +1,7 @@
 # System-prompt optimization
 
-Use this reference when trajectory evidence suggests that the agent has sufficient capabilities
-and observations but repeatedly applies the wrong objective, policy, or decision rule.
+Use this reference when a trajectory smell suggests that the agent has sufficient capabilities and
+observations but repeatedly applies the wrong objective, policy, or decision rule.
 
 The instruction surface includes system and developer prompts, project instructions, loaded
 skills, the user request, and their ordering and precedence. Change the closest owner of the

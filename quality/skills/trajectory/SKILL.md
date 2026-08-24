@@ -1,6 +1,6 @@
 ---
 name: trajectory
-description: Discover, run, interpret, and iteratively tune a project's existing agent trajectory evaluation capability. Use when the user asks to evaluate agent trajectories, compare effect and cost across runs, find the next trajectory problem, or identify optimizations for a known trajectory issue. Follow project-owned data sources, evaluators, measurements, and entrypoints; do not invent a missing evaluation capability.
+description: Discover, run, interpret, and iteratively tune a project's existing agent trajectory evaluation capability. Use when the user asks to evaluate agent trajectories, compare effect and cost across runs, find trajectory smells or the next trajectory problem, or identify optimizations for a known trajectory issue. Follow project-owned data sources, evaluators, measurements, and entrypoints; do not invent a missing evaluation capability.
 ---
 
 # Trajectory Quality
@@ -57,7 +57,7 @@ Interpret artifacts in this order:
 
 ## Find and tune
 
-- To select the next evidence-backed trajectory problem, read
+- To find trajectory smells and select the next evidence-backed problem, read
   [references/problem-discovery.md](references/problem-discovery.md) completely.
 - When evidence points to objectives, policy, evidence standards, or instructions, read
   [references/system-prompt.md](references/system-prompt.md) completely.
@@ -66,9 +66,9 @@ Interpret artifacts in this order:
 - When evidence points to budgets, retries, concurrency, state, termination, orchestration, or
   compact, read [references/loop-mechanism.md](references/loop-mechanism.md) completely.
 
-Do not map an aggregate label directly to a fix. First identify the repeated trajectory behavior,
-then use its evidence and counterexamples to choose the system-prompt, tool-contract, loop,
-compact, model, or orchestration surface.
+Do not map an aggregate label or smell directly to a fix. First identify the repeated trajectory
+behavior, then use its evidence and counterexamples to choose the system-prompt, tool-contract,
+loop, compact, model, or orchestration surface.
 
 Freeze a reusable Dataset before comparing an agent change. Change one principal lever at a time,
 record the configuration and code identity, define one primary metric plus effect and health
@@ -81,9 +81,9 @@ evaluation assets; implement them only when the user asks for that mutation.
 ## Report and retain learning
 
 Report the evaluated project and revision, Dataset identity, current and comparison runs, data
-health, effect, cost, the next prioritized problem, supporting Worksheet examples, unknowns, and
-artifact paths. Lead with the decision-relevant summary; keep per-trajectory evidence in drill-down
-artifacts.
+health, effect, cost, the next prioritized smell or problem, supporting Worksheet examples,
+unknowns, and artifact paths. Lead with the decision-relevant summary; keep per-trajectory evidence
+in drill-down artifacts.
 
 Persist run-specific evidence and project-specific lessons beside the project's evaluation assets.
 Promote a problem pattern or optimization tactic into this skill's references only after it proves

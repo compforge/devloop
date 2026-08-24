@@ -3,6 +3,23 @@
 Use this method when the user asks what to optimize next. The output is one bounded problem with a
 measurable signal and enough evidence to justify an experiment, not a backlog of every unusual row.
 
+## Treat trajectory smells as diagnostic findings
+
+A **trajectory smell** is a recurring, observable action pattern that suggests avoidable cost,
+fragility, or effect loss. Like a code smell, it identifies where to investigate; it is not itself a
+proven defect, root cause, or required fix.
+
+Explicit failures and errors are the strongest smells: failed or malformed model output, invalid
+tool arguments, rejected tool calls, tool/runtime errors, timeouts, cancellations, and incomplete
+delivery. Less direct smells include unnecessary model calls, unnecessary tool calls, repeated
+tool-call sequences, repair or retry loops, oversized observations with low use, state
+reconstruction, and work that completes too late to be delivered.
+
+A project may implement a reusable smell detector as an Evaluator Finding and quantify its impact
+with Measurements, but `Trajectory Smell` is diagnostic language for this skill rather than a new
+framework entity. Even an obvious error is an observed failure, not automatic proof of which
+component caused it.
+
 ## Establish trustworthy comparison
 
 Before ranking agent problems, verify:
@@ -21,13 +38,15 @@ experiment design. Do not optimize an agent against an untrustworthy comparison.
 
 1. **Execution health:** failed, canceled, timed-out, or incomplete trajectories. An agent that does
    not finish cannot reliably realize its quality potential.
-2. **Effect regression:** wrong, unsupported, missed, repeat, low-score, or low-completion outcomes,
+2. **Action errors:** malformed model output, invalid tool arguments, rejected calls, tool errors,
+   and repair loops, including errors that a later retry hides from the final outcome.
+3. **Effect regression:** wrong, unsupported, missed, repeat, low-score, or low-completion outcomes,
    using the project's own Evaluators and annotations.
-3. **Pareto regression:** effect is unchanged or worse while normalized token, time, model calls, or
+4. **Pareto regression:** effect is unchanged or worse while normalized token, time, model calls, or
    tool calls increase.
-4. **Cost hotspot:** effect is acceptable, but a high-volume target or cohort dominates avoidable
+5. **Cost hotspot:** effect is acceptable, but a high-volume target or cohort dominates avoidable
    normalized cost.
-5. **Long tail:** average is stable while p95/p99, retries, timeouts, or a small cohort deteriorates.
+6. **Long tail:** average is stable while p95/p99, retries, timeouts, or a small cohort deteriorates.
 
 Totals identify operational spend; normalized metrics identify behavior. Inspect both before
 claiming a regression.
@@ -45,11 +64,16 @@ Stop slicing when the cohort becomes too small to support the claim. Then inspec
 Worksheet rows and their trajectory evidence: at least one common example and, when relevant, one
 counterexample. Separate observations from causal hypotheses.
 
-## Mine repeated behavior, not only aggregate outcomes
+## Find smells in repeated behavior, not only aggregate outcomes
 
 Aggregate metrics reveal where impact concentrates; step sequences reveal what the agent repeatedly
 does. Search representative and counterexample trajectories for motifs such as:
 
+- model calls made without a material new observation, state change, or decision requirement;
+- model calls that only transform data a deterministic mechanism already has enough information to
+  transform;
+- model-produced tool arguments rejected by schema validation or the tool runtime;
+- failures that trigger a successful retry and therefore disappear from the final outcome;
 - several calls expressing one already-known intent;
 - one tool call predictably followed by another whose arguments come from the first result;
 - repeated argument correction or switching between overlapping tools;
@@ -59,10 +83,10 @@ does. Search representative and counterexample trajectories for motifs such as:
 - independent actions being serialized;
 - useful work finishing, but delivery starting too late to complete.
 
-Describe the motif without project-specific tool names and before naming a fix. Quantify occurrence
-count, affected trajectory share, calls or tokens per occurrence, time contribution, outcome
-correlation, and counterexamples when the data allows it. A frequent transition is an optimization
-signal, not proof that combining two operations preserves semantics.
+Describe the smell without project-specific tool names and before naming a fix. Quantify occurrence
+count, affected trajectory share, model or tool calls per occurrence, token and time contribution,
+outcome correlation, and counterexamples when the data allows it. A frequent transition is an
+optimization signal, not proof that combining two operations preserves semantics.
 
 ## Choose one next problem
 
@@ -80,7 +104,7 @@ next experiment prerequisite.
 Record the selected problem in this shape:
 
 ```text
-Problem: one observable behavior, not its assumed cause
+Smell or problem: one observable behavior, not its assumed cause
 Scope: Dataset/run, target, cohort, and denominator
 Signal: current value, baseline value, and direction
 Evidence: representative trajectory/Worksheet identities

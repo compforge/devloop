@@ -1,7 +1,8 @@
 # Loop-mechanism optimization
 
-Use this reference when good or locally reasonable decisions still produce waste, lost work,
-timeouts, incomplete delivery, or repeated state reconstruction because of runtime behavior.
+Use this reference when a trajectory smell shows that good or locally reasonable decisions still
+produce waste, lost work, timeouts, incomplete delivery, or repeated state reconstruction because
+of runtime behavior.
 
 The mechanism surface includes budget allocation, planning, retries, checkpoints, concurrency,
 cancellation, caching, state retention, convergence, partial results, termination, model routing,
@@ -10,6 +11,7 @@ and orchestration across agent-loop segments.
 ## Signals
 
 - Work is useful but repeatedly times out or fails to produce a final deliverable.
+- Model, tool, or runtime failures are retried without being retained as observable step outcomes.
 - Retry or navigation cycles continue after evidence has converged.
 - Independent actions are serialized because the runtime offers no bounded parallel path.
 - Failures discard completed work that could have been checkpointed or delivered incrementally.

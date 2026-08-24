@@ -1,6 +1,6 @@
 # Tool optimization
 
-Use this reference when trajectory evidence suggests friction in the capabilities exposed to the
+Use this reference when a trajectory smell suggests friction in the capabilities exposed to the
 agent or in a tool contract.
 
 The tool surface includes which tools are available, overlap among them, tool names and
@@ -12,8 +12,9 @@ and result shape, size, identity, and provenance.
 - Several calls repeatedly express one intent already known before the first call.
 - Tool A is predictably followed by tool B using only information returned by A.
 - The agent alternates between overlapping tools or consistently chooses the wrong one.
-- Calls fail and succeed only after argument repair, reformatting, or discovering an undocumented
-  constraint.
+- The model repeatedly produces arguments rejected by schema validation or the tool runtime.
+- Calls succeed only after argument repair, reformatting, or discovering an undocumented constraint;
+  a successful retry must not hide the preceding error smell.
 - A result is much larger than the evidence used by the next decision.
 - A result omits bounded context that is almost always fetched immediately afterward.
 - Serial tool latency dominates duration while model decisions between calls are short.
@@ -29,6 +30,8 @@ particular option name or require the two operations to be merged.
 - Check permissions, freshness, pagination, rate limits, output bounds, and per-item error semantics.
 - Verify that the model knew all call targets early enough for batching or parallelism.
 - Distinguish a weak tool contract from an instruction that told the agent to use it incorrectly.
+- Distinguish unclear name, description, schema, examples, defaults, and errors from a model that
+  fails despite an unambiguous contract.
 - Measure complete-trajectory cost: a richer result may use more local tokens but remove later calls.
 
 ## Candidate changes

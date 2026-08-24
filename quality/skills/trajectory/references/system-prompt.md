@@ -43,6 +43,7 @@ and runtime invariants belong in the mechanism that enforces them.
 ## Validate
 
 Predict which decisions should change, not only how many prompt tokens should fall. Reuse the same
-Dataset, record the full instruction identity and ordering, and compare the target decision pattern,
-effect, completion, total tokens, and duration. Inspect counterexamples for new over-constraint or
-premature stopping.
+Case/input workload and evaluation semantics, record the full instruction identity and ordering,
+and align the newly generated trajectory cohorts by stable Case or input identity. Compare the
+target decision pattern, effect, completion, total tokens, and duration. Inspect counterexamples for
+new over-constraint or premature stopping.

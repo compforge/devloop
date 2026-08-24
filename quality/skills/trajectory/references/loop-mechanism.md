@@ -59,7 +59,8 @@ of external state.
 
 ## Validate
 
-Record loop configuration, compact policy, model routing, and orchestration identity. Predict the
-structural trace difference and compare completion, retries, duplicated work, post-compact rework,
-total and normalized tokens, duration, tail latency, and effect. A compact improvement must reduce
+Record loop configuration, compact policy, model routing, and orchestration identity. Generate from
+the same Case/input workload, align trajectory cohorts by stable identity, predict the structural
+trace difference, and compare completion, retries, duplicated work, post-compact rework, total and
+normalized tokens, duration, tail latency, and effect. A compact improvement must reduce
 complete-trajectory cost or improve completion/effect; shrinking one prompt is insufficient.

@@ -27,6 +27,9 @@ Read the project's AGENTS.md and README first, then locate:
 - the canonical command for collecting, building, evaluating, or reporting trajectories;
 - persisted Dataset, Run, Worksheet, Verdict, JSON, or HTML artifacts;
 - source identity and Dataset versioning;
+- the generation identity for each trajectory, including the agent revision, instruction/skill
+  version, exposed tool-contract version, loop/compact configuration, model, and orchestration when
+  those can affect behavior;
 - human or external annotations and their coverage;
 - Evaluators for effect and Measurers for cost;
 - comparison baselines, experiment configuration, and project-local operating notes.
@@ -38,21 +41,24 @@ may limit a comparison without making an otherwise valid analysis run disappear.
 ## Run and interpret
 
 Use the project-owned entrypoint and preserve the requested revision, Dataset, model configuration,
-and environment. Do not recollect or rebuild data when the user only asks to inspect an existing
-run.
+generation identity, and environment. Do not recollect or rebuild data when the user only asks to
+inspect an existing run.
 
 Interpret artifacts in this order:
 
 1. Check source freshness, build issues, unmatched annotations, execution coverage, measurement
    coverage, and cohort comparability.
-2. Read effect and cost separately. Evaluation is a judgment; Measurement is a factual value.
-3. Compare both totals and normalized values. Volume can increase total token or time while unit
+2. Check effect regression across generator versions before subtler smells. Do not confuse the
+   Dataset version or Evaluator version with the identity of the agent configuration that generated
+   a trajectory.
+3. Read effect and cost separately. Evaluation is a judgment; Measurement is a factual value.
+4. Compare both totals and normalized values. Volume can increase total token or time while unit
    cost improves, and the reverse can also happen.
-4. Preserve the project's dimensions. `target` identifies what is evaluated; `category` identifies
+5. Preserve the project's dimensions. `target` identifies what is evaluated; `category` identifies
    a concern such as quality or cost.
-5. State every label denominator. A wrong-label share among reviewed samples is not whole-system
+6. State every label denominator. A wrong-label share among reviewed samples is not whole-system
    accuracy, and sparse annotations only support a directional conclusion.
-6. Treat `skipped`, `error`, incomplete execution, and missing policy as distinct states. An
+7. Treat `skipped`, `error`, incomplete execution, and missing policy as distinct states. An
    analysis-only run can be useful, but it is not a passing release gate.
 
 ## Find and tune
@@ -70,20 +76,24 @@ Do not map an aggregate label or smell directly to a fix. First identify the rep
 behavior, then use its evidence and counterexamples to choose the system-prompt, tool-contract,
 loop, compact, model, or orchestration surface.
 
-Freeze a reusable Dataset before comparing an agent change. Change one principal lever at a time,
-record the configuration and code identity, define one primary metric plus effect and health
-guardrails, then rerun the same Dataset. Lower cost is an improvement only when effect and
-completion do not regress.
+For an agent change, freeze the same Case/input workload and evaluation semantics, then let each
+generation identity produce its own Trajectories. Align the resulting cohorts by stable Case or
+input identity; do not pretend that changed observations are the same TrajectoryDataset. Reuse one
+fixed TrajectoryDataset only when comparing Evaluators, Measurers, policies, or report projections.
+
+Change one principal agent lever at a time, record the generation identity, define one primary
+metric plus effect and health guardrails, and compare the aligned cohorts. Lower cost is an
+improvement only when effect and completion do not regress.
 
 Assessment is read-only. Propose changes to prompts, tools, agent loops, orchestration, models, or
 evaluation assets; implement them only when the user asks for that mutation.
 
 ## Report and retain learning
 
-Report the evaluated project and revision, Dataset identity, current and comparison runs, data
-health, effect, cost, the next prioritized smell or problem, supporting Worksheet examples,
-unknowns, and artifact paths. Lead with the decision-relevant summary; keep per-trajectory evidence
-in drill-down artifacts.
+Report the evaluated project and revision, Dataset identity, current and comparison generator
+identities and runs, data health, effect, cost, the next prioritized smell or problem, supporting
+Worksheet examples, unknowns, and artifact paths. Lead with the decision-relevant summary; keep
+per-trajectory evidence in drill-down artifacts.
 
 Persist run-specific evidence and project-specific lessons beside the project's evaluation assets.
 Promote a problem pattern or optimization tactic into this skill's references only after it proves

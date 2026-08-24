@@ -47,7 +47,8 @@ particular option name or require the two operations to be merged.
 
 ## Validate
 
-Record the exposed tool list and changed contract version. Predict the trace difference: fewer
-calls, fewer argument repairs, different tool selection, less unused output, or lower tool latency.
-Compare effect, completion, errors, total and normalized tokens, duration, and tail latency. Inspect
-cases that depended on the previous granularity or result boundary.
+Record the exposed tool list and changed contract version. Generate from the same Case/input
+workload, align trajectory cohorts by stable identity, and predict the trace difference: fewer calls,
+fewer argument repairs, different tool selection, less unused output, or lower tool latency. Compare
+effect, completion, errors, total and normalized tokens, duration, and tail latency. Inspect cases
+that depended on the previous granularity or result boundary.

@@ -25,28 +25,54 @@ component caused it.
 Before ranking agent problems, verify:
 
 - source and Dataset versions are known and the intended time or case window is complete;
+- every comparison cohort has a generation identity sufficient to distinguish behavior-producing
+  versions: agent/application revision, instruction and skill versions, tool set and contract,
+  loop/compact configuration, model, and orchestration as applicable;
 - build failures, unmatched annotations, and unknown execution outcomes are visible;
 - label coverage and the exact denominator accompany every quality rate;
 - model-usage and duration coverage are sufficient for cost claims;
-- current and baseline runs use the same Dataset, or cohort differences are explicitly controlled;
+- evaluator comparisons reuse the same TrajectoryDataset, while generator comparisons use aligned
+  Case/input cohorts and explicitly control their differences;
 - target, model, tool version, feature flags, and other material dimensions are available.
 
 If one of these conditions materially changes the conclusion, the next problem is data quality or
 experiment design. Do not optimize an agent against an untrustworthy comparison.
 
+Do not substitute a Dataset version or an instrumentation-library version for generation identity.
+A generic Trajectory may carry generation identity in provenance metadata and step attributes, but
+the project Loader or Dataset builder must populate it from the actual producer. If that identity is
+missing, report a provenance gap: effect can still be described for the cohort, but it cannot be
+attributed to a generating version.
+
+## Treat version effect regression as a leading smell
+
+An effect decline between generator versions is a stronger signal than a local efficiency pattern.
+Hold the same Case/input workload and evaluation semantics fixed, let each version generate its own
+Trajectories, and align the resulting cohorts by stable Case or input identity. Because the
+observations changed, they are not literally the same TrajectoryDataset. When a controlled replay
+is unavailable, require comparable cohorts and disclose differences in cases, labels, targets,
+environment, and coverage.
+
+A week-over-week decline is an operational alert, not automatically a version regression: workload
+mix and annotation coverage may have changed. Group by generation identity within or across the time
+windows. Escalate the smell when the same effect metric declines under the same Evaluator and policy,
+especially when completion or cost also regresses.
+
 ## Search in priority order
 
-1. **Execution health:** failed, canceled, timed-out, or incomplete trajectories. An agent that does
+1. **Version effect regression:** a newer generation identity produces worse effect on the same
+   Case/input workload or a controlled cohort under the same evaluation semantics.
+2. **Execution health:** failed, canceled, timed-out, or incomplete trajectories. An agent that does
    not finish cannot reliably realize its quality potential.
-2. **Action errors:** malformed model output, invalid tool arguments, rejected calls, tool errors,
+3. **Action errors:** malformed model output, invalid tool arguments, rejected calls, tool errors,
    and repair loops, including errors that a later retry hides from the final outcome.
-3. **Effect regression:** wrong, unsupported, missed, repeat, low-score, or low-completion outcomes,
-   using the project's own Evaluators and annotations.
-4. **Pareto regression:** effect is unchanged or worse while normalized token, time, model calls, or
+4. **Effect regression within a version:** wrong, unsupported, missed, repeat, low-score, or
+   low-completion outcomes, using the project's own Evaluators and annotations.
+5. **Pareto regression:** effect is unchanged or worse while normalized token, time, model calls, or
    tool calls increase.
-5. **Cost hotspot:** effect is acceptable, but a high-volume target or cohort dominates avoidable
+6. **Cost hotspot:** effect is acceptable, but a high-volume target or cohort dominates avoidable
    normalized cost.
-6. **Long tail:** average is stable while p95/p99, retries, timeouts, or a small cohort deteriorates.
+7. **Long tail:** average is stable while p95/p99, retries, timeouts, or a small cohort deteriorates.
 
 Totals identify operational spend; normalized metrics identify behavior. Inspect both before
 claiming a regression.
@@ -105,7 +131,7 @@ Record the selected problem in this shape:
 
 ```text
 Smell or problem: one observable behavior, not its assumed cause
-Scope: Dataset/run, target, cohort, and denominator
+Scope: Dataset/run, generator identities, target, cohort, and denominator
 Signal: current value, baseline value, and direction
 Evidence: representative trajectory/Worksheet identities
 Likely causes: ordered hypotheses, each with a disconfirming check

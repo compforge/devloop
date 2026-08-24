@@ -1,7 +1,7 @@
 {
   "name": "quality",
-  "version": "0.0.1",
-  "description": "Evidence-driven quality skills that discover and run project-owned verification capabilities.",
+  "version": "0.0.2",
+  "description": "Evidence-driven skills that operate project-owned E2E and agent trajectory quality capabilities.",
   "author": {
     "name": "compforge",
     "url": "https://github.com/compforge"

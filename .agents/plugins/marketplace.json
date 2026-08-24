@@ -47,7 +47,7 @@
         "source": "local",
         "path": "./quality"
       },
-      "description": "Evidence-driven quality skills that discover and run project-owned verification capabilities.",
+      "description": "Evidence-driven skills for project-owned E2E and agent trajectory quality capabilities.",
       "author": {
         "name": "compforge",
         "url": "https://github.com/compforge"
@@ -57,7 +57,7 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Developer Workflow",
-      "keywords": ["quality", "e2e", "testing", "verification", "evidence"]
+      "keywords": ["quality", "e2e", "trajectory", "agent-evaluation", "testing", "verification", "evidence"]
     },
     {
       "name": "example",

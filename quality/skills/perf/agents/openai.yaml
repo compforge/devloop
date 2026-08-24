@@ -1,0 +1,4 @@
+interface:
+  display_name: "Performance Quality"
+  short_description: "Run and interpret project performance tests"
+  default_prompt: "Use $perf to discover, run, and report this project performance capability."

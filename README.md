@@ -120,7 +120,7 @@ Start a new session after updating so the runtime reloads hooks and skills. User
 |---|---|---|
 | `devloop` | Controlled PR/MR development lifecycle for Claude Code and Codex | [README](./devloop/README.md) |
 | `code-taste` | Engineering judgment for architecture, boundaries, naming, maintainability, and review | [README](./code-taste/README.md) |
-| `quality` | Operate project-owned E2E and agent trajectory quality capabilities | [README](./quality/README.md) |
+| `quality` | Operate project-owned E2E, performance, and agent trajectory quality capabilities | [README](./quality/README.md) |
 | `example` | Placeholder demonstrating the multi-plugin marketplace layout | [README](./example/README.md) |
 
 ## Documentation

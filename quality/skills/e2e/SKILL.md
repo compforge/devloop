@@ -52,18 +52,18 @@ Classify discovery as:
 Report ambiguity when multiple plausible suites or targets remain. Do not turn framework presence,
 source review, or a compile-only check into execution evidence.
 
-## Prepare and control the testbed
+## Prepare and control the environment
 
-Before a live run, resolve where the runner and target execute, establish the project-declared
-connection between them, and verify the exact application endpoint from the runner. The target may
-be a local process or a remote environment such as Kubernetes; a target name, control-plane login,
-or configured URL alone is not data-plane readiness.
+Before a live run, read the shared
+[Environment contract](../../references/environment.md) completely. It defines local and remote
+Targets, Runner-to-Target data-plane readiness, preparation kinds, authorization, lifecycle,
+cleanup, and evidence.
 
-Read [references/testbed.md](references/testbed.md) completely when establishing a non-trivial
-target connection or when selected cases require target preparation, fixtures, temporary
-conditions, fault injection, chaos experiments, or restoration. Use project-owned setup and
+When selected cases require fixtures, temporary conditions, fault injection, chaos experiments, or
+restoration, also read
+[E2E scenario preparation](references/scenario-environment.md) completely. Use project-owned setup and
 cleanup mechanisms, verify prepared conditions from observable state, and keep effects within the
-authorized target and blast radius.
+authorized Target and blast radius.
 
 ## Run and interpret
 
@@ -77,9 +77,9 @@ suite only when the user, a project gate, or the affected boundary requires it.
   environment changes unless the user authorizes them.
 - Capture the exact command, exit status, native verdict, and relevant logs, screenshots, traces,
   reports, cleanup outcomes, or other project-declared evidence.
-- Treat target-connection failures as testbed `error` or `blocked`, not product assertion failures.
+- Treat target-connection failures as environment `error` or `blocked`, not product assertion failures.
   If a verified alternate connection path is used, preserve the first error and report the rerun as
-  execution under a changed testbed rather than silently retrying for green.
+  execution under a changed Environment rather than silently retrying for green.
 - Use native result semantics. Keep `passed`, `failed`, `skipped`, `error`, `blocked`, and
   `no_capability` distinct; an online case that skipped is not a live pass.
 - Separate verdict from coverage. `passed` means the executed assertions passed under the realized
@@ -117,7 +117,7 @@ Lead with the decision-relevant result, then report:
 
 - the project, runner revision, system-under-test identity, target, and E2E boundary;
 - the runner location, target connection path, and application-level connectivity evidence;
-- the prepared testbed, fault or chaos conditions, and readiness evidence relevant to the verdict;
+- the prepared Environment, fault or chaos conditions, and readiness evidence relevant to the verdict;
 - the canonical entrypoint and exact cases executed;
 - the native verdict and supporting evidence;
 - executed, skipped, gated, unselected, and unknown or unverified areas;

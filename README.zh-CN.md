@@ -133,7 +133,7 @@ opencode 仍是占位，等其 plugin / hook 协议接入后再启用。
 |--------|------|--------|
 | `devloop` | 面向 AI 编码的受控 PR/MR 生命周期：repo/branch 入口、受影响 Component 验证、commit/push/PR、实时状态与执行级护栏（Claude + Codex；GitHub + GitLab） | [devloop/README.md](./devloop/README.md) |
 | `code-taste` | 架构、边界、命名、可维护性、文档与 Code Review 判断 | [code-taste/README.md](./code-taste/README.md) |
-| `quality` | 发现并执行项目已有质量能力，首个 skill 为 E2E | [quality/README.md](./quality/README.md) |
+| `quality` | 执行项目已有的 E2E 与 Agent 轨迹质量能力 | [quality/README.md](./quality/README.md) |
 | `example` | 占位 plugin，演示多 plugin marketplace 结构 | [example/README.md](./example/README.md) |
 
 ## 新增 plugin

@@ -26,7 +26,7 @@
     {
       "name": "quality",
       "source": "./quality",
-      "description": "Evidence-driven quality skills that discover and run project-owned verification capabilities.",
+      "description": "Evidence-driven skills for project-owned E2E and agent trajectory quality capabilities.",
       "author": {
         "name": "compforge",
         "url": "https://github.com/compforge"

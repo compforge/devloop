@@ -1,0 +1,4 @@
+interface:
+  display_name: "Trajectory Quality"
+  short_description: "Evaluate and tune agent trajectories from project evidence"
+  default_prompt: "Use $trajectory to evaluate this project's agent trajectories and identify the next evidence-backed optimization."

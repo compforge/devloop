@@ -1,7 +1,7 @@
 {
   "name": "quality",
-  "version": "0.0.1",
-  "description": "Evidence-driven quality skills that discover and run project-owned verification capabilities.",
+  "version": "0.0.2",
+  "description": "Evidence-driven skills that operate project-owned E2E and agent trajectory quality capabilities.",
   "author": {
     "name": "compforge",
     "url": "https://github.com/compforge"
@@ -10,6 +10,9 @@
   "keywords": [
     "quality",
     "e2e",
+    "trajectory",
+    "agent-evaluation",
+    "tuning",
     "testing",
     "verification",
     "evidence"
@@ -18,8 +21,8 @@
   "interface": {
     "displayName": "Quality",
     "shortDescription": "Evidence-driven project quality evaluation",
-    "longDescription": "Helps coding agents discover, run, and interpret project-owned quality capabilities without inventing missing tests or treating unsupported areas as passed.",
-    "defaultPrompt": "Use the E2E skill to discover, run, and report this project's existing end-to-end tests.",
+    "longDescription": "Helps coding agents discover, run, and interpret project-owned E2E and trajectory quality capabilities, then identify evidence-backed tuning opportunities.",
+    "defaultPrompt": "Use the relevant quality skill to operate this project's existing E2E or trajectory evaluation capability and report its evidence.",
     "developerName": "compforge",
     "category": "Developer Workflow",
     "capabilities": [

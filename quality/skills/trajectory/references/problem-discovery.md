@@ -15,8 +15,8 @@ delivery. Less direct smells include unnecessary model calls, unnecessary tool c
 tool-call sequences, repair or retry loops, oversized observations with low use, state
 reconstruction, and work that completes too late to be delivered.
 
-A project may implement a reusable smell detector as an Evaluator Finding and quantify its impact
-with Measurements, but `Trajectory Smell` is diagnostic language for this skill rather than a new
+A project may implement a reusable smell Detector that emits Findings and quantify its impact with
+Measurements, but `Trajectory Smell` is diagnostic language for this skill rather than a new
 framework entity. Even an obvious error is an observed failure, not automatic proof of which
 component caused it.
 
@@ -25,7 +25,7 @@ component caused it.
 Before ranking agent problems, verify:
 
 - source and Dataset versions are known and the intended time or case window is complete;
-- every comparison cohort has a generation identity sufficient to distinguish behavior-producing
+- every comparison cohort has generation provenance sufficient to distinguish behavior-producing
   versions: agent/application revision, instruction and skill versions, tool set and contract,
   loop/compact configuration, model, and orchestration as applicable;
 - build failures, unmatched annotations, and unknown execution outcomes are visible;
@@ -38,11 +38,11 @@ Before ranking agent problems, verify:
 If one of these conditions materially changes the conclusion, the next problem is data quality or
 experiment design. Do not optimize an agent against an untrustworthy comparison.
 
-Do not substitute a Dataset version or an instrumentation-library version for generation identity.
-A generic Trajectory may carry generation identity in provenance metadata and step attributes, but
-the project Loader or Dataset builder must populate it from the actual producer. If that identity is
-missing, report a provenance gap: effect can still be described for the cohort, but it cannot be
-attributed to a generating version.
+Do not substitute a Dataset version or an instrumentation-library version for generation
+provenance. A generic Trajectory may carry generation provenance in metadata and step attributes,
+but the project Loader or Dataset builder must populate it from the actual producer. If that
+provenance is missing, report a provenance gap: effect can still be described for the cohort, but
+it cannot be attributed to a generating version.
 
 ## Treat version effect regression as a leading smell
 
@@ -54,13 +54,13 @@ is unavailable, require comparable cohorts and disclose differences in cases, la
 environment, and coverage.
 
 A week-over-week decline is an operational alert, not automatically a version regression: workload
-mix and annotation coverage may have changed. Group by generation identity within or across the time
+mix and annotation coverage may have changed. Group by generation provenance within or across the time
 windows. Escalate the smell when the same effect metric declines under the same Evaluator and policy,
 especially when completion or cost also regresses.
 
 ## Search in priority order
 
-1. **Version effect regression:** a newer generation identity produces worse effect on the same
+1. **Version effect regression:** a newer generation configuration produces worse effect on the same
    Case/input workload or a controlled cohort under the same evaluation semantics.
 2. **Execution health:** failed, canceled, timed-out, or incomplete trajectories. An agent that does
    not finish cannot reliably realize its quality potential.
@@ -131,7 +131,7 @@ Record the selected problem in this shape:
 
 ```text
 Smell or problem: one observable behavior, not its assumed cause
-Scope: Dataset/run, generator identities, target, cohort, and denominator
+Scope: Dataset/run, generation provenance, target, cohort, and denominator
 Signal: current value, baseline value, and direction
 Evidence: representative trajectory/Worksheet identities
 Likely causes: ordered hypotheses, each with a disconfirming check

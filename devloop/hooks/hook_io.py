@@ -30,6 +30,7 @@ Usage (a guard)::
 from __future__ import annotations
 
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,8 +59,14 @@ class HookInput:
 
     @property
     def is_codex(self) -> bool:
-        """Codex hook payloads expose `model`; Claude's shared payload subset does not."""
-        return "model" in self.raw
+        """Whether this hook runs under Codex.
+
+        Turn hooks normally expose ``model``, while ``SessionEnd`` deliberately has a
+        smaller payload. The Codex SessionEnd adapter therefore sets an explicit harness
+        marker; ambient thread variables are intentionally ignored because test/tool
+        subprocesses inherit them even when exercising a Claude-shaped payload.
+        """
+        return "model" in self.raw or os.environ.get("DEVLOOP_HARNESS") == "codex"
 
     @property
     def harness(self) -> str:

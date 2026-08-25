@@ -264,6 +264,32 @@ def list_worktrees(repo_dir: str | Path) -> list[tuple[str, str, str | None]]:
     return out
 
 
+def list_local_branches(repo_dir: str | Path) -> list[tuple[str, str]]:
+    """Every local branch as ``(name, head_sha)`` in stable name order.
+
+    A PR/MR can outlive its checkout, so lifecycle inventory starts from local
+    refs rather than from ``git worktree list``. The NUL separator avoids
+    parsing human-facing branch output.
+    """
+    r = gitcmd.git(
+        repo_dir,
+        "for-each-ref",
+        "--sort=refname",
+        "--format=%(refname:short)%00%(objectname)",
+        "refs/heads",
+    )
+    if not r.ok or not r.out:
+        return []
+    out: list[tuple[str, str]] = []
+    for line in r.out.splitlines():
+        if "\x00" not in line:
+            continue
+        branch, sha = line.split("\x00", 1)
+        if branch and sha:
+            out.append((branch, sha))
+    return out
+
+
 def fetch(repo_dir: str | Path, *refs: str, timeout: int = 8) -> bool:
     """Bounded `git fetch origin [refs...]` for low-freq, intentional boundaries.
     Refreshes local remote-tracking refs so behind/ahead become REAL rather than

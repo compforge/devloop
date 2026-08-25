@@ -131,7 +131,7 @@ def _git_out(repo, *a):
 
 def _hook_input(tool: str, raw: dict):
     from hooks import hook_io
-    return hook_io.HookInput(event="PreToolUse", tool_name=tool,
+    return hook_io.HookInput(event=raw.get("hook_event_name", "PreToolUse"), tool_name=tool,
                              tool_input=raw.get("tool_input") or {},
                              cwd=raw.get("cwd", "/"), raw=raw)
 

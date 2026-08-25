@@ -3,9 +3,9 @@
 
 Claude Code gives devloop a native CwdChanged event, so the normal Bash post-tool hook
 only has to react to git mutations. Codex currently exposes PostToolUse but not
-CwdChanged/FileChanged/SessionEnd, so this hook is the Codex fallback: keep the current
-cwd and command-scoped repos warm, bind the active repo, then reuse the normal git
-mutation refresh for branch/owner updates.
+CwdChanged/FileChanged, so this hook is the Codex fallback: keep the current cwd and
+command-scoped repos warm, bind the active repo, then reuse the normal git mutation
+refresh for branch/owner updates. SessionEnd has its own native hook on both harnesses.
 """
 from __future__ import annotations
 

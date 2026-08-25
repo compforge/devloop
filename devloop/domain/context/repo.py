@@ -1,5 +1,6 @@
 """`RepoContext` — per-repo state, persisted as per-owner segment files under
 `<git_root>/.devloop/` (`meta.json` / `branch.json` / `remote_branches.json` / `pr.json` /
+`local_pull_requests.json` /
 plus branch-domain `branches/<b>/{branch,lint,test,review}.json`).
 `RepoContext` is the in-memory *view* that `load()` assembles by merging them; each mutator
 writes back only its own segment.

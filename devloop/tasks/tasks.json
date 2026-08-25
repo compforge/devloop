@@ -1,0 +1,8 @@
+[
+  {
+    "name": "pr-lifecycle-reconcile",
+    "module": "tasks.pr_lifecycle",
+    "description": "Reconcile local branches and worktrees with authoritative GitHub/GitLab PR/MR state",
+    "interval_seconds": 120
+  }
+]

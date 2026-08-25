@@ -354,11 +354,10 @@ def test_forge_release_endpoints():
 
 def test_release_cli_dispatch():
     """`release` CLI over the facade: create validates semver + strict increment, defaults the
-    target to the repo trunk, auto-drafts notes from merged PRs when none given; latest reads."""
+    target to the repo trunk, requires semantic notes, and reads the latest release."""
     from lib import git_state
     rel = _load_script("release")
-    fake = _FakeForge([PullRequest(number=7, state="merged", source_branch="feat/x",
-                                   title="did a thing", web_url="u/7", updated_at="2026-07-05")])
+    fake = _FakeForge([])
 
     class _R:
         git_root = "/x"
@@ -370,10 +369,14 @@ def test_release_cli_dispatch():
         rel.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
         git_state.local_default_target = lambda repo: "main"
 
-        # first release: no prior → allowed; target defaults to trunk; notes auto-drafted from merged PR
-        assert rel.main(["create", "v1.8.0"]) == 0
+        # Semantic notes are caller-owned: omission must not silently publish a raw PR list.
+        assert rel.main(["create", "v1.8.0"]) == 1
+        assert getattr(fake, "released", None) is None
+        # Caller-supplied semantic notes are accepted; target defaults to trunk.
+        notes = "## New Features\n\n- Add one user-visible capability."
+        assert rel.main(["create", "v1.8.0", "--notes", notes]) == 0
         assert fake.released.tag == "v1.8.0" and fake.released.target == "main"
-        assert "## Changes" in fake.released_notes and "did a thing" in fake.released_notes
+        assert fake.released_notes == notes
         # non-semver rejected before any call
         fake.released = None
         assert rel.main(["create", "1.8"]) == 1 and fake.released is None

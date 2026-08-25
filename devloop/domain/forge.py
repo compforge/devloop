@@ -279,7 +279,7 @@ class Forge(abc.ABC):
     def latest_release(self) -> "Release | None":
         """The most recent published release, or None when the repo has none yet (its first
         release). Read primitive — the orchestrator uses it to check the new version is an
-        increment and to bound the 'changes since last release' notes draft."""
+        increment; callers use the tag as the baseline for semantic release notes."""
 
     @abc.abstractmethod
     def comments(self, number: int) -> list[Comment]:

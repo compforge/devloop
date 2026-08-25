@@ -13,8 +13,8 @@ same as `pr`.
 
 `create` defaults `--target` to the repo's trunk BRANCH NAME (not a sha): the forge tags that
 branch's remote tip, so there is no sha to mistype. Version must be semver (vX.Y.Z) and greater
-than the last release. With no `--notes`, a plain changelog is auto-drafted from PRs/MRs merged
-since the last release — a fallback; hand-written notes (`--notes-file`) read better.
+than the last release. Release notes are required because their product meaning belongs to the
+caller; the deterministic transaction does not pretend a raw merged-PR/MR list is a summary.
 
 Deliberately NOT in gcampr: releasing is a low-frequency, working-tree-free action with its own
 preconditions (increment check, notes), not a commit+push+MR transaction — folding it in would
@@ -30,7 +30,7 @@ _SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS.parent))
 
 from lib import cli, git_state  # noqa: E402
-from domain.forge import ForgeError, pr_label  # noqa: E402
+from domain.forge import ForgeError  # noqa: E402
 from lib.forge import forge_for_repo  # noqa: E402
 
 # Release version must be semver (optional leading v): the tag the forge cuts and the key the
@@ -56,8 +56,11 @@ def _forge_or_exit(ns, prog):
 
 
 def _read_notes(ns, prog) -> str:
-    """Notes body from --notes-file (a path, or '-' for stdin) or inline --notes; '' if neither
-    (create then auto-drafts). File/stdin is the shell-escaping-free path for long notes."""
+    """Notes body from --notes-file (a path, or '-' for stdin) or inline --notes.
+
+    File/stdin is the shell-escaping-free path for long notes. An empty result remains empty so
+    `create` can reject a release whose caller did not provide semantic notes.
+    """
     if ns.notes_file:
         try:
             return (sys.stdin.read() if ns.notes_file == "-"
@@ -66,27 +69,6 @@ def _read_notes(ns, prog) -> str:
             print(f"{prog}: --notes-file unreadable: {e}", file=sys.stderr)
             raise SystemExit(1)
     return ns.notes or ""
-
-
-def _draft_notes(forge, since: str | None) -> str:
-    """A plain changelog from PRs/MRs merged since the last release (best-effort fallback).
-
-    `since` is the last release's timestamp; with no last release every merged PR/MR is in
-    scope. String-compares ISO-8601 `updated_at` against it — coarse (updated_at isn't merge
-    time) but good enough for a draft the caller is expected to refine. Empty when nothing
-    qualifies, so `create` ships empty notes rather than a misleading heading."""
-    try:
-        prs = forge.recent(30)
-    except ForgeError:
-        return ""
-    merged = [
-        p for p in prs
-        if p.state == "merged" and (since is None or (p.updated_at or "") > since)
-    ]
-    if not merged:
-        return ""
-    lines = [f"- {pr_label(forge.provider, p.number)} {p.title}".rstrip() for p in merged]
-    return "## Changes\n" + "\n".join(lines)
 
 
 def cmd_create(ns) -> int:
@@ -117,10 +99,13 @@ def cmd_create(ns) -> int:
 
     target = ns.target or git_state.local_default_target(git_root)
     notes = _read_notes(ns, "release create")
-    drafted = False
     if not notes:
-        notes = _draft_notes(forge, last.created_at if last else None)
-        drafted = bool(notes)
+        print(
+            "release create: semantic release notes are required; pass --notes-file "
+            "(preferred) or --notes",
+            file=sys.stderr,
+        )
+        return 1
 
     try:
         rel = forge.create_release(tag=version, target=target,
@@ -131,9 +116,6 @@ def cmd_create(ns) -> int:
 
     prev_str = f" (was {last.tag})" if last and last.tag else " (first release)"
     print(f"released {rel.tag}{prev_str} @ {target}")
-    if drafted:
-        print("  notes auto-drafted from merged PRs/MRs since the last release "
-              "(refine with --notes-file if needed)")
     if rel.web_url:
         print(f"  {rel.web_url}")
     return 0
@@ -169,9 +151,10 @@ def main(argv: list[str]) -> int:
     p_create.add_argument("--target", default=None,
                           help="branch name or sha to tag (default: the repo's trunk branch)")
     p_create.add_argument("--title", default=None, help="release name (default: the version)")
-    p_create.add_argument("--notes", default=None, help="inline release notes (single-quote it)")
-    p_create.add_argument("--notes-file", dest="notes_file", default=None,
-                          help="read notes from a file ('-' = stdin); no shell escaping")
+    notes = p_create.add_mutually_exclusive_group()
+    notes.add_argument("--notes", default=None, help="inline release notes (single-quote it)")
+    notes.add_argument("--notes-file", dest="notes_file", default=None,
+                       help="read notes from a file ('-' = stdin); no shell escaping")
     cli.add_repo_arg(p_create)
     p_create.set_defaults(fn=cmd_create)
 

@@ -11,9 +11,9 @@ trajectory capability; do not replace its framework, business data, labels, or j
 ## Keep the owners separate
 
 1. Treat case-harness or another trajectory framework as infrastructure for normalization, Dataset,
-   Evaluation, Measurement, Worksheet, metrics, and reports.
-2. Treat the project as owner of its RecordingSource, Loader, annotations, Evaluators, Measurers,
-   report projection, canonical command, and optimization targets.
+   Detection, Evaluation, Measurement, Worksheet, metrics, and reports.
+2. Treat the project as owner of its RecordingSource, Loader, annotations, Detectors, Evaluators,
+   Measurers, report projection, canonical command, and optimization targets.
 3. Treat this skill as the operator that discovers those assets, runs them, interprets evidence, and
    organizes controlled tuning experiments.
 
@@ -27,11 +27,12 @@ Read the project's AGENTS.md and README first, then locate:
 - the canonical command for collecting, building, evaluating, or reporting trajectories;
 - persisted Dataset, Run, Worksheet, Verdict, JSON, or HTML artifacts;
 - source identity and Dataset versioning;
-- the generation identity for each trajectory, including the agent revision, instruction/skill
+- the generation provenance for each trajectory, including the agent revision, instruction/skill
   version, exposed tool-contract version, loop/compact configuration, model, and orchestration when
   those can affect behavior;
 - human or external annotations and their coverage;
-- Evaluators for effect and Measurers for cost;
+- Detectors for behavior patterns, Evaluators for effect or contract judgments, and Measurers for
+  factual values such as cost;
 - comparison baselines, experiment configuration, and project-local operating notes.
 
 Classify discovery as `ready`, `blocked`, or `no_capability`. Report ambiguity when multiple
@@ -41,7 +42,7 @@ may limit a comparison without making an otherwise valid analysis run disappear.
 ## Run and interpret
 
 Use the project-owned entrypoint and preserve the requested revision, Dataset, model configuration,
-generation identity, and environment. Do not recollect or rebuild data when the user only asks to
+generation provenance, and environment. Do not recollect or rebuild data when the user only asks to
 inspect an existing run.
 
 Interpret artifacts in this order:
@@ -51,7 +52,9 @@ Interpret artifacts in this order:
 2. Check effect regression across generator versions before subtler smells. Do not confuse the
    Dataset version or Evaluator version with the identity of the agent configuration that generated
    a trajectory.
-3. Read effect and cost separately. Evaluation is a judgment; Measurement is a factual value.
+3. Read Detection, Evaluation, and Measurement separately. A Finding describes a detected behavior
+   pattern and does not imply a verdict; Evaluation is a contract or effect judgment; Measurement
+   is a factual value.
 4. Compare both totals and normalized values. Volume can increase total token or time while unit
    cost improves, and the reverse can also happen.
 5. Preserve the project's dimensions. `target` identifies what is evaluated; `category` identifies
@@ -77,11 +80,18 @@ behavior, then use its evidence and counterexamples to choose the system-prompt,
 loop, compact, model, or orchestration surface.
 
 For an agent change, freeze the same Case/input workload and evaluation semantics, then let each
-generation identity produce its own Trajectories. Align the resulting cohorts by stable Case or
+generation configuration produce its own Trajectories. Align the resulting cohorts by stable Case or
 input identity; do not pretend that changed observations are the same TrajectoryDataset. Reuse one
-fixed TrajectoryDataset only when comparing Evaluators, Measurers, policies, or report projections.
+fixed TrajectoryDataset only when comparing Detectors, Evaluators, Measurers, policies, or report
+projections.
 
-Change one principal agent lever at a time, record the generation identity, define one primary
+Benchmark a deterministic adapter, result filter, CLI output compressor, or other pure transform by
+replaying the same captured inputs through both versions. Do not use two stochastic end-to-end
+agent runs to claim the component's reduction. If the transform changes what the agent observes,
+follow the component benchmark with aligned Case/input trajectory cohorts to check effect and
+completion.
+
+Change one principal agent lever at a time, record the generation provenance, define one primary
 metric plus effect and health guardrails, and compare the aligned cohorts. Lower cost is an
 improvement only when effect and completion do not regress.
 
@@ -90,9 +100,10 @@ evaluation assets; implement them only when the user asks for that mutation.
 
 ## Report and retain learning
 
-Report the evaluated project and revision, Dataset identity, current and comparison generator
-identities and runs, data health, effect, cost, the next prioritized smell or problem, supporting
-Worksheet examples, unknowns, and artifact paths. Lead with the decision-relevant summary; keep
+Report the evaluated project and revision, Dataset identity, current and comparison generation
+provenance and runs, data health, effect, cost, selected Detector Findings, Evaluator judgments,
+the next prioritized smell or problem, supporting Worksheet examples, unknowns, and artifact paths.
+Lead with the decision-relevant summary; keep
 per-trajectory evidence in drill-down artifacts.
 
 Persist run-specific evidence and project-specific lessons beside the project's evaluation assets.

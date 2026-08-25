@@ -6,14 +6,18 @@ can trigger an AUTHORITATIVE refresh without importing a script — the old arra
 poll logic in `scripts/poll_pr_status.py` and gcampr reached back into it, then discarded the
 result (a silent no-op). Both writers go through here.
 
-Two monitor-owned segments, both stamped so a reader can tell how fresh they are:
+Three monitor-owned segments, stamped so a reader can tell how fresh they are:
 - `pr.json` — the current branch's PR/MR number (SHA-ancestry validated) + a recent window.
+- `local_pull_requests.json` — every local branch joined to its current PR/MR and optional
+  checkout, so lifecycle reconciliation still sees branches after worktree reclamation.
 - `remote_branches.json` — the server's trunk tips (`{name, commit}`) + `fetched_at`, the
   read-freshness baseline (a colleague's push moves trunk under you, an unobservable channel).
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
+from pathlib import Path
 
 from lib import git_state
 from domain.forge import ForgeError, build_window
@@ -133,6 +137,117 @@ def refresh_pr(repo: str) -> bool:
     if payload is None:
         return False
     persist_pr(repo, payload)
+    return True
+
+
+# ── local_pull_requests.json (all local branches joined to forge state) ──────
+def _checkout_kind(main: Path, path: Path) -> str:
+    if path == main:
+        return "primary"
+    if path.parent in {main / ".worktrees", main / "worktrees"}:
+        return "managed"
+    return "external"
+
+
+def poll_local_pull_requests(repo: str) -> dict | None:
+    """Join every local branch to its authoritative PR/MR, or return ``None`` offline.
+
+    This is deliberately separate from :func:`poll_pr`: gates need one current branch
+    with low latency, while reconciliation needs the complete local lifecycle inventory.
+    A branch may have a primary, managed, or external checkout, or no checkout after an
+    old worktree was reclaimed. Forge reads use an explicit small concurrency bound so a
+    repository with retained branches does not serialize one network timeout per branch.
+
+    The snapshot is all-or-nothing. A failed branch lookup returns ``None`` rather than a
+    partial inventory, because absence from a partial list must never authorize cleanup.
+    """
+    forge = forge_for_repo(repo)
+    branches = git_state.list_local_branches(repo)
+    worktrees = git_state.list_worktrees(repo)
+    if forge is None:
+        return None
+    main = Path(worktrees[0][0]).resolve() if worktrees else Path(repo).resolve()
+    checkout_by_branch = {
+        branch: {
+            "path": str(Path(path).resolve()),
+            "kind": _checkout_kind(main, Path(path).resolve()),
+        }
+        for path, _head, branch in worktrees
+        if branch
+    }
+
+    def lookup(item: tuple[str, str]) -> tuple[str, object | None]:
+        branch, head = item
+        prs = forge.prs_for_branch(branch)
+        return branch, pick_branch_pr(prs, repo, head)
+
+    try:
+        workers = min(base.LOCAL_PR_POLL_CONCURRENCY, len(branches))
+        with ThreadPoolExecutor(max_workers=workers or 1) as executor:
+            pr_by_branch = dict(executor.map(lookup, branches))
+        local_branches = [
+            {
+                "branch": branch,
+                "head_sha": head,
+                "checkout": checkout_by_branch.get(branch),
+                "pull_request": asdict(pr_by_branch[branch]) if pr_by_branch[branch] else None,
+            }
+            for branch, head in branches
+        ]
+    except ForgeError:
+        return None
+    return {
+        "fetched_at": base.now(),
+        "provider": forge.provider,
+        "branches": local_branches,
+        "changes": [],
+        "actions": [],
+    }
+
+
+def persist_local_pull_requests(repo: str, payload: dict) -> None:
+    """Write the monitor-owned local branch ↔ PR/MR inventory."""
+    git_state.ensure_gitignore_excluded(repo)
+    store.save_segment(repo, "local_pull_requests", payload)
+
+
+def refresh_local_pull_requests(repo: str) -> bool:
+    """Poll + persist the complete local branch inventory, best-effort."""
+    previous = store.load_segment(repo, "local_pull_requests") or {}
+    payload = poll_local_pull_requests(repo)
+    if payload is None:
+        return False
+    previous_by_number = {
+        int(pr["number"]): (item.get("branch") or "", pr.get("state") or "")
+        for item in previous.get("branches") or []
+        if (pr := item.get("pull_request")) and pr.get("number") is not None
+    }
+    changes = []
+    for item in payload.get("branches") or []:
+        pr = item.get("pull_request") or {}
+        if pr.get("number") is None:
+            continue
+        number = int(pr["number"])
+        branch = item.get("branch") or ""
+        state = pr.get("state") or ""
+        prior = previous_by_number.get(number)
+        if prior is None:
+            changes.append({
+                "change": "discovered",
+                "branch": branch,
+                "pull_request": number,
+                "to": state,
+            })
+        elif prior[1] != state:
+            changes.append({
+                "change": "state_changed",
+                "branch": branch,
+                "pull_request": number,
+                "from": prior[1],
+                "to": state,
+            })
+    payload["changes"] = changes
+    persist_local_pull_requests(repo, payload)
     return True
 
 

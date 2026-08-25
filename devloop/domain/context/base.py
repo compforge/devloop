@@ -1,7 +1,7 @@
 """Context layer — shared fact leaves, constants, and compatibility primitives.
 
 The `.devloop/` facts span two levels. **Repo** state is split into per-owner
-*segment* files (`meta`/`branch`/`pr`/`lint`/`test`/`review`.json) so independent
+*segment* files (`meta`/`branch`/`pr`/`local_pull_requests`/`lint`/`test`/`review`.json) so independent
 writer-roles never share a file — see `repo.py`. **Workspace** state is a single
 `context.json` (one writer-role: the refresh). This module holds what both share:
 leaf dataclasses (`Reference`, `AgentsMd`) plus the re-exported forge
@@ -34,7 +34,7 @@ REPO_STALE_SEC = 300          # repo context older than this → refresh_all on 
 WORKSPACE_STALE_SEC = 600     # workspace context staleness
 TURN_TTL_SEC = 1800           # Board turn-state replay backstop (~30 min)
 SESSION_TTL_SEC = 14400       # Board session-state replay backstop (~4 h)
-PR_POLL_INTERVAL_SEC = 90     # monitor poll cadence for PR/MR status
+LOCAL_PR_POLL_CONCURRENCY = 4 # max parallel forge reads for the local branch inventory
 REMOTE_VIEW_STALE_SEC = 120   # remote_branches snapshot older than this → re-pull trunk tips on enter
 ACTIVE_REPO_TTL_SEC = 21600   # workspace last-active repo validity (~6 h); stale → don't guess
 REVIEW_STALE_SEC = 1800       # review.json stuck at "running" longer than this (~30 min) → run_review

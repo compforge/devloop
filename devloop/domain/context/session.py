@@ -302,6 +302,29 @@ def foreign_owner(
     return None
 
 
+def active_owner(repo: str | Path, now: float | None = None) -> dict | None:
+    """Return any live devloop owner of this checkout, across harnesses.
+
+    Cleanup is checkout-wide rather than session-relative: a Claude monitor must not
+    remove a worktree currently used by Codex (or by its own session). Guest guards use
+    :func:`foreign_owner` because they only arbitrate peers within one harness; resource
+    reclamation must honor every live ``*.owner.lock``.
+    """
+    now = time.time() if now is None else now
+    try:
+        locks = store.worktree_state_dir(repo).glob("*.owner.lock")
+        for path in locks:
+            try:
+                owner = json.loads(path.read_text())
+            except (OSError, ValueError):
+                continue
+            if isinstance(owner, dict) and _active(owner, now):
+                return owner
+    except OSError:
+        pass
+    return None
+
+
 def release(repo: str | Path, session_id: str, *, harness: str = "claude") -> bool:
     """Drop ownership iff THIS session holds the lock (the normal-exit path).
 

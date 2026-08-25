@@ -65,7 +65,8 @@ _DEFAULTS: dict = {
     # worktree 清理保留策略。keep_recent = 每仓保留的近期 worktree 数（按最近活动排序，其余删）：
     # N>0 留最近 N 个，0 一个旧的都不留（删全部富余），N<0 关闭清理。扁平结构、无 repos map：靠
     # load() 的距离分层覆盖——repo 的 .devloop/config.json 写一份 worktree.keep_recent 即覆盖全局。
-    # 任何规范入口建 worktree 时都消费它（worktree.create_or_reuse）。
+    # 任何规范入口建 worktree 时都消费它（worktree.create_or_reuse）。merged worktree 的生命周期
+    # 回收独立于近期数量：monitor 对账 Forge 后优先安全删除，不占 keep_recent 名额。
     "worktree": {"keep_recent": 5},
 }
 

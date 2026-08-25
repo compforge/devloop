@@ -35,6 +35,9 @@ def test_protocol_files_schema():
                for group in codex_hooks["PreToolUse"])
     assert any("exec" in (group.get("matcher") or "").split("|")
                for group in codex_hooks["PostToolUse"])
+    assert "SessionEnd" in codex_hooks
+    codex_session_end = codex_hooks["SessionEnd"][0]["hooks"][0]
+    assert codex_session_end["timeout"] <= 3
 
     def assert_hooks(path, known_events):
         hooks = json.loads(path.read_text())["hooks"]
@@ -65,15 +68,59 @@ def test_protocol_files_schema():
     assert_hooks(
         P / "hooks/hooks.codex.json",
         {"PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "PostCompact", "PreCompact",
-         "PermissionRequest", "Stop", "SubagentStart", "SubagentStop"},
+         "PermissionRequest", "SessionEnd", "Stop", "SubagentStart", "SubagentStop"},
     )
 
     monitors = json.loads((P / "monitors/monitors.json").read_text())
+    task_payload = json.loads((P / "tasks/tasks.json").read_text())
+    for task in task_payload:
+        assert set(task) == {"name", "module", "description", "interval_seconds"}
+        assert task["module"].startswith("tasks.")
+        assert isinstance(task["interval_seconds"], int) and task["interval_seconds"] > 0
+    tasks = {task["name"]: task for task in task_payload}
+    assert tasks
     assert isinstance(monitors, list) and monitors
     for m in monitors:
         assert {"name", "command"} <= set(m)
         assert set(m) <= {"name", "command", "description", "interval"}, f"unknown monitor key: {set(m)}"
         assert "${CLAUDE_PLUGIN_ROOT}" in m["command"]
+        assert m["name"] in tasks
+        assert m.get("description") == tasks[m["name"]]["description"]
+        assert "scripts/run_task.py" in m["command"]
+        assert f"run {m['name']}" in m["command"]
+    monitor_skill = (P / "skills/monitor/SKILL.md").read_text()
+    assert "scripts/run_task.py list" in monitor_skill
+    assert "run pr-lifecycle-reconcile" in monitor_skill
+
+
+def test_codex_sessionend_releases_codex_owner_without_model_field():
+    """Codex SessionEnd's compact payload omits `model`; its adapter marker still identifies
+    the harness, so teardown must release the codex lock rather than the Claude lock."""
+    from domain.context import session as session_lock
+
+    root = "/tmp/dlut_codex_sessionend"
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(root)
+    _git(root, "init", "-q")
+    assert session_lock.acquire(root, "thr-1", "feat/end", harness="codex", pid=os.getpid())
+    hook = _load_hook("sessionend_release")
+    previous = os.environ.get("DEVLOOP_HARNESS")
+    os.environ["DEVLOOP_HARNESS"] = "codex"
+    try:
+        inp = _hook_input("", {
+            "hook_event_name": "SessionEnd",
+            "session_id": "thr-1",
+            "cwd": root,
+            "reason": "other",
+        })
+        assert inp.harness == "codex"
+        hook.handle(inp)
+    finally:
+        if previous is None:
+            os.environ.pop("DEVLOOP_HARNESS", None)
+        else:
+            os.environ["DEVLOOP_HARNESS"] = previous
+    assert session_lock.read(root, "codex") is None
 
 def test_enter_does_not_acquire_owner():
     """enter 只选中上下文,不占资源:占有由第一笔变更动作建立(edit/checkout guard、

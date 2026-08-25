@@ -1,6 +1,6 @@
 {
   "name": "devloop",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "description": "Dev-loop workflow: git/PR (GitHub + GitLab) + Board-managed workspace/repo context delivery + lint/test gates + execution-level hard intercepts for Claude Code and Codex.",
   "author": {
     "name": "compforge",
@@ -25,7 +25,7 @@
   "interface": {
     "displayName": "devloop",
     "shortDescription": "Git/PR + lint/test + state-aware hooks",
-    "longDescription": "Bundles developer workflow skills (git-ops / gcam / gcamp / gcampr / run-test / fix-lint) plus lifecycle hooks: hard intercepts on protected branches, git add -A, pip install in uv projects, requirements.txt edits, stale lint gate; refreshes .devloop state from supported Codex events and injects branch / workspace / validation context.",
+    "longDescription": "Bundles developer workflow skills for controlled Git/PR operations, validation, review, and shared PR/MR reconciliation tasks. Native lifecycle hooks include SessionEnd cleanup and execution guardrails; Codex Scheduled tasks can invoke the same task definition used by Claude monitors.",
     "category": "Developer Workflow",
     "capabilities": [
       "Read",

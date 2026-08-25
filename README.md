@@ -89,7 +89,7 @@ See [`config/config.example.json`](./devloop/config/config.example.json) for the
 
 ## Scope and compatibility
 
-- **Harnesses:** Claude Code and Codex are supported. Claude uses its full native event set; Codex uses its available hooks with refresh and TTL fallbacks for missing events.
+- **Harnesses:** Claude Code and Codex are supported. Both use native `SessionEnd`; Claude uses its native monitor while Codex Scheduled tasks invoke the shared one-shot `monitor` skill.
 - **Forges:** GitHub and GitLab are peer providers selected per repository.
 - **Ownership:** devloop owns the coding-harness development loop: repo/branch state, validation, commit/push, PR/MR creation, review delivery, and execution guardrails.
 - **Boundary:** requirement identity, cross-repository orchestration, deployment, long-running scheduling, and session wakeups belong to higher-level loops such as Baton and the [ReqLoop Marketplace](https://github.com/compforge/reqloop).

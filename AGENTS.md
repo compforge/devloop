@@ -19,7 +19,7 @@ devloop 托管聚焦开发者效率的 plugin 集合。本仓库**根层**只负
 - 具体 plugin 的设计动机、内部架构、hook 列表、状态文件、配置项 → 见对应 `<plugin>/README.md`
 - 整个工作流落地的方案记录（feature 矩阵、版本规划等）→ 见 plan 文档
 
-当前实施范围：`devloop` 支持 Claude Code 与 Codex；Claude 侧使用完整 native event（含 CwdChanged / FileChanged / SessionEnd），Codex 侧使用其已支持的 hook 子集（PreToolUse / PostToolUse / SessionStart / UserPromptSubmit / PostCompact）并在 PostToolUse 做 cwd/state 刷新降级。opencode 侧目前只有 `example` 占位 plugin 演示 marketplace 结构。
+当前实施范围：`devloop` 支持 Claude Code 与 Codex；两端共用 PreToolUse / PostToolUse / SessionStart / SessionEnd / UserPromptSubmit / PostCompact，Claude 额外使用 CwdChanged / FileChanged 与 native monitor，Codex 用 PostToolUse 补 cwd/state 刷新，用 Scheduled task 驱动周期 PR/MR reconciliation。opencode 侧目前只有 `example` 占位 plugin 演示 marketplace 结构。
 
 ---
 
@@ -34,17 +34,18 @@ devloop/                              # ← 仓库根（marketplace）
 │
 ├── devloop/                          # plugin: 开发者日常工作流（第一个真实 plugin，Claude + Codex）
 │   │                                 #   git / MR / lint / test / cwd-aware context / Board / 硬拦截
-│   │                                 #   Claude 坐到原生事件上：CwdChanged / PostCompact / FileChanged / monitors；Codex 用 hooks.codex.json 的事件子集
+│   │                                 #   Claude 用 CwdChanged / FileChanged / native monitor；Codex 用 SessionEnd + Scheduled tasks
 │   ├── .claude-plugin/plugin.json    #     Claude manifest
 │   ├── .codex-plugin/plugin.json     #     Codex manifest（hooks 指向 hooks.codex.json）
-│   ├── skills/                       #     6 个 skill（CLI 共享）
+│   ├── skills/                       #     7 个 skill（CLI 共享，含一次性 monitor reconciliation）
 │   ├── commands/                     #     slash commands（Claude 端）
 │   ├── domain/                       #     领域模型与状态变化（workspace/repo/component/context/lifecycle）
 │   ├── lib/                          #     技术能力（git/forge/ecosystem/config/parser）
 │   ├── hooks/                        #     事件驱动 adapter 与 PreToolUse policy
+│   ├── tasks/                        #     Claude/Codex 共享的周期 task 发现与单次执行
 │   ├── scripts/                      #     git-ops 系列 + init_repo / init_workspace
 │   ├── config/                       #     用户配置模板（config.json：workspaces / gitlab / precommit）
-│   ├── monitors/monitors.json        #     MR-sweep 后台轮询
+│   ├── monitors/monitors.json        #     Claude MR-sweep 后台轮询
 │   └── README.md / AGENTS.md / CONCEPTS.md
 │
 ├── code-taste/                       # plugin: 架构、边界、命名与可维护性判断（skill-only）
@@ -75,7 +76,7 @@ devloop/                              # ← 仓库根（marketplace）
 └── CONTRIBUTING.md                   # 新 plugin 接入规范
 ```
 
-**CLI 范围差异**：`devloop` 当前支持 Claude Code 与 Codex。`skills/` 共享；`commands/` 仍是 Claude slash command 入口，Codex 无同构 slash command，主要由 skill 名 + bundled hooks 作为入口；Claude hooks 用 `hooks.json` 的完整 native event，Codex hooks 用 `hooks.codex.json` 的事件子集；opencode 待协议明确。
+**CLI 范围差异**：`devloop` 当前支持 Claude Code 与 Codex。`skills/` 共享；`commands/` 仍是 Claude slash command 入口，Codex 无同构 slash command，主要由 skill 名 + bundled hooks 作为入口。两端共用可表达的 lifecycle hooks；Claude 的 native monitor 与 Codex Scheduled task 分别驱动同一个一次性 reconciliation 入口。opencode 待协议明确。
 
 详细：[`devloop/README.md`](./devloop/README.md)（使用向） · [`devloop/AGENTS.md`](./devloop/AGENTS.md)（开发向）。
 

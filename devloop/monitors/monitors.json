@@ -1,7 +1,7 @@
 [
   {
-    "name": "devloop-pr-sweep",
-    "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/scripts/poll_pr_status.py\" \"${CLAUDE_PROJECT_DIR}\"",
-    "description": "Polling GitHub/GitLab for recent PR/MR status → keep .devloop/pr.json fresh for guards, Board projection, and external observers"
+    "name": "pr-lifecycle-reconcile",
+    "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/scripts/run_task.py\" run pr-lifecycle-reconcile \"${CLAUDE_PROJECT_DIR}\" --loop",
+    "description": "Reconcile local branches and worktrees with authoritative GitHub/GitLab PR/MR state"
   }
 ]

@@ -49,6 +49,18 @@
         ]
       }
     ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/sessionend_release.py\"",
+            "timeout": 3,
+            "statusMessage": "Releasing devloop owner locks"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [

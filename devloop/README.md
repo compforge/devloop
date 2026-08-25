@@ -25,6 +25,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 - **运行态上下文**：Board 向当前 session 投递相关仓库的 branch、working tree、PR/MR 和验证状态；进入项目或上下文压缩后会自动刷新。
 - **执行级守卫**：阻止保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
 - **并发隔离**：checkout 被一个 session 占用后，其它 session 的分支切换和源码编辑会被引导到独立 worktree。
+- **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；PR/MR merge 后自动回收干净且无人使用的 managed worktree。
 
 领域主链是 **`PR/MR → Repo → Component`**。Repo 是 git、branch 和 forge 状态的边界；Component 是 lint/test 的验证单位；workspace 只是可选的多仓聚合上下文，单仓库同样完整支持。
 
@@ -141,7 +142,20 @@ Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 pack
 
 `review` 是异步 signal hook，不阻塞 commit 或 PR/MR；默认引擎是 [CCR](https://github.com/compforge/case-code-review)，也可以配置为 `ocr`。结果会在后续 session 中浮现；已有开放 PR/MR 时还会尝试发布 review comment。
 
+`worktree.keep_recent` 只控制未合并 worktree 的近期保留数量；已 merge 的 managed worktree 会优先安全回收。dirty、存在活跃 owner 的 checkout，以及用户自行创建的外部 worktree 不会被自动删除。
+
 完整配置结构和 forge host 配置见 [`config/config.example.json`](./config/config.example.json)。token 建议使用环境变量；如果写入配置文件，不要提交仓库内的 `.devloop/config.json`。
+
+## PR/MR 周期对账
+
+devloop 只定义一个 `pr-lifecycle-reconcile` task：它枚举本地 branch（包含无 checkout 的 branch），对账 Forge 状态，并回收已 merge 且安全可删的 managed worktree。Claude native monitor 会循环执行该 task；Codex 使用 Scheduled task 周期调用同一个单次入口。
+
+在 Codex 中说“为当前项目安排 `$devloop:monitor`”即可按 task 默认周期创建 Scheduled task，也可在请求中指定周期。Codex CLI / IDE 不提供 Scheduled 管理界面；需在 ChatGPT web 或 desktop app 创建和管理。单次手动执行时：
+
+```console
+<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py list
+<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py run pr-lifecycle-reconcile . --report
+```
 
 ## 更新与手工初始化
 
@@ -171,7 +185,7 @@ codex plugin add devloop@devloop
 
 ## 边界与兼容性
 
-- Claude Code 使用完整 native events；Codex 缺少的 `CwdChanged`、`FileChanged`、`SessionEnd` 由现有 hook、下一轮刷新和 TTL 路径降级补足。
+- Claude Code 与 Codex 都使用 native `SessionEnd`；Codex 尚缺的 `CwdChanged` / `FileChanged` 由 PostToolUse、下一轮刷新和 TTL 路径补足。
 - devloop 负责单个开发闭环中的 repo/branch、验证、commit/push、PR/MR、review 和执行守卫；不负责跨仓需求编排、部署或长期调度。
 - 多 Component 可以独立验证，但跨 Repo 的 fan-out 和发包依赖顺序不由 devloop 编排。
 - merge 始终由人完成；test 和 AI review 提供决策依据，不替代 CI 与人工判断。

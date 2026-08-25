@@ -7,6 +7,7 @@ reproducing only the visible ``git worktree add`` step and skipping lifecycle po
 from __future__ import annotations
 
 import os
+from enum import Enum
 from pathlib import Path
 
 from lib import config, ecosystem, git_state, gitcmd
@@ -120,12 +121,51 @@ def _managed(repo_dir: str) -> list[str]:
     ]
 
 
+class RemovalOutcome(str, Enum):
+    """Why a requested managed-worktree cleanup did or did not happen."""
+
+    REMOVED = "removed"
+    NOT_MANAGED = "not_managed"
+    CURRENT_CHECKOUT = "current_checkout"
+    ACTIVE_OWNER = "active_owner"
+    DIRTY = "dirty"
+    GIT_ERROR = "git_error"
+
+
+def remove_if_safe(
+    repo_dir: str,
+    path: str,
+    *,
+    protect_path: str | None = None,
+) -> RemovalOutcome:
+    """Remove one idle managed worktree without touching its branch.
+
+    The target must still be under devloop's managed homes, must not be the caller's
+    protected checkout, and must have no live owner from any harness. ``git worktree
+    remove`` remains non-force, so dirty checkouts are retained. The operation is
+    idempotent and returns a reasoned outcome for lifecycle reporting.
+    """
+    target = str(Path(path).resolve())
+    if target not in _managed(repo_dir):
+        return RemovalOutcome.NOT_MANAGED
+    if protect_path and target == str(Path(protect_path).resolve()):
+        return RemovalOutcome.CURRENT_CHECKOUT
+    if session.active_owner(target):
+        return RemovalOutcome.ACTIVE_OWNER
+    if git_state.get_workspace_status(target)["dirty"]:
+        return RemovalOutcome.DIRTY
+    if not gitcmd.git(repo_dir, "worktree", "remove", target, timeout=30).ok:
+        return RemovalOutcome.GIT_ERROR
+    gitcmd.git(repo_dir, "worktree", "prune", timeout=15)
+    return RemovalOutcome.REMOVED
+
+
 def _prune_old(repo_dir: str, keep_path: str | None = None) -> None:
     """Best-effort prune old managed worktrees while preserving live work.
 
     ``keep_recent`` semantics: positive keeps the N most active, zero removes every
     surplus checkout, negative disables pruning. Removal is non-force, so dirty
-    worktrees survive; ``keep_path`` and checkouts owned by another live session are
+    worktrees survive; ``keep_path`` and checkouts owned by any live session are
     skipped. Branches are retained, allowing a later enter to rebuild the checkout.
     """
     keep = config.worktree(repo_dir).get("keep_recent", 5)
@@ -139,19 +179,6 @@ def _prune_old(repo_dir: str, keep_path: str | None = None) -> None:
     if len(managed) <= keep:
         return
     protected = str(Path(keep_path).resolve()) if keep_path else None
-    identity = session.current_identity()
     doomed = sorted(managed, key=_activity, reverse=True)[keep:]
-    pruned = False
     for path in doomed:
-        if path == protected:
-            continue
-        if identity.session_id and session.foreign_owner(
-            path,
-            identity.session_id,
-            harness=identity.harness,
-        ):
-            continue
-        if gitcmd.git(repo_dir, "worktree", "remove", path, timeout=30).ok:
-            pruned = True
-    if pruned:
-        gitcmd.git(repo_dir, "worktree", "prune", timeout=15)
+        remove_if_safe(repo_dir, path, protect_path=protected)

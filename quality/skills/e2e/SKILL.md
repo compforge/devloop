@@ -59,6 +59,10 @@ Before a live run, read the shared
 Targets, Runner-to-Target data-plane readiness, preparation kinds, authorization, lifecycle,
 cleanup, and evidence.
 
+For a routable Kubernetes Service, follow that contract's IP-first endpoint selection. Preserve the
+logical service authority when the protocol requires it, and do not bypass Service DNS when name
+resolution is part of the E2E behavior being verified.
+
 When selected cases require fixtures, temporary conditions, fault injection, chaos experiments, or
 restoration, also read
 [E2E scenario preparation](references/scenario-environment.md) completely. Use project-owned setup and

@@ -44,6 +44,13 @@ Common shapes include:
   not prove that the Runner can exchange application traffic with a Service or Pod endpoint.
 
 Resolve the endpoint from target state instead of guessing a hostname, namespace, address, or port.
+For a normal Kubernetes Service whose ClusterIP the Runner can route to directly, prefer its
+`ClusterIP:port` over Service DNS. This avoids local DNS search-domain and VPN DNS behavior without
+bypassing the Service data plane. When TLS SNI, HTTP `Host`, service-mesh routing, or another
+protocol concern requires the logical service name, preserve that authority through the
+project-owned runner configuration while connecting to the IP. Use Service DNS when the ClusterIP
+is not routable or DNS resolution is itself part of the intended connection path or behavior under
+test.
 Probe it from the actual Runner and, when relevant, independently confirm the deployed revision and
 health from the Target side. A configured URL, successful deployment command, or control-plane
 login is not readiness evidence by itself.

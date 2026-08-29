@@ -56,7 +56,11 @@ offline re-analysis of an existing run do not require Environment preparation.
 Prepare two explicit layers:
 
 1. **Target connection:** identify the local or remote subject revision, runner location, and
-   application data-plane path, then probe the exact endpoint from that runner.
+   application data-plane path, then probe the exact endpoint from that runner. For a routable
+   Kubernetes Service, follow the shared Environment contract's IP-first endpoint selection while
+   preserving any required logical service authority. Keep that connection path stable across
+   compared runs; switching between Service DNS and ClusterIP is an Environment change and must be
+   reported.
 2. **Load environment:** establish the declared resource profile, load-generator capacity,
    dependency quotas, fresh request/resource observations, initial steady state, safety limits,
    cooldown, and cleanup path.

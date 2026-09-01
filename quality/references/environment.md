@@ -55,6 +55,23 @@ Probe it from the actual Runner and, when relevant, independently confirm the de
 health from the Target side. A configured URL, successful deployment command, or control-plane
 login is not readiness evidence by itself.
 
+### Prefer a run-owned Kubernetes port-forward
+
+When a local Runner needs application access and the connection mechanism is not itself under test,
+prefer a project-owned port-forward that the quality run starts, probes, observes, and stops over an
+ambient host VPN or manually shared tunnel. Use the project's wrapper when one exists; otherwise
+bind the forward to the resolved Service or Pod and target port, choose a run-scoped local port,
+preserve logical service authority such as TLS SNI or HTTP `Host` when the protocol requires it,
+retain the forwarder's logs, and make readiness and shutdown part of Environment evidence. A
+run-owned connection path is reproducible and keeps unrelated reconnects or shared host state from
+invalidating the run.
+
+Do not substitute a port-forward when Service DNS, ingress, VPN behavior, or another network path is
+part of the behavior being verified. For performance runs, also treat the forwarder as Runner
+capacity: use it only when it can carry the declared profile without becoming an unmeasured
+bottleneck. Otherwise use an authorized direct path or in-environment Runner and report the changed
+Connection.
+
 If connection setup fails, distinguish an unavailable Target, a broken Runner-to-Target path, and a
 Runner error. An alternate endpoint, tunnel, or Runner is a changed Environment: verify it,
 preserve the first failure, and report the changed execution conditions rather than silently

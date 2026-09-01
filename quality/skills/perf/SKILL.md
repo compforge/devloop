@@ -65,6 +65,11 @@ Prepare two explicit layers:
    dependency quotas, fresh request/resource observations, initial steady state, safety limits,
    cooldown, and cleanup path.
 
+For a local Runner reaching Kubernetes, prefer the Environment contract's run-owned port-forward
+over an ambient VPN or manually shared tunnel when it can carry the declared profile. For capacity,
+stress, or soak work that could saturate the forwarder, use an authorized direct path or
+in-environment Runner so the connection helper does not become an unmeasured bottleneck.
+
 Preserve the requested revision, target, profile, workload, resource envelope, load model, case mix,
 and SLO policy. Do not deploy, install dependencies, create credentials, resize resources, or switch
 targets unless the user authorized that action. Shared and production environments require

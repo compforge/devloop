@@ -59,9 +59,14 @@ Before a live run, read the shared
 Targets, Runner-to-Target data-plane readiness, preparation kinds, authorization, lifecycle,
 cleanup, and evidence.
 
-For a routable Kubernetes Service, follow that contract's IP-first endpoint selection. Preserve the
-logical service authority when the protocol requires it, and do not bypass Service DNS when name
-resolution is part of the E2E behavior being verified.
+First fix the Target environment and subject revision; only then select the Runner and use the first
+applicable authorized Connection in the contract's priority order. For a local Runner reaching
+Kubernetes, that normally means a run-owned port-forward when the network path is not itself under
+test, with readiness, logs, and cleanup owned by the run.
+
+When using a direct Kubernetes Service endpoint instead, follow the contract's IP-first selection,
+preserve required logical service authority, and do not bypass Service DNS when name resolution is
+part of the E2E behavior being verified.
 
 When selected cases require fixtures, temporary conditions, fault injection, chaos experiments, or
 restoration, also read

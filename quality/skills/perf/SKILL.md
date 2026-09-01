@@ -53,22 +53,22 @@ Before generating live load or changing a performance Target, read both the shar
 [performance load-environment preparation](references/load-environment.md) completely. Inspection and
 offline re-analysis of an existing run do not require Environment preparation.
 
-Prepare two explicit layers:
+Prepare three explicit layers in order:
 
-1. **Target connection:** identify the local or remote subject revision, runner location, and
-   application data-plane path, then probe the exact endpoint from that runner. For a routable
-   Kubernetes Service, follow the shared Environment contract's IP-first endpoint selection while
-   preserving any required logical service authority. Keep that connection path stable across
-   compared runs; switching between Service DNS and ClusterIP is an Environment change and must be
-   reported.
-2. **Load environment:** establish the declared resource profile, load-generator capacity,
+1. **Target environment:** identify the local or remote Target, subject revision, scope, and
+   declared resource profile before choosing how to reach it.
+2. **Runner and connection:** select the Runner, use the first applicable authorized Connection in
+   the Environment contract's priority order, then probe the exact endpoint from that Runner. Keep
+   the path stable across compared runs; switching between Service DNS and ClusterIP is an
+   Environment change and must be reported.
+3. **Load environment:** establish load-generator capacity,
    dependency quotas, fresh request/resource observations, initial steady state, safety limits,
    cooldown, and cleanup path.
 
-For a local Runner reaching Kubernetes, prefer the Environment contract's run-owned port-forward
-over an ambient VPN or manually shared tunnel when it can carry the declared profile. For capacity,
-stress, or soak work that could saturate the forwarder, use an authorized direct path or
-in-environment Runner so the connection helper does not become an unmeasured bottleneck.
+For a local Runner reaching Kubernetes, the first Connection is normally a run-owned port-forward.
+For capacity, stress, or soak work that could saturate it, skip that option and use an authorized
+direct path or in-environment Runner so the connection helper does not become an unmeasured
+bottleneck.
 
 Preserve the requested revision, target, profile, workload, resource envelope, load model, case mix,
 and SLO policy. Do not deploy, install dependencies, create credentials, resize resources, or switch

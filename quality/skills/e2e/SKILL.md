@@ -59,9 +59,10 @@ Before a live run, read the shared
 Targets, Runner-to-Target data-plane readiness, preparation kinds, authorization, lifecycle,
 cleanup, and evidence.
 
-For a local Runner reaching Kubernetes, apply the contract's run-owned port-forward preference when
-the network path is not itself under test. Make forwarder readiness, logs, and cleanup part of the
-run instead of depending on an ambient VPN or manually shared tunnel.
+First fix the Target environment and subject revision; only then select the Runner and use the first
+applicable authorized Connection in the contract's priority order. For a local Runner reaching
+Kubernetes, that normally means a run-owned port-forward when the network path is not itself under
+test, with readiness, logs, and cleanup owned by the run.
 
 When using a direct Kubernetes Service endpoint instead, follow the contract's IP-first selection,
 preserve required logical service authority, and do not bypass Service DNS when name resolution is

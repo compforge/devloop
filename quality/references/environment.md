@@ -24,47 +24,51 @@ The project owns target names, startup and access mechanisms, credentials, fixtu
 cleanup. A quality skill discovers and operates that knowledge; it does not replace it with generic
 environment assumptions.
 
-## Confirm Target, Runner, and Connection
+## Select the Target before choosing the Connection
 
-Resolve before execution:
+Resolve the Environment in order:
 
-- the exact subject identity and revision;
-- whether the Target is local or remote, and whether it is dedicated or shared;
-- where the Runner executes;
-- the endpoint and protocol the capability will actually use;
-- the project-owned path connecting Runner to Target;
-- independent evidence for Target health and application-level connectivity.
+1. **Target:** identify the exact environment, subject revision, configuration, namespace or other
+   scope, and whether it is dedicated or shared.
+2. **Runner:** decide where the quality command executes after the Target is fixed.
+3. **Connection:** choose and verify the application data-plane path from that Runner to that Target.
+
+Do not start from whichever endpoint happens to respond and infer the Target from it. A convenient
+connection must not silently change the selected environment, revision, or scope.
 
 Common shapes include:
 
 - **Local Target:** start or discover it through the canonical project entrypoint, then probe the
   same host, port, and protocol used by the quality workload.
-- **Remote Target:** use the project-owned ingress, VPN, tunnel, port-forward, or in-environment
-  Runner. For Kubernetes, API or `kubectl` access proves control-plane reachability only; it does
-  not prove that the Runner can exchange application traffic with a Service or Pod endpoint.
+- **Remote Target:** use a project-owned application path. For Kubernetes, API or `kubectl` access
+  proves control-plane reachability only; it does not prove that the Runner can exchange application
+  traffic with a Service or Pod endpoint.
 
 Resolve the endpoint from target state instead of guessing a hostname, namespace, address, or port.
-For a normal Kubernetes Service whose ClusterIP the Runner can route to directly, prefer its
-`ClusterIP:port` over Service DNS. This avoids local DNS search-domain and VPN DNS behavior without
-bypassing the Service data plane. When TLS SNI, HTTP `Host`, service-mesh routing, or another
-protocol concern requires the logical service name, preserve that authority through the
-project-owned runner configuration while connecting to the IP. Use Service DNS when the ClusterIP
-is not routable or DNS resolution is itself part of the intended connection path or behavior under
-test.
 Probe it from the actual Runner and, when relevant, independently confirm the deployed revision and
 health from the Target side. A configured URL, successful deployment command, or control-plane
 login is not readiness evidence by itself.
 
-### Prefer a run-owned Kubernetes port-forward
+### Choose the Kubernetes connection by priority
 
-When a local Runner needs application access and the connection mechanism is not itself under test,
-prefer a project-owned port-forward that the quality run starts, probes, observes, and stops over an
-ambient host VPN or manually shared tunnel. Use the project's wrapper when one exists; otherwise
-bind the forward to the resolved Service or Pod and target port, choose a run-scoped local port,
-preserve logical service authority such as TLS SNI or HTTP `Host` when the protocol requires it,
-retain the forwarder's logs, and make readiness and shutdown part of Environment evidence. A
-run-owned connection path is reproducible and keeps unrelated reconnects or shared host state from
-invalidating the run.
+After selecting a Kubernetes Target, use the first applicable authorized option when the connection
+mechanism is not itself under test:
+
+1. **Run-owned port-forward:** prefer a project-owned port-forward that the quality run starts,
+   probes, observes, and stops. Use the project's wrapper when one exists; otherwise bind the
+   forward to the resolved Service or Pod and target port, choose a run-scoped local port, preserve
+   logical service authority such as TLS SNI or HTTP `Host`, retain logs, and own readiness and
+   shutdown.
+2. **Direct application endpoint:** use project-owned ingress or a `ClusterIP:port` that is routable
+   without an ambient connection helper. For a normal Service, prefer ClusterIP over Service DNS to
+   avoid local DNS and VPN DNS behavior without bypassing the Service data plane. Preserve required
+   TLS SNI, HTTP `Host`, service-mesh routing, or other logical authority through project-owned
+   Runner configuration; use Service DNS when the ClusterIP is not routable or DNS is part of the
+   intended connection path or behavior under test.
+3. **In-environment Runner:** move the Runner into the Target environment when a local connection is
+   unavailable or unsuitable, and report the changed Runner explicitly.
+4. **Ambient VPN or shared tunnel:** use this only when earlier options are unavailable or the
+   project requires that path; verify it for this run rather than trusting existing host state.
 
 Do not substitute a port-forward when Service DNS, ingress, VPN behavior, or another network path is
 part of the behavior being verified. For performance runs, also treat the forwarder as Runner
@@ -95,7 +99,8 @@ pass and must not be silently removed from the realized Environment.
 ## Follow the lifecycle
 
 1. Read the project runbook nearest to the selected capability.
-2. Resolve Target, Runner, Connection, conditions, effects, and evidence.
+2. Resolve the Target, then the Runner and prioritized Connection, then conditions, effects, and
+   evidence.
 3. Check authorization before deploying, creating durable data, changing resources, injecting
    faults, or generating material load.
 4. Prepare preconditions and fixtures through canonical mechanisms.

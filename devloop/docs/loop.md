@@ -32,7 +32,7 @@ devloop 的两个杠杆沿循环分布：**状态源 + Board**（软提示）覆
 | 5 | 提交 / PR | `/gcam` `/gcamp` `/gcampr` | `commit_flow`（PLAN banner 自陈） | 复用 `domain.branch` 承载兼容的 edit-then-cut；可重复的 `--file` 收敛 staging；外来提交自检；建 PR 后触发一次 `poll_pr_status` |
 | 5b | 在途 PR/MR rebase | `smart_rebase.sh start/continue/finish` | `domain.rebase`（worktree-local transaction） | start 在改写前保存远端 source SHA；finish 用精确 `force-with-lease`，远端移动即拒绝覆盖 |
 | 6 | 等人工 merge | Claude monitor / Codex Scheduled task | `run_task pr-lifecycle-reconcile` | 写当前分支 `pr.json` 与全 local branch `local_pull_requests.json`；当前分支派生为 in-flight，Board turn item 软提示 |
-| 7 | merge 后下一轮 | Forge 状态变为 merged | `pull_request_lifecycle` | 分支派生为 inactive；干净、无人使用的 managed worktree 被回收（branch ref 保留），其余延后重试；回到第 1 拍，从最新 `origin/<target>` 切新分支 |
+| 7 | PR/MR 终态后的下一轮 | Forge 状态变为 merged / closed | `pull_request_lifecycle` | 分支派生为 inactive；对应 linked worktree 被强制回收（primary checkout 与 branch ref 保留），需要时由 agent 重建；回到第 1 拍，从最新 `origin/<target>` 切新分支 |
 
 ### 分支一轮的生命线
 

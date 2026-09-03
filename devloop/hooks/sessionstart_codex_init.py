@@ -14,10 +14,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from hooks import hook_io, sessionstart_init  # noqa: E402
+from domain import repo_layout  # noqa: E402
+from tasks import opportunistic  # noqa: E402
 
 
 def build(inp: hook_io.HookInput) -> dict | None:
     payload = sessionstart_init.build(inp)
+    if git_root := repo_layout.find_git_root(inp.cwd):
+        opportunistic.maybe_start(git_root)
     if not payload:
         return None
     payload = dict(payload)

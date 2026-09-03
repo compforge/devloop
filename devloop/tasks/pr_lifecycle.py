@@ -7,18 +7,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from domain import pull_request_lifecycle, repo_layout, workspace
+from domain import pull_request_lifecycle, repo_layout, workspace, worktree
 from domain.context import WorkspaceContext, prstate, store
 
 
 def sweep_repo(repo: str) -> dict:
     """Refresh one repo, reconcile it, and return a compact execution report."""
+    control_repo = worktree.primary(repo)
     current_updated = prstate.refresh_pr(repo)
     inventory_updated = prstate.refresh_local_pull_requests(repo)
     if inventory_updated:
         pull_request_lifecycle.reconcile(repo)
-    remote_updated = prstate.refresh_remote_branches(repo)
-    inventory = store.load_segment(repo, "local_pull_requests") or {}
+    remote_updated = prstate.refresh_remote_branches(control_repo)
+    inventory = store.load_segment(control_repo, "local_pull_requests") or {}
     pull_requests = []
     for local_branch in inventory.get("branches") or []:
         pr = local_branch.get("pull_request") or {}

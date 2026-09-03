@@ -25,7 +25,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 - **运行态上下文**：Board 向当前 session 投递相关仓库的 branch、working tree、PR/MR 和验证状态；进入项目或上下文压缩后会自动刷新。
 - **执行级守卫**：阻止保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
 - **并发隔离**：checkout 被一个 session 占用后，其它 session 的分支切换和源码编辑会被引导到独立 worktree。
-- **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；PR/MR merge 后自动回收干净且无人使用的 managed worktree。
+- **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；PR/MR merged / closed 后自动强制回收对应的 linked worktree。
 
 领域主链是 **`PR/MR → Repo → Component`**。Repo 是 git、branch 和 forge 状态的边界；Component 是 lint/test 的验证单位；workspace 只是可选的多仓聚合上下文，单仓库同样完整支持。
 
@@ -142,15 +142,17 @@ Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 pack
 
 `review` 是异步 signal hook，不阻塞 commit 或 PR/MR；默认引擎是 [CCR](https://github.com/compforge/case-code-review)，也可以配置为 `ocr`。结果会在后续 session 中浮现；已有开放 PR/MR 时还会尝试发布 review comment。
 
-`worktree.keep_recent` 只控制未合并 worktree 的近期保留数量；已 merge 的 managed worktree 会优先安全回收。dirty、存在活跃 owner 的 checkout，以及用户自行创建的外部 worktree 不会被自动删除。
+`worktree.keep_recent` 只控制仍在进行中的 managed worktree 的近期保留数量，这类容量裁剪仍保留 dirty、活跃 owner 和当前 checkout。PR/MR lifecycle 是另一条规则：一旦对应 PR/MR 已 merged / closed，除作为仓库锚点的 primary checkout 外，managed / external linked worktree 都会被强制回收；dirty、owner lock、worktree lock、已初始化 submodule、嵌套 registered worktree 均不阻塞。branch ref 始终保留，需要时可由 agent 重新创建 checkout。
 
 完整配置结构和 forge host 配置见 [`config/config.example.json`](./config/config.example.json)。token 建议使用环境变量；如果写入配置文件，不要提交仓库内的 `.devloop/config.json`。
 
 ## PR/MR 周期对账
 
-devloop 只定义一个 `pr-lifecycle-reconcile` task：它枚举本地 branch（包含无 checkout 的 branch），对账 Forge 状态，并回收已 merge 且安全可删的 managed worktree。Claude native monitor 会循环执行该 task；Codex 使用 Scheduled task 周期调用同一个单次入口。
+devloop 只定义一个 `pr-lifecycle-reconcile` task：它枚举本地 branch（包含无 checkout 的 branch），对账 Forge 状态，并强制回收 PR/MR 已 merged / closed 的 linked worktree。Claude native monitor 会循环执行该 task；Codex 可用 Scheduled task 周期调用同一个单次入口。
 
-在 Codex 中说“为当前项目安排 `$devloop:monitor`”即可按 task 默认周期创建 Scheduled task，也可在请求中指定周期。Codex CLI / IDE 不提供 Scheduled 管理界面；需在 ChatGPT web 或 desktop app 创建和管理。单次手动执行时：
+Codex plugin 目前不能随安装注册 Scheduled task（plugin manifest 只声明 skills、MCP server、hooks 等组件）；Codex CLI 也不提供 Scheduled 管理界面，需从 ChatGPT web / desktop 创建。为避免清理完全依赖人工配置，Codex 的 SessionStart 与 PostToolUse hook 会按 task 的默认 120 秒周期做一次非阻塞、repo 级的 opportunistic trigger：前台只负责节流并启动后台单次 sweep，不等待 Forge 请求。原生 Scheduled task 仍是没有 Codex 活动时的 durable timer。参见 OpenAI 的 [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) 与 [plugin packaging](https://developers.openai.com/plugins/build/plugins) 文档。
+
+在支持 Scheduled 管理的 ChatGPT web / desktop 中说“为当前项目安排 `$devloop:monitor`”即可按 task 默认周期创建 Scheduled task，也可在请求中指定周期。单次手动执行时：
 
 ```console
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py list

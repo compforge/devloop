@@ -132,6 +132,14 @@ class RemovalOutcome(str, Enum):
     GIT_ERROR = "git_error"
 
 
+def primary(repo_dir: str) -> str:
+    """Return the stable primary checkout used to mutate linked-worktree metadata."""
+    worktrees = git_state.list_worktrees(repo_dir)
+    if worktrees:
+        return str(Path(worktrees[0][0]).resolve())
+    return str(Path(repo_dir).resolve())
+
+
 def remove_if_safe(
     repo_dir: str,
     path: str,
@@ -157,6 +165,40 @@ def remove_if_safe(
     if not gitcmd.git(repo_dir, "worktree", "remove", target, timeout=30).ok:
         return RemovalOutcome.GIT_ERROR
     gitcmd.git(repo_dir, "worktree", "prune", timeout=15)
+    return RemovalOutcome.REMOVED
+
+
+def remove_finished(repo_dir: str, path: str) -> RemovalOutcome:
+    """Force-reclaim one linked checkout whose PR/MR is already terminal.
+
+    Forge terminal state is the lifecycle authority. A linked checkout is reproducible
+    agent workspace: deleting it has bounded recovery cost, while retaining dependency
+    trees, submodules, and build output has cumulative disk cost. Dirty state, session
+    ownership, locks, initialized submodules, and nested worktrees therefore do not retain
+    it. The branch ref remains available if an agent needs to recreate it later. The
+    primary checkout is never a valid target because it anchors repository metadata.
+    """
+    control_repo = primary(repo_dir)
+    target = str(Path(path).resolve())
+    linked = {
+        str(Path(worktree_path).resolve())
+        for worktree_path, _sha, _branch in git_state.list_worktrees(control_repo)[1:]
+    }
+    if target not in linked:
+        return RemovalOutcome.NOT_MANAGED
+
+    removed = gitcmd.git(
+        control_repo,
+        "worktree",
+        "remove",
+        "--force",
+        "--force",
+        target,
+        timeout=30,
+    )
+    if not removed.ok:
+        return RemovalOutcome.GIT_ERROR
+    gitcmd.git(control_repo, "worktree", "prune", timeout=15)
     return RemovalOutcome.REMOVED
 
 

@@ -26,6 +26,7 @@ from domain.context import (  # noqa: E402
 )
 from hooks.core import engine  # noqa: E402
 from hooks.core.domain import Command, FileChange  # noqa: E402
+from tasks import opportunistic  # noqa: E402
 
 
 def _candidate_roots_for_input(inp: hook_io.HookInput) -> list[str]:
@@ -88,6 +89,7 @@ def handle(inp: hook_io.HookInput) -> None:
     roots = _candidate_roots_for_input(inp)
     for root in roots:
         _warm_repo(root, inp.session_id)
+        opportunistic.maybe_start(root)
     _warm_workspace(inp.cwd, roots)
     posttool_git_refresh.handle(inp)
 

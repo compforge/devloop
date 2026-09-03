@@ -1,6 +1,6 @@
 ---
 name: monitor
-description: Reconcile local branches and worktrees with GitHub/GitLab PR/MR state, report lifecycle changes, or configure Codex Scheduled tasks for recurring devloop checks. Use when asked to monitor/check PR or MR status, clean merged worktrees, reconcile local PRs, or set up recurring PR/MR monitoring.
+description: Reconcile local branches and worktrees with GitHub/GitLab PR/MR state, report lifecycle changes, or configure Codex Scheduled tasks for recurring devloop checks. Use when asked to monitor/check PR or MR status, clean finished worktrees, reconcile local PRs, or set up recurring PR/MR monitoring.
 ---
 
 Discover the canonical task first, then run one bounded reconciliation sweep:
@@ -21,6 +21,11 @@ Read the JSON report as follows:
 
 Never pass `--loop` from a skill or Scheduled task. Looping is only the Claude native-monitor
 adapter; task discovery, one-shot behavior, report shape, and reconciliation policy are shared.
+
+Codex plugins cannot register a Scheduled task during installation. The plugin's Codex
+SessionStart and PostToolUse hooks therefore provide a throttled, non-blocking, repo-level
+opportunistic trigger for this same one-shot task. Treat it as an active-use fallback, not a
+durable timer: it cannot run while Codex has no lifecycle events.
 
 When the user asks to monitor continuously under Codex, use the native Scheduled-task capability
 instead of a daemon. Create or update a project-scoped task with the requested cadence; when none

@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 from contextlib import redirect_stdout
+from pathlib import Path
 
 from _testkit import _load_script, run_main  # noqa: E402  (bootstrap first)
-from tasks import pr_lifecycle, registry  # noqa: E402
+from lib import gitcmd  # noqa: E402
+from tasks import opportunistic, pr_lifecycle, registry  # noqa: E402
 
 
 def test_task_registry_discovers_pr_lifecycle_once():
@@ -59,6 +62,42 @@ def test_pr_lifecycle_task_fault_isolates_repositories():
         {"repo": "/bad", "error": "RuntimeError"},
         {"repo": "/later"},
     ]
+
+
+def test_codex_opportunistic_reconciliation_is_nonblocking_and_throttled():
+    root = Path("/tmp/dlut_opportunistic_task")
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir()
+    calls = []
+    original_primary = opportunistic.worktree.primary
+    original_git = opportunistic.gitcmd.git
+    original_discover = opportunistic.registry.discover
+    original_popen = opportunistic.subprocess.Popen
+    try:
+        opportunistic.worktree.primary = lambda _repo: str(root)
+        opportunistic.gitcmd.git = lambda *_a, **_kw: gitcmd.GitResult(0, "origin", "")
+        opportunistic.registry.discover = lambda: {
+            opportunistic.TASK_NAME: registry.TaskSpec(
+                name=opportunistic.TASK_NAME,
+                module="tasks.pr_lifecycle",
+                description="test",
+                interval_seconds=120,
+            )
+        }
+        opportunistic.subprocess.Popen = lambda args, **kwargs: calls.append((args, kwargs))
+
+        assert opportunistic.maybe_start(str(root), now=1_000)
+        assert not opportunistic.maybe_start(str(root), now=1_119)
+        assert opportunistic.maybe_start(str(root), now=1_120)
+    finally:
+        opportunistic.worktree.primary = original_primary
+        opportunistic.gitcmd.git = original_git
+        opportunistic.registry.discover = original_discover
+        opportunistic.subprocess.Popen = original_popen
+
+    assert len(calls) == 2
+    assert calls[0][0][-3:] == ["run", opportunistic.TASK_NAME, str(root)]
+    assert calls[0][1]["start_new_session"] is True
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@
 
 由 lifecycle 的 `review` signal hook（挂 `post_mr`）经 detach 起（见 docs/code-review.md）。审
 `origin/<target>..HEAD`（整条分支 vs target）；查到分支的开放 MR 且有 finding（或有文件审失败）
-才发评论——clean 不发，结论留 review.json；没有开放 MR 就只落 review.json。
+才发评论——失败或警告也发，clean 不发，结论留 review.json；没有开放 MR 就只落 review.json。
 
 为提准，自动给引擎拼 `--background`（业务上下文）：本次提交说明 + MR 标题/描述（detach 进程
 自己经 git log / forge 取，不依赖会话）。
@@ -161,7 +161,8 @@ def _finding_key(comment: dict) -> tuple:
 
 
 def _format_comment(comments: list, failed: int, range_label: str, sha: str, models: dict | None = None,
-                    cost_sec: int = 0, tool_label: str = "", inline_posted: int = 0) -> str:
+                    cost_sec: int = 0, tool_label: str = "", inline_posted: int = 0,
+                    status: str = "success", warnings: list | None = None) -> str:
     """把引擎结果格式化成一条 MR 评论(markdown)。run_review 自主发,无 agent 参与,故在此成文;
     优先级分级是 agent 在会话里做的事,这条历史评论只如实列出引擎的原始 findings。
     `comments` 是没能成为独立 thread 的回落部分;成功发布的只计数(`inline_posted`),内容在
@@ -175,8 +176,13 @@ def _format_comment(comments: list, failed: int, range_label: str, sha: str, mod
     if tool_label:  # 引擎身份,如 `ccr v0.1.0`——引擎没报 version 就不打
         head += f" · {tool_label}"
     total = len(comments) + inline_posted
-    if not total and not failed:
-        return f"{head}\n\n✅ 无 findings(clean)。"
+    counts = review_engine.warning_counts(warnings or [])
+    incomplete = status not in {"success", "skipped", "completed_with_warnings"}
+    if not total and not failed and not counts:
+        if status == "success":
+            return f"{head}\n\n✅ 无 findings(clean)。"
+        if status == "skipped":
+            return f"{head}\n\nReview skipped。"
     bits = []
     if total:
         seg = f"**{total} finding(s)**"
@@ -185,6 +191,12 @@ def _format_comment(comments: list, failed: int, range_label: str, sha: str, mod
         bits.append(seg)
     if failed:
         bits.append(f"⚠️ {failed} 个文件未能 review(LLM 超时 / token 超限等)")
+    if incomplete:
+        bits.append("⚠️ review 失败或未完成，不能视为 clean")
+    elif counts or status == "completed_with_warnings":
+        bits.append("⚠️ review 带有警告，请检查运行记录")
+    if counts:
+        bits.append("warnings: " + ", ".join(f"{kind}×{n}" for kind, n in counts.items()))
     lines = [head, "", " · ".join(bits), ""]
     for c in comments[:_MAX_COMMENT_FINDINGS]:
         loc = c.get("path", "?")
@@ -284,8 +296,7 @@ def _findings_for_history(comments: list, warnings: list) -> list:
     """Per-finding record for review-history.jsonl, tagged with its file's review
     status so analytics can distinguish complete findings from output produced by
     a file that later failed (timeout / token limit). This ledger is never fed back."""
-    failed = {w.get("file"): (w.get("message") or "")
-              for w in (warnings or []) if isinstance(w, dict) and w.get("type") == "subtask_error"}
+    failed = review_engine.incomplete_files(warnings or [])
     out = []
     for c in comments:
         path = c.get("path", "")
@@ -416,13 +427,8 @@ def main(argv: list[str]) -> int:
         if history_path:
             Path(history_path).unlink(missing_ok=True)
     if not result.ok:
-        _write(repo, branch, status="error", reviewed_sha=sha, comments=comments, count=len(comments), failed=0,
-               message=result.error, pull_request=pull_request, generated_at=base.now())
-        _append_history(repo, started, status="error", sha=sha,
-                        pull_request=pull_request,
-                        count=len(comments), failed=0, range=range_label)
-        print(f"run_review: {engine.name} output not parseable — see .devloop/review.json")
-        return 0
+        result.status = "error"
+        result.message = result.error or result.message
 
     # Batch engines arrive here with no callback events; CCR's final event
     # repeats streamed findings. The run-local key keeps both paths exact-once.
@@ -430,19 +436,23 @@ def main(argv: list[str]) -> int:
         accept_finding(comment)
     tool_label = f"{engine.name} {result.tool_version}" if result.tool_version else ""
     deduped = len(comments) - len(publish_comments)
-    if not publish_comments and not result.failed:
+    counts = review_engine.warning_counts(result.warnings)
+    if (not publish_comments and not result.failed and not counts
+            and result.status in {"success", "skipped"}):
         # clean（无 finding 且全部文件审完）不发 MR 评论——往在途 MR 反复 push 会攒出一串
         # 无信息量的 "✅ clean" 刷屏；clean 结论已在 review.json（下一轮注入 Review: clean）。
-        # failed>0 仍发：没审完不是可信的 clean，要在 MR 上留痕。
+        # 无文件归属的失败、未知警告和进程错误也要留痕，不能只检查 failed。
         posted = (
             f"{deduped} existing finding(s) unchanged — MR comment skipped"
-            if deduped else "clean — MR comment skipped"
+            if deduped else ("review skipped — MR comment skipped" if result.status == "skipped"
+                             else "clean — MR comment skipped")
         )
     else:
         posted = _post(forge, pr, _format_comment(fallback, result.failed, range_label, sha, result.models,
-                                                  result.cost_sec, tool_label, inline_posted))
+                                                  result.cost_sec, tool_label, inline_posted,
+                                                  status=result.status, warnings=result.warnings))
     _write(repo, branch, status=result.status, reviewed_sha=sha, comments=comments,
-           count=len(comments), failed=result.failed, warnings=result.warnings, message=result.message,
+           count=len(comments), failed=result.failed, warnings=result.warnings, warning_counts=counts, message=result.message,
            cost_sec=result.cost_sec, tool_version=result.tool_version, session_id=result.session_id,
            inline_posted=inline_posted,
            deduped=deduped,
@@ -451,10 +461,10 @@ def main(argv: list[str]) -> int:
     _append_history(repo, started, status=result.status, sha=sha,
                     pull_request=pull_request,
                     count=len(comments), failed=result.failed,
-                    session_id=result.session_id,
+                    session_id=result.session_id, warning_counts=counts, message=result.message,
                     findings=_findings_for_history(comments, result.warnings),
                     range=range_label, posted=posted)
-    print(f"run_review: {len(comments)} comment(s), {result.failed} file(s) failed on {range_label}"
+    print(f"run_review: {result.status} · {len(comments)} comment(s), {result.failed} file(s) failed on {range_label}"
           + (f" · {posted}" if posted else "") + " → .devloop/review.json")
     return 0
 

@@ -28,7 +28,7 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   forge **原生的 outdated 生命周期**:下一轮 AI 修完再 push,改到的行上的旧 finding 被 forge
   自动折叠成 outdated,不像普通 note 永远悬着（GitLab 项目开 `resolve_outdated_diff_discussions`
   还能 push 时自动 resolve）。汇总评论承载 review 级身份（models / cost / 引擎版本）与历史
-  对比,但只在有 finding 或有文件审失败时才发——clean 不发评论(结论留 review.json / 下轮注入),
+  对比,但只在有 finding、警告或评审失败/未完成时才发——clean 不发评论(结论留 review.json / 下轮注入),
   避免往在途 MR 反复 push 时攒出一串无信息量的 clean 刷屏。
 - **finding 有 line-level 和 file-level 两级**:带行号的是 line-level（"这行漏判空"）,不带的
   是 file-level（"这文件缺测试"）——后者不是信息缺失,本来就没有哪一行可指,直接锚文件。
@@ -155,12 +155,13 @@ run_review 独占写入。`comments` 是引擎的原始评论（无优先级—�
 
 ```jsonc
 {
-  "status": "running | success | completed_with_warnings | completed_with_errors | skipped | error",
+  "status": "running | success | completed_with_warnings | completed_with_errors | failed | skipped | error",
   "reviewed_sha": "…",
   "comments": [ { "path", "content", "start_line", "end_line", "ready_ms?", "suggestion_code?", "existing_code?", "thinking?" } ],
   "count": 3,
-  "failed": 0,            // review 失败的文件数（引擎的 subtask_error warnings）——0 评论但 failed>0 = 出错而非 clean
-  "warnings": [ … ],      // 引擎原始 warnings（每文件失败原因），供诊断
+  "failed": 0,            // 已知未完成文件路径的去重数；不是 warning 条数或完整的失败 Unit 数
+  "warnings": [ … ],      // 引擎原始 warnings（文件和阶段原因），供诊断
+  "warning_counts": { … }, // 按 warning type 计数；review-history 同步保存
   "message": "…",         // 引擎的整体消息（如 "No comments generated. Looks good to me."）
   "session_id": "…",      // 引擎运行轨迹 identity；CCR 提供，其他引擎可为空
   "reviewed_range": "…",  // 审查范围：HEAD 模式是 sha，--mr 模式是 "origin/<target>..HEAD"
@@ -195,6 +196,37 @@ CCR 不解析它，也不会把它注入模型上下文或改变 review 行为�
 该 JSONL 只用于统计 / audit，不参与下一轮 review；删掉它不会改变行为。跨 revision 的
 history 始终从 Forge comments 重新派生。
 
+### CCR 错误兼容契约
+
+CCR v1.13.56 的以下 warning 都表示评审未完成，adapter 将其归一为
+`completed_with_errors`（保留原始 `failed` / `error` 终态），覆盖 CCR 同时输出 LGTM 的旧行为：
+
+| warning type | 含义 |
+|---|---|
+| `unit_incomplete` / `unit_error` | Unit 超时、轮次耗尽、模型或工具执行异常、panic |
+| `hypothesis_review_error` / `hypothesis_review_incomplete` | Hypothesis 复核执行失败或未完成 |
+| `hypothesis_review_unavailable` / `hypothesis_unassessed` | 缺少复核配置或未获得 assessment |
+| `scan_subtask_error` / `subtask_error` | 扫描失败 / 旧版文件失败 |
+| `token_budget_reached` / `token_threshold_exceeded` | 扫描总预算耗尽或文件 prompt 超限，部分内容未审 |
+
+`failed` 仅统计这些 warning 中非空 `file` 的去重路径；同一文件的
+`unit_incomplete` + `unit_error` 只计一次。无文件归属的阶段错误不虚构失败文件数，
+由状态和 `warning_counts` 呈现；跨文件 Unit 和预算中断也不推断未知受影响路径。
+流式 warning 与最终汇总重复的记录只保留一次。已产出 finding 的已知失败文件在
+history 中标记 `failed`，不抹去已接受的 finding。
+
+进程超时、非正常退出或缺少 `run_finished` 时保留已有 finding、warning 和 session ID。
+无 finding 时记录 `error`，已有 finding 时记录 `completed_with_errors`。
+未知终态按 `error` 处理；未知 warning 保留类型及计数并显示警告。
+
+只有无失败、无警告的 `success` 才能显示 clean；正常 `skipped` 单独记录跳过。
+失败、未完成或警告状态即使 `failed=0`、finding 为零或全部去重，仍发布 MR 汇总；
+汇总包含状态及 warning 类型计数，原始诊断保留在本地 `review.json`，不直接发布原始错误文本。
+Board 与 `review status` 同步呈现异常；历史记录保存状态、计数、message 和 session ID。
+
+回归 Case 位于 `tests/test_review.py`：覆盖 Unit 双 warning 去重、全部已知类型、阶段错误无文件、
+未知 warning/状态、超时及缺失终态保留部分结果、零 finding 仍报告异常、正常 clean 不发评论。
+
 ## 结果回流（下一轮）：agent 怎么做
 
 review 跑完后，**下一轮**注入上下文会出现一行 `Review:`（来自 `_format_turn` 读 review.json）。
@@ -205,7 +237,7 @@ review 跑完后，**下一轮**注入上下文会出现一行 `Review:`（来�
 - `Review: stale …` → review.json 卡在 `running` 超过 `REVIEW_STALE_SEC`（~30min），detach 的
   run_review 很可能被中途杀掉（休眠 / OOM / kill）没写终态——视为中断，可重跑（再 gcampr 即可）。
 - `Review: clean (no findings) …` → 无 findings、无失败，无需动作。
-- `Review: … N file(s) failed …` 或 `review errored` → 引擎有文件没 review 成（LLM 超时 / token
+- `Review: … N file(s) failed …`、`review errored`、`review incomplete` 或 `review warnings` → 引擎有文件或阶段未完成，或返回警告（LLM 超时 / token
   超限等）。告知用户「review 未完整覆盖」，要细节读 `.devloop/review.json` 的 `warnings`；可
   重跑或缩小范围。**不是 clean**——别当没问题。
 - `Review: N finding(s) …` → 值得通报时，读 `.devloop/review.json`，对照真实 diff / 代码求证后

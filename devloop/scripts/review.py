@@ -17,7 +17,7 @@ sys.path.insert(0, str(_SCRIPTS))
 from domain import review_feedback  # noqa: E402
 from domain.context import store  # noqa: E402
 from domain.forge import CommentResolution, ForgeError, parse_pr_number, pr_label  # noqa: E402
-from lib import cli, git_state  # noqa: E402
+from lib import cli, git_state, review_engine  # noqa: E402
 from lib.forge import forge_for_repo  # noqa: E402
 
 
@@ -66,6 +66,9 @@ def cmd_status(ns) -> int:
         f"review status: {status} on {sha} · {count} finding(s)"
         f" · {failed} file(s) failed"
     )
+    counts = review_engine.warning_counts(result.get("warnings") or [])
+    if counts:
+        print("  warnings: " + ", ".join(f"{kind}×{n}" for kind, n in counts.items()))
     if message := str(result.get("message") or "").strip():
         print(f"  {message}")
     return 0

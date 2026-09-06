@@ -23,12 +23,48 @@ import shutil
 import subprocess
 import tempfile
 import threading
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Protocol, runtime_checkable
 
 _REVIEW_TIMEOUT = 800   # review 自身要跑 LLM、审全量 diff，给足
 _PROBE_TIMEOUT = 30     # llm test 健康探针，短
+
+
+# CCR v1.13.56 warning contract, including legacy OCR/CCR file failures.
+# A Unit may emit both incomplete and error for the same path. The protocol has
+# no Unit ID here, so failed remains a distinct *reported path* count, not a
+# count of warnings or an invented count of unreviewed Units/files.
+_INCOMPLETE_WARNING_TYPES = frozenset({
+    "subtask_error", "unit_incomplete", "unit_error", "scan_subtask_error",
+    "hypothesis_review_error", "hypothesis_review_incomplete",
+    "hypothesis_review_unavailable", "hypothesis_unassessed",
+    "token_budget_reached", "token_threshold_exceeded",
+})
+
+
+def incomplete_files(warnings: list) -> dict[str, str]:
+    return {
+        w["file"]: str(w.get("message") or "review incomplete")
+        for w in warnings
+        if isinstance(w, dict) and w.get("type") in _INCOMPLETE_WARNING_TYPES and w.get("file")
+    }
+
+
+def warning_counts(warnings: list) -> dict[str, int]:
+    return dict(sorted(Counter(
+        str(w.get("type") or "unknown") for w in warnings if isinstance(w, dict)
+    ).items()))
+
+
+def _merge_warnings(*groups: list) -> list[dict]:
+    result: list[dict] = []
+    for group in groups:
+        for warning in group:
+            if isinstance(warning, dict) and warning not in result:
+                result.append(warning)
+    return result
 
 
 @dataclass
@@ -40,7 +76,7 @@ class ReviewResult:
     status: str = "success"
     comments: list = field(default_factory=list)
     warnings: list = field(default_factory=list)
-    failed: int = 0                            # review 失败的文件数
+    failed: int = 0                            # 已知失败文件数；CCR 按 warning 中的非空路径去重
     models: dict = field(default_factory=dict)  # routing alias -> #responses（去重）；review 级 model 身份，clean 也有
     cost_sec: int = 0                          # 引擎自报的 review 耗时（整秒）；0 = 引擎没报
     tool_version: str = ""                     # 引擎自报的版本；"" = 引擎没报
@@ -108,6 +144,7 @@ class CcrEngine:
         warnings: list[dict] = []
         final: dict | None = None
         session_path = ""
+        session_id = ""
         timed_out = threading.Event()
 
         with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr:
@@ -135,9 +172,12 @@ class CcrEngine:
                         event = json.loads(line)
                     except json.JSONDecodeError:
                         continue
+                    if not isinstance(event, dict):
+                        continue
                     event_type = event.get("type")
                     if event_type == "run_started":
                         session_path = event.get("session_path") or ""
+                        session_id = event.get("session_id") or ""
                     elif event_type == "finding" and isinstance(event.get("finding"), dict):
                         finding = _attach_finding_ready_time([event["finding"]], session_path)[0]
                         streamed.append(finding)
@@ -147,7 +187,7 @@ class CcrEngine:
                         warnings.append(event["warning"])
                     elif event_type == "run_finished" and isinstance(event.get("result"), dict):
                         final = event["result"]
-                process.wait()
+                returncode = process.wait()
             finally:
                 timer.cancel()
             stderr.seek(0)
@@ -157,28 +197,45 @@ class CcrEngine:
             reason = (
                 f"ccr review timed out after {_REVIEW_TIMEOUT}s"
                 if timed_out.is_set()
-                else (diagnostic or "ccr produced no run_finished event")[-2000:]
+                else (diagnostic or f"ccr exited {returncode} without run_finished")[-2000:]
             )
-            if not streamed:
-                return ReviewResult(ok=False, error=reason)
             return ReviewResult(
-                ok=True, status="completed_with_errors", comments=streamed,
-                warnings=warnings, message=reason, error=reason,
+                ok=bool(streamed), status="completed_with_errors" if streamed else "error",
+                comments=streamed, warnings=_merge_warnings(warnings),
+                failed=len(incomplete_files(warnings)), session_id=session_id,
+                message=reason, error=reason,
             )
 
         out = final
-        warnings = out.get("warnings") or []
-        failed = sum(1 for w in warnings if isinstance(w, dict) and w.get("type") == "subtask_error")
+        warnings = _merge_warnings(warnings, out.get("warnings") or [])
+        failed = len(incomplete_files(warnings))
+        status = out.get("status")
+        message = out.get("message") or ""
+        if status not in {"success", "skipped", "failed", "error",
+                           "completed_with_warnings", "completed_with_errors"}:
+            message = f"ccr returned unknown status: {status!r}"
+            status = "error"
+        if status not in {"failed", "error"}:
+            if timed_out.is_set() or returncode:
+                status = "completed_with_errors"
+                message = (f"ccr review timed out after {_REVIEW_TIMEOUT}s" if timed_out.is_set()
+                           else f"ccr exited {returncode} after run_finished")
+            elif any(w.get("type") in _INCOMPLETE_WARNING_TYPES for w in warnings):
+                status = "completed_with_errors"
+                # CCR versions may still say LGTM alongside unit_error warnings.
+                message = "Review incomplete; see warnings for failed files or stages."
+            elif warnings and status in {"success", "skipped"}:
+                status = "completed_with_warnings"
         summary = out.get("summary") or {}
         comments = _attach_finding_ready_time(out.get("comments") or streamed,
                                               out.get("session_path") or session_path)
-        return ReviewResult(ok=True, status=out.get("status", "success"),
+        return ReviewResult(ok=True, status=status,
                             comments=comments, warnings=warnings,
                             failed=failed, models=summary.get("models") or {},
                             cost_sec=int(summary.get("elapsed_sec") or 0),
                             tool_version=out.get("version") or "",
-                            session_id=out.get("session_id") or "",
-                            message=out.get("message", ""))
+                            session_id=out.get("session_id") or session_id,
+                            message=message)
 
 
 def _attach_finding_ready_time(comments: list, session_path: str) -> list:

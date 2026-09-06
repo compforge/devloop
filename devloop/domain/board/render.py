@@ -142,8 +142,12 @@ def _review(card: ReviewCard) -> str:
         parts.append(f"{card.findings} finding(s)")
     if card.failed_files:
         parts.append(f"{card.failed_files} file(s) failed")
-    if card.status == "error":
+    if card.status in {"error", "failed"}:
         parts.append("review errored")
+    elif card.status == "completed_with_errors" and not card.failed_files:
+        parts.append("review incomplete")
+    elif card.status == "completed_with_warnings":
+        parts.append("review warnings")
     return (
         f"Review: {', '.join(parts) if parts else 'clean (no findings)'} on {sha}; "
         f"see {card.artifact_path}"

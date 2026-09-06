@@ -267,6 +267,157 @@ def test_ccr_engine_streams_finding_before_return():
     assert observed == [finding]
 
 
+
+def _ccr_events_result(events, *, returncode=0, timeout=False):
+    """Exercise the real adapter with the CCR JSONL wire contract, without an LLM."""
+    from unittest.mock import patch
+    re = _load_script("run_review").review_engine
+
+    class Process:
+        stdout = io.StringIO("".join(json.dumps(event) + "\n" for event in events))
+        def wait(self): return returncode
+        def kill(self): pass
+
+    class Timer:
+        def __init__(self, seconds, stop): self.stop = stop
+        def start(self):
+            if timeout: self.stop()
+        def cancel(self): pass
+
+    with patch.object(re.subprocess, "Popen", return_value=Process()), patch.object(re.threading, "Timer", Timer):
+        return re.CcrEngine().review("/repo", "origin/main", "abc123", None)
+
+
+def test_ccr_unit_error_pair_counts_one_file_and_overrides_lgtm():
+    warnings = [
+        {"type": "unit_incomplete", "file": "a.go", "message": "deadline exceeded"},
+        {"type": "unit_error", "file": "a.go", "message": "routing call timed out"},
+        {"type": "unit_error", "file": "b.go", "message": "panic"},
+    ]
+    result = _ccr_events_result([
+        {"type": "warning", "warning": warnings[0]},
+        {"type": "run_finished", "result": {
+            "status": "completed_with_warnings", "warnings": warnings,
+            "message": "No comments generated. Looks good to me.",
+        }},
+    ])
+    assert result.status == "completed_with_errors" and result.failed == 2
+    assert result.warnings == warnings, "stream/final warnings must not be counted twice"
+    assert "Looks good" not in result.message
+    re = _load_script("run_review").review_engine
+    assert re.warning_counts(result.warnings) == {"unit_error": 2, "unit_incomplete": 1}
+
+
+def test_ccr_all_current_warning_types_prevent_clean():
+    file_types = ("subtask_error", "unit_incomplete", "unit_error", "scan_subtask_error",
+                  "token_budget_reached", "token_threshold_exceeded")
+    stage_types = ("hypothesis_review_error", "hypothesis_review_incomplete",
+                   "hypothesis_review_unavailable", "hypothesis_unassessed")
+    for kind in file_types + stage_types:
+        warning = {"type": kind, "file": "a.go" if kind in file_types else "", "message": "incomplete"}
+        result = _ccr_events_result([{"type": "run_finished", "result": {
+            "status": "completed_with_warnings", "warnings": [warning],
+        }}])
+        assert result.status == "completed_with_errors", kind
+        assert result.failed == (1 if kind in file_types else 0), "stage errors must not invent failed files"
+
+
+def test_ccr_fatal_and_future_warnings_are_visible():
+    for status in ("failed", "error", "completed_with_errors"):
+        result = _ccr_events_result([{"type": "run_finished", "result": {
+            "status": status, "message": "invalid configuration",
+        }}])
+        assert result.status == status and result.failed == 0
+    result = _ccr_events_result([{"type": "run_finished", "result": {
+        "status": "success", "warnings": [{"type": "future_warning", "message": "details"}],
+    }}])
+    assert result.status == "completed_with_warnings"
+    result = _ccr_events_result([{"type": "run_finished", "result": {"status": "future_status"}}])
+    assert result.status == "error" and "unknown status" in result.message
+
+
+def test_ccr_timeout_and_missing_final_preserve_partial_evidence():
+    warning = {"type": "unit_error", "file": "a.go", "message": "timeout"}
+    finding = {"path": "a.go", "content": "accepted finding", "fingerprint": "fp"}
+    for timeout in (False, True):
+        for findings in ([], [finding]):
+            events = [{"type": "run_started", "session_id": "partial-session"},
+                      {"type": "warning", "warning": warning}]
+            events += [{"type": "finding", "finding": f} for f in findings]
+            result = _ccr_events_result(events, returncode=-9, timeout=timeout)
+            assert result.status == ("completed_with_errors" if findings else "error")
+            assert result.comments == findings and result.warnings == [warning]
+            assert result.failed == 1 and result.session_id == "partial-session"
+            assert ("timed out" if timeout else "without run_finished") in result.message
+    result = _ccr_events_result([
+        {"type": "run_finished", "result": {"status": "success"}},
+    ], returncode=1)
+    assert result.status == "completed_with_errors" and "exited 1" in result.message
+
+
+def test_run_review_reports_incomplete_runs_even_without_failed_files():
+    """Wire errors reach MR summaries, branch state, and history; clean stays quiet."""
+    from unittest.mock import patch
+    from domain.context import store
+    rr = _load_script("run_review")
+    repo = "/tmp/dlut_rr_incomplete"
+    shutil.rmtree(repo, ignore_errors=True)
+    os.makedirs(repo)
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "user.email", "t@t.t")
+    _git(repo, "config", "user.name", "t")
+    Path(repo, "a.go").write_text("package a\n")
+    _git(repo, "add", "a.go"); _git(repo, "commit", "-q", "-m", "init")
+    _git(repo, "checkout", "-q", "-b", "feat/errors")
+    warning = {"type": "hypothesis_review_unavailable", "file": "", "message": "missing task"}
+    results = [
+        _ccr_events_result([{"type": "run_finished", "result": {
+            "status": "completed_with_warnings", "warnings": [warning],
+        }}]),
+        _ccr_events_result([{"type": "run_finished", "result": {"status": "failed", "message": "fatal"}}]),
+        _ccr_events_result([{"type": "run_started", "session_id": "timed-out"}], timeout=True),
+        _ccr_events_result([{"type": "run_finished", "result": {
+            "status": "success", "warnings": [{"type": "future_warning"}],
+        }}]),
+        rr.review_engine.ReviewResult(ok=True, status="completed_with_errors", comments=[
+            {"path": "a.go", "content": "known finding", "fingerprint": "known"},
+        ]),
+        rr.review_engine.ReviewResult(ok=True, status="skipped"),
+        rr.review_engine.ReviewResult(ok=True),
+    ]
+    for result in results:
+        class Engine:
+            name = "ccr"
+            def available(self): return True
+            def configured(self, repo): return True
+            def review(self, *args, **kwargs): return result
+
+        pr = PullRequest(number=7, state="open", target_branch="main")
+        forge = _FakeForge([pr])
+        with patch.object(rr.review_engine, "resolve", return_value=Engine()), \
+             patch.object(rr, "_open_mr", return_value=(forge, pr)), \
+             patch.object(rr, "_pull_request_identity", return_value=None), \
+             patch.object(rr.review_feedback, "suppress_delivery_fingerprints", return_value={"known"}):
+            assert rr.main(["--repo", repo]) == 0
+        segment = store.load_segment(repo, store.branch_segment("feat/errors", "review"))
+        history = json.loads(Path(repo, ".devloop/review-history.jsonl").read_text().splitlines()[-1])
+        assert segment["status"] == result.status == history["status"]
+        assert segment["session_id"] == result.session_id == history["session_id"]
+        assert segment["warning_counts"] == rr.review_engine.warning_counts(result.warnings) == history["warning_counts"]
+        if result.status in {"success", "skipped"}:
+            assert not getattr(forge, "posted", [])
+            expected = "clean" if result.status == "success" else "review skipped"
+            assert history["posted"] == f"{expected} — MR comment skipped"
+        else:
+            assert len(forge.posted) == 1
+            assert not getattr(forge, "diff_posted", []), "deduped finding must stay suppressed"
+            body = forge.posted[0][1]
+            assert "✅" not in body and "⚠️" in body
+            if result.warnings:
+                assert result.warnings[0]["type"] in body
+            assert "clean — MR comment skipped" != history["posted"]
+
+
 def test_pr_identity_projects_to_ccr_biz_id():
     rr = _load_script("run_review")
     assert rr._biz_id({
@@ -296,6 +447,9 @@ def test_review_injection_line():
     seg(status="completed_with_errors", count=2, failed=1); t = ctx.turn_text()
     assert "2 finding(s)" in t and "1 file(s) failed" in t
     seg(status="error", count=0); assert "Review: review errored on abcdef123" in ctx.turn_text()
+    seg(status="failed", count=0, failed=0); assert "review errored" in ctx.turn_text()
+    seg(status="completed_with_errors", count=0, failed=0); assert "review incomplete" in ctx.turn_text()
+    seg(status="completed_with_warnings", count=0, failed=0); assert "review warnings" in ctx.turn_text()
 
 
 def test_review_line_told_once_per_result():
@@ -505,10 +659,12 @@ def test_findings_for_history_status_from_warnings():
         {"path": "a.go", "symbol_id": "a.go::F", "content": "missing nil check"},
         {"path": "b.go", "symbol_id": "b.go::G", "content": "garbage from timeout"},
     ]
-    warnings = [{"type": "subtask_error", "file": "b.go", "message": "context deadline exceeded"}]
-    out = rr._findings_for_history(comments, warnings)
-    assert out[0]["symbol_id"] == "a.go::F" and out[0]["status"] == "ok"
-    assert out[1]["status"] == "failed" and "deadline" in out[1]["reason"]
+    for kind in ("subtask_error", "unit_error", "unit_incomplete", "scan_subtask_error",
+                 "token_budget_reached", "token_threshold_exceeded"):
+        warnings = [{"type": kind, "file": "b.go", "message": "context deadline exceeded"}]
+        out = rr._findings_for_history(comments, warnings)
+        assert out[0]["symbol_id"] == "a.go::F" and out[0]["status"] == "ok"
+        assert out[1]["status"] == "failed" and "deadline" in out[1]["reason"]
 
 def test_build_history_feed_fetches_current_forge_comments():
     """连续 review 的持久事实只在 Forge；本地仅为 CCR 临时物化一次输入。"""

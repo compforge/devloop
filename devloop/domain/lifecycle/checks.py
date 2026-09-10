@@ -55,22 +55,24 @@ def _progress(check: str, component: Component, state: str, elapsed: float | Non
     print(f"[validate] {check} {component.id}: {state}{timing}", flush=True)
 
 
-def _make(component: Component, target: str, *, capture: bool, sink: list[str]) -> tuple[int, float]:
+def _make(component: Component, target: str, *, capture: bool, sink: list[str],
+          args: tuple[str, ...] = ()) -> tuple[int, float]:
     """跑 `make <target>`，返回退出码与耗时。capture=True 时输出简短实时进度。"""
     code_dir = component.path
-    header = f"--- make {target} (cwd={code_dir}) ---"
+    command = ["make", target, *args]
+    header = f"--- {' '.join(command)} (cwd={code_dir}) ---"
     started_at = monotonic()
     if capture:
         _progress(target, component, "started")
         sink.append(header)
-        r = subprocess.run(["make", target], cwd=code_dir, capture_output=True, text=True)
+        r = subprocess.run(command, cwd=code_dir, capture_output=True, text=True)
         sink.append(r.stdout)
         sink.append(r.stderr)
         elapsed = monotonic() - started_at
         _progress(target, component, "passed" if r.returncode == 0 else "failed", elapsed)
         return r.returncode, elapsed
     print(header)
-    rc = subprocess.run(["make", target], cwd=code_dir).returncode
+    rc = subprocess.run(command, cwd=code_dir).returncode
     return rc, monotonic() - started_at
 
 
@@ -113,6 +115,24 @@ def _changed_test_files(repo: str, component: Component, paths: list[str]) -> li
     return selected
 
 
+def _changed_lint_files(repo: str, component: Component, paths: list[str] | None) -> list[str]:
+    """将已冻结的仓相对范围投影到 Component；删除和无法表示的路径回退全量。"""
+    root = Path(repo).resolve()
+    component_root = Path(component.path).resolve()
+    files: list[str] = []
+    for path in paths or []:
+        absolute = root / path
+        try:
+            relative = absolute.relative_to(component_root).as_posix()
+        except ValueError:
+            continue
+        if not absolute.is_file() or absolute.is_symlink():
+            return []
+        if relative not in files:
+            files.append(relative)
+    return files
+
+
 def normalize(repo: str, *, capture: bool = True, component: Component | None = None,
               paths: list[str] | None = None) -> HookResult:
     """在 checks 前执行 Component 的可选 `make fix`；它是准备步骤，不是验证结果。
@@ -122,7 +142,7 @@ def normalize(repo: str, *, capture: bool = True, component: Component | None = 
     """
     if component is None:
         ws = repo_model.select_components(repo, paths=paths)
-        results = [normalize(repo, capture=capture, component=u) for u in ws.components]
+        results = [normalize(repo, capture=capture, component=u, paths=paths) for u in ws.components]
         return _aggregate("normalize", ws.reason, results)
     if not component.has_target("fix"):
         return HookResult(
@@ -139,20 +159,23 @@ def normalize(repo: str, *, capture: bool = True, component: Component | None = 
         return env_failure
 
     sink: list[str] = []
-    rc, elapsed = _make(component, "fix", capture=capture, sink=sink)
+    command = component.focused_lint_command(_changed_lint_files(repo, component, paths), target="fix")
+    args = command[2:] if command else (("LINT_FILES=",) if component.supports_lint_files() else ())
+    rc, elapsed = _make(component, "fix", capture=capture, sink=sink, args=args)
     suffix = "" if rc == 0 else f" (exit {rc}; lint remains authoritative)"
     return HookResult("normalize", ok=True, summary=f"make fix completed in {elapsed:.1f}s{suffix}")
 
 
-def lint_components(repo: str, workset: repo_model.WorkSet, *, capture: bool = True) -> HookResult:
-    """顺序 lint 已选中的 Component；每个 Component 仍在通过时独立盖戳。"""
-    results = [lint(repo, capture=capture, component=unit) for unit in workset.components]
+def lint_components(repo: str, workset: repo_model.WorkSet, *, capture: bool = True,
+                    paths: list[str] | None = None) -> HookResult:
+    """顺序 lint 已选中的 Component；仅全量通过时为该 Component 盖戳。"""
+    results = [lint(repo, capture=capture, component=unit, paths=paths) for unit in workset.components]
     return _aggregate("lint", workset.reason, results)
 
 
 def lint(repo: str, *, capture: bool = True, component: Component | None = None,
          paths: list[str] | None = None) -> HookResult:
-    """跑只读 lint target；通过则给当前内容指纹盖 lint 戳。
+    """跑项目 lint target；按文件通过只用于本轮 gate，全量通过才盖 Component 戳。
 
     `component` 给出即用它（CLI 已按操作目标选好）；否则是 lifecycle gate 入口，按本次改动选 WorkSet
     并 fan-out，避免多 component 仓静默回落 server / 仓根。`paths`（相位边界冻结的改动范围）给出即用它，
@@ -162,7 +185,7 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     """
     if component is None:
         ws = repo_model.select_components(repo, paths=paths)
-        return lint_components(repo, ws, capture=capture)
+        return lint_components(repo, ws, capture=capture, paths=paths)
     code_dir = component.path
     target = component.lint_target()
     if target is None:
@@ -173,18 +196,36 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
 
     sink: list[str] = []
     shutil.rmtree(Path(code_dir) / ".mypy_cache", ignore_errors=True)
-    rc, elapsed = _make(component, target, capture=capture, sink=sink)
+    files = _changed_lint_files(repo, component, paths)
+    command = component.focused_lint_command(files)
+    guidance = ()
+    if files and not component.supports_lint_files():
+        guidance = (
+            f"{code_dir}/Makefile 未消费 LINT_FILES；本轮运行全量 lint。"
+            "如需按改动文件校验，请让 fix 和 lint targets 同时支持 LINT_FILES，空值保留全量行为。",
+        )
+    args = command[2:] if command else (("LINT_FILES=",) if component.supports_lint_files() else ())
+    rc, elapsed = _make(component, target, capture=capture, sink=sink, args=args)
+    if rc == 0 and command:
+        # spec: focused lint 只验证当前选择，不能授予整个 Component 的可复用通行证。
+        return HookResult(
+            "lint", ok=True,
+            summary=f"make {target} passed in {elapsed:.1f}s — focused {len(files)} changed file(s); "
+                    "component lint stamp unchanged",
+        )
     if rc == 0:
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
         # 指纹在**此刻**算：`make fix` 刚改过文件，跑之前算的指纹配不上刚被验过的这棵树——
         # 盖上去就等于给一份没验过的内容发通行证。
         ctx.mark_lint_passed(component.id, repo_model.component_fingerprint(repo, component) or "")
-        return HookResult("lint", ok=True, summary=f"make {target} passed in {elapsed:.1f}s — stamped")
+        return HookResult("lint", ok=True, summary=f"make {target} passed in {elapsed:.1f}s — stamped",
+                          guidance=guidance)
     detail = f"\n{_tail(sink)}" if capture else ""
     return HookResult(
         "lint",
         ok=False,
         summary=f"make {target} failed after {elapsed:.1f}s (only `make fix` may edit files){detail}",
+        guidance=guidance,
     )
 
 

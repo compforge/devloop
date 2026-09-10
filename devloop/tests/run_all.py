@@ -24,6 +24,7 @@ MODULES = [
     "test_context",
     "test_guards",
     "test_lifecycle",
+    "test_focused_lint",
     "test_review",
 ]
 

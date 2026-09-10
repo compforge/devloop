@@ -583,7 +583,7 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
     - `pre_commit`：**将要提交的**那些文件。`--file` 给了则把同一 staging scope 展开成其中真实
       改动的叶子文件——不是「工作树里所有脏文件」：后者是超集，会把你压根不打算提交的 component
       拖进 gate（它有存量 lint 错误就拦掉 commit），还会让 normalize 改到不进本次 commit 的文件。
-      没给 `--file` → `None`：那时工作树确实**就是**将要提交的全部，交给 handler 读即可。
+      没给 `--file` → 冻结当前工作树改动，让 normalize 和 lint 使用同一范围。
     - `post_commit`：刚落地的那个 commit 自身。
     - `pre_mr` / `post_mr`：整条分支 vs target——MR 承载的是整条分支，不是最后那个 commit。
     """
@@ -591,8 +591,8 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
         return (
             repo_model.changed_paths_in_scope(intent.repo, intent.files)
             if intent.files
-            else None
-        )  # 无 --file → 工作树即答案，与 handler 默认语境一致
+            else (repo_model.changed_paths(intent.repo) or None)
+        )
     if phase == "post_commit":
         return repo_model.committed_paths(intent.repo)
     if phase in ("pre_mr", "post_mr"):

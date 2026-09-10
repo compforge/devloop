@@ -124,7 +124,7 @@ handler 手里只有 `repo`。想知道「本次改动涉及哪些 component」�
 
 | 相位 | 「本次改动」是什么 | 怎么算 |
 |---|---|---|
-| `pre_commit` | **将要提交的**那些文件 | 有 `--file` → 就是它；没有 → `None`，handler 读工作树（那时工作树就是全部，语境一致） |
+| `pre_commit` | **将要提交的**那些文件 | 有 `--file` → 展开该范围内的改动；没有 → 冻结工作树改动，再交给 normalize/checks |
 | `post_commit` | 刚落地的那个 commit 自身 | `committed_paths`（`diff-tree --root`，根 commit 也能答） |
 | `pre_mr` / `post_mr` | 整条分支 vs target（MR 承载的是整条分支，不是最后那个 commit） | `range_paths`（三点 `base...head`，避免把别人的提交算成你的） |
 
@@ -132,6 +132,17 @@ handler 手里只有 `repo`。想知道「本次改动涉及哪些 component」�
 **不同**的集合。算一次、传下去，它们必然一致。
 
 可重复的 `--file` 尤其要进 pre_commit 的范围：它是「工作树所有脏文件」的**子集**。拿超集当范围，会把你压根不打算提交的 component 拖进 gate——它有存量 lint 错误就拦掉你的 commit（与本表存在的理由同一类失败，只是换了扇门），且 normalize 会去改那些 component、改完又不进本次 commit，凭空搅脏工作树。故 staging 使用归一后的 scope，gate 再从同一 scope 展开真实 changed leaf files；`--file cli` 可以继续用于 staging，同时 test handler 能得到 `cli/tests/x.test.ts`，两边不会漂到 scope 之外。
+
+### lint 的按文件范围与全量结果
+
+Component 仍拥有验证命令；文件列表只是本次调用的范围。项目 Makefile 显式消费 `LINT_FILES`
+时，normalize 的 `make fix` 与只读 lint 接收同一份冻结列表。没有采用该契约的项目继续跑全量，
+并收到接入提示，devloop 不自行猜测或替换项目的语言检查器。
+
+局部 lint 成功可放行本轮 inline gate，但不写整个 Component 的 lint 戳，防止后来以局部结果
+冒充全量验证。手工 `run_lint.py --full` 与完整 validate 保留全量行为；删除文件和无法安全传递的
+路径也回退全量。项目负责从配置、依赖和源文件变化判断需要扩大的检查范围，详细接入契约见
+[validation spec](../skills/validate/references/spec.md#focused-static-quality)。
 
 ### 测试入口的事后优化提示
 

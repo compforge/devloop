@@ -22,6 +22,12 @@ lint-mypy:
 	uv run mypy .
 ```
 
+For file-scoped feedback, a project can adopt `LINT_FILES` in both fix and lint. Filter the supplied
+list to Python files before passing it to Ruff/mypy, retain full behavior for an empty list, and expand
+configuration or dependency changes to the necessary scope. Mypy may still report errors in imported
+modules; file arguments do not guarantee isolation from dependencies. Keep those diagnostics visible.
+See the [focused validation contract](spec.md#focused-static-quality).
+
 Devloop clears `.mypy_cache` before the canonical gate so stale warm state cannot validate code that
 would fail cold. Keep `dmypy` as a separate local-feedback command, not the reproducible gate. See
 [Ruff configuration](https://docs.astral.sh/ruff/configuration/) and

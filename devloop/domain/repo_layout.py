@@ -97,6 +97,24 @@ class Component:
         eco = ecosystem.detect(self.path)
         return eco.fallback_test_command(self.path) if eco else None
 
+    def supports_lint_files(self) -> bool:
+        """项目显式采用 LINT_FILES 契约：fix 和 lint 都必须消费同一范围。"""
+        try:
+            makefile = (Path(self.path) / "Makefile").read_text(encoding="utf-8")
+        except OSError:
+            return False
+        return bool(re.search(r"\$\(LINT_FILES\)|\$\{LINT_FILES\}", makefile))
+
+    def focused_lint_command(self, files: list[str], *, target: str | None = None) -> tuple[str, ...] | None:
+        """通过项目 Makefile 按文件校验；无法安全表达范围时返回 None，调用方跑全量。"""
+        target = target or self.lint_target()
+        if target is None or not files or not self.supports_lint_files():
+            return None
+        # Make 会再次展开变量，recipe 还会经过 shell；argv list 本身不足以隔离文件名。
+        if any(not re.fullmatch(r"[A-Za-z0-9_./@+][A-Za-z0-9_./@+:-]*", path) for path in files):
+            return None
+        return ("make", target, f"LINT_FILES={' '.join(files)}")
+
     def supports_test_files(self) -> bool:
         """Makefile 是否显式把 `TEST_FILES` 交给 test runner。"""
         try:

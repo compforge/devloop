@@ -9,6 +9,10 @@ For complete Component validation, run:
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_validate.py [<repo name|path>]
 ```
 
+`run_lint.py` uses changed-file scope when the project explicitly supports `LINT_FILES` in its
+Makefile. Pass `--full` for full Component lint. Focused lint success only validates the selected
+scope and does not stamp full Component validation; projects without the contract still run full lint.
+
 Validation has multiple checks, not modes. `make fix` is a normalize step: complete it first, then run
 the read-only lint and test checks concurrently against the same stable content. A user may explicitly
 request only one check; run `run_lint.py` for static quality or `run_tests.py` for behavior, and report

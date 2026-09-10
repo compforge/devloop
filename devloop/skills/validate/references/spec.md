@@ -25,8 +25,32 @@ update that check's own stamp, but must not be presented as complete Component v
 
 `make lint-ci` is preferred when present; otherwise devloop uses `make lint`. The selected target must
 be non-interactive and read-only, and return zero only when all configured checks pass. If neither target
-exists, static quality is skipped without a lint stamp. A success stamps the post-normalize Component
+exists, static quality is skipped without a lint stamp. A full success stamps the post-normalize Component
 content fingerprint so later edits invalidate it.
+
+### Focused static quality
+
+A project may explicitly consume `LINT_FILES`, a space-separated list of Component-relative changed
+paths, in **both** `fix` and the selected `lint-ci` / `lint` target:
+
+```console
+make fix LINT_FILES="src/a.py tests/test_a.py"
+make lint-ci LINT_FILES="src/a.py tests/test_a.py"
+```
+
+Missing or empty `LINT_FILES` retains full validation. The project owns file selection, supported file
+types and dependency expansion: config/lockfile changes may require full checks, and Go/TypeScript
+checks may need packages or the project graph rather than individual files. Do not change language
+semantics or suppress diagnostics to simulate file-level support. Fixers must only rewrite the selected
+files; read-only checks may expand their analysis where the language requires it.
+
+Lifecycle gates pass the frozen phase scope to both targets. Manual `run_lint.py` uses working-tree
+changes; `--full` and `run_validate.py` run full Component checks. Unknown scope, deleted files, or
+paths that cannot safely be passed through Make fall back to full checks. Projects without the
+`LINT_FILES` contract retain full checks and receive adoption guidance.
+
+A focused success can satisfy that inline gate, but does not update the full Component lint stamp.
+It must not be presented as complete validation or reused to authorize a later bare commit.
 
 Independent formatter checks, static analyzers, and type checkers may run concurrently through a native
 worker pool or bounded Make target graph. Do not run multiple auto-fixers concurrently.

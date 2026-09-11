@@ -9,7 +9,10 @@ import { decisionMessage } from "../hooks/core/domain.js";
 import { evaluateTool } from "../hooks/core/policy.js";
 
 export const name = "devloop";
-export const inject: readonly string[] = [];
+// The adapter only registers listeners, but those listeners belong to the agent/tool
+// runtimes. Declaring both owners keeps Cordis from activating this plugin while the
+// DSH profile loader is still replacing their service fibers.
+export const inject: readonly string[] = ["agents", "tools"];
 
 export interface Config {
   /** Fallback cwd for tool executions that have no owning agent. */

@@ -47,9 +47,30 @@ describe("harness adapters", () => {
     expect(result).toMatchObject({ kind: "deny", reason: expect.stringContaining("broad `git add`") });
   });
 
+  it("waits for the DSH agent and tool runtimes before mounting", async () => {
+    const ctx = new Context();
+    const fiber = ctx.plugin(dshPlugin, { cwd: process.cwd() });
+
+    await fiber.await();
+    expect(fiber.state).toBe(0);
+
+    ctx.provide("agents", {});
+    await fiber.await();
+    expect(fiber.state).toBe(0);
+
+    ctx.provide("tools", {});
+    await fiber.await();
+    expect(fiber.state).toBe(2);
+
+    await ctx.fiber.dispose();
+  });
+
   it("validates DSH bundle configuration while mounting", async () => {
     const ctx = new Context();
-    await expect(ctx.plugin(dshPlugin, { cwd: 42 } as never)).rejects.toThrow();
+    ctx.provide("agents", {});
+    ctx.provide("tools", {});
+    const fiber = ctx.plugin(dshPlugin, { cwd: 42 } as never);
+    await expect(fiber.await()).rejects.toThrow();
     await ctx.fiber.dispose();
   });
 });

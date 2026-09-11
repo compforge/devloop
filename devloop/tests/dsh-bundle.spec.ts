@@ -24,6 +24,6 @@ describe("DSH bundle package", () => {
     expect(patch).toContain("createRequire(baseUrl)");
     expect(patch).toContain(".resolve('@compforge/devloop/cordis.patch.yml')");
     expect(patch).toContain("id: devloop-runtime");
-    expect(patch).toContain("name: '@compforge/devloop/dsh'");
+    expect(patch).toContain("name: './dist/adapters/dsh.js'");
   });
 });

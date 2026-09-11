@@ -5,7 +5,10 @@ import { afterTool, endSession, initializeBoard, recordToolCall } from "./proces
 import { decisionMessage } from "../hooks/core/domain.js";
 import { evaluateTool } from "../hooks/core/policy.js";
 export const name = "devloop";
-export const inject = [];
+// The adapter only registers listeners, but those listeners belong to the agent/tool
+// runtimes. Declaring both owners keeps Cordis from activating this plugin while the
+// DSH profile loader is still replacing their service fibers.
+export const inject = ["agents", "tools"];
 /** DSH validates bundle configuration before mounting the plugin. */
 export const Config = Schema.object({
     cwd: Schema.string(),

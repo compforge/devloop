@@ -1,6 +1,6 @@
 {
   "name": "@compforge/devloop",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Shared dev-loop domain runtime with Claude Code, Codex, and DeepSeek Harness adapters.",
   "type": "module",
   "engines": {
@@ -49,6 +49,7 @@
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/dsh-agent": "^0.1.0-rc.5",
     "@deepseek-ai/dsh-llm": "^0.1.0-rc.5",
+    "@deepseek-ai/dsh-skill-filesystem": "^0.1.0-rc.5",
     "@deepseek-ai/dsh-tools": "^0.1.0-rc.5"
   },
   "peerDependenciesMeta": {
@@ -59,6 +60,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-skill-filesystem": {
       "optional": true
     },
     "@deepseek-ai/dsh-tools": {

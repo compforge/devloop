@@ -58,17 +58,19 @@ codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 
+If Codex asks for hook review, open `/hooks` and trust the devloop hooks.
+
 ### DeepSeek Harness
 
-Install the native Cordis bundle into the profile where devloop should run:
+Install the native Cordis bundle into the profile where devloop should run. This example uses the built-in `headless` profile; replace it with another profile name when needed:
 
 ```console
-dsh plugin --profile <name> add @compforge/devloop
+npx --yes @deepseek-ai/dsh plugin --profile headless add @compforge/devloop
 ```
 
-The package declares its DSH bundle layer and mounts `@compforge/devloop/dsh` automatically. It registers directly on DSH lifecycle and tool events; it does not shell out through the Claude/Codex hook protocol. Remove it with `dsh plugin --profile <name> remove @compforge/devloop`.
+The package declares its DSH bundle layer, exposes its bundled skills, and mounts `@compforge/devloop/dsh` automatically. It registers directly on DSH lifecycle and tool events; it does not shell out through the Claude/Codex hook protocol. Remove it with `npx --yes @deepseek-ai/dsh plugin --profile headless remove @compforge/devloop`. If DSH is installed globally, the shorter `dsh` command is equivalent.
 
-Start a new session after installation. If Codex asks for hook review, open `/hooks` and trust the devloop hooks. Repository state is initialized automatically when the agent first enters a Git repository.
+Start a new session after installation. Repository state is initialized automatically when the agent first enters a Git repository.
 
 Then use outcome-oriented requests instead of assembling shell commands yourself:
 

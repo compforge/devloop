@@ -19,7 +19,7 @@ devloop 托管聚焦开发者效率的 plugin 集合。本仓库**根层**只负
 - 具体 plugin 的设计动机、内部架构、hook 列表、状态文件、配置项 → 见对应 `<plugin>/README.md`
 - 整个工作流落地的方案记录（feature 矩阵、版本规划等）→ 见 plan 文档
 
-当前实施范围：`devloop` 支持 Claude Code、Codex 与 DeepSeek Harness。Claude/Codex 通过薄进程 hook adapter 接入，DSH 通过原生 Cordis plugin 接入；三端共用 TypeScript Board、state、tool projection 与 policy。skill 调用的 Git/release/validation/review 脚本继续使用 Python。opencode 侧目前只有 `example` 占位 plugin 演示 marketplace 结构。
+当前实施范围：`devloop` 支持 Claude Code、Codex 与 DeepSeek Harness。Claude/Codex 通过薄进程 hook adapter 接入；DSH bundle 同时挂载原生 Cordis adapter 并暴露包内 skills。三端共用 TypeScript Board、state、tool projection 与 policy。skill 调用的 Git/release/validation/review 脚本继续使用 Python。opencode 侧目前只有 `example` 占位 plugin 演示 marketplace 结构。
 
 ---
 
@@ -37,6 +37,7 @@ devloop/                              # ← 仓库根（marketplace）
 │   │                                 #   Claude 用 CwdChanged / FileChanged / native monitor；Codex 用 SessionEnd + Scheduled tasks
 │   ├── .claude-plugin/plugin.json    #     Claude manifest
 │   ├── .codex-plugin/plugin.json     #     Codex manifest（hooks 指向 hooks.codex.json）
+│   ├── cordis.patch.yml              #     DSH bundle layer（挂载 adapter + 暴露 skills）
 │   ├── skills/                       #     7 个 skill（CLI 共享，含一次性 monitor reconciliation）
 │   ├── commands/                     #     slash commands（Claude 端）
 │   ├── adapters/                     #     Claude/Codex hook dialect + DSH Cordis adapter
@@ -77,7 +78,7 @@ devloop/                              # ← 仓库根（marketplace）
 └── CONTRIBUTING.md                   # 新 plugin 接入规范
 ```
 
-**CLI 范围差异**：`devloop` 当前支持 Claude Code、Codex 与 DSH。`skills/` 共享；`commands/` 仍是 Claude slash command 入口，Codex 无同构 slash command，主要由 skill 名 + bundled hooks 作为入口；DSH 直接加载 `@compforge/devloop/dsh`。Claude 的 native monitor 与 Codex Scheduled task 分别驱动同一个一次性 reconciliation 入口。opencode 待协议明确。
+**CLI 范围差异**：`devloop` 当前支持 Claude Code、Codex 与 DSH。`skills/` 共享；`commands/` 仍是 Claude slash command 入口，Codex 无同构 slash command，主要由 skill 名 + bundled hooks 作为入口；DSH bundle 暴露同一组 skills，并加载 `@compforge/devloop/dsh`。Claude 的 native monitor 与 Codex Scheduled task 分别驱动同一个一次性 reconciliation 入口。opencode 待协议明确。
 
 详细：[`devloop/README.md`](./devloop/README.md)（使用向） · [`devloop/AGENTS.md`](./devloop/AGENTS.md)（开发向）。
 
@@ -94,7 +95,7 @@ devloop/                              # ← 仓库根（marketplace）
 - 命令字符串里**统一写 `${CLAUDE_PLUGIN_ROOT}`**。
 - Claude Code 原生认这个占位符；Codex 提供 `PLUGIN_ROOT` 作为标准名，同时保留 `CLAUDE_PLUGIN_ROOT` / `CLAUDE_PLUGIN_DATA` 作为兼容别名。
 - Codex 还额外提供 `PLUGIN_DATA`（可写数据目录）供插件持久化状态。
-- **单一 `hooks/hooks.json` 跨 Claude / Codex 复用**，业务代码零修改。
+- Claude 使用 `hooks/hooks.json`，Codex 使用 `hooks/hooks.codex.json`；两个 manifest 显式选择 Harness 身份，并进入同一套 TypeScript runtime/core。
 
 **(2) 文档/SKILL.md 层（AI 解析）**——人写给 AI 看的 markdown：
 
@@ -107,7 +108,7 @@ devloop/                              # ← 仓库根（marketplace）
 
 每个 plugin 内部建议以下目录跨 CLI 共享：
 
-- `<plugin>/skills/`、`<plugin>/commands/`、`<plugin>/scripts/`：内容 CLI 无关
+- `<plugin>/skills/`、`<plugin>/commands/`：内容 CLI 无关
 - `<plugin>/domain/`：TypeScript 领域模型、状态变化与生命周期规则；归属看领域事实的 owner
 - `<plugin>/lib/`：TypeScript 跨入口技术能力和外部适配，不放领域对象
 - `<plugin>/hooks/`：TypeScript 事件 adapter，依赖 `domain/lib`

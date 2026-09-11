@@ -13,7 +13,17 @@ describe("DSH bundle package", () => {
 
     expect(patchPath).toBe("./cordis.patch.yml");
     expect(manifest.files).toContain("cordis.patch.yml");
-    expect(readFileSync(new URL(patchPath!, packageRoot), "utf8"))
-      .toContain("name: '@compforge/devloop/dsh'");
+    const patch = readFileSync(new URL(patchPath!, packageRoot), "utf8");
+
+    expect(patch).toContain("id: devloop-skills");
+    expect(patch).toContain("name: '@deepseek-ai/dsh-skill-filesystem'");
+    expect(patch).toContain("providerName: devloop");
+    expect(patch).toContain("includeDefaultRoots: false");
+    expect(patch).toContain("watch: false");
+    expect(patch).toContain("bundledSkillDir:");
+    expect(patch).toContain("createRequire(baseUrl)");
+    expect(patch).toContain(".resolve('@compforge/devloop/cordis.patch.yml')");
+    expect(patch).toContain("id: devloop-runtime");
+    expect(patch).toContain("name: '@compforge/devloop/dsh'");
   });
 });

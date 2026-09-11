@@ -1,6 +1,21 @@
-# Installable DSH bundle layer. The profile loader resolves this package from
-# the profile's dependencies, then mounts the native Cordis adapter.
-
+# Installable DSH bundle layer. An isolated provider keeps package-owned skills
+# composable with other bundles instead of replacing the shared provider config.
+# Bundle patches run with the profile as baseUrl, so resolve the exported patch
+# first to recover this installed package's own root.
 - insert:
-    - id: devloop
+    - id: devloop-skills
+      name: '@deepseek-ai/dsh-skill-filesystem'
+      config:
+        providerName: devloop
+        includeDefaultRoots: false
+        watch: false
+        bundledSkillDir: !!js >-
+          process.getBuiltinModule('node:path').join(
+            process.getBuiltinModule('node:path').dirname(
+              process.getBuiltinModule('node:module').createRequire(baseUrl)
+                .resolve('@compforge/devloop/cordis.patch.yml')
+            ),
+            'skills'
+          )
+    - id: devloop-runtime
       name: '@compforge/devloop/dsh'

@@ -47,19 +47,21 @@ codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 
+Codex 如果要求审核 hook，可在 `/hooks` 中信任 devloop hooks。
+
 ### DeepSeek Harness
 
-把原生 Cordis bundle 安装到需要启用 devloop 的 profile：
+把原生 Cordis bundle 安装到需要启用 devloop 的 profile。下面使用内置的 `headless` profile；需要时替换成实际使用的其他 profile 名：
 
 ```console
-dsh plugin --profile <name> add @compforge/devloop
+npx --yes @deepseek-ai/dsh plugin --profile headless add @compforge/devloop
 ```
 
-包内声明的 DSH bundle layer 会自动挂载 `@compforge/devloop/dsh`，直接注册 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；三端只在 adapter 层分化。卸载使用 `dsh plugin --profile <name> remove @compforge/devloop`。
+包内声明的 DSH bundle layer 会自动暴露 devloop skills，并挂载 `@compforge/devloop/dsh`，直接注册 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；三端只在 adapter 层分化。卸载使用 `npx --yes @deepseek-ai/dsh plugin --profile headless remove @compforge/devloop`。如果已全局安装 DSH，也可以使用较短的 `dsh` 命令。
 
-安装后新开一个 session。Codex 如果要求审核 hook，可在 `/hooks` 中信任 devloop hooks。
+安装后新开一个 session。
 
-通常不需要手工初始化：第一次进入 Git 仓库时，hook 会自动创建所需的 `.devloop/` 运行态。之后直接告诉 agent：
+通常不需要手工初始化：第一次进入 Git 仓库时，runtime 会自动创建所需的 `.devloop/` 运行态。之后直接告诉 agent：
 
 ```text
 验证改动

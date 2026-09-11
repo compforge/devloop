@@ -18,4 +18,7 @@
             'skills'
           )
     - id: devloop-runtime
-      name: '@compforge/devloop/dsh'
+      # Cordis falls back to import(name) when the host runtime has no Node
+      # internal loader. Bundle composition anchors this relative path to the
+      # selected package instead of resolving a same-named host-tree package.
+      name: './dist/adapters/dsh.js'

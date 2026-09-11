@@ -25,12 +25,12 @@ AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.jso
 1. **Board 消除信息滞后**：状态源持续提供当前 subproject 的 branch / 工作区 / PR / validation，加上 workspace 级的子项目清单与 AGENTS.md References；Board 按相关性组织 payload-first 条目，以独立的 item kind、delivery channel、prompt scope 与 replay policy 决定投递——AI 改第一行前就掌握现状，长历史又不浪费 prompt token。
 2. **执行守卫提前拒绝高置信风险**：PreToolUse `deny` 覆盖保护分支、过期分支改文件和误带文件等常见路径；command hook 超时、异常或 Harness 未覆盖的执行路径会 fail-open，因此它是护栏而非安全边界。
 
-**实现取向**：native-first——控制能力优先坐到 CLI 原生事件和统一技术 seam 上；独立 `.devloop/` 命名空间，状态与其它工具互不干扰。Lifecycle hook 尽量两端共用；周期开发任务定义为单次可发现 task，Claude monitor 与 Codex Scheduled task 只分化接入方式。
+**实现取向**：native-first——控制能力优先坐到 CLI 原生事件和统一技术 seam 上；独立 `.devloop/` 命名空间，状态与其它工具互不干扰。Lifecycle hook 尽量跨 Harness 共用；周期开发任务定义为单次可发现 task，Claude monitor 与 Codex Scheduled task 只分化接入方式。
 
 **边界**：
 - 聚合 workspace 与单 repo 都是运行形态，workspace 可选；子项目从文件系统发现，手工 init 不是前置。
 - 只管 PR/MR 生命周期内的 repo/branch、开发入口和验证控制；**不做**问题发现与 trace、部署、通用 git 教学。
-- 当前支持 **Claude Code + Codex + DeepSeek Harness**。Claude/Codex 使用进程 hook adapter，DSH 使用原生 Cordis adapter；三端共用 TypeScript Board、状态、投影与 policy。周期 PR/MR 对账由 `tasks/tasks.json` 唯一发现，Claude native monitor 循环运行，Codex Scheduled task 单次运行。opencode 仍待协议明确。
+- 当前支持 **Claude Code + Codex + DeepSeek Harness**。Claude/Codex 使用进程 hook adapter；DSH bundle 暴露包内 skills，并挂载原生 Cordis adapter。三端共用 TypeScript Board、状态、投影与 policy。周期 PR/MR 对账由 `tasks/tasks.json` 唯一发现，Claude native monitor 循环运行，Codex Scheduled task 单次运行。opencode 仍待协议明确。
 
 ---
 
@@ -39,7 +39,8 @@ AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.jso
 ```
 devloop/
 ├── .claude-plugin/plugin.json     # Claude manifest（靠目录约定自动发现）
-├── cordis.patch.yml               # DSH bundle layer：挂载原生 Cordis adapter
+├── .codex-plugin/plugin.json      # Codex manifest（显式选择 Codex hooks）
+├── cordis.patch.yml               # DSH bundle layer：挂载 adapter + 暴露 skills
 ├── index.ts                        # npm 公共 API
 ├── adapters/                       # Harness 薄适配层
 │   ├── claude.ts  codex.ts        #   stdin/stdout hook dialect
@@ -71,7 +72,7 @@ devloop/
 │   └── tests/                      #   Python workflow 回归测试
 ├── monitors/monitors.json          # Claude native-monitor adapter：循环调用共享 task
 ├── commands/                       # slash：enter / gcam / gcamp / gcampr（validation 归 skill，gate 自动触发）
-├── skills/                         # git-ops / gcam* / validate / review + Codex Scheduled-task adapter
+├── skills/                         # 三端共享：git-ops / gcam* / validate / review + Scheduled-task adapter
 └── config/                         # config.example.json 模板；全局配置在 ~/.devloop/config.json，repo/workspace 可在 .devloop/config.json 就近覆盖
 ```
 

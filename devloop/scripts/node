@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+set -eu
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "devloop requires Node.js 22.19 or newer" >&2
+  exit 127
+fi
+
+exec node "$@"

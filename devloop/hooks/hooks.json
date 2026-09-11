@@ -11,13 +11,13 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/pretool_policy_bash.py\"", "timeout": 5, "statusMessage": "Checking command policy" }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"", "timeout": 5, "statusMessage": "Checking command policy" }
         ]
       },
       {
-        "matcher": "Edit|Write|NotebookEdit",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|apply_patch",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/pretool_policy_edit.py\"", "timeout": 5, "statusMessage": "Checking edit policy" }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"", "timeout": 5, "statusMessage": "Checking edit policy" }
         ]
       }
     ],
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/sessionstart_init.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
             "statusMessage": "Initializing devloop session"
           }
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/sessionend_release.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
             "statusMessage": "Releasing devloop owner locks"
           }
@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/userprompt_inject.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
             "statusMessage": "Injecting devloop context"
           }
@@ -62,7 +62,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/postcompact_reinject.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 5,
             "statusMessage": "Re-injecting devloop state after compaction"
           }
@@ -74,7 +74,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/filechanged_refs.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 5,
             "statusMessage": "Refreshing AGENTS.md references"
           }
@@ -86,7 +86,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/cwdchanged_enter.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
             "statusMessage": "Entering subproject (devloop)"
           }
@@ -110,7 +110,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/posttool_git_refresh.py\"",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
             "statusMessage": "Refreshing devloop branch state"
           }

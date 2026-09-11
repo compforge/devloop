@@ -39,6 +39,7 @@ AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.jso
 ```
 devloop/
 ├── .claude-plugin/plugin.json     # Claude manifest（靠目录约定自动发现）
+├── cordis.patch.yml               # DSH bundle layer：挂载原生 Cordis adapter
 ├── index.ts                        # npm 公共 API
 ├── adapters/                       # Harness 薄适配层
 │   ├── claude.ts  codex.ts        #   stdin/stdout hook dialect

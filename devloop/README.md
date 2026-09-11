@@ -49,7 +49,13 @@ codex plugin add devloop@devloop
 
 ### DeepSeek Harness
 
-npm 包通过 `@compforge/devloop/dsh` 导出原生 Cordis plugin，直接注册 DSH 的 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；三端只在 adapter 层分化。
+把原生 Cordis bundle 安装到需要启用 devloop 的 profile：
+
+```console
+dsh plugin --profile <name> add @compforge/devloop
+```
+
+包内声明的 DSH bundle layer 会自动挂载 `@compforge/devloop/dsh`，直接注册 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；三端只在 adapter 层分化。卸载使用 `dsh plugin --profile <name> remove @compforge/devloop`。
 
 安装后新开一个 session。Codex 如果要求审核 hook，可在 `/hooks` 中信任 devloop hooks。
 

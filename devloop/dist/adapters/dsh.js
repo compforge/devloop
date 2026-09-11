@@ -1,10 +1,15 @@
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import Schema from "@deepseek-ai/schemastery";
 import { BoardRuntime } from "../domain/board/runtime.js";
 import { afterTool, endSession, initializeBoard, recordToolCall } from "./process-hooks.js";
 import { decisionMessage } from "../hooks/core/domain.js";
 import { evaluateTool } from "../hooks/core/policy.js";
 export const name = "devloop";
 export const inject = [];
+/** DSH validates bundle configuration before mounting the plugin. */
+export const Config = Schema.object({
+    cwd: Schema.string(),
+});
 /** Native Cordis adapter. Domain and policy behavior remains in the shared core. */
 export function apply(ctx, config = {}) {
     const boardFor = (agent) => BoardRuntime.resolve(agent.session.header.cwd ?? config.cwd ?? process.cwd(), String(agent.id));

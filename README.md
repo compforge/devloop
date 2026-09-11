@@ -60,7 +60,13 @@ codex plugin add devloop@devloop
 
 ### DeepSeek Harness
 
-The package exports a native Cordis plugin at `@compforge/devloop/dsh`. It registers directly on DSH lifecycle and tool events; it does not shell out through the Claude/Codex hook protocol. Package publication and bundle wiring are tracked independently from the Git marketplace installation flow.
+Install the native Cordis bundle into the profile where devloop should run:
+
+```console
+dsh plugin --profile <name> add @compforge/devloop
+```
+
+The package declares its DSH bundle layer and mounts `@compforge/devloop/dsh` automatically. It registers directly on DSH lifecycle and tool events; it does not shell out through the Claude/Codex hook protocol. Remove it with `dsh plugin --profile <name> remove @compforge/devloop`.
 
 Start a new session after installation. If Codex asks for hook review, open `/hooks` and trust the devloop hooks. Repository state is initialized automatically when the agent first enters a Git repository.
 

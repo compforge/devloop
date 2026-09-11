@@ -2,6 +2,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { PostToolDecision, PreToolDecision } from "@deepseek-ai/dsh-tools";
+import Schema from "@deepseek-ai/schemastery";
 import { BoardRuntime } from "../domain/board/runtime.js";
 import { afterTool, endSession, initializeBoard, recordToolCall } from "./process-hooks.js";
 import { decisionMessage } from "../hooks/core/domain.js";
@@ -14,6 +15,11 @@ export interface Config {
   /** Fallback cwd for tool executions that have no owning agent. */
   readonly cwd?: string;
 }
+
+/** DSH validates bundle configuration before mounting the plugin. */
+export const Config: Schema<Config> = Schema.object({
+  cwd: Schema.string(),
+});
 
 /** Native Cordis adapter. Domain and policy behavior remains in the shared core. */
 export function apply(ctx: Context, config: Config = {}): void {

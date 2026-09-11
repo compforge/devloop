@@ -18,7 +18,8 @@ Board / state store <───────────────────�
 - `domain/`：Workspace、Repo、Component、Board、session/state 与 forge 中立模型。
 - `hooks/core/`、`hooks/rules/`：工具投影、策略上下文、规则评估和 Decision。
 - `adapters/claude.ts`、`adapters/codex.ts`：stdin/stdout hook dialect。
-- `adapters/dsh.ts`：原生 Cordis plugin，导出 `name`、`inject`、`apply`，直接监听 DSH lifecycle/tool events。
+- `adapters/dsh.ts`：原生 Cordis plugin，导出 `name`、`inject`、`Config`、`apply`，直接监听 DSH lifecycle/tool events。
+- `cordis.patch.yml`：可安装 DSH bundle layer；profile 安装包后由 `dsh.bundle.patch` 自动挂载 adapter。
 - `scripts/`：由 skill 调用的 Git、release、validation、review Python workflow，包含其私有辅助包；Harness runtime 不得导入该子树，也不得在其中新增另一份 Board 或 policy 语义。
 
 Claude/Codex 作为已安装 CLI plugin 时，使用官方 manifest 与 command hooks 即是原生接入；`@anthropic-ai/claude-agent-sdk` 和 `@openai/codex-sdk` 面向“应用内创建/控制 agent session”，不是 plugin hook 的运行时依赖。只有以后提供 embedded-agent adapter 或 SDK 级集成测试时才引入。
@@ -43,4 +44,4 @@ npm --prefix devloop run check
 npm --prefix devloop run build
 ```
 
-Git marketplace 直接执行已提交的 `dist/hooks/runtime.js`；npm 消费方通过 package exports 加载 `@compforge/devloop` 或 `@compforge/devloop/dsh`。
+Git marketplace 直接执行已提交的 `dist/hooks/runtime.js`；npm 消费方通过 package exports 加载 `@compforge/devloop` 或 `@compforge/devloop/dsh`，DSH profile 通过包内声明的 bundle layer 自动加载后者。

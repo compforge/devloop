@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import * as dshPlugin from "../adapters/dsh.js";
 import { claudeProcessAdapter, evaluateClaudePreTool } from "../adapters/claude.js";
 import { codexProcessAdapter } from "../adapters/codex.js";
-import { sessionStartOutput } from "../adapters/process-hooks.js";
+import { afterTool, sessionStartOutput } from "../adapters/process-hooks.js";
 
 describe("harness adapters", () => {
   it("maps Claude Code payloads into the shared guard", () => {
@@ -18,6 +18,15 @@ describe("harness adapters", () => {
   it("does not emit Claude-only watchPaths to Codex", () => {
     const output = sessionStartOutput({ hook_event_name: "SessionStart", cwd: process.cwd(), session_id: "s1" }, "codex");
     expect(JSON.stringify(output)).not.toContain("watchPaths");
+  });
+
+  it("does not mutate readonly tool input after execution", () => {
+    const toolInput = Object.freeze({ command: "true" });
+    expect(() => afterTool({
+      hook_event_name: "PostToolUse", tool_name: "bash", tool_input: toolInput,
+      cwd: process.cwd(), session_id: "s1",
+    }, "dsh")).not.toThrow();
+    expect(toolInput).toEqual({ command: "true" });
   });
 
   it("keeps harness identity in the selected adapter instead of guessing from payload shape", () => {

@@ -69,7 +69,7 @@ export function afterCwdChanged(payload) {
 const STATE_SUBCOMMANDS = new Set(["commit", "push", "checkout", "switch", "reset", "merge", "rebase", "pull", "fetch"]);
 export function afterTool(payload, harness) {
     const input = payload.tool_input;
-    const toolInput = input !== null && typeof input === "object" && !Array.isArray(input) ? input : { input: string(input) };
+    const toolInput = input !== null && typeof input === "object" && !Array.isArray(input) ? { ...input } : { input: string(input) };
     if (sessionId(payload))
         toolInput.session_id = sessionId(payload);
     const change = projectTool({ harness, toolName: string(payload.tool_name), toolInput, cwd: cwd(payload) });

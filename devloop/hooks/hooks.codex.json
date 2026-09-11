@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/pretool_policy_bash.py\"",
+            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 5,
             "statusMessage": "Checking command policy"
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/pretool_policy_edit.py\"",
+            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 5,
             "statusMessage": "Checking change policy"
           }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/sessionstart_codex_init.py\"",
+            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
             "statusMessage": "Initializing devloop session"
           }
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/sessionend_release.py\"",
+            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 3,
             "statusMessage": "Releasing devloop owner locks"
           }
@@ -66,7 +66,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/userprompt_inject.py\"",
+            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
             "statusMessage": "Injecting devloop context"
           }
@@ -79,7 +79,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/postcompact_reinject.py\"",
+            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 5,
             "statusMessage": "Re-injecting devloop state after compaction"
           }
@@ -103,7 +103,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/posttool_codex_refresh.py\"",
+            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
             "statusMessage": "Refreshing devloop state"
           }

@@ -3,11 +3,13 @@
 
 TEST_FILES ?=
 
-.PHONY: help test bump-version
+.PHONY: help test build typecheck bump-version
 
 help:
 	@echo "Targets:"
 	@echo "  test [TEST_FILES='devloop/tests/test_x.py ...']"
+	@echo "  build"
+	@echo "  typecheck"
 	@echo "  bump-version PLUGIN=<name> [LEVEL=patch|minor|major]"
 	@echo "  bump-version PLUGIN=<name> VERSION=<x.y.z>"
 	@echo ""
@@ -24,8 +26,14 @@ test:
 			MAKEFLAGS= MFLAGS= TEST_FILES= python3 "$$test_file" || exit $$?; \
 		done; \
 	else \
-		python3 devloop/tests/run_all.py; \
+		npm --prefix devloop run check && python3 devloop/tests/run_all.py; \
 	fi
+
+build:
+	npm --prefix devloop run build
+
+typecheck:
+	npm --prefix devloop run typecheck
 
 bump-version:
 	@test -n "$(PLUGIN)" || { echo "ERROR: PLUGIN is required, e.g. make bump-version PLUGIN=devloop"; exit 1; }

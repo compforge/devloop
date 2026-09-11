@@ -4,7 +4,7 @@
 
 **A controlled PR/MR development lifecycle for AI coding agents.**
 
-This repository is a cross-CLI plugin marketplace. Its flagship plugin, `devloop`, helps Claude Code and Codex complete branch-based development without losing control of repository state, validation, Git mutations, or concurrent sessions.
+This repository is a cross-CLI plugin marketplace. Its flagship plugin, `devloop`, helps Claude Code, Codex, and DeepSeek Harness complete branch-based development without losing control of repository state, validation, Git mutations, or concurrent sessions.
 
 The marketplace also distributes `code-taste`, a skill-only plugin for architecture, boundaries,
 naming, maintainability, documentation, and code review, plus `quality`, a skill-only plugin for
@@ -42,7 +42,7 @@ For the validation contract, configuration, commands, and advanced workflows, se
 
 ## Quick start
 
-Runtime requirement: **Python 3.10+**. Set `DEVLOOP_PYTHON` only when you need to force a specific interpreter.
+Runtime requirements: **Node.js 22.19+** for the shared runtime and harness adapters, plus **Python 3.10+** for skill-invoked Git, release, validation, and review scripts. Set `DEVLOOP_PYTHON` only when you need to force a specific Python interpreter.
 
 ### Claude Code
 
@@ -57,6 +57,10 @@ Runtime requirement: **Python 3.10+**. Set `DEVLOOP_PYTHON` only when you need t
 codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
+
+### DeepSeek Harness
+
+The package exports a native Cordis plugin at `@compforge/devloop/dsh`. It registers directly on DSH lifecycle and tool events; it does not shell out through the Claude/Codex hook protocol. Package publication and bundle wiring are tracked independently from the Git marketplace installation flow.
 
 Start a new session after installation. If Codex asks for hook review, open `/hooks` and trust the devloop hooks. Repository state is initialized automatically when the agent first enters a Git repository.
 
@@ -89,7 +93,7 @@ See [`config/config.example.json`](./devloop/config/config.example.json) for the
 
 ## Scope and compatibility
 
-- **Harnesses:** Claude Code and Codex are supported. Both use native `SessionEnd`; Claude uses its native monitor while Codex Scheduled tasks invoke the shared one-shot `monitor` skill.
+- **Harnesses:** Claude Code and Codex use thin process-hook adapters; DeepSeek Harness uses the native Cordis adapter. All three share the TypeScript Board, state, tool projection, and policy core. Skill workflow scripts remain Python and are harness-independent.
 - **Forges:** GitHub and GitLab are peer providers selected per repository.
 - **Ownership:** devloop owns the coding-harness development loop: repo/branch state, validation, commit/push, PR/MR creation, review delivery, and execution guardrails.
 - **Boundary:** requirement identity, cross-repository orchestration, deployment, long-running scheduling, and session wakeups belong to higher-level loops such as Baton and the [ReqLoop Marketplace](https://github.com/compforge/reqloop).

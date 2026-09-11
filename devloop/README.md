@@ -6,7 +6,7 @@
 enter repo → start branch → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
 ```
 
-它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code 和 Codex。
+它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code、Codex 和 DeepSeek Harness（DSH）。
 
 ## 为什么需要 devloop
 
@@ -31,7 +31,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 
 ## 快速开始
 
-运行时要求：**Python 3.10+**。devloop 会从 `PATH` 自动选择满足版本要求的 Python；需要固定解释器时设置 `DEVLOOP_PYTHON`。
+运行时要求：共享核心与 Harness adapter 使用 **Node.js 22.19+**；skill 调用的 Git、release、validation、review 工作流脚本继续使用 **Python 3.10+**。需要固定 Python 解释器时设置 `DEVLOOP_PYTHON`。
 
 ### Claude Code
 
@@ -46,6 +46,10 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
+
+### DeepSeek Harness
+
+npm 包通过 `@compforge/devloop/dsh` 导出原生 Cordis plugin，直接注册 DSH 的 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；三端只在 adapter 层分化。
 
 安装后新开一个 session。Codex 如果要求审核 hook，可在 `/hooks` 中信任 devloop hooks。
 

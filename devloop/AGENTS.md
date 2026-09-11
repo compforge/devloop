@@ -16,7 +16,7 @@ enter repo → 基于 branch 开发 → 按 Component 验证 → commit / push �
 
 **Workspace 是运行上下文，不是 PR/MR 的归属边界**：它可以聚合多个 repo，为项目知识和多 session 协作提供共同根；单仓库模式同样完整支持。跨 repo Requirement 与长期编排由 Baton/reqloop 拥有，devloop 不维护需求状态机。
 
-**目录按 owner 表达这个模型**：`domain/` 承载 Workspace / Repo / Component、branch/PR 状态、生命周期规则及合法变化；`lib/` 提供 Git、forge、ecosystem、config、parser 等技术能力；`hooks/` 与 `scripts/` 是事件和工作流两类驱动 adapter。入口只向 `domain/lib` 调用，两层都不反向依赖入口，让 LLM 对 workspace/repo 的作用落在可观测、可约束的路径上，而不是散落 shell 副作用。
+**目录按 owner 表达这个模型**：TypeScript `domain/` 承载 Workspace / Repo / Component、Board、branch/PR 状态与合法变化；`lib/` 提供 Git、forge、ecosystem、config、parser 等技术能力；`adapters/` 与 `hooks/` 只翻译各 Harness 的事件和输出。skill 调用的 Git/release/validation/review 工作流脚本保留 Python；它们可以编排命令，但不得复制 Harness 共享的 Board、状态或 policy 规则。入口只向 `domain/lib` 调用，两层都不反向依赖 adapter。
 
 AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.json` 是由 hooks、scripts、monitors 从 git、forge、验证命令和文字源派生的**结构化运行态**。Board 在两者之上组织当前 session 相关的紧凑视图并投递给 prompt。三者共同服务于同一个目标：让 LLM 对 workspace/repo 的作用可控、可观测、可验证。一轮循环的端到端时序见 [`docs/loop.md`](./docs/loop.md)。
 
@@ -30,7 +30,7 @@ AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.jso
 **边界**：
 - 聚合 workspace 与单 repo 都是运行形态，workspace 可选；子项目从文件系统发现，手工 init 不是前置。
 - 只管 PR/MR 生命周期内的 repo/branch、开发入口和验证控制；**不做**问题发现与 trace、部署、通用 git 教学。
-- 当前支持 **Claude Code + Codex**。两端共用 `SessionEnd` 释放路径；Claude 保留 CwdChanged / FileChanged，Codex 用 `posttool_codex_refresh.py` 补刷新缺口。周期 PR/MR 对账由 `tasks/tasks.json` 唯一发现，Claude native monitor 循环运行，Codex Scheduled task 单次运行。opencode 仍待协议明确。
+- 当前支持 **Claude Code + Codex + DeepSeek Harness**。Claude/Codex 使用进程 hook adapter，DSH 使用原生 Cordis adapter；三端共用 TypeScript Board、状态、投影与 policy。周期 PR/MR 对账由 `tasks/tasks.json` 唯一发现，Claude native monitor 循环运行，Codex Scheduled task 单次运行。opencode 仍待协议明确。
 
 ---
 
@@ -39,40 +39,35 @@ AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.jso
 ```
 devloop/
 ├── .claude-plugin/plugin.json     # Claude manifest（靠目录约定自动发现）
-├── domain/                         # 领域 owner：模型、状态变化与生命周期规则
-│   ├── repo.py                    #   ★Repo 模型 + cwd 无关解析 + WorkSet（本轮 components）
-│   ├── branch.py                  #   ★Branch 创建事务：fresh base / owner / dirty carry / fork_from
-│   ├── workspace.py               #   ★Workspace 注册、发现与归属
-│   ├── repo_layout.py             #   ★Component 模型 + repo/component 路径边界
-│   ├── context/                   #   ★状态源：repo/workspace/session、gate/prstate
-│   ├── board/                     #   ★Board：结构化模型/投影/view + delivery policy/receipt/renderer
-│   ├── lifecycle/                 #   ★pre/post commit/MR dispatch + lint/test/review handlers
-│   ├── forge.py                   #   ★PullRequest/Comment/Release 中立模型 + Forge port
+├── index.ts                        # npm 公共 API
+├── adapters/                       # Harness 薄适配层
+│   ├── claude.ts  codex.ts        #   stdin/stdout hook dialect
+│   ├── process-hooks.ts           #   Claude/Codex lifecycle translation
+│   └── dsh.ts                     #   原生 Cordis plugin（ctx.on）
+├── domain/                         # TypeScript 领域 owner
+│   ├── repo.ts                    #   ★Repo/Component WorkSet 与内容指纹
+│   ├── workspace.ts               #   ★Workspace 注册、发现与归属
+│   ├── repo-layout.ts             #   ★Component 模型 + repo/component 路径边界
+│   ├── context/                   #   ★状态源：workspace/session/gate/store
+│   ├── board/                     #   ★Board model/projection/view/delivery/render/runtime
+│   ├── forge.ts                   #   ★PullRequest/Comment/Release 中立模型 + Forge port
+│   ├── branch.py                  #   Python skill workflow：Branch 创建事务
 │   ├── pull_request_lifecycle.py  #   ★本地 branch / checkout ↔ PR/MR desired-state reconciliation
 │   ├── review_feedback.py         #   review finding/label 的领域 join
 │   ├── worktree.py                #   branch 隔离 checkout 的创建/复用、依赖准备与清理
 │   └── rebase.py                  #   已有 MR 分支的可恢复 rebase + 精确 SHA lease 发布
-├── lib/                            # 技术能力：被 domain/hooks/scripts 消费
-│   ├── gitcmd.py  git_state.py    #   ★统一 git runner 与 git/branch/worktree 事实
+├── lib/                            # TypeScript 技术能力：被 domain/adapters 消费
+│   ├── process.ts  git-state.ts   #   ★统一 command seam 与 git/branch/worktree 事实
 │   ├── forge/                     #   ★GitHub/GitLab 平级 adapter + HTTP/按 repo 分发
 │   ├── ecosystem/                 #   ★工具链身份、环境准备与 canonical fallback
-│   └── config.py  parsers.py      #   ★配置持久化与文字源解析
-├── hooks/                          # 事件驱动 adapter：把 LLM/CLI 工具调用投影成领域决策
+│   └── config.ts  parsers.ts      #   ★配置持久化与文字源解析
+├── hooks/                          # 共享 policy engine + 进程 hook 入口
 │   ├── hooks.json                 # Claude 事件注册
 │   ├── hooks.codex.json           # Codex 事件注册（含 SessionEnd + PostToolUse 刷新）
-│   ├── hook_io.py                 # hook payload/output harness
-│   ├── core/  rules/              # Change→Target→Rule→Decision 引擎与规则
-│   ├── cmdtree/  codemodel/       # Bash/FileChange 投影，只服务 hook policy
-│   ├── friction.py                # guard deny → friction ledger adapter
-│   ├── cwdchanged_enter.py        # Claude CwdChanged：自动 enter
-│   ├── posttool_codex_refresh.py  # Codex PostToolUse：补 cwd/state 刷新
-│   ├── sessionstart_init.py       # SessionStart：预热事实 + Board session items + watchPaths
-│   ├── userprompt_inject.py       # UserPromptSubmit：投递 Board 到期/变化条目
-│   ├── postcompact_reinject.py    # PostCompact：让 Board 重放状态条目
-│   ├── filechanged_refs.py        # FileChanged：刷新 AGENTS.md 事实
-│   ├── posttool_git_refresh.py       # PostToolUse：git 状态命令后刷新 branch 段
-│   ├── sessionend_release.py      # SessionEnd：释放本 session 的 owner 锁（正常退出路径）
-│   └── pretool_*.py               # 命令/编辑硬拦截（guard harness；含 owner 锁与裸 worktree add 拦截）
+│   ├── runtime.ts                 # Claude/Codex stdin/stdout executable
+│   ├── core/                      # Change→Target→Rule→Decision + 三端统一投影
+│   ├── rules/index.ts             # 保护分支、owner、validation、layer 等规则
+│   └── friction.ts                # guard deny → friction ledger adapter
 ├── tasks/                          # ★共享 task 发现 + 单次执行（PR/MR observation/reconciliation）
 ├── scripts/                        # 工作流驱动 adapter：含通用 run_task + git / validation / review 入口
 ├── monitors/monitors.json          # Claude native-monitor adapter：循环调用共享 task
@@ -104,3 +99,4 @@ devloop/
 - 共享术语（repo_dir / **component** + default component / 保护分支 / PR 模型 / 验证状态 / `<PLUGIN_ROOT>`）：[`CONCEPTS.md`](./CONCEPTS.md)
 - 仓库级（marketplace / 多 CLI）：[`../AGENTS.md`](../AGENTS.md)
 - 完整方案与设计决策：plan 文档（开发者本地 `~/.claude/plans/devloop-plugin-0.1.md`）
+- Harness adapter 边界与事件映射：[`docs/harness-adapters.md`](./docs/harness-adapters.md)

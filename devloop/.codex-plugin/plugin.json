@@ -1,7 +1,7 @@
 {
   "name": "devloop",
-  "version": "0.3.15",
-  "description": "Dev-loop workflow: git/PR (GitHub + GitLab) + Board-managed workspace/repo context delivery + lint/test gates + execution-level hard intercepts for Claude Code and Codex.",
+  "version": "0.4.0",
+  "description": "TypeScript dev-loop runtime with shared Board and policy: git/PR (GitHub + GitLab), workspace/repo context, lint/test gates, and thin Codex hooks.",
   "author": {
     "name": "compforge",
     "url": "https://github.com/compforge"

@@ -20,3 +20,6 @@ __pycache__/
 # Editor
 .idea/
 .vscode/
+
+# Node.js dependencies
+node_modules/

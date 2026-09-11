@@ -1,11 +1,6 @@
 import { deniedReason } from "../hooks/core/policy.js";
-export function harnessFromPayload(payload, configured) {
-    if (configured)
-        return configured;
-    return typeof payload.model === "string" ? "codex" : "claude";
-}
 export function preToolDecision(payload, configured) {
-    const harness = harnessFromPayload(payload, configured);
+    const harness = configured ?? "claude";
     const rawInput = payload.tool_input;
     const toolInput = rawInput !== null && typeof rawInput === "object" && !Array.isArray(rawInput)
         ? { ...rawInput }

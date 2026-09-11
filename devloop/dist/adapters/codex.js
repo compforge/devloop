@@ -3,4 +3,8 @@ import { preToolDecision } from "./hook-payload.js";
 export function evaluateCodexPreTool(payload) {
     return preToolDecision(payload, "codex");
 }
+export const codexProcessAdapter = {
+    harness: "codex",
+    preTool: evaluateCodexPreTool,
+};
 //# sourceMappingURL=codex.js.map

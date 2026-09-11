@@ -1,6 +1,6 @@
 # 分支状态——三态 freshness 模型
 
-devloop 关于分支的所有事实,过去挤在一个 `branch.json` + 一次 `RepoContext.load()` 里、同一种 freshness 待遇。它们其实分三类,**信任来源根本不同**,该用不同待遇。本文讲清这件事的 why;字段/常量的具体形状以代码为准(`domain/context/repo.py` / `gate.py` / `prstate.py`、`lib/git_state.py`)。
+devloop 关于分支的所有事实,过去挤在一个 `branch.json` + 一次 `RepoContext.load()` 里、同一种 freshness 待遇。它们其实分三类,**信任来源根本不同**,该用不同待遇。本文讲清这件事的 why;字段/常量的具体形状以代码为准(`scripts/domain/context/repo.py` / `scripts/domain/context/gate.py` / `scripts/domain/context/prstate.py`、`scripts/lib/git_state.py`)。
 
 ## 1. 理念:一个事实该多"新",取决于它会变得多快、读它要多贵、以及谁会偷偷改它
 
@@ -38,7 +38,7 @@ devloop 关于分支的所有事实,过去挤在一个 `branch.json` + 一次 `R
 
 ### 3.2 PR 归属键是 `(branch, head_sha)`,不是分支名
 
-`pick_branch_pr`(`prstate.py`):开 PR 优先,否则取 **source sha 是 live HEAD 祖先**的最近 finished PR。这让缓存窗口陈旧时**最多是找不到 PR(→ 不拦)**,绝不会为一个 HEAD 已不指向的 merged PR 复活拦截——同名复用(删了重建同名分支)因此不会误判(`test_gate_branch_name_reuse_not_falsely_inactive`)。
+`pick_branch_pr`(`scripts/domain/context/prstate.py`):开 PR 优先,否则取 **source sha 是 live HEAD 祖先**的最近 finished PR。这让缓存窗口陈旧时**最多是找不到 PR(→ 不拦)**,绝不会为一个 HEAD 已不指向的 merged PR 复活拦截——同名复用(删了重建同名分支)因此不会误判(`test_gate_branch_name_reuse_not_falsely_inactive`)。
 
 旧 `load()` 的二次弱键(`pr.json.branch == branch.json.current` 名字相等)被绕过:两段同源、同步陈旧时等式照样成立,会把旧 merged PR 号 join 回来——那正是事故根。gate 不吃这条 join,直接对 live 现算。
 

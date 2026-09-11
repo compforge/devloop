@@ -2,7 +2,7 @@
 
 devloop 把 checkout 隔离扩展到依赖环境：临时 worktree 不只要有独立源码，还必须让验证进程
 解析到**这个 checkout 对应的依赖**。本文只记录稳定模型；具体识别文件、命令和指纹文件名以
-`lib/ecosystem/` 为事实源。
+`scripts/lib/ecosystem/` 为事实源。
 
 ## 理念 / 概念
 
@@ -39,7 +39,7 @@ normalize 后同一 lifecycle 相位会并发跑 lint/test，因此 `ensure_read
 ### 生态是语言差异的唯一入口
 
 项目 manifest、语言展示、环境就绪、恢复命令和无 Makefile 时的 canonical 回落命令都由
-`lib/ecosystem/` 提供。`repo_layout`、命令 guard、worktree 创建和 lifecycle check 只消费
+`scripts/lib/ecosystem/` 提供。`repo_layout`、命令 guard、worktree 创建和 lifecycle check 只消费
 这个接口，不各自维护一份 `package.json` / `uv.lock` 判断。
 
 ### 自动恢复必须可重复

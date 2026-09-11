@@ -7,7 +7,7 @@ TEST_FILES ?=
 
 help:
 	@echo "Targets:"
-	@echo "  test [TEST_FILES='devloop/tests/test_x.py ...']"
+	@echo "  test [TEST_FILES='devloop/scripts/tests/test_x.py ...']"
 	@echo "  build"
 	@echo "  typecheck"
 	@echo "  bump-version PLUGIN=<name> [LEVEL=patch|minor|major]"
@@ -15,7 +15,7 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make test"
-	@echo "  make test TEST_FILES='devloop/tests/test_lifecycle.py'"
+	@echo "  make test TEST_FILES='devloop/scripts/tests/test_git_ops.py'"
 	@echo "  make bump-version PLUGIN=devloop"
 	@echo "  make bump-version PLUGIN=devloop LEVEL=minor"
 	@echo "  make bump-version PLUGIN=devloop VERSION=0.1.0"
@@ -26,7 +26,7 @@ test:
 			MAKEFLAGS= MFLAGS= TEST_FILES= python3 "$$test_file" || exit $$?; \
 		done; \
 	else \
-		npm --prefix devloop run check && python3 devloop/tests/run_all.py; \
+		npm --prefix devloop run check && python3 devloop/scripts/tests/run_all.py; \
 	fi
 
 build:

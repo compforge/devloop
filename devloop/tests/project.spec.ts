@@ -34,14 +34,11 @@ describe("projectTool", () => {
     }).targets[0]).toMatchObject({ kind: "file_change", path: "/workspace/a.ts", mode: "edit" });
   });
 
-  it("restores nested Codex exec mutations", () => {
-    const patch = "*** Begin Patch\n*** Update File: a.ts\n*** End Patch";
-    const source = `const result = await tools.exec_command({cmd:"git add -A", workdir:"/repo"});\ntext(await tools.apply_patch(${JSON.stringify(patch)}));`;
-    const change = projectTool({ harness: "codex", toolName: "exec", cwd: "/workspace", toolInput: { input: source } });
-    expect(change.targets).toMatchObject([
-      { kind: "command", subcommand: "add", workingDirectory: { path: "/repo" } },
-      { kind: "file_change", path: "a.ts", mode: "edit" },
-    ]);
+  it("unwraps shell launchers before applying command policy", () => {
+    for (const command of ['bash -lc "git add -A"', "env FOO=1 git add --all", "command git add ."]) {
+      const change = projectTool({ harness: "codex", toolName: "Bash", cwd: "/workspace", toolInput: { command } });
+      expect(change.targets[0]).toMatchObject({ kind: "command", subcommand: "add" });
+    }
   });
 
   it("preserves shell scope for subshells, substitutions, pipes, and generic -C", () => {

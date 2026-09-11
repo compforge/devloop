@@ -14,16 +14,18 @@ export function identityFromEnvironment() {
     return { harness: "unknown", sessionId: "" };
 }
 function safeHarness(harness) { return harness.trim().toLowerCase().replace(/[^A-Za-z0-9._-]/g, "-") || "unknown"; }
-function lockFile(repo, harness) { return join(workingTreeStateDirectory(repo), `${safeHarness(harness)}.owner.lock`); }
-export function readOwner(repo, harness = "claude") {
+function lockFile(repo) { return join(workingTreeStateDirectory(repo), "owner.lock"); }
+function legacyLockFile(repo, harness) { return join(workingTreeStateDirectory(repo), `${safeHarness(harness)}.owner.lock`); }
+function readOwnerFile(path) {
     try {
-        const value = JSON.parse(readFileSync(lockFile(repo, harness), "utf8"));
+        const value = JSON.parse(readFileSync(path, "utf8"));
         return value !== null && typeof value === "object" && !Array.isArray(value) ? value : undefined;
     }
     catch {
         return undefined;
     }
 }
+export function readOwner(repo) { return readOwnerFile(lockFile(repo)); }
 function pidAlive(pid) {
     if (typeof pid !== "number" || !Number.isInteger(pid) || pid < 1)
         return false;
@@ -39,16 +41,18 @@ function active(owner, at) {
     return owner !== undefined && (pidAlive(owner.pid) || at - owner.acquired_at < OWNER_TTL_SECONDS);
 }
 export function foreignOwner(repo, sessionId, harness = "claude", at = now()) {
-    const owner = readOwner(repo, harness);
-    return owner && owner.session_id !== sessionId && active(owner, at) ? owner : undefined;
+    const owner = anyActiveOwner(repo, at);
+    return owner && (owner.session_id !== sessionId || owner.harness !== safeHarness(harness)) ? owner : undefined;
 }
 export function anyActiveOwner(repo, at = now()) {
+    const current = readOwner(repo);
+    if (active(current, at))
+        return current;
     try {
         for (const name of readdirSync(workingTreeStateDirectory(repo))) {
             if (!name.endsWith(".owner.lock"))
                 continue;
-            const harness = name.slice(0, -".owner.lock".length);
-            const owner = readOwner(repo, harness);
+            const owner = readOwnerFile(join(workingTreeStateDirectory(repo), name));
             if (active(owner, at))
                 return owner;
         }
@@ -61,24 +65,28 @@ export function acquireOwner(repo, identity, branch = currentBranch(repo) ?? "",
     if (!identity.sessionId)
         return true;
     const harness = safeHarness(identity.harness);
-    const path = lockFile(repo, harness);
+    const path = lockFile(repo);
     const record = { harness, session_id: identity.sessionId, pid, branch, acquired_at: at };
-    const owner = readOwner(repo, harness);
-    if (owner?.session_id === identity.sessionId) {
+    const owner = anyActiveOwner(repo, at);
+    if (owner?.session_id === identity.sessionId && owner.harness === harness) {
         try {
             const temporary = `${path}.${process.pid}.tmp`;
             writeFileSync(temporary, JSON.stringify(record));
             renameSync(temporary, path);
+            try {
+                unlinkSync(legacyLockFile(repo, harness));
+            }
+            catch { /* already migrated */ }
         }
         catch { /* best-effort refresh */ }
         return true;
     }
-    if (active(owner, at))
+    if (owner)
         return false;
     try {
         ensureGitExclude(repo);
         mkdirSync(workingTreeStateDirectory(repo), { recursive: true });
-        if (owner && existsSync(path))
+        if (existsSync(path))
             unlinkSync(path);
         for (let attempt = 0; attempt < 2; attempt += 1) {
             try {
@@ -90,9 +98,9 @@ export function acquireOwner(repo, identity, branch = currentBranch(repo) ?? "",
             catch (error) {
                 if (error.code !== "EEXIST")
                     throw error;
-                const current = readOwner(repo, harness);
+                const current = readOwner(repo);
                 if (current)
-                    return current.session_id === identity.sessionId;
+                    return current.session_id === identity.sessionId && current.harness === harness;
                 try {
                     unlinkSync(path);
                 }
@@ -108,16 +116,25 @@ export function acquireOwner(repo, identity, branch = currentBranch(repo) ?? "",
 export function releaseOwner(repo, identity) {
     if (!identity.sessionId)
         return false;
-    const owner = readOwner(repo, identity.harness);
-    if (owner?.session_id !== identity.sessionId)
-        return false;
-    try {
-        unlinkSync(lockFile(repo, identity.harness));
-        return true;
+    const harness = safeHarness(identity.harness);
+    let released = false;
+    const current = readOwner(repo);
+    if (current?.session_id === identity.sessionId && current.harness === harness) {
+        try {
+            unlinkSync(lockFile(repo));
+            released = true;
+        }
+        catch { /* already absent */ }
     }
-    catch {
-        return false;
+    const legacy = readOwnerFile(legacyLockFile(repo, harness));
+    if (legacy?.session_id === identity.sessionId) {
+        try {
+            unlinkSync(legacyLockFile(repo, harness));
+            released = true;
+        }
+        catch { /* already absent */ }
     }
+    return released;
 }
 export function ownerDescription(owner) {
     return `branch '${owner.branch || "?"}', session ${owner.session_id.slice(0, 8)}...`;

@@ -4,7 +4,7 @@ devloop 内多个 skill / 脚本共用的术语。架构理念见 [`AGENTS.md`](
 
 ## 路径术语
 
-- **subproject**：聚合工作区直接子项中「是 / 指向 git 仓」的那些目录——存在性由**文件系统自发现**判定（`domain/context/workspace.py::discover_subproject_names`，判据：子目录含 `.git`），而非手写表格。workspace `AGENTS.md` 的子项目表是**可选润色**，按目录名 join 补 `aliases` / `role`（`language` 缺省自动探测，表格显式值覆盖）；表格里有、文件系统没有但目录尚存的行仍保留，渐进收敛。
+- **subproject**：聚合工作区直接子项中「是 / 指向 git 仓」的那些目录——存在性由**文件系统自发现**判定（`domain/context/workspace.ts::discoverSubprojectNames`，判据：子目录含 `.git`），而非手写表格。workspace `AGENTS.md` 的子项目表是**可选润色**，按目录名 join 补 `aliases` / `role`（`language` 缺省自动探测，表格显式值覆盖）；表格里有、文件系统没有但目录尚存的行仍保留，渐进收敛。
 - **`repo_dir`**：子项目目录入口（可能是软链接）。用前 `realpath` 确认真实路径。
 - **repo**（`domain.repo.Repo`）：PR/MR 的创建、branch 开发与 forge 状态所锚定的 git 仓边界，不是一个裸路径字符串。解析边界一次算清入口路径、canonical git root、所属 workspace 与解析来源；一个 PR/MR 只属于一个 repo，而一个 repo 可以包含多个 component。
 - **`component`**（`repo_layout.Component`）：仓库内一个可独立 build/lint/test 的项目目录，也是该 component 工具命令的 workdir。**身份由语言的项目清单定义**（`_is_component`：`go.mod` / `pyproject.toml` / `setup.py` / `package.json`——TS 与 JS 同为 `package.json`，`tsconfig.json` 只是编译配置、一个 package 里可有多份，不定义边界）。**`Makefile` 刻意不算身份**：它是 component 的**动作入口**（怎么 lint/test，见下）——doctor 的 `server/` 与 `cli/` 都有 Makefile，但让它们成为 component 的是 pyproject / package.json；反过来 `docs/` 里一个 sphinx Makefile、仓根一个转发用的编排 Makefile，都不该因此变成 component。`requirements.txt` 同理不算（依赖清单不是项目边界，常见形态正是仓根放一份给容器构建、真项目在 `server/`），但它仍是 `detect_language` 的语言线索——「这是什么语言」和「这是不是一个项目」是两个问题。一个 git 仓可含**多个** component（`server/` + `cli/`、`packages/*`、`cmd/*`），**仓根也可以是其中之一**（根是 Go module + `server/` 是 Python component 时两者都在）——所以「哪个 component」由**路径**决定、不是 repo 的单值属性。这里有**两个不同的问题**，别混：
@@ -17,16 +17,16 @@ devloop 内多个 skill / 脚本共用的术语。架构理念见 [`AGENTS.md`](
 
 ## 保护分支
 
-分支是否受保护是**派生**的（`Branch.is_protected()`，**不存进** `branch.json`）：注入头部据此打 `⚠️ PROTECTED`，而 `protect_branch` 硬 gate 走 `gate.evaluate()` 按 **live 分支名**判——缓存陈旧（观测不到的 checkout 后）也不会漏判保护分支。判定规则（`lib/git_state.py`）：`main` / `master` 严格匹配；`release` 严格匹配或以 `release` 开头 / 结尾；`release` 出现在中间不算（`feat/release-notes` 不受保护）。
+分支是否受保护是**派生**的（**不存进** `branch.json`）：注入头部据此打 `⚠️ PROTECTED`，而 `protect-branch` guard 走 `domain/context/gate.ts::evaluateGate()` 按 live 分支名判。规则在 `lib/git-state.ts::isProtectedBranch()`：`main` / `master` 严格匹配；`release` 严格匹配或以 `release` 开头 / 结尾；`release` 出现在中间不算（`feat/release-notes` 不受保护）。
 
 ## PR 模型（PR/MR 统一概念）
 
-评审提案在 devloop 里是 `domain/forge.py` 定义的**中立领域对象 `PullRequest`**（GitHub PR / GitLab MR 同一概念），由 `lib/forge/` 按 repo 的 origin 解析出对应 adapter 产出；context 状态源只持久化与 join，不重定义，Board 再选择与当前工作相关的投影视图。`PullRequest` **不带 provider**——provider 是 **repo 级事实**（一个仓要么 GitHub 要么 GitLab），存在 `pr.json` 段头；展示时用 `pr_label(provider, number)` / `vocab(provider)` 贴回词汇（GitHub `PR #`、GitLab `MR !`）。
+评审提案在 devloop 里是 `scripts/domain/forge.py` 定义的**中立领域对象 `PullRequest`**（GitHub PR / GitLab MR 同一概念），由 `scripts/lib/forge/` 按 repo 的 origin 解析出对应 adapter 产出；context 状态源只持久化与 join，不重定义，Board 再选择与当前工作相关的投影视图。`PullRequest` **不带 provider**——provider 是 **repo 级事实**（一个仓要么 GitHub 要么 GitLab），存在 `pr.json` 段头；展示时用 `pr_label(provider, number)` / `vocab(provider)` 贴回词汇（GitHub `PR #`、GitLab `MR !`）。
 
 - **`number`**：PR/MR 在 repo 内的编号（URL 里那个号；GitLab 的 `iid`、GitHub 的 PR number 统一为 `number`）。
 - **`state`**：归一为 `open` / `merged` / `closed`（GitHub 的 open/closed + `merged` 布尔在 adapter 里收敛为这三态）。
 - **`branch.pr_number`**：当前分支那条 PR 的编号（只存编号，整对象 join `prs`）。
-- **`prs`**：近期 PR 窗口，monitor 周期 sweep 写入，定长 cap（数值在 `domain/context/base.py`）。窗口策略是**领域层** `build_window`（最新 cap + 确保当前分支 anchor 在内），组合在 port 的 `recent()` + `get()` 原语之上——**对两家一致**，adapter 不各写一份；adapter 只管协议差异。
+- **`prs`**：近期 PR 窗口，monitor 周期 sweep 写入，定长 cap（数值在 `domain/context/base.ts`）。窗口策略是**领域层** `build_window`（最新 cap + 确保当前分支 anchor 在内），组合在 port 的 `recent()` + `get()` 原语之上——**对两家一致**，adapter 不各写一份；adapter 只管协议差异。
 - **本地 PR/MR inventory**：`local_pull_requests.json` 以全部 local branch 为主轴，关联 Forge PR/MR 与可选 checkout（primary / managed / external / 无 checkout），并记录本轮权威状态变化和 reconciliation action。它与 `pr.json` 分开：gate 刷新当前分支时保持单次查询低延迟，周期 task 才对全部本地分支对账。worktree 回收后 branch / PR 记录仍保留，只把 checkout 投影置空。
 - **状态 reconciliation**：Forge 当前状态是事实，`pull_request_lifecycle` 把它映射为幂等动作，不依赖捕获某次边沿事件。`state∈{merged,closed} + linked worktree` 直接触发强制回收；dirty、任意 harness 的活跃 owner、当前 checkout、worktree lock、managed / external 分类、已初始化 submodule 或嵌套 registered worktree 均不构成保留依据。这里的取舍是非对称的：linked checkout 是可重建的 agent workspace，误删只有重新 checkout / 恢复环境的有界成本，持续保留依赖、submodule 与构建产物却会累积占用磁盘。primary checkout 是仓库元数据锚点，不是 linked-worktree 回收目标；branch ref 始终保留，需要时可重建 checkout。没有 PR/MR 终态依据的 `keep_recent` 容量裁剪仍走安全删除。
 - **branch 归属**：`pr.json` 记录其写入时的 branch + provider；`RepoContext.load` 的名字相等 join（`pr.json.branch == branch.local.name`）是**展示级**——切分支时自失效，供 Board 提示够用。
@@ -54,21 +54,21 @@ devloop 循环（`enter → 提需求 → 开发 → commit/PR → 人工 merge 
 
 ## Owner / guest session（checkout 占有）
 
-聚合工作区下多个 CLI session（claude / codex …）并发操作同一 workspace 是常态；每个 checkout 在同一 harness 内同一时刻只属于一个 session：
+聚合工作区下多个 CLI session（claude / codex …）并发操作同一 workspace 是常态；每个 checkout 跨 Harness 同一时刻只属于一个 session：
 
-- **owner**：第一个对该 checkout 做**变更动作**的 session——Edit/Write、切分支 / commit 等会碰可变面（working tree / index / 分支位置）的操作，任一建立占有；按 harness 持有 `<git_root>/.devloop/<harness>.owner.lock`（如 `codex.owner.lock` / `claude.owner.lock`，记录 harness 名、pid 存活 + ts-TTL 判活）。同一 harness 的 session 互斥，不同 harness 各管自己的 session、互不拦截。占有点：edit guard 首笔编辑 / checkout guard / posttool git 变更。**enter / 只读不占有**：enter 只是选中上下文，多 session 并读不互斥——判据与下面 gitignored 豁免同源：是否污染 owner 的 diff。
-- **guest**：同一 harness 内的其它并发 session。guest 的两条破坏路径被硬拦——切分支（`checkout_owner_guard`）与直接 Edit/Write（`edit_owner_guard`），统一引导走 managed-worktree 脚本创建隔离 checkout。
+- **owner**：第一个对该 checkout 做**变更动作**的 session——Edit/Write、切分支 / commit 等会碰可变面（working tree / index / 分支位置）的操作，任一建立占有；统一持有 `<git_root>/.devloop/owner.lock`，记录 harness、session、pid 与 TTL。Claude、Codex、DSH 竞争同一把锁。占有点：edit guard 首笔编辑 / checkout guard / posttool git 变更。**enter / 只读不占有**：enter 只是选中上下文，多 session 并读不互斥。
+- **guest**：除当前 owner 外的其它并发 session（包括其它 Harness）。guest 的两条破坏路径被硬拦——切分支（`checkout_owner_guard`）与直接 Edit/Write（`edit_owner_guard`），统一引导走 managed-worktree 脚本创建隔离 checkout。
 - **gitignored 文件豁免**：guest 写 gitignored 路径（eval 输出、运行日志…）放行——不进 owner 的 status/diff，无混入风险；放行不转移占有权。
-- **释放（两层都有）**：session 正常结束由 SessionEnd hook（`sessionend_release`）立即清掉本 session 的全部运行态（owner 锁含 worktree checkout + active 绑定）；崩溃 / hook 没跑到时退化到 pid 死亡判活，ts-TTL 仅在 pid 不可探测时兜底。
-- 刻意共享 checkout 的逃逸口：人工删对应的 `<harness>.owner.lock`。
+- **释放（两层都有）**：session 正常结束由 SessionEnd 或 agent disposed adapter 立即清掉本 session 的全部运行态（owner 锁含 worktree checkout + active 绑定）；崩溃 / hook 没跑到时退化到 pid 死亡判活，TTL 兜底。
+- 刻意共享 checkout 的逃逸口：人工删对应的 `owner.lock`。
 
 为什么这样设计（acquire 跟活动走、edit 也要拦）见 AGENTS.md〈Owner 锁〉。
 
 ## Session 运行态
 
-session-scoped 运行状态的统一生命周期约定：**activity 时创建 → SessionEnd 释放（`sessionend_release` hook）→ pid / TTL 兜底过期**；落盘一文件一 owner（owner = session）。实现统一在 `domain/context/session.py`——context 按 owner 粒度分模块（session / workspace / repo），模块归属看事实的 owner，不看文件落在哪个目录。当前两个实例：
+session-scoped 运行状态的统一生命周期约定：**activity 时创建 → SessionEnd / agent disposed 释放 → pid / TTL 兜底过期**；落盘一文件一 owner（owner = session）。实现统一在 `domain/context/session.ts`，三个 Harness 共用。当前两个实例：
 
-- **checkout 占有**：`<git_root>/.devloop/<harness>.owner.lock`（上节）。
+- **checkout 占有**：`<git_root>/.devloop/owner.lock`（上节）。
 - **repo 绑定**：`<workspace_root>/.devloop/active/<session_id>.json`——"该 session 最近在干哪个仓"，喂脚本兜底解析与 workspace 根的 Board turn view。hook 使用 payload 身份，脚本由 `SessionIdentity` 从 `CLAUDE_CODE_SESSION_ID` / `CODEX_THREAD_ID` 识别当前 harness 与 session。**绝不读别的 session 的绑定当答案**：无绑定即拒绝兜底、要求显式 `--repo`，他人绑定仅在报错里作候选提示——拿不准时最多麻烦一次，绝不静默走错仓。
 
 ## 验证状态
@@ -110,11 +110,11 @@ item 签名、次数与时间，不复制业务事实。PostCompact 只清状态
 review 结果、Finding 待判定提醒等 event 保持已消费状态，`ui_only` 不产生投递游标。完整
 设计见 [`docs/board.md`](./docs/board.md)。
 
-schema / TTL / cap 数值在 `domain/context/base.py`，不在文档复述。
+schema / TTL / cap 数值在 `domain/context/base.ts`，不在文档复述。
 
 ## 脚本的 repo 解析
 
-commit_flow / run_validate / run_lint / run_tests 与 cwd 解耦（session cwd 在聚合工作区常驻 workspace 根）：repo 按"显式参数（`--repo` 名/路径）→ cwd 所在仓库 → 本 session 绑定的最近活跃仓（`active/<sid>.json`，见〈Session 运行态〉）"解析，解析来源自述在输出/PLAN 里。本 session 无绑定即拒绝兜底，报错附其它 session 的活跃仓做候选提示。名字统一走 `domain/repo.py` 的模糊匹配。
+commit_flow / run_validate / run_lint / run_tests 与 cwd 解耦（session cwd 在聚合工作区常驻 workspace 根）：repo 按"显式参数（`--repo` 名/路径）→ cwd 所在仓库 → 本 session 绑定的最近活跃仓（`active/<sid>.json`，见〈Session 运行态〉）"解析，解析来源自述在输出/PLAN 里。本 session 无绑定即拒绝兜底，报错附其它 session 的活跃仓做候选提示。名字统一走 `scripts/domain/repo.py` 的模糊匹配。
 
 ## 占位符 `<PLUGIN_ROOT>`
 

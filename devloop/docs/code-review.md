@@ -42,7 +42,7 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   duration 相加；汇总 header 的 `cost` 仍表示整次 review 的总耗时。
 - **Finding/Verdict 关系锚在 forge 上,不落本地**:finding comment 带 `ccr:fp=` 指纹,Verdict 以
   `ccr:label=` 回复落在其下；Forge adapter 把平台线程整理成 top-level Comment + replies，
-  `domain/review_feedback.py` 直接读取。指纹跟着持久对象（comment body）走,所以换机器 /
+  `scripts/domain/review_feedback.py` 直接读取。指纹跟着持久对象（comment body）走,所以换机器 /
   换 worktree / 换 session 都接得上;
   本地存一份 fp→comment-id 表只会是这份数据的陈旧副本,丢了还会把 join 悄悄弄断。
   待判定数（`Review findings: N 条待判定`）由此派生,刻意不用 review.json 的 finding 数——
@@ -102,10 +102,10 @@ path 退化。发布阶段再按稳定 fingerprint 跳过已有未解决 thread 
 的同一 finding；已解决且不属于这两类的问题若重新出现，允许重新发布。尚未创建 PR/MR 时
 没有可恢复的跨次 history。临时 CI runner 采用同一姿势即可，无需缓存容器或持久化 workspace。
 
-关键对象（锚点）：`domain/lifecycle/review.py`（`review` handler，返回 relay）、`commit_flow`
+关键对象（锚点）：`scripts/domain/lifecycle/review.py`（`review` handler，返回 relay）、`commit_flow`
 （`launch_background_relays`，各相位 git 动作后 detach 起）、`scripts/run_review.py`（后台执行体：
-审全量 diff + 机会性发评论，经 `lib/review_engine.py` 协议调引擎）、`lib/review_engine.py`（**review
-tool 协议** `ReviewEngine` + `ReviewResult` + ocr/ccr adapter）、`domain/review_feedback.py`（Finding↔Verdict
+审全量 diff + 机会性发评论，经 `scripts/lib/review_engine.py` 协议调引擎）、`scripts/lib/review_engine.py`（**review
+tool 协议** `ReviewEngine` + `ReviewResult` + ocr/ccr adapter）、`scripts/domain/review_feedback.py`（Finding↔Verdict
 join + Forge comments→history 投影，纯函数、无 HTTP）、`scripts/review.py`（ReviewRun / Finding /
 Verdict / resolve 的 provider-neutral 入口）、
 `forge.comment`（写评论原语，gitlab notes / github issue comment）、
@@ -142,7 +142,7 @@ HEAD 是谁」**：
 也行——一样审、一样注入,只是没 MR 可评时不发评论。
 
 **切引擎**：默认 `ccr`，切回 ocr 在 `~/.devloop/config.json` 加 `"review": {"tool": "ocr"}`。
-devloop 只依赖 **review tool 协议**（`lib/review_engine.py` 的 `ReviewEngine`：`available()` /
+devloop 只依赖 **review tool 协议**（`scripts/lib/review_engine.py` 的 `ReviewEngine`：`available()` /
 `configured()` / `review() → ReviewResult`）——ocr/ccr 各自独立 adapter（`CcrEngine` / `OcrEngine`，
 **刻意不共享基类、接受重复**，好让它们自由演进）。**接一个非 ocr 系列的引擎 = 加个 adapter 实现协议，`run_review` 一行不动**。
 引擎需自备 LLM（保留各自 key/endpoint，devloop 不接管）。未装引擎或未配 LLM → run_review 写
@@ -224,7 +224,7 @@ history 中标记 `failed`，不抹去已接受的 finding。
 汇总包含状态及 warning 类型计数，原始诊断保留在本地 `review.json`，不直接发布原始错误文本。
 Board 与 `review status` 同步呈现异常；历史记录保存状态、计数、message 和 session ID。
 
-回归 Case 位于 `tests/test_review.py`：覆盖 Unit 双 warning 去重、全部已知类型、阶段错误无文件、
+回归 Case 位于 `scripts/tests/test_review.py`：覆盖 Unit 双 warning 去重、全部已知类型、阶段错误无文件、
 未知 warning/状态、超时及缺失终态保留部分结果、零 finding 仍报告异常、正常 clean 不发评论。
 
 ## 结果回流（下一轮）：agent 怎么做

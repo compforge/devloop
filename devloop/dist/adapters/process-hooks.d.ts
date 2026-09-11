@@ -12,5 +12,7 @@ export declare function afterCompact(payload: HookPayload): void;
 export declare function afterCwdChanged(payload: HookPayload): void;
 export declare function afterTool(payload: HookPayload, harness: RuntimeHarness): void;
 export declare function afterFileChanged(payload: HookPayload): void;
-export declare function endSession(payload: HookPayload, harness: HookHarness): void;
+/** Record tool timing in the same TypeScript process that evaluates hook policy. */
+export declare function recordToolCall(payload: HookPayload, harness: RuntimeHarness): void;
+export declare function endSession(payload: HookPayload, harness: RuntimeHarness): void;
 //# sourceMappingURL=process-hooks.d.ts.map

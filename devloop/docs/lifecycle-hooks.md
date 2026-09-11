@@ -38,12 +38,12 @@ harness 不跟踪、跑完不会 re-invoke 会话）——异步靠某个 hook �
 
 | 对象 | 位置 | 职责 |
 |---|---|---|
-| `dispatch` / `HookResult` / `BackgroundSpec` | `domain/lifecycle/base.py` | facade：并发 join + 聚合；纯机制 |
-| normalize + `lint` / `test` checks | `domain/lifecycle/checks.py` | 内置 Component validation（与 validate skill 共用） |
+| `dispatch` / `HookResult` / `BackgroundSpec` | `scripts/domain/lifecycle/base.py` | facade：并发 join + 聚合；纯机制 |
+| normalize + `lint` / `test` checks | `scripts/domain/lifecycle/checks.py` | 内置 Component validation（与 validate skill 共用） |
 | `run_lifecycle_gate` / `phase_paths` | `scripts/commit_flow.py` | 在 commit/mr 流水线里的 dispatch 插点 + 算出本相位「本次改动」的范围 |
-| `select_components` / `committed_paths` / `range_paths` | `domain/repo.py` | 范围 → component 投影；各相位取「本次改动」的 git 问法 |
-| `PrecommitGateRule` | `hooks/rules/command/precommit_gate.py` | 裸 `git commit` 的兜底守卫（查戳，不跑） |
-| `config.lifecycle()` | `lib/config.py` | 「哪个相位挂哪些 hook」的数据（opt-in，默认空） |
+| `select_components` / `committed_paths` / `range_paths` | `scripts/domain/repo.py` | 范围 → component 投影；各相位取「本次改动」的 git 问法 |
+| `PrecommitGateRule` | `hooks/rules/index.ts` | 裸 `git commit` 的兜底守卫（查戳，不跑） |
+| `config.lifecycle()` | `scripts/lib/config.py` | 「哪个相位挂哪些 hook」的数据（opt-in，默认空） |
 
 ---
 
@@ -101,11 +101,11 @@ dispatch 对 handler 抛异常一律收敛成 `ok=False`（fail-closed：把关�
 **handler 自己 catch 内部异常、恒返回 `ok=True`（必要时带告警 summary、不带 relay）**
 来保证，是 handler 的契约，不是 dispatcher 的特例。dispatcher 因此保持极简：一种行为。
 
-### 为什么 validation 逻辑在 `domain/lifecycle/checks`
+### 为什么 validation 逻辑在 `scripts/domain/lifecycle/checks`
 
 validate skill 与 lifecycle pre_commit gate 必须跑**同一段**逻辑、在**同一处**盖各 check
 戳，否则手工验证和 gate 会漂移。component 选择、normalize、lint/test target、warm-cache 清理
-和盖戳都在 `domain/lifecycle/checks`；`scripts/run_validate.py` / `run_lint.py` / `run_tests.py`
+和盖戳都在 `scripts/domain/lifecycle/checks.py`；`scripts/run_validate.py` / `run_lint.py` / `run_tests.py`
 是 CLI adapter。
 
 `make fix` 是 validation 的 normalize 前置，不属于 lint check。dispatcher 必须等 normalize 完成，
@@ -168,7 +168,7 @@ focused 结果只说明本轮选中的测试通过，不更新 Component 的全�
 
 ### signal hook 实例：code-review
 
-code-review 是 signal hook（`domain/lifecycle/review.py` 的 `review`，返回带 `relay` 的 HookResult，
+code-review 是 signal hook（`scripts/domain/lifecycle/review.py` 的 `review`，返回带 `relay` 的 HookResult，
 不在 subprocess 里跑 ocr）。**它是一个动作,挂哪个相位由 config 决定**;`commit_flow` detach 起
 `run_review`,审 `origin/<target>..HEAD`,写 `.devloop/review.json`(通用交付,下一轮注入浮现)。
 **机会性**:relay 跑时若分支有开放 MR(典型 `post_mr`,或往在途 MR 追加时),额外经 `forge.comment`

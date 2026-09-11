@@ -1,7 +1,8 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type { PreToolDecision } from "@deepseek-ai/dsh-tools";
 import { describe, expect, it } from "vitest";
-import { evaluateClaudePreTool } from "../adapters/claude.js";
+import { claudeProcessAdapter, evaluateClaudePreTool } from "../adapters/claude.js";
+import { codexProcessAdapter } from "../adapters/codex.js";
 import { apply } from "../adapters/dsh.js";
 import { sessionStartOutput } from "../adapters/process-hooks.js";
 
@@ -17,6 +18,12 @@ describe("harness adapters", () => {
   it("does not emit Claude-only watchPaths to Codex", () => {
     const output = sessionStartOutput({ hook_event_name: "SessionStart", cwd: process.cwd(), session_id: "s1" }, "codex");
     expect(JSON.stringify(output)).not.toContain("watchPaths");
+  });
+
+  it("keeps harness identity in the selected adapter instead of guessing from payload shape", () => {
+    expect(claudeProcessAdapter.harness).toBe("claude");
+    expect(codexProcessAdapter.harness).toBe("codex");
+    expect(claudeProcessAdapter.preTool({ hook_event_name: "PreToolUse", model: "claude-opus-4-1" })).toEqual({});
   });
 
   it("registers the same guard natively in Cordis", async () => {

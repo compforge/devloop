@@ -23,7 +23,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 - **Git/PR 事务**：独立的 branch-create 事务在编辑前从目标分支建立干净基线；`gcam`、`gcamp`、`gcampr` 分别完成 commit、commit + push、commit + push + PR/MR。已有 PR/MR 可安全追加提交或进行可恢复 rebase。
 - **Component 感知验证**：一个仓库可包含多个独立 Component，例如 `server/`、`cli/` 或 `packages/*`。devloop 根据本次改动选择 Component，并分别记录 lint/test 结果，不会用一个 Component 的通过状态覆盖另一个。
 - **运行态上下文**：Board 向当前 session 投递相关仓库的 branch、working tree、PR/MR 和验证状态；进入项目或上下文压缩后会自动刷新。
-- **执行级守卫**：阻止保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
+- **执行级守卫**：在原生 PreToolUse 路径上拒绝保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
 - **并发隔离**：checkout 被一个 session 占用后，其它 session 的分支切换和源码编辑会被引导到独立 worktree。
 - **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；PR/MR merged / closed 后自动强制回收对应的 linked worktree。
 
@@ -191,6 +191,7 @@ codex plugin add devloop@devloop
 
 ## 边界与兼容性
 
+- Claude/Codex 的 command hooks 是 fail-open 工作流护栏，不是安全沙箱：hook 超时、异常或 Harness 未覆盖的执行路径可能放行。真正的组织级强制策略应由 CLI 权限、managed policy 或外部 sandbox 承担。
 - Claude Code 与 Codex 都使用 native `SessionEnd`；Codex 尚缺的 `CwdChanged` / `FileChanged` 由 PostToolUse、下一轮刷新和 TTL 路径补足。
 - devloop 负责单个开发闭环中的 repo/branch、验证、commit/push、PR/MR、review 和执行守卫；不负责跨仓需求编排、部署或长期调度。
 - 多 Component 可以独立验证，但跨 Repo 的 fan-out 和发包依赖顺序不由 devloop 编排。

@@ -1,7 +1,8 @@
-import { basename } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { findGitRoot, findAgentsDocument } from "../domain/repo-layout.js";
 import { WorkspaceContext } from "../domain/context/workspace.js";
 import { acquireOwner, clearActiveRepo, recordActiveRepo, releaseOwner } from "../domain/context/session.js";
+import { appendToolCall, TOOL_CALL_SCHEMA, toolCallStartedAt } from "../domain/context/tool-calls.js";
 import { findContainingWorkspace, maybeRegisterWorkspace } from "../domain/workspace.js";
 import { BoardRuntime } from "../domain/board/runtime.js";
 import { projectBoard } from "../domain/board/projection.js";
@@ -92,6 +93,51 @@ export function afterFileChanged(payload) {
     const workspace = findContainingWorkspace(path);
     if (workspace)
         WorkspaceContext.refresh(workspace);
+}
+/** Record tool timing in the same TypeScript process that evaluates hook policy. */
+export function recordToolCall(payload, harness) {
+    const event = string(payload.hook_event_name);
+    if (!["PreToolUse", "PostToolUse", "PostToolUseFailure"].includes(event))
+        return;
+    const rawInput = payload.tool_input;
+    const toolInput = rawInput !== null && typeof rawInput === "object" && !Array.isArray(rawInput)
+        ? rawInput : { input: String(rawInput ?? "") };
+    const directory = cwd(payload);
+    const change = projectTool({ harness, toolName: string(payload.tool_name), toolInput, cwd: directory });
+    const anchors = [];
+    for (const target of change.targets) {
+        if (target.kind === "file_change") {
+            const path = isAbsolute(target.path) ? target.path : resolve(directory, target.path);
+            anchors.push(dirname(path));
+        }
+        else if (target.workingDirectory.path)
+            anchors.push(target.workingDirectory.path);
+    }
+    for (const key of ["file_path", "notebook_path", "path"]) {
+        const value = toolInput[key];
+        if (typeof value !== "string" || !value.trim())
+            continue;
+        const path = isAbsolute(value) ? value : resolve(directory, value);
+        anchors.push(dirname(path));
+    }
+    if (anchors.length === 0)
+        anchors.push(directory);
+    const timestamp = Date.now() / 1_000;
+    const callId = string(payload.tool_use_id);
+    const phase = event === "PreToolUse" ? "started" : "finished";
+    for (const root of new Set(anchors.flatMap((anchor) => findGitRoot(anchor) ?? []))) {
+        const record = {
+            schema: TOOL_CALL_SCHEMA, kind: "tool_call", phase, ts: timestamp, call_id: callId,
+            session_id: sessionId(payload), harness, tool: string(payload.tool_name),
+        };
+        if (phase === "finished") {
+            record.outcome = event === "PostToolUseFailure" ? "failed" : "succeeded";
+            const started = toolCallStartedAt(root, callId, timestamp);
+            if (started !== undefined)
+                record.duration_ms = Math.max(0, Math.round((timestamp - started) * 1_000));
+        }
+        appendToolCall(root, record, timestamp);
+    }
 }
 export function endSession(payload, harness) {
     const runtime = BoardRuntime.resolve(cwd(payload), sessionId(payload));

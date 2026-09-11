@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""devloop 全量测试入口（stdlib only，无需 pytest）：`python3 devloop/tests/run_all.py`。
+"""Python skill workflow 测试入口：`python3 devloop/scripts/tests/run_all.py`。
 
 逐模块跑所有 test_*.py（test_session_lock.py 用 pytest fixture，只归 pytest 跑）。
 """
@@ -14,16 +14,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _testkit import run_all  # noqa: E402  (bootstrap first)
 
 MODULES = [
-    "test_cmdparse",
     "test_forge",
     "test_git_ops",
     "test_worktree",
     "test_tasks",
     "test_rebase",
+    "test_session",
     "test_board",
-    "test_context",
-    "test_guards",
-    "test_lifecycle",
     "test_focused_lint",
     "test_review",
 ]

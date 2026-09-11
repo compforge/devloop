@@ -3,4 +3,8 @@ import { preToolDecision } from "./hook-payload.js";
 export function evaluateClaudePreTool(payload) {
     return preToolDecision(payload, "claude");
 }
+export const claudeProcessAdapter = {
+    harness: "claude",
+    preTool: evaluateClaudePreTool,
+};
 //# sourceMappingURL=claude.js.map

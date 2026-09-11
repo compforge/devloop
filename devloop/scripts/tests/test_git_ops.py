@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """commit_flow 编排：staging 过滤、分支决策/切分、CLI 入参（message/title/repo）、PR 描述同步。
 
-Standalone: `python3 devloop/tests/test_git_ops.py`（也 pytest-collectable）；共享设施见 _testkit.py。
+Standalone: `python3 devloop/scripts/tests/test_git_ops.py`（也 pytest-collectable）；共享设施见 _testkit.py。
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from domain.forge import ForgeError  # noqa: E402
 
 def test_workflow_entrypoints_are_executable():
     """Workflow wrappers may be invoked directly even though skills normally spell out `bash`."""
-    scripts = Path(__file__).resolve().parent.parent / "scripts"
+    scripts = Path(__file__).resolve().parent.parent
     missing = [path.name for path in scripts.glob("smart_*.sh") if not os.access(path, os.X_OK)]
     if not os.access(scripts / "branch.py", os.X_OK):
         missing.append("branch.py")

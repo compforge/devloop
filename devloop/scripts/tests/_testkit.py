@@ -2,12 +2,12 @@
 
 import 本模块的副作用即完成两件 bootstrap（必须发生在任何 `domain.*` / `lib.*` import 之前，
 所以每个测试文件的第一条 import 都应是 _testkit）：
-1. 把 plugin root 加进 sys.path，使顶层 `domain` / `lib` / `hooks` package 可导入；
+1. 把 skill scripts 目录加进 sys.path，使私有 `domain` / `lib` package 可导入；
 2. 把 DEVLOOP_CONFIG_DIR 指向空临时目录——测试绝不读开发机真实 ~/.devloop/config.json
    （否则一个全局 lifecycle.pre_commit 会让 precommit-gate 在每个测试 repo 上生效、拦住 commit）。
    需要 config 的测试各自写自己的。
 
-各测试文件独立可跑（`python3 devloop/tests/test_xxx.py`，也 pytest-collectable）；
+各测试文件独立可跑（`python3 devloop/scripts/tests/test_xxx.py`，也 pytest-collectable）；
 全量入口是 `run_all.py`。
 """
 from __future__ import annotations
@@ -20,9 +20,9 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 
-HOOKS = Path(__file__).resolve().parent.parent / "hooks"
-SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
-sys.path.insert(0, str(HOOKS.parent))
+PLUGIN_ROOT = Path(__file__).resolve().parents[2]
+SCRIPTS = PLUGIN_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS))
 
 _GCFG = "/tmp/dlut_global_cfg"
 shutil.rmtree(_GCFG, ignore_errors=True)
@@ -120,20 +120,11 @@ def _load_from(base, name):
 def _load_script(name):
     return _load_from(SCRIPTS, name)
 
-def _load_hook(name):
-    return _load_from(HOOKS, name)
-
 def _git(repo, *a):
-    subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "-c", "core.hooksPath=/dev/null", *a], cwd=repo, check=True, capture_output=True)
 
 def _git_out(repo, *a):
-    return subprocess.run(["git", *a], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
-
-def _hook_input(tool: str, raw: dict):
-    from hooks import hook_io
-    return hook_io.HookInput(event=raw.get("hook_event_name", "PreToolUse"), tool_name=tool,
-                             tool_input=raw.get("tool_input") or {},
-                             cwd=raw.get("cwd", "/"), raw=raw)
+    return subprocess.run(["git", "-c", "core.hooksPath=/dev/null", *a], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
 
 
 def run_all(g: dict, label: str = "") -> tuple[int, list]:

@@ -17,7 +17,7 @@ class TaskSpec:
 
 def discover() -> dict[str, TaskSpec]:
     """Load the plugin's canonical task catalog, keyed by stable task name."""
-    payload = json.loads((Path(__file__).parent / "tasks.json").read_text(encoding="utf-8"))
+    payload = json.loads((Path(__file__).resolve().parents[2] / "tasks" / "tasks.json").read_text(encoding="utf-8"))
     specs = [TaskSpec(**item) for item in payload]
     return {spec.name: spec for spec in specs}
 

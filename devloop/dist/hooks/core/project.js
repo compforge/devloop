@@ -151,6 +151,11 @@ function commandTargets(command, base) {
             current = { ...(path ? { path } : {}), source: "command cd" };
             continue;
         }
+        const wrapped = wrappedCommand(words);
+        if (wrapped) {
+            targets.push(...commandTargets(wrapped, current));
+            continue;
+        }
         const target = commandTarget(words, current);
         if (target)
             targets.push(target);
@@ -165,6 +170,27 @@ function commandTargets(command, base) {
         }
     }
     return targets;
+}
+/** Unwrap the common launchers agents use around a shell command so policy sees the actual mutation. */
+function wrappedCommand(words) {
+    const executable = basename(words[0] ?? "");
+    if (["bash", "sh", "zsh"].includes(executable)) {
+        const commandIndex = words.findIndex((word, index) => index > 0 && /^-[^-]*c/.test(word));
+        return commandIndex >= 0 ? words[commandIndex + 1] : undefined;
+    }
+    if (executable === "env") {
+        let index = 1;
+        while (index < words.length && (words[index].startsWith("-") || /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[index])))
+            index += 1;
+        return index < words.length ? words.slice(index).join(" ") : undefined;
+    }
+    if (["command", "builtin", "exec"].includes(executable)) {
+        let index = 1;
+        while (index < words.length && words[index].startsWith("-"))
+            index += 1;
+        return index < words.length ? words.slice(index).join(" ") : undefined;
+    }
+    return undefined;
 }
 function matchingParen(source, start) {
     let quote = "";
@@ -240,47 +266,9 @@ export function patchFileChanges(value) {
         return [];
     });
 }
-function execTargets(toolInput, cwd) {
-    const source = typeof toolInput.input === "string" ? toolInput.input : typeof toolInput.code === "string" ? toolInput.code : "";
-    if (!source)
-        return [];
-    const targets = [];
-    const calls = /tools\.exec_command\(\s*(\{(?:[^{}"]|"(?:\\.|[^"\\])*")*\})\s*\)/gs;
-    for (const match of source.matchAll(calls)) {
-        try {
-            const json = match[1].replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3');
-            const payload = JSON.parse(json);
-            if (payload === null || typeof payload !== "object" || Array.isArray(payload))
-                continue;
-            const row = payload;
-            if (typeof row.cmd !== "string")
-                continue;
-            const configured = typeof row.workdir === "string" && row.workdir.trim() ? row.workdir : undefined;
-            const path = configured ? (isAbsolute(configured) ? configured : resolve(cwd, configured)) : cwd;
-            targets.push(...commandTargets(row.cmd, { path, source: configured ? "exec_command workdir" : "exec cwd" }));
-        }
-        catch { /* unrecognized JavaScript stays fail-open */ }
-    }
-    if (source.includes("tools.apply_patch")) {
-        const seen = new Set();
-        for (const match of source.matchAll(/"(?:\\.|[^"\\])*"/g)) {
-            try {
-                const decoded = JSON.parse(match[0]);
-                if (typeof decoded !== "string" || !decoded.startsWith("*** Begin Patch") || seen.has(decoded))
-                    continue;
-                seen.add(decoded);
-                targets.push(...patchFileChanges(decoded));
-            }
-            catch { /* not a JSON string */ }
-        }
-    }
-    return targets;
-}
 /** Map each harness payload into the same policy Change. */
 export function projectTool(input) {
     const { toolName, toolInput, cwd } = input;
-    if (toolName === "exec")
-        return { targets: execTargets(toolInput, cwd), cwd, tool: toolName, command: "" };
     if (toolName === "Bash" || toolName === "bash" || toolName === "shell" || toolName === "exec_command") {
         const command = typeof toolInput.command === "string" ? toolInput.command : typeof toolInput.cmd === "string" ? toolInput.cmd : "";
         const configured = typeof toolInput.workdir === "string" && toolInput.workdir.trim() ? toolInput.workdir : undefined;

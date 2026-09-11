@@ -7,31 +7,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_call_timeline.py\"",
-            "timeout": 5,
-            "statusMessage": "Recording tool activity"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
             "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 5,
-            "statusMessage": "Checking command policy"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|NotebookEdit|apply_patch|exec",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
-            "timeout": 5,
-            "statusMessage": "Checking change policy"
+            "statusMessage": "Checking devloop policy"
           }
         ]
       }
@@ -92,20 +70,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/python\" \"${CLAUDE_PLUGIN_ROOT}/hooks/tool_call_timeline.py\"",
-            "timeout": 5,
-            "statusMessage": "Recording tool activity"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|exec",
-        "hooks": [
-          {
-            "type": "command",
             "command": "DEVLOOP_HARNESS=codex \"${CLAUDE_PLUGIN_ROOT}/scripts/node\" \"${CLAUDE_PLUGIN_ROOT}/dist/hooks/runtime.js\"",
             "timeout": 10,
-            "statusMessage": "Refreshing devloop state"
+            "statusMessage": "Recording tool activity"
           }
         ]
       }

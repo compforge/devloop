@@ -1,1 +1,1 @@
-{"version":3,"file":"claude.d.ts","sourceRoot":"","sources":["../../adapters/claude.ts"],"names":[],"mappings":"AAAA,OAAO,EAAmB,KAAK,WAAW,EAAE,MAAM,mBAAmB,CAAC;AAEtE,6EAA6E;AAC7E,wBAAgB,qBAAqB,CAAC,OAAO,EAAE,WAAW,GAAG,MAAM,CAAC,MAAM,EAAE,OAAO,CAAC,CAEnF"}
+{"version":3,"file":"claude.d.ts","sourceRoot":"","sources":["../../adapters/claude.ts"],"names":[],"mappings":"AAAA,OAAO,EAAmB,KAAK,WAAW,EAAE,KAAK,kBAAkB,EAAE,MAAM,mBAAmB,CAAC;AAE/F,6EAA6E;AAC7E,wBAAgB,qBAAqB,CAAC,OAAO,EAAE,WAAW,GAAG,MAAM,CAAC,MAAM,EAAE,OAAO,CAAC,CAEnF;AAED,eAAO,MAAM,oBAAoB,EAAE,kBAGlC,CAAC"}

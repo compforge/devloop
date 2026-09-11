@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Bump version across all CLI manifests under a plugin directory.
+"""Bump version across CLI manifests and an optional npm package.
 
-Iterates <plugin>/.{claude,codex,opencode}-plugin/plugin.json and writes the new
-version. Designed for `make bump-version PLUGIN=<name>` — see ../Makefile.
+Keeps <plugin>/.{claude,codex,opencode}-plugin/plugin.json, package.json, and
+package-lock.json on one version. Designed for `make bump-version PLUGIN=<name>`.
 
 Usage:
     bump_plugin_version.py --plugin <name> [--level patch|minor|major]
@@ -22,6 +22,7 @@ MANIFEST_RELS = (
     ".codex-plugin/plugin.json",
     ".opencode/plugin.json",
 )
+PACKAGE_REL = "package.json"
 
 
 def parse_version(v: str) -> tuple[int, int, int]:
@@ -61,13 +62,16 @@ def main(argv: list[str]) -> int:
         print(f"ERROR: plugin directory not found: {plugin_dir}", file=sys.stderr)
         return 1
 
-    manifests = [plugin_dir / rel for rel in MANIFEST_RELS if (plugin_dir / rel).exists()]
-    if not manifests:
-        print(f"ERROR: no plugin.json found under {plugin_dir}", file=sys.stderr)
+    version_files = [plugin_dir / rel for rel in MANIFEST_RELS if (plugin_dir / rel).exists()]
+    package_file = plugin_dir / PACKAGE_REL
+    if package_file.exists():
+        version_files.append(package_file)
+    if not version_files:
+        print(f"ERROR: no plugin.json or package.json found under {plugin_dir}", file=sys.stderr)
         return 1
 
     current_versions = []
-    for p in manifests:
+    for p in version_files:
         v = json.loads(p.read_text(encoding="utf-8")).get("version") or "0.0.0"
         current_versions.append(parse_version(v))
 
@@ -86,11 +90,21 @@ def main(argv: list[str]) -> int:
         new_version = fmt(bump(basis, args.level))
 
     print(f"Bumping plugin '{args.plugin}' → {new_version}")
-    for p, old in zip(manifests, current_versions):
+    for p, old in zip(version_files, current_versions):
         data = json.loads(p.read_text(encoding="utf-8"))
         data["version"] = new_version
         p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
         print(f"  {p.relative_to(REPO_ROOT)}: {fmt(old)} → {new_version}")
+    lock_file = plugin_dir / "package-lock.json"
+    if package_file.exists() and lock_file.exists():
+        data = json.loads(lock_file.read_text(encoding="utf-8"))
+        old = str(data.get("version") or "0.0.0")
+        data["version"] = new_version
+        root_package = data.get("packages", {}).get("")
+        if isinstance(root_package, dict):
+            root_package["version"] = new_version
+        lock_file.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        print(f"  {lock_file.relative_to(REPO_ROOT)}: {old} → {new_version}")
     return 0
 
 

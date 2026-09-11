@@ -33,18 +33,18 @@ devloop/                              # ← 仓库根（marketplace）
 ├── .opencode/marketplace.json        # opencode marketplace 索引（占位，按协议补）
 │
 ├── devloop/                          # plugin: 开发者日常工作流（Claude + Codex + DSH）
-│   │                                 #   git / MR / lint / test / cwd-aware context / Board / 硬拦截
+│   │                                 #   git / MR / lint / test / cwd-aware context / Board / 执行守卫
 │   │                                 #   Claude 用 CwdChanged / FileChanged / native monitor；Codex 用 SessionEnd + Scheduled tasks
 │   ├── .claude-plugin/plugin.json    #     Claude manifest
 │   ├── .codex-plugin/plugin.json     #     Codex manifest（hooks 指向 hooks.codex.json）
 │   ├── skills/                       #     7 个 skill（CLI 共享，含一次性 monitor reconciliation）
 │   ├── commands/                     #     slash commands（Claude 端）
 │   ├── adapters/                     #     Claude/Codex hook dialect + DSH Cordis adapter
-│   ├── domain/                       #     TS 共享领域模型与状态；Python workflow 支撑模块
-│   ├── lib/                          #     TS 共享技术 seam；Python workflow 支撑模块
+│   ├── domain/                       #     TS 共享领域模型与状态
+│   ├── lib/                          #     TS 共享技术 seam
 │   ├── hooks/                        #     TS policy/runtime 与 hook manifests
-│   ├── tasks/                        #     Claude/Codex 共享的周期 task 发现与单次执行
-│   ├── scripts/                      #     git-ops 系列 + init_repo / init_workspace
+│   ├── tasks/                        #     周期 task 的发现描述
+│   ├── scripts/                      #     skill-owned Python workflow 及其私有 domain/lib/tasks
 │   ├── config/                       #     用户配置模板（config.json：workspaces / gitlab / precommit）
 │   ├── monitors/monitors.json        #     Claude MR-sweep 后台轮询
 │   └── README.md / AGENTS.md / CONCEPTS.md
@@ -108,11 +108,12 @@ devloop/                              # ← 仓库根（marketplace）
 每个 plugin 内部建议以下目录跨 CLI 共享：
 
 - `<plugin>/skills/`、`<plugin>/commands/`、`<plugin>/scripts/`：内容 CLI 无关
-- `<plugin>/domain/`：领域模型、状态变化与生命周期规则；归属看领域事实的 owner
-- `<plugin>/lib/`：跨入口复用的技术能力和外部适配，不放领域对象
-- `<plugin>/hooks/` / `<plugin>/scripts/`：事件与工作流两类驱动 adapter；依赖方向是 `hooks/scripts → domain/lib`，`domain/lib` 不反向依赖入口
+- `<plugin>/domain/`：TypeScript 领域模型、状态变化与生命周期规则；归属看领域事实的 owner
+- `<plugin>/lib/`：TypeScript 跨入口技术能力和外部适配，不放领域对象
+- `<plugin>/hooks/`：TypeScript 事件 adapter，依赖 `domain/lib`
+- `<plugin>/scripts/`：skill-owned workflow；允许保留 Python 及其私有辅助包，但 Harness runtime 不得依赖它
 
-Codex 与 Claude 的 hook payload schema 几乎一致（同样 stdin JSON、同样字段名 `session_id` / `transcript_path` / `cwd` / `hook_event_name` / `tool_name` / `tool_input` 等），入口脚本用 `sys.path.insert(0, Path(__file__).parent)` 自定位 lib、不读任何 plugin-root env var → 跨两端零修改运行。opencode 待协议明确时再决定差异隔离层。
+Codex 与 Claude 的 command hook 都使用 stdin/stdout JSON，但支持事件和 payload 细节不能靠猜测合并；manifest 显式设置 Harness 身份，adapter 再映射到共享 TypeScript core。opencode 待协议明确时再决定差异隔离层。
 
 ### 加新 plugin 的流程
 

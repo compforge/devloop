@@ -2,6 +2,11 @@ import { deniedReason } from "../hooks/core/policy.js";
 
 export type HookHarness = "claude" | "codex";
 
+export interface ProcessHookAdapter {
+  readonly harness: HookHarness;
+  preTool(payload: HookPayload): Record<string, unknown>;
+}
+
 export interface HookPayload {
   readonly hook_event_name?: unknown;
   readonly tool_name?: unknown;
@@ -12,13 +17,8 @@ export interface HookPayload {
   readonly [key: string]: unknown;
 }
 
-export function harnessFromPayload(payload: HookPayload, configured?: HookHarness): HookHarness {
-  if (configured) return configured;
-  return typeof payload.model === "string" ? "codex" : "claude";
-}
-
 export function preToolDecision(payload: HookPayload, configured?: HookHarness): Record<string, unknown> {
-  const harness = harnessFromPayload(payload, configured);
+  const harness = configured ?? "claude";
   const rawInput = payload.tool_input;
   const toolInput: Record<string, unknown> = rawInput !== null && typeof rawInput === "object" && !Array.isArray(rawInput)
     ? { ...rawInput as Record<string, unknown> }

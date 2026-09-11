@@ -11,7 +11,7 @@ export interface OwnerRecord {
     readonly acquired_at: number;
 }
 export declare function identityFromEnvironment(): SessionIdentity;
-export declare function readOwner(repo: string, harness?: string): OwnerRecord | undefined;
+export declare function readOwner(repo: string): OwnerRecord | undefined;
 export declare function foreignOwner(repo: string, sessionId: string, harness?: string, at?: number): OwnerRecord | undefined;
 export declare function anyActiveOwner(repo: string, at?: number): OwnerRecord | undefined;
 /** First active session wins checkout ownership; I/O failure remains fail-open. */

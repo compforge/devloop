@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
-import { afterCompact, afterCwdChanged, afterFileChanged, afterTool, endSession, sessionStartOutput, userPromptOutput } from "../adapters/process-hooks.js";
-import { harnessFromPayload, preToolDecision, type HookHarness, type HookPayload } from "../adapters/hook-payload.js";
+import { afterCompact, afterCwdChanged, afterFileChanged, afterTool, endSession, recordToolCall, sessionStartOutput, userPromptOutput } from "../adapters/process-hooks.js";
+import { claudeProcessAdapter } from "../adapters/claude.js";
+import { codexProcessAdapter } from "../adapters/codex.js";
+import type { HookPayload, ProcessHookAdapter } from "../adapters/hook-payload.js";
 
 function readPayload(): HookPayload {
   try {
@@ -10,24 +12,24 @@ function readPayload(): HookPayload {
   } catch { return {}; }
 }
 
-function run(payload: HookPayload, harness: HookHarness): Record<string, unknown> {
+function run(payload: HookPayload, adapter: ProcessHookAdapter): Record<string, unknown> {
   const event = typeof payload.hook_event_name === "string" ? payload.hook_event_name : "";
-  if (event === "PreToolUse") return preToolDecision(payload, harness);
-  if (event === "SessionStart") return sessionStartOutput(payload, harness);
+  recordToolCall(payload, adapter.harness);
+  if (event === "PreToolUse") return adapter.preTool(payload);
+  if (event === "SessionStart") return sessionStartOutput(payload, adapter.harness);
   if (event === "UserPromptSubmit") return userPromptOutput(payload);
   if (event === "PostCompact") afterCompact(payload);
-  else if (event === "PostToolUse") afterTool(payload, harness);
+  else if (event === "PostToolUse") afterTool(payload, adapter.harness);
   else if (event === "CwdChanged") afterCwdChanged(payload);
   else if (event === "FileChanged") afterFileChanged(payload);
-  else if (event === "SessionEnd") endSession(payload, harness);
+  else if (event === "SessionEnd") endSession(payload, adapter.harness);
   return {};
 }
 
 try {
   const payload = readPayload();
-  const configured = process.env.DEVLOOP_HARNESS;
-  const harness = harnessFromPayload(payload, configured === "claude" || configured === "codex" ? configured : undefined);
-  process.stdout.write(JSON.stringify(run(payload, harness)));
+  const adapter = process.env.DEVLOOP_HARNESS === "codex" ? codexProcessAdapter : claudeProcessAdapter;
+  process.stdout.write(JSON.stringify(run(payload, adapter)));
 } catch {
   // Process hooks are policy adapters: runtime defects must fail open.
   process.stdout.write("{}");

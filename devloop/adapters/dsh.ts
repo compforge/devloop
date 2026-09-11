@@ -3,8 +3,7 @@ import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { PostToolDecision, PreToolDecision } from "@deepseek-ai/dsh-tools";
 import { BoardRuntime } from "../domain/board/runtime.js";
-import { afterTool, initializeBoard } from "./process-hooks.js";
-import { clearActiveRepo, releaseOwner } from "../domain/context/session.js";
+import { afterTool, endSession, initializeBoard, recordToolCall } from "./process-hooks.js";
 import { decisionMessage } from "../hooks/core/domain.js";
 import { evaluateTool } from "../hooks/core/policy.js";
 
@@ -52,6 +51,10 @@ export function apply(ctx: Context, config: Config = {}): void {
       : { input: String(raw ?? "") };
     const sessionId = exec.agent ? String(exec.agent.id) : "";
     toolInput.session_id = sessionId;
+    recordToolCall({
+      hook_event_name: "PreToolUse", tool_name: exec.name, tool_input: toolInput,
+      cwd: exec.agent?.session.header.cwd ?? config.cwd ?? process.cwd(), session_id: sessionId,
+    }, "dsh");
     const result = evaluateTool({
       harness: "dsh",
       toolName: exec.name,
@@ -65,23 +68,24 @@ export function apply(ctx: Context, config: Config = {}): void {
 
   ctx.on("tools/post-execute", async (exec, result, next): Promise<PostToolDecision> => {
     const downstream = await next();
+    const payload = {
+      hook_event_name: result.isError ? "PostToolUseFailure" : "PostToolUse",
+      tool_name: exec.name,
+      tool_input: exec.arguments,
+      cwd: exec.agent?.session.header.cwd ?? config.cwd ?? process.cwd(),
+      session_id: exec.agent ? String(exec.agent.id) : "",
+    };
+    recordToolCall(payload, "dsh");
     if (!result.isError) {
-      afterTool({
-        hook_event_name: "PostToolUse",
-        tool_name: exec.name,
-        tool_input: exec.arguments,
-        cwd: exec.agent?.session.header.cwd ?? config.cwd ?? process.cwd(),
-        session_id: exec.agent ? String(exec.agent.id) : "",
-      }, "dsh");
+      afterTool(payload, "dsh");
     }
     return downstream;
   });
 
   ctx.on("agent/disposed", ({ agent }) => {
-    const board = boardFor(agent);
-    if (!board) return;
-    board.close();
-    if (board.repo) releaseOwner(board.repo, { harness: "dsh", sessionId: String(agent.id) });
-    if (board.repo && board.root !== board.repo) clearActiveRepo(board.root, String(agent.id));
+    endSession({
+      cwd: agent.session.header.cwd ?? config.cwd ?? process.cwd(),
+      session_id: String(agent.id),
+    }, "dsh");
   });
 }

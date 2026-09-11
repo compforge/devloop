@@ -6,17 +6,16 @@ organized by OWNER, not by where the file happens to sit (the binding lives unde
 the workspace dir, the lock under each checkout — both are session facts).
 
 Session runtime state follows a single lifecycle (CONCEPTS〈Session 运行态〉):
-created on first activity, released by the SessionEnd hook
-(`hooks/sessionend_release.py`), pid/TTL liveness as the crash fallback. Two
+created on first activity, released by the Harness session-end adapter,
+pid/TTL liveness as the crash fallback. Two
 instances live here:
 
 - **active-repo binding** — `<workspace_root>/.devloop/active/<session_id>.json`:
   "which repo is this session working on", feeding the scripts' cwd-independent
   repo resolution and the workspace-root Board view.
-- **checkout owner lock** — `<git_root>/.devloop/<harness>.owner.lock`: the first
-  session from one harness to MUTATE a checkout owns it for that harness; a
-  same-harness guest's branch switches and edits are denied and routed to a
-  worktree. Different harnesses use independent locks.
+- **checkout owner lock** — `<git_root>/.devloop/owner.lock`: the first session
+  to mutate a checkout owns it across Claude, Codex, and DSH; guests are routed
+  to a worktree.
 
 Identity: hooks pass the payload session_id; scripts self-identify via the CLI's
 session id environment when one is exported (Claude Code uses CLAUDE_CODE_SESSION_ID;
@@ -222,9 +221,8 @@ def active_repo_candidates(ws_root: str | Path) -> list[str]:
 # shared checkout's branch and scrambles the first session's uncommitted work.
 #
 # Mechanism (a "pid lock", not a heartbeat registry):
-# - One small file per harness, `<repo>/.devloop/<harness>.owner.lock`, records
-#   `{harness, session_id, pid, branch, acquired_at}`. The first session from
-#   that harness to acquire owns the checkout; later same-harness sessions are guests.
+# - One `<repo>/.devloop/owner.lock` records `{harness, session_id, pid, branch,
+#   acquired_at}`. The first session across all harnesses owns the checkout.
 # - **Liveness is primarily the owner process being alive** (`os.kill(pid, 0)`),
 #   with a ts-TTL fallback for when the recorded pid is a transient shell rather
 #   than the CLI process. So an active owner never expires (pid alive); a crashed
@@ -250,7 +248,11 @@ def _harness_name(harness: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]", "-", harness.strip().lower()) or "unknown"
 
 
-def _lock_file(repo: str | Path, harness: str = "claude") -> Path:
+def _lock_file(repo: str | Path) -> Path:
+    return store.worktree_state_dir(repo) / "owner.lock"
+
+
+def _legacy_lock_file(repo: str | Path, harness: str) -> Path:
     return store.worktree_state_dir(repo) / f"{_harness_name(harness)}.owner.lock"
 
 
@@ -268,7 +270,7 @@ def _pid_alive(pid: object) -> bool:
 
 def read(repo: str | Path, harness: str = "claude") -> dict | None:
     try:
-        d = json.loads(_lock_file(repo, harness).read_text())
+        d = json.loads(_lock_file(repo).read_text())
         return d if isinstance(d, dict) else None
     except (OSError, ValueError):
         return None
@@ -289,28 +291,24 @@ def foreign_owner(
     *,
     harness: str = "claude",
 ) -> dict | None:
-    """The active same-harness owner iff a DIFFERENT session holds its lock."""
+    """The active checkout owner iff another harness/session holds it."""
     now = time.time() if now is None else now
-    owner = read(repo, harness)
+    owner = active_owner(repo, now)
     if (
         owner
         and owner.get("session_id")
-        and owner["session_id"] != session_id
-        and _active(owner, now)
+        and (owner["session_id"] != session_id or owner.get("harness") != _harness_name(harness))
     ):
         return owner
     return None
 
 
 def active_owner(repo: str | Path, now: float | None = None) -> dict | None:
-    """Return any live devloop owner of this checkout, across harnesses.
-
-    Cleanup is checkout-wide rather than session-relative: a Claude monitor must not
-    remove a worktree currently used by Codex (or by its own session). Guest guards use
-    :func:`foreign_owner` because they only arbitrate peers within one harness; resource
-    reclamation must honor every live ``*.owner.lock``.
-    """
+    """Return the live cross-Harness owner, reading legacy per-Harness locks during migration."""
     now = time.time() if now is None else now
+    owner = read(repo)
+    if _active(owner, now):
+        return owner
     try:
         locks = store.worktree_state_dir(repo).glob("*.owner.lock")
         for path in locks:
@@ -337,14 +335,25 @@ def release(repo: str | Path, session_id: str, *, harness: str = "claude") -> bo
     """
     if not session_id:
         return False
-    owner = read(repo, harness)
-    if not owner or owner.get("session_id") != session_id:
-        return False
+    harness = _harness_name(harness)
+    owner = read(repo)
+    released = False
+    if owner and owner.get("session_id") == session_id and owner.get("harness") == harness:
+        try:
+            _lock_file(repo).unlink()
+        except OSError:
+            pass
+        else:
+            released = True
+    legacy = _legacy_lock_file(repo, harness)
     try:
-        _lock_file(repo, harness).unlink()
-    except OSError:
-        return False
-    return True
+        value = json.loads(legacy.read_text())
+        if not isinstance(value, dict) or value.get("session_id") != session_id:
+            return released
+        legacy.unlink()
+        return True
+    except (OSError, ValueError):
+        return released
 
 
 def acquire(
@@ -382,26 +391,28 @@ def acquire(
         "acquired_at": now,
     }
     harness = rec["harness"]
-    f = _lock_file(repo, harness)
-    owner = read(repo, harness)
-    if owner and owner.get("session_id") == session_id:
+    f = _lock_file(repo)
+    owner = active_owner(repo, now)
+    if owner and owner.get("session_id") == session_id and owner.get("harness") == harness:
         # mine → refresh in place; same-session writers carry identical claims,
         # so plain atomic replace is race-free in the only sense that matters
         try:
             tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
             tmp.write_text(json.dumps(rec))
             os.replace(tmp, f)
+            _legacy_lock_file(repo, harness).unlink(missing_ok=True)
         except OSError:
             pass
         return True
-    if owner and owner.get("session_id") and _active(owner, now):
+    if owner:
         return False  # active foreign owner — never overwrite
+    stored = read(repo)
     try:
         # creating the lock would create .devloop/ early (before any context save) —
         # make sure it's git-excluded first so it can never be committed.
         git_state.ensure_gitignore_excluded(repo)
         f.parent.mkdir(parents=True, exist_ok=True)  # self-creates .devloop/ if absent
-        if owner is not None:
+        if stored is not None:
             # POSITIVELY-read stale record: clear it so O_EXCL arbitrates the takeover.
             # (Never unlink on mere f.exists() — a read that transiently returned None
             # over an ACTIVE lock would then clobber it, re-opening the TOCTOU.)
@@ -413,10 +424,10 @@ def acquire(
             try:
                 fd = os.open(f, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
             except FileExistsError:
-                cur = read(repo, harness)
+                cur = read(repo)
                 if cur is not None:
                     # lost the create race to a real claim — the winner's record decides
-                    return cur.get("session_id") == session_id
+                    return cur.get("session_id") == session_id and cur.get("harness") == harness
                 # exists but unreadable: a persistently corrupt record would wedge
                 # O_EXCL forever — clear it and retry once
                 try:

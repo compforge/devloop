@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { appendLedger, stateDirectory } from "./store.js";
 export const TOOL_CALL_SCHEMA = "devloop.tool-call/v1";
@@ -10,6 +10,7 @@ export function appendToolCall(root, record, at = Date.now() / 1_000) {
     const path = join(directory, FILE_NAME);
     const marker = join(directory, "tool-calls.compact");
     try {
+        mkdirSync(directory, { recursive: true });
         const due = !existsSync(marker) || at - statSync(marker).mtimeMs / 1_000 >= COMPACT_INTERVAL_SECONDS;
         if (due) {
             compact(path, at - WINDOW_SECONDS);

@@ -1,0 +1,6 @@
+# Installable DSH bundle layer. The profile loader resolves this package from
+# the profile's dependencies, then mounts the native Cordis adapter.
+
+- insert:
+    - id: devloop
+      name: '@compforge/devloop/dsh'

@@ -46,6 +46,91 @@ def test_worktrees_inherit_repository_policy():
             assert config.arch(checkout) == config.arch(repo)
 
 
+def _local_config(directory: Path, data: dict):
+    path = directory / ".devloop" / "config.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def test_all_local_configuration_is_inherited_by_worktrees():
+    for nested in (True, False):
+        with _repository() as (root, repo):
+            checkout = repo / ".worktrees" / "fix" if nested else root / "external"
+            _git(repo, "worktree", "add", "-qb", "fix", str(checkout))
+            _local_config(root, {"review": {"tool": "ancestor", "options": {"verbose": True}},
+                                 "worktree": {"keep_recent": 9}})
+            _local_config(repo, {
+                "review": {"tool": "main"}, "worktree": {"keep_recent": 2},
+                "forges": {"git.example.com": {"type": "gitlab", "token": "main-token", "api_host": "api.example.com"}},
+            })
+            assert config.load(checkout)["review"] == {"tool": "main", "options": {"verbose": True}}
+            assert config.worktree(checkout)["keep_recent"] == 2
+            assert config.forge_entry("git.example.com", checkout)["token"] == "main-token"
+            _local_config(checkout, {
+                "review": {"options": {"verbose": False}}, "worktree": {"keep_recent": 0},
+                "forges": {"git.example.com": {"token": ""}},
+            })
+            assert config.load(checkout)["review"] == {"tool": "main", "options": {"verbose": False}}
+            assert config.worktree(checkout)["keep_recent"] == 0
+            assert config.forge_entry("git.example.com", checkout) == {
+                "type": "gitlab", "token": "", "api_host": "api.example.com",
+            }
+            assert config.worktree(repo)["keep_recent"] == 2
+
+
+def test_closer_source_defaults_override_global_repo_policy():
+    with _repository() as (root, repo):
+        checkout = root / "external"
+        _git(repo, "worktree", "add", "-qb", "fix", str(checkout))
+        _local_config(repo, {"lifecycle": {"default": {"pre_commit": ["test"]}},
+                             "arch": {"default": {"enabled": False}}})
+        assert config.lifecycle(checkout)["pre_commit"] == ["test"]
+        assert config.lifecycle(checkout)["post_mr"] == ["review"]
+        assert config.arch(checkout)["enabled"] is False
+        _local_config(checkout, {"lifecycle": {"default": {"pre_commit": []}},
+                                 "arch": {"default": {"order": []}}})
+        assert config.lifecycle(checkout)["pre_commit"] == []
+        assert config.lifecycle(checkout)["post_mr"] == ["review"]
+        assert config.arch(checkout)["order"] == []
+        assert config.load(checkout)["lifecycle"]["default"] == config.lifecycle(checkout)
+
+
+def test_default_and_repo_overrides_are_resolved_once_per_source():
+    with _repository() as (root, repo):
+        checkout = root / "external"
+        _git(repo, "worktree", "add", "-qb", "fix", str(checkout))
+        config.save({"lifecycle": {
+            "default": {"pre_commit": ["lint"], "post_mr": ["review"]},
+            "repos": {str(repo): {"pre_commit": []}, str(checkout): {"pre_commit": ["test"]}},
+        }})
+        assert config.lifecycle(checkout)["pre_commit"] == ["test"]
+        _local_config(checkout, {"lifecycle": {"default": {"pre_commit": []}}})
+        assert config.lifecycle(checkout)["pre_commit"] == []
+        assert config.lifecycle(checkout)["post_mr"] == ["review"]
+
+
+def test_global_workspace_registration_and_environment_token_override():
+    with _repository() as (_, repo):
+        config.save({"workspaces": ["/global"], "forges": {"git.example.com": {"token": "global-token"}}})
+        _local_config(repo, {"workspaces": ["/local"], "forges": {"git.example.com": {"token": "local-token"}}})
+        assert config.load(repo)["workspaces"] == ["/global"]
+        assert config.workspaces() == ["/global"]
+        with patch.dict(os.environ, {"GITLAB_TOKEN": ""}):
+            assert config.forge_token("git.example.com", "gitlab", repo) == "local-token"
+        with patch.dict(os.environ, {"GITLAB_TOKEN": "environment-token"}):
+            assert config.forge_token("git.example.com", "gitlab", repo) == "environment-token"
+
+
+def test_invalid_local_file_falls_back_to_main_repository():
+    with _repository() as (root, repo):
+        checkout = root / "external"
+        _git(repo, "worktree", "add", "-qb", "fix", str(checkout))
+        _local_config(repo, {"review": {"tool": "main"}})
+        _local_config(checkout, {})
+        (checkout / ".devloop" / "config.json").write_text("invalid json", encoding="utf-8")
+        assert config.load(checkout)["review"] == {"tool": "main"}
+
+
 def test_explicit_checkout_policy_overrides_inherited_fields():
     with _repository() as (root, repo):
         checkout = root / "external"

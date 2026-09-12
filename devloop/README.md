@@ -132,7 +132,9 @@ Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 pack
 
 ## 配置
 
-用户级配置位于 `~/.devloop/config.json`。仓库或 workspace 可在自己的 `.devloop/config.json` 中提供局部覆盖；读取顺序是默认值、用户级配置、由外到内的本地配置，离 Repo 最近的值优先。
+用户级配置位于 `~/.devloop/config.json`。仓库或 workspace 可在自己的 `.devloop/config.json` 中提供局部覆盖。
+普通配置遵循 **全局默认 < 主仓库 < 当前 worktree**：逐字段就近取值，缺失才向上补全，显式的
+`[]`、`false` 不回退。worktree 放在主仓库目录外也能继承；来源顺序和明确例外见[配置继承](./docs/configuration.md)。
 
 所有 lifecycle hook 默认关闭。一个常见配置是提交前验证，并在 PR/MR 创建后异步 review：
 

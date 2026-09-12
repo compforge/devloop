@@ -55,13 +55,11 @@ function readJson(path) {
         return undefined;
     }
 }
-function localFiles(repo) {
-    if (!repo)
-        return [];
+function ancestorFiles(root) {
     const global = resolve(configFile());
     const home = resolve(homedir());
     const found = [];
-    let current = resolve(expandPath(repo));
+    let current = root;
     while (true) {
         const candidate = join(current, ".devloop", "config.json");
         if (resolve(candidate) !== global && existsSync(candidate))
@@ -72,9 +70,35 @@ function localFiles(repo) {
     }
     return found.reverse();
 }
+/** Resolve the path-keyed policy syntax within one source, before applying closer sources. */
+function resolveLayer(layer, repoKeys) {
+    const result = { ...layer };
+    for (const name of ["lifecycle", "arch"]) {
+        if (!(name in layer))
+            continue;
+        const section = object(layer[name]);
+        let policy = object(section.default);
+        for (const key of repoKeys)
+            policy = deepMerge(policy, object(object(section.repos)[key]));
+        result[name] = { ...section, default: policy };
+    }
+    return result;
+}
+/**
+ * @spec Configuration inherits field by field: global < main repository < current checkout.
+ * Explicit empty arrays and false values override; workspaces remains global-only.
+ * @why Resolve default/repos within each source so a global repo override cannot defeat a local value.
+ */
 export function loadConfig(repo) {
-    return [DEFAULTS, readJson(configFile()) ?? {}, ...localFiles(repo).map((path) => readJson(path) ?? {})]
-        .reduce((result, layer) => deepMerge(result, layer), {});
+    const checkout = repo ? resolve(expandPath(repo)) : undefined;
+    const repoKeys = checkout ? [...new Set([mainRepoRoot(checkout), checkout])] : [];
+    const files = [...new Set(repoKeys.flatMap(ancestorFiles))];
+    const global = deepMerge(DEFAULTS, readJson(configFile()) ?? {});
+    let result = resolveLayer(global, repoKeys);
+    for (const path of files)
+        result = deepMerge(result, resolveLayer(readJson(path) ?? {}, repoKeys));
+    result.workspaces = global.workspaces ?? [];
+    return result;
 }
 export function saveConfig(data) {
     const path = configFile();
@@ -109,20 +133,8 @@ export function forgeToken(host, provider, repo) {
     const configured = forgeEntry(host, repo).token;
     return typeof configured === "string" && configured.trim() ? configured.trim() : undefined;
 }
-/** @spec Repo policy is inherited by linked worktrees; explicit checkout overrides win. */
-function resolvedRepoSection(name, repo) {
-    const section = object(loadConfig(repo)[name]);
-    let result = { ...object(section.default) };
-    if (repo) {
-        const checkout = resolve(expandPath(repo));
-        for (const key of new Set([mainRepoRoot(checkout), checkout])) {
-            result = deepMerge(result, object(object(section.repos)[key]));
-        }
-    }
-    return result;
-}
-export function lifecycleConfig(repo) { return resolvedRepoSection("lifecycle", repo); }
-export function architectureConfig(repo) { return resolvedRepoSection("arch", repo); }
+export function lifecycleConfig(repo) { return object(object(loadConfig(repo).lifecycle).default); }
+export function architectureConfig(repo) { return object(object(loadConfig(repo).arch).default); }
 export function worktreeConfig(repo) { return object(loadConfig(repo).worktree); }
 export function absoluteConfiguredPath(value) {
     const expanded = expandPath(value);

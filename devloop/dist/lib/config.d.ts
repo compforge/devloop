@@ -10,6 +10,11 @@ export declare function configDirectory(): string;
 export declare function configFile(): string;
 export declare function pluginRoot(): string;
 export declare function deepMerge(base: JsonObject, override: JsonObject): JsonObject;
+/**
+ * @spec Configuration inherits field by field: global < main repository < current checkout.
+ * Explicit empty arrays and false values override; workspaces remains global-only.
+ * @why Resolve default/repos within each source so a global repo override cannot defeat a local value.
+ */
 export declare function loadConfig(repo?: string): JsonObject;
 export declare function saveConfig(data: JsonObject): void;
 export declare function updateConfig(mutate: (data: JsonObject) => void): JsonObject;

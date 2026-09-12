@@ -106,6 +106,15 @@ export function listWorktrees(repo) {
     }
     return entries;
 }
+/** Main checkout identity for repo policy, without changing the caller's execution directory. */
+export function mainRepoRoot(repo) {
+    const main = listWorktrees(repo)[0]?.path;
+    if (!main || main === repo)
+        return repo;
+    // With a separate git directory, worktree list reports metadata rather than the checkout.
+    const root = runGit(main, ["rev-parse", "--show-toplevel"]);
+    return root.ok && root.stdout ? root.stdout : main;
+}
 export function worktreeMetadata(repo) {
     const gitDir = runGit(repo, ["rev-parse", "--git-dir"]);
     const commonDir = runGit(repo, ["rev-parse", "--git-common-dir"]);

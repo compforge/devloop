@@ -24,11 +24,14 @@ the external dependencies (which forge, which token) are explicit in one place:
 
 Layering (low → high precedence), each layer may be PARTIAL:
 
-    _DEFAULTS  <  global (~/.devloop/config.json)  <  ancestor .devloop/config.json (closest wins)
+    _DEFAULTS < global < main repo local config < current checkout local config
 
 A repo or workspace can drop a `.devloop/config.json` next to its runtime state to
 override just a few keys (e.g. a different `forges` token for that repo); the
 nearest one to `repo_dir` wins, everything else falls through to the global file.
+Ancestor files are included once; Git identifies the main repo even for external
+worktrees. Each source resolves its default/repos policy before closer sources
+override it. Workspaces is global-only; forge token environment variables win.
 
 Global lives at a USER-LEVEL path (override the dir via `DEVLOOP_CONFIG_DIR`), never
 the versioned plugin dir — a `/plugin update` swaps that dir and would drop user
@@ -41,6 +44,8 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+
+from .git_state import main_repo_root
 
 # Section defaults — every load() deep-merges real layers over these, so a partial
 # config (e.g. only `workspaces`) still yields sane `forges` / `lifecycle`.
@@ -104,14 +109,20 @@ def plugin_root() -> Path:
 
 # ── read / write ─────────────────────────────────────────────────────────────
 def load(repo_dir: str | Path | None = None) -> dict:
-    """Merged config: `_DEFAULTS < global < ancestor .devloop/config.json (closest wins)`.
+    """逐字段向上补全：全局 < 主仓库 < 当前 checkout；显式空列表和 False 不回退。
 
-    `repo_dir` enables the local layers (the repo's / workspace's `.devloop/config.json`
-    and any in between); without it only the global file is consulted.
+    Git 识别主仓库，祖先配置文件只加载一次。default/repos 在每个来源内部解析，
+    避免全局仓库策略压过本地配置；返回的 lifecycle/arch.default 已是有效策略。
+    workspaces 始终只取全局；不传 repo_dir 时只读取内置默认值和全局配置。
     """
-    out: dict = {}
-    for layer in [_DEFAULTS, _read_global(), *(_read_json(f) or {} for f in _local_files(repo_dir))]:
-        out = _deep_merge(out, layer)
+    checkout = os.path.abspath(_expand(str(repo_dir))) if repo_dir else None
+    repo_keys = list(dict.fromkeys((main_repo_root(checkout), checkout))) if checkout else []
+    files = dict.fromkeys(f for root in repo_keys for f in _ancestor_files(root))
+    global_config = _deep_merge(_DEFAULTS, _read_global())
+    out = _resolve_layer(global_config, repo_keys)
+    for path in files:
+        out = _deep_merge(out, _resolve_layer(_read_json(path) or {}, repo_keys))
+    out["workspaces"] = global_config["workspaces"]
     return out
 
 
@@ -169,30 +180,13 @@ def forge_token(host: str, provider: str, repo_dir: str | Path | None = None) ->
 
 
 def lifecycle(repo_dir: str | Path | None = None) -> dict:
-    """已解析的 devops 生命周期 hook 配置：section 的 `default` 叠上 `repos[<repo_dir 绝对路径>]`，
-    返回 `phase → [hook 名]`。`domain.lifecycle.dispatch` 读它决定每个相位跑哪些 hook。
-    opt-in：默认全空 → 每相位 no-op、零行为变化。"""
-    section = load(repo_dir).get("lifecycle") or {}
-    merged = dict(section.get("default") or {})
-    if repo_dir:
-        key = os.path.abspath(_expand(str(repo_dir)))
-        repo_over = (section.get("repos") or {}).get(key)
-        if isinstance(repo_over, dict):
-            merged = _deep_merge(merged, repo_over)
-    return merged
+    """返回 load 已解析的 phase → [hook 名]；默认全空，每相位 no-op。"""
+    return (load(repo_dir).get("lifecycle") or {}).get("default") or {}
 
 
 def arch(repo_dir: str | Path | None = None) -> dict:
-    """已解析的架构规则配置：section 的 `default` 叠上 `repos[<repo_dir 绝对路径>]`。
-    代码策略引擎的层级规则读它（layer 映射 + 方向序 + 开关）。"""
-    section = load(repo_dir).get("arch") or {}
-    merged = dict(section.get("default") or {})
-    if repo_dir:
-        key = os.path.abspath(_expand(str(repo_dir)))
-        repo_over = (section.get("repos") or {}).get(key)
-        if isinstance(repo_over, dict):
-            merged = _deep_merge(merged, repo_over)
-    return merged
+    """返回 load 已解析的架构规则（layer 映射、方向序和开关）。"""
+    return (load(repo_dir).get("arch") or {}).get("default") or {}
 
 
 def worktree(repo_dir: str | Path | None = None) -> dict:
@@ -208,15 +202,32 @@ def _read_global() -> dict:
     return _read_json(config_file()) or {}
 
 
-def _local_files(repo_dir: str | Path | None) -> list[Path]:
-    """Ancestor `.devloop/config.json` files from `repo_dir` upward, shallow→deep so the
+def _resolve_layer(layer: dict, repo_keys: list[str]) -> dict:
+    """Resolve path-keyed policy within one source before applying closer sources."""
+    out = dict(layer)
+    for name in ("lifecycle", "arch"):
+        if name not in layer:
+            continue
+        section = layer[name] if isinstance(layer[name], dict) else {}
+        default = section.get("default")
+        policy = dict(default) if isinstance(default, dict) else {}
+        repos = section.get("repos")
+        overrides = repos if isinstance(repos, dict) else {}
+        for key in repo_keys:
+            override = overrides.get(key)
+            if isinstance(override, dict):
+                policy = _deep_merge(policy, override)
+        out[name] = {**section, "default": policy}
+    return out
+
+
+def _ancestor_files(root: str) -> list[Path]:
+    """Ancestor `.devloop/config.json` files from root upward, shallow→deep so the
     closest (deepest) wins when deep-merged last. Excludes the global file; bounded at $HOME."""
-    if not repo_dir:
-        return []
     glob = config_file()
     home = Path.home()
     found: list[Path] = []
-    start = Path(os.path.abspath(_expand(str(repo_dir))))
+    start = Path(root)
     for anc in [start, *start.parents]:
         f = anc / _LOCAL_NAME / "config.json"
         if f != glob and f.is_file():

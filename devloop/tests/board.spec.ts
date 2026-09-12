@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { PromptDelivery } from "../domain/board/delivery.js";
 import { Board, boardItem } from "../domain/board/model.js";
+import { renderPrompt } from "../domain/board/render.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -11,6 +12,11 @@ afterEach(() => {
 });
 
 describe("Board delivery", () => {
+  it("describes absent validation records as history, not an execution instruction", () => {
+    const item = boardItem("repo.validation", "state", { workspaceRoot: "/repo", repoRoot: "/repo" }, { components: [] });
+    expect(renderPrompt([item])).toBe("Validation history: no recorded runs");
+  });
+
   it("keeps session and turn cadence outside fact projection", () => {
     const root = mkdtempSync(join(tmpdir(), "devloop-board-")); roots.push(root);
     const items = [

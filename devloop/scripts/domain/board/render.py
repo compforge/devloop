@@ -123,7 +123,7 @@ def _repo_identity(card: RepoIdentityCard) -> str:
 
 def _validation(components: tuple[ComponentValidationCard, ...]) -> str:
     if not components:
-        return "Validation: never run"
+        return "Validation history: no recorded runs"
     parts = [
         f"{item.component}: lint={base.fmt_ts(item.lint_at)}, test={base.fmt_ts(item.test_at)}"
         for item in components

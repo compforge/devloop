@@ -50,7 +50,12 @@ harness 不跟踪、跑完不会 re-invoke 会话）——异步靠某个 hook �
 ## 二、流程
 
 「哪个相位挂哪些 hook」是 `config.lifecycle(repo)` 的数据，**opt-in，默认全空 = 每相位
-no-op、零行为变化**。配置形如（`default` 叠 `repos[<abs>]`，分层同 `arch`）：
+no-op、零行为变化**。配置由公共 loader 按[统一继承规则](configuration.md)解析：
+全局默认 < 主仓库 < 当前 worktree，逐字段向上补全。显式 `pre_commit: []` 会关闭提交前的
+自动动作，但未配置的 `post_mr` 仍可继承 `["review"]`；不是把所有相位一起清空。
+
+策略继承不改变执行目录：验证和其他 hook 仍在当前 checkout 运行。Board 的 validation history
+只报告已记录的验证结果，不表示启用或禁止验证；是否执行由 lifecycle 配置决定。配置示例：
 
 ```jsonc
 "lifecycle": {

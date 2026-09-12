@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _testkit import run_all  # noqa: E402  (bootstrap first)
 
 MODULES = [
+    "test_config",
     "test_forge",
     "test_git_ops",
     "test_worktree",

@@ -264,6 +264,17 @@ def list_worktrees(repo_dir: str | Path) -> list[tuple[str, str, str | None]]:
     return out
 
 
+def main_repo_root(repo_dir: str) -> str:
+    """Main checkout identity for repo policy; never changes the execution directory."""
+    worktrees = list_worktrees(repo_dir)
+    if not worktrees or worktrees[0][0] == repo_dir:
+        return repo_dir
+    main = worktrees[0][0]
+    # Separate git directories appear as metadata paths in worktree list.
+    root = gitcmd.git(main, "rev-parse", "--show-toplevel")
+    return root.out if root.ok and root.out else main
+
+
 def list_local_branches(repo_dir: str | Path) -> list[tuple[str, str]]:
     """Every local branch as ``(name, head_sha)`` in stable name order.
 

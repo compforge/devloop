@@ -22,6 +22,8 @@ export declare function isAncestor(repo: string, ancestor?: string, descendant?:
 export declare function upstreamAheadBehind(repo: string): readonly [ahead: number, behind: number] | undefined;
 export declare function remoteTips(repo: string, branches: readonly string[], timeoutMs?: number): ReadonlyMap<string, string>;
 export declare function listWorktrees(repo: string): readonly WorktreeEntry[];
+/** Main checkout identity for repo policy, without changing the caller's execution directory. */
+export declare function mainRepoRoot(repo: string): string;
 export declare function worktreeMetadata(repo: string): {
     readonly linked: boolean;
     readonly commonDir: string;

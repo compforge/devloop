@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { mainRepoRoot } from "./git-state.js";
 const DEFAULTS = {
     workspaces: [],
     forges: {},
@@ -108,12 +109,15 @@ export function forgeToken(host, provider, repo) {
     const configured = forgeEntry(host, repo).token;
     return typeof configured === "string" && configured.trim() ? configured.trim() : undefined;
 }
+/** @spec Repo policy is inherited by linked worktrees; explicit checkout overrides win. */
 function resolvedRepoSection(name, repo) {
     const section = object(loadConfig(repo)[name]);
     let result = { ...object(section.default) };
     if (repo) {
-        const override = object(object(section.repos)[resolve(expandPath(repo))]);
-        result = deepMerge(result, override);
+        const checkout = resolve(expandPath(repo));
+        for (const key of new Set([mainRepoRoot(checkout), checkout])) {
+            result = deepMerge(result, object(object(section.repos)[key]));
+        }
     }
     return result;
 }

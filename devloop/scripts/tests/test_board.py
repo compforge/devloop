@@ -34,7 +34,7 @@ def test_board_delivers_only_changed_items_per_session():
     root = "/tmp/dlut_board_granular"
     ctx = _repo(root)
     first = BoardRuntime.from_facts(root, "session-a", repo=ctx).deliver_prompt()
-    assert first and "[Current repo:" in first and "Validation: never run" in first
+    assert first and "[Current repo:" in first and "Validation history: no recorded runs" in first
     assert BoardRuntime.from_facts(
         root, "session-a", repo=RepoContext.load(root)
     ).deliver_prompt() is None
@@ -44,12 +44,12 @@ def test_board_delivers_only_changed_items_per_session():
         root, "session-a", repo=RepoContext.load(root)
     ).deliver_prompt()
     assert changed and "Workspace: dirty" in changed
-    assert "Validation:" not in changed  # unchanged item did not ride the identity update
+    assert "Validation" not in changed  # unchanged item did not ride the identity update
 
     other = BoardRuntime.from_facts(
         root, "session-b", repo=RepoContext.load(root)
     ).deliver_prompt()
-    assert other and "Validation: never run" in other  # independent delivery cursor
+    assert other and "Validation history: no recorded runs" in other  # independent delivery cursor
 
 
 def test_board_compaction_replays_state_not_review_event():
@@ -78,7 +78,7 @@ def test_board_compaction_replays_state_not_review_event():
     replay = BoardRuntime.from_facts(
         root, "session-a", repo=RepoContext.load(root)
     ).deliver_prompt()
-    assert replay and "[Current repo:" in replay and "Validation:" in replay
+    assert replay and "[Current repo:" in replay and "Validation history: no recorded runs" in replay
     assert "Review:" not in replay
 
 

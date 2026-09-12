@@ -42,6 +42,8 @@ import json
 import os
 from pathlib import Path
 
+from .git_state import main_repo_root
+
 # Section defaults — every load() deep-merges real layers over these, so a partial
 # config (e.g. only `workspaces`) still yields sane `forges` / `lifecycle`.
 _DEFAULTS: dict = {
@@ -169,29 +171,28 @@ def forge_token(host: str, provider: str, repo_dir: str | Path | None = None) ->
 
 
 def lifecycle(repo_dir: str | Path | None = None) -> dict:
-    """已解析的 devops 生命周期 hook 配置：section 的 `default` 叠上 `repos[<repo_dir 绝对路径>]`，
+    """已解析的 devops 生命周期 hook 配置：default < 主仓库策略 < 显式 checkout 策略，
     返回 `phase → [hook 名]`。`domain.lifecycle.dispatch` 读它决定每个相位跑哪些 hook。
     opt-in：默认全空 → 每相位 no-op、零行为变化。"""
-    section = load(repo_dir).get("lifecycle") or {}
-    merged = dict(section.get("default") or {})
-    if repo_dir:
-        key = os.path.abspath(_expand(str(repo_dir)))
-        repo_over = (section.get("repos") or {}).get(key)
-        if isinstance(repo_over, dict):
-            merged = _deep_merge(merged, repo_over)
-    return merged
+    return _resolved_repo_section("lifecycle", repo_dir)
 
 
 def arch(repo_dir: str | Path | None = None) -> dict:
-    """已解析的架构规则配置：section 的 `default` 叠上 `repos[<repo_dir 绝对路径>]`。
+    """已解析的架构规则配置：default < 主仓库策略 < 显式 checkout 策略。
     代码策略引擎的层级规则读它（layer 映射 + 方向序 + 开关）。"""
-    section = load(repo_dir).get("arch") or {}
+    return _resolved_repo_section("arch", repo_dir)
+
+
+def _resolved_repo_section(name: str, repo_dir: str | Path | None) -> dict:
+    """Repo policy is inherited by linked worktrees; explicit checkout overrides win."""
+    section = load(repo_dir).get(name) or {}
     merged = dict(section.get("default") or {})
     if repo_dir:
-        key = os.path.abspath(_expand(str(repo_dir)))
-        repo_over = (section.get("repos") or {}).get(key)
-        if isinstance(repo_over, dict):
-            merged = _deep_merge(merged, repo_over)
+        checkout = os.path.abspath(_expand(str(repo_dir)))
+        for key in dict.fromkeys((main_repo_root(checkout), checkout)):
+            repo_over = (section.get("repos") or {}).get(key)
+            if isinstance(repo_over, dict):
+                merged = _deep_merge(merged, repo_over)
     return merged
 
 

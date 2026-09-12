@@ -76,6 +76,9 @@ authorized Target and blast radius.
 
 ## Run and interpret
 
+Run E2E only when the user explicitly requests it or a project gate requires it; do not initiate it
+autonomously.
+
 Use the project-owned entrypoint and preserve the requested runner revision, system-under-test
 identity, target, and execution policy. Run the smallest sufficient selection by default; use a full
 suite only when the user, a project gate, or the affected boundary requires it.

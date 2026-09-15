@@ -28,11 +28,11 @@ Claude/Codex 作为已安装 CLI plugin 时，使用官方 manifest 与 command 
 
 | Shared behavior | Claude Code / Codex | DSH Cordis |
 |---|---|---|
-| Session Board seed | `SessionStart` | `agent/session-start` |
+| Session Board seed | `SessionStart` | `agent/created` |
 | Turn Board delivery | `UserPromptSubmit` | `agent/pre-step` |
 | Tool admission | `PreToolUse` | `tools/pre-execute` |
 | Git/session activity | `PostToolUse` | shared tool projection; lifecycle extension |
-| Compact replay | `PostCompact` / compact start | `agent/session-start` with `compact` |
+| Compact replay | `PostCompact` / compact start | `agent/created` with `compact` |
 | Session cleanup | `SessionEnd` | `agent/disposed` |
 
 Adapter 应 fail-open：协议解析或本地派生状态失败不能卡死 Harness。明确命中的 deny 由共享 Decision 翻译为各端阻断结果；command hook 超时、缺失或 Harness 未覆盖路径仍可能放行，因此这些规则是工作流护栏，不是完整安全边界。DSH 的进程内 Cordis 决策可提供更强的一致性，但也复用同一 fail-open policy core。

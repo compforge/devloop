@@ -43,7 +43,7 @@ describe("harness adapters", () => {
     } as unknown as Context;
     dshPlugin.apply(ctx, { cwd: process.cwd() });
     expect([...listeners.keys()]).toEqual([
-      "agent/session-start",
+      "agent/created",
       "agent/pre-step",
       "tools/pre-execute",
       "tools/post-execute",

@@ -24,7 +24,10 @@ export const Config: Schema<Config> = Schema.object({
   cwd: Schema.string(),
 });
 
-/** Native Cordis adapter. Domain and policy behavior remains in the shared core. */
+/**
+ * Native Cordis adapter. Domain and policy behavior remains in the shared core.
+ * @spec Board context preserves downstream step admission and request-series boundaries.
+ */
 export function apply(ctx: Context, config: Config = {}): void {
   const boardFor = (agent: Agent): BoardRuntime | undefined =>
     BoardRuntime.resolve(agent.session.header.cwd ?? config.cwd ?? process.cwd(), String(agent.id));
@@ -33,7 +36,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     source: { kind: "plugin", plugin: name },
   });
 
-  ctx.on("agent/session-start", ({ agent, source }) => {
+  ctx.on("agent/created", ({ agent, source }) => {
     const board = initializeBoard({
       cwd: agent.session.header.cwd ?? config.cwd ?? process.cwd(),
       session_id: String(agent.id),
@@ -48,8 +51,9 @@ export function apply(ctx: Context, config: Config = {}): void {
     const downstream = await next();
     if (downstream.kind !== "enter") return downstream;
     const content = boardFor(agent)?.deliverPrompt("user_prompt");
-    return content && downstream.kind === "enter"
-      ? { kind: "enter", messages: [...downstream.messages, contextMessage(content)] }
+    // Goal rounds can start a fresh request series even when Board adds context.
+    return content
+      ? { ...downstream, messages: [...downstream.messages, contextMessage(content)] }
       : downstream;
   });
 

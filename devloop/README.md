@@ -51,13 +51,13 @@ Codex 如果要求审核 hook，可在 `/hooks` 中信任 devloop hooks。
 
 ### DeepSeek Harness
 
-把原生 Cordis bundle 安装到需要启用 devloop 的 profile。下面使用内置的 `headless` profile；需要时替换成实际使用的其他 profile 名：
+原生 Cordis bundle 的适配基线为 DSH `0.1.6-alpha.1`。把它安装到需要启用 devloop 的 profile；下面使用内置的 `headless` profile，需要时替换成实际使用的其他 profile 名：
 
 ```console
-npx --yes @deepseek-ai/dsh plugin --profile headless add @compforge/devloop
+npx --yes @deepseek-ai/dsh@0.1.6-alpha.1 plugin --profile headless add @compforge/devloop
 ```
 
-包内声明的 DSH bundle layer 会自动暴露 devloop skills，并挂载 `@compforge/devloop/dsh`，直接注册 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；三端只在 adapter 层分化。卸载使用 `npx --yes @deepseek-ai/dsh plugin --profile headless remove @compforge/devloop`。如果已全局安装 DSH，也可以使用较短的 `dsh` 命令。
+包内声明的 DSH bundle layer 会自动暴露 devloop skills，并挂载 `@compforge/devloop/dsh`，直接注册 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；三端只在 adapter 层分化。卸载使用 `npx --yes @deepseek-ai/dsh@0.1.6-alpha.1 plugin --profile headless remove @compforge/devloop`。如果已全局安装对应版本的 DSH，也可以使用较短的 `dsh` 命令。
 
 安装后新开一个 session。
 

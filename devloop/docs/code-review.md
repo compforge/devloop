@@ -47,6 +47,8 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   本地存一份 fp→comment-id 表只会是这份数据的陈旧副本,丢了还会把 join 悄悄弄断。
   待判定数（`Review findings: N 条待判定`）由此派生,刻意不用 review.json 的 finding 数——
   那是「上次 review 出了几条」而非「还剩几条没有 Verdict」。
+- **启动失败可见**：runner 文件缺失时，当前操作给出 advisory 提示，并记录分支的 review error，
+  供后续状态查询和 Board 展示；不影响 commit / MR。
 - **signal hook,不挡 commit**:review 跑得久,且写码 AI 与 review AI 同源——结论仅供参考、
   **merge 必须人拍**。故不像 lint/test 那样 inline 挡。
 - **detach、不靠 agent 起后台**:dispatch(subprocess)不能起「跑完唤醒 session」的 harness 后台

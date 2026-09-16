@@ -5,11 +5,12 @@
 由 `commit_flow` 在所裹的 git 动作后 detach 起（审 `origin/<target>..HEAD`），结果经状态
 总线下轮浮现、分级汇报（见 docs/code-review.md）。
 
-signal：恒 `ok=True`、带 relay，从不挡 commit（信号发成功就是过，真活还没跑、无可 veto）。
+runner 可用时返回 relay；缺失时记录 advisory error，从不挡 commit。
 """
 from __future__ import annotations
 
-from lib import config
+from lib import config, git_state
+from domain.context import base, store
 from domain.lifecycle.base import BackgroundSpec, HookResult
 
 
@@ -21,7 +22,18 @@ def review(repo: str, paths: list[str] | None = None) -> HookResult:
     无关——挂 post_commit 也审全条分支，而不是只审刚落地那个 commit。范围由 run_review 在后台
     自己算（detach 起时才跑，那时的 HEAD 才是最终态）。签名收下它只为满足 handler 契约。"""
     del paths
-    script = str(config.plugin_root() / "scripts" / "run_review.py")
+    script_path = config.plugin_root() / "scripts" / "run_review.py"
+    # Python can start successfully even when its script is missing. Surface that
+    # packaging failure here, before detach would leave only an unread log entry.
+    if not script_path.is_file():
+        message = f"review runner not found: {script_path}"
+        branch = git_state.get_current_branch(repo)
+        store.save_segment(repo, store.branch_segment(branch, "review"), {
+            "status": "error", "reviewed_sha": git_state.get_head_sha(repo),
+            "count": 0, "failed": 0, "message": message, "generated_at": base.now(),
+        })
+        return HookResult("review", ok=False, summary=message, advisory=True)
+    script = str(script_path)
     spec = BackgroundSpec("review", ["python3", script, "--repo", repo],
                           note="ocr review origin/<target>..HEAD → .devloop/review.json + MR comment")
     return HookResult("review", ok=True, summary="launched background code-review", relay=spec)

@@ -37,9 +37,36 @@ export function renderItem(item) {
         const components = rows(payload.components);
         return components.length === 0 ? "Validation history: no recorded runs" : `Validation: ${components.map((row) => `${text(row.component)}: lint=${formatTimestamp(typeof row.lintAt === "number" ? row.lintAt : undefined)}, test=${formatTimestamp(typeof row.testAt === "number" ? row.testAt : undefined)}`).join(" | ")}`;
     }
+    if (item.type === "repo.review")
+        return renderReview(payload);
     return "";
 }
 export function renderPrompt(items) {
     return items.map(renderItem).filter(Boolean).join("\n\n");
+}
+function renderReview(payload) {
+    const status = text(payload.status);
+    const sha = text(payload.reviewedSha).slice(0, 9);
+    const artifact = text(payload.artifactPath);
+    if (status === "running" || status === "stale")
+        return `Review: ${status} on ${sha}; see ${artifact}`;
+    const parts = [];
+    const findings = number(payload.findings);
+    const failed = number(payload.failedFiles);
+    if (findings)
+        parts.push(`${findings} finding(s)`);
+    if (failed)
+        parts.push(`${failed} file(s) failed`);
+    if (status === "error" || status === "failed")
+        parts.push("review errored");
+    else if (status === "completed_with_errors")
+        parts.push("review incomplete");
+    else if (status === "completed_with_warnings")
+        parts.push("review warnings");
+    else if (status !== "success")
+        parts.push(`review ${status}`);
+    const message = text(payload.message).trim();
+    const reason = status !== "success" && message ? ` — ${message}` : "";
+    return `Review: ${parts.length ? parts.join(", ") : "clean (no findings)"} on ${sha}${reason}; see ${artifact}`;
 }
 //# sourceMappingURL=render.js.map

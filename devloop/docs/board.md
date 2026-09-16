@@ -62,3 +62,8 @@ validation 等事实仍由原 owner 的 segment 提供。
 branch、dirty、validation 等描述“现在在哪里”，compaction 后必须重放；review
 结果和待办提醒描述“发生过什么 / 请做什么”，按身份限次投递，避免 agent
 重复处理同一件事。
+
+Review 从当前分支的状态文件投影，prompt 与 UI 共用状态、被评审提交、finding / 失败数量、
+错误原因和产物路径。运行中超过既有时限显示 stale；失败、未完成与警告不能因零 finding
+显示为 clean。尚无记录和 skipped 不产生 review 条目。相同结果只提示一次，状态变化后
+重新投递；Board 不负责启动或重试 review。

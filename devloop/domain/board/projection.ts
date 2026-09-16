@@ -2,7 +2,8 @@ import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, work
 import { findAgentsDocument, findRepoCodeDirectory } from "../repo-layout.js";
 import { detectLanguage } from "../../lib/ecosystem.js";
 import { parseReferencesSection } from "../../lib/parsers.js";
-import { branchSegment, loadSegment } from "../context/store.js";
+import { branchSegment, loadSegment, segmentFile } from "../context/store.js";
+import { REVIEW_STALE_SECONDS, now } from "../context/base.js";
 import type { WorkspaceContext } from "../context/workspace.js";
 import { Board, boardItem } from "./model.js";
 
@@ -48,5 +49,21 @@ export function projectBoard(root: string, workspace?: WorkspaceContext, repo?: 
       testAt: typeof test[component] === "object" && test[component] !== null && !Array.isArray(test[component]) ? (test[component] as Record<string, unknown>).passed_at ?? null : null,
     })),
   }));
+  const reviewSegment = branchSegment(branch || undefined, "review");
+  const review = loadSegment(repo, reviewSegment);
+  if (review && typeof review.status === "string" && review.status && review.status !== "skipped"
+      && typeof review.reviewed_sha === "string" && review.reviewed_sha) {
+    const generatedAt = typeof review.generated_at === "number" ? review.generated_at : 0;
+    const reviewStatus = review.status === "running" && now() - generatedAt > REVIEW_STALE_SECONDS ? "stale" : review.status;
+    // Review is branch-owned persisted state. Keep delivery receipts out of its
+    // projection so prompt and UI observe the same result, including failures.
+    items.push(boardItem("repo.review", "event", scope, {
+      status: reviewStatus, reviewedSha: review.reviewed_sha,
+      findings: typeof review.count === "number" ? review.count : 0,
+      failedFiles: typeof review.failed === "number" ? review.failed : 0,
+      message: typeof review.message === "string" ? review.message : "",
+      artifactPath: segmentFile(repo, reviewSegment),
+    }));
+  }
   return new Board(root, items);
 }

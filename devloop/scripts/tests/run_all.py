@@ -24,6 +24,7 @@ MODULES = [
     "test_session",
     "test_board",
     "test_focused_lint",
+    "test_test_scope",
     "test_review",
 ]
 

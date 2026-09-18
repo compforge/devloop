@@ -5,7 +5,7 @@ test 逻辑见 `domain.lifecycle.checks.test`（与 lifecycle 的 pre_commit / p
 本脚本只做 repo 解析 + 实时输出 + 退出码，并把 working-tree 改动范围交给公共 test check；
 `--` 之后的显式参数优先，由调用者手动决定收窄方式。
 
-Usage: run_tests.py [--repo R | R] [-- <额外 make/test 参数>]
+Usage: run_tests.py [--repo R | R] [--full] [-- <额外 make/test 参数>]
 (R = 路径或 workspace 子项目名；默认 = cwd 的 repo，回退到 workspace 最近活跃 repo。)
 Exit: 0 通过或跳过；1 失败。
 """
@@ -31,7 +31,11 @@ def main(argv: list[str]) -> int:
         argv = argv[:i]
     ap = cli.ArgParser(prog="run_tests.py", description="run component tests; stamp on pass.")
     cli.add_repo_arg(ap)
+    ap.add_argument("--full", action="store_true",
+                    help="run the full suite in each selected Component")
     ns = ap.parse_args(argv)
+    if ns.full and extra:
+        ap.error("--full cannot be combined with extra test arguments after --")
     resolved, how = cli.resolve_repo_or_exit(ns, "run_tests")
     repo = resolved.git_root
     changed_paths = repo_model.changed_paths(repo)
@@ -49,7 +53,7 @@ def main(argv: list[str]) -> int:
         ws,
         capture=len(ws.components) > 1,
         extra=extra,
-        paths=changed_paths or None,
+        paths=None if ns.full else changed_paths,
     )
     print(("✓ " if result.ok else "✗ ") + result.summary)
     for guidance in result.guidance:

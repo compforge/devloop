@@ -48,6 +48,23 @@ Before selecting or interpreting load, read [load and evidence](references/load-
 completely. Use the project's actual scheduling contract: inspect what happens at the inflight
 limit, how phases end, and which events determine windows and statistics.
 
+### Show and confirm the actual configuration before load
+
+Before starting live load, print the actual raw configuration that will be executed in a fenced
+YAML/JSON block, with its file path and exact command. Use the final file after overrides and show
+any effective defaults that affect load separately; do not substitute a remembered profile or a
+prose summary. Redact credentials and sensitive payload values without hiding the experimental
+conditions: target and connection, Cases and routing selectors (including whether bot_id is absent),
+request_rate, max_inflight, warmup/hold/cooldown, request/cleanup timeouts, breakers, and observations.
+Explicitly describe inf/unlimited as no rate limit; an inflight cap does not limit request rate.
+
+Wait for the user's explicit confirmation of these displayed configurations before sending load.
+A general request to run is not confirmation of a configuration selected later. For a comparison,
+show every configuration and identify the intended differences; keep other load parameters equal.
+One confirmation covers the displayed sequence of runs, without asking again between unchanged
+runs. If the configuration, target or connection changes, show the revised configuration and obtain
+confirmation again. Do not quietly replace a load run with a single-request preflight.
+
 Use the canonical entrypoint and native lifecycle. Preserve the requested revision, resource
 envelope, load, case mix, and SLO policy. Record the exact command and realized configuration;
 respect warmup, hold, cooldown, breaker, stop, cancellation, and cleanup behavior. Do not edit a

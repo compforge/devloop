@@ -11,6 +11,7 @@ never a forge-specific credentials path.
   pr list     [--limit N] [--branch B] [--repo R]            recent MRs, or just this branch's
   pr update   <n> [--title|--description|--target-branch] [--repo R]
   pr close    <n> [--repo R]                                 close without merging
+  pr comment  <n|url> <comment-id> [--repo R]              full comment and replies
   pr reply    <n> <comment-id> <body> [--repo R]             reply in a comment's thread
 
 Deliberately NO `create`: opening an MR is a commit+push transaction under the branch/staging
@@ -23,7 +24,7 @@ import sys
 from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent
-sys.path.insert(0, str(_SCRIPTS.parent))
+sys.path.insert(0, str(_SCRIPTS))
 
 from domain.forge import (  # noqa: E402
     ForgeError,
@@ -88,6 +89,37 @@ def cmd_show(ns) -> int:
             for reply in c.replies:
                 body = (reply.body or "").strip().replace("\n", " ")
                 print(f"      ↳ {reply.author}: {body[:120]}")
+    return 0
+
+
+def cmd_comment(ns) -> int:
+    """Read a complete top-level comment and its replies without changing review state."""
+    forge = _forge_or_exit(ns, "pr comment")
+    number = _number_or_exit(ns.number, "pr comment")
+    try:
+        target = next((c for c in forge.comments(number) if c.id == ns.comment_id), None)
+    except ForgeError as exc:
+        print(f"pr comment: {exc}", file=sys.stderr)
+        return 1
+    if target is None:
+        print(f"pr comment: no comment {ns.comment_id} on "
+              f"{pr_label(forge.provider, number)}", file=sys.stderr)
+        return 1
+
+    print(f"{pr_label(forge.provider, number)} comment {target.id} by {target.author}")
+    print(f"Thread resolution (Forge): {target.resolution.value}")
+    if target.path:
+        location = target.path
+        if target.line is not None:
+            location += f":{target.line}"
+        print(f"Location: {location}")
+    # spec: Preserve full Markdown and all replies, including content beyond the summary limits.
+    print()
+    print(target.body)
+    print(f"\nReplies ({len(target.replies)}):")
+    for reply in target.replies:
+        print(f"\nReply {reply.id or '?'} by {reply.author}")
+        print(reply.body)
     return 0
 
 
@@ -166,6 +198,13 @@ def main(argv: list[str]) -> int:
     p_show.add_argument("number", metavar="number|url")
     cli.add_repo_arg(p_show)
     p_show.set_defaults(fn=cmd_show)
+
+    p_comment = sub.add_parser("comment", help="read a full comment and its replies")
+    p_comment.add_argument("number", metavar="number|url")
+    p_comment.add_argument("comment_id", metavar="comment-id",
+                           help="top-level id from `pr show` or `review findings`")
+    cli.add_repo_arg(p_comment)
+    p_comment.set_defaults(fn=cmd_comment)
 
     p_list = sub.add_parser("list", help="recent PRs/MRs, or this branch's")
     p_list.add_argument("--limit", type=int, default=10)

@@ -13,55 +13,36 @@ The bundled skills currently cover three independent quality views:
 - `trajectory` evaluates agent decisions and actions, compares effect and cost, finds the next
   evidence-backed problem, and organizes controlled tuning experiments.
 
-Each skill connects three layers without merging their ownership:
-
-1. a framework such as case-harness may provide reusable execution, load, evaluation, measurement,
-   artifact, and reporting primitives;
-2. each project owns its real cases, workloads, profiles, recordings, adapters, labels, Evaluators,
-   Measurers, acceptance criteria, and canonical entrypoints;
-3. the skill discovers and operates that project capability, interprets its evidence, helps evolve
-   project-owned assets when requested, and preserves project-specific knowledge beside them.
-
-During assessment, if no runnable project-owned capability exists, a skill returns `no_capability`
-rather than inventing tests or evaluations, or presenting source review as execution evidence.
-Explicit coverage work may evolve an existing project-owned capability; it does not make an absent
-suite look executable.
+The project owns the tests, profiles, recordings, adapters, and judgment criteria. A framework
+such as quality-harness supplies execution and analysis mechanisms; these skills discover and
+operate the project's canonical entrypoints, interpret evidence, and preserve useful operating
+knowledge beside the project assets.
 
 ## Operating model
 
-The skills share a small quality loop while preserving each domain's native semantics:
+The skills share [Quality concepts](CONCEPTS.md): subject and environment identity, execution
+facts, evidence and evaluation, comparison, and the distinction between capability, execution
+health, and quality decisions. Each skill retains its domain's lifecycle and judgment rules.
 
 ```text
-understand the target and runner path
-  → discover project-owned capability
-  → gate on executability
-  → run the canonical entrypoint
-  → interpret native evidence
-  → report conclusions and unknowns
-  → retain reusable operating knowledge
+identify the question and subject
+  → discover a project capability or sufficient recorded evidence
+  → prepare live execution or select existing evidence
+  → use the canonical entrypoint
+  → interpret results and coverage
+  → report the conclusion and next supported action
 ```
 
-E2E and performance execution share one target-confirmation boundary: identify the system under
-test and revision, decide whether it is local or remote, locate the runner, and verify the
-application data-plane path between them. Kubernetes API access or a configured endpoint is not by
-itself target readiness. Each skill then adds its own preparation: E2E prepares cases, fixtures,
-and scenario controls; performance additionally prepares the resource profile, load generator,
-dependency capacity, observations, safety limits, and cooldown.
+Live E2E and performance runs follow [environment preparation](references/environment.md): select
+the target and revision, locate the test process, verify application connectivity, prepare
+conditions, and retain cleanup evidence. Offline analysis reuses recorded facts without requiring
+a live target. No usable capability or sufficient evidence is reported as `no_capability`;
+an unavailable prerequisite is `blocked`.
 
-Execution facts, judgments, and missing evidence remain distinct. A failed assertion is not a
-runner error; an unavailable capability is not a pass; a useful analysis is not automatically a
-release verdict. Skills may organize evidence and propose the next experiment, but they do not
-claim causality or mutate the evaluated system unless the user asks.
-
-## Skills first, orchestration later
-
-Quality intentionally starts at the skill layer. E2E, performance, trajectory, and other quality
-views should first mature as independent operators with clear inputs, evidence, outcomes, and
-ownership. This keeps real project workflows visible while their common shape is still emerging.
-
-Only after several skills demonstrate stable contracts and repeated composition needs might an
-agent- or orchestration-level Quality Harness coordinate them. That is a future consumer of these
-skills, not a dependency or implementation goal of this plugin today.
+Execution facts and judgment remain separate. A passed assertion or SLO covers only its realized
+conditions; missing observations, skipped checks, and execution errors remain visible. Skills
+can propose the next experiment or improve project-owned assets when requested. They neither
+invent a missing suite nor supply cross-skill execution orchestration.
 
 ## Install
 
@@ -101,7 +82,7 @@ For this high-token trajectory problem, identify likely causes and controlled ex
 ```
 
 The skills operate existing project-owned quality assets. Assessment does not invent missing tests,
-workloads, profiles, recordings, labels, or evaluators. When the user asks to grow coverage, changes
+load profiles, recordings, labels, or judgment components. When the user asks to grow coverage, changes
 remain in the project-owned capability and move toward broader coverage incrementally. The skills do
 not deploy environments without authorization, modify agent behavior unless asked, or turn
 unavailable coverage into a pass.

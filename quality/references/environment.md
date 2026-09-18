@@ -1,121 +1,95 @@
-# Environment
+# Environment preparation
 
-An **Environment** is the complete observable state required to execute a quality capability
-against the intended system. It may be local, dev, or another remote environment; it does not need
-to be a dedicated test environment. E2E and performance runs share this contract even though they
-prepare different domain-specific conditions.
+Read [Quality concepts](../CONCEPTS.md) for Environment, Service, Workload, and execution identity.
+This contract prepares live E2E and performance runs. Offline analysis of existing evidence does
+not require a live target or connection preparation.
 
-```text
-Environment = Target + Runner + Connection
-            + Preconditions + Fixtures + Controls
-            + Cleanup + Evidence
-```
+Run conditions include the selected target, test-process location, connection, prerequisites,
+fixtures, temporary controls, and cleanup. Record them separately from Environment identity so a
+changed network path or test location remains visible without inventing another environment.
 
-- **Target** identifies the system under test, revision, configuration, and environment. It may be a
-  local process or a remote environment such as Kubernetes.
-- **Runner** is where the quality command and its traffic generator execute.
-- **Connection** is the application data-plane path from Runner to Target.
-- **Preconditions** are target or dependency facts that must already hold.
-- **Fixtures** are records, identities, files, or other state owned by the run.
-- **Controls** are temporary changes such as fault injection, resource selection, or load.
-- **Cleanup and Evidence** prove what was restored and what actually ran.
+The project owns startup and access mechanisms, credentials, fixtures, controls, and cleanup.
+Use its canonical entrypoint and runbook to prepare and verify these conditions.
 
-The project owns target names, startup and access mechanisms, credentials, fixtures, controls, and
-cleanup. A quality skill discovers and operates that knowledge; it does not replace it with generic
-environment assumptions.
+## Resolve the target and execution location
 
-## Select the Target before choosing the Connection
+Resolve in order:
 
-Resolve the Environment in order:
+1. **Target:** identify the Service or system boundary, Environment, deployed revision,
+   configuration, namespace or other scope, and whether it is dedicated or shared.
+2. **Execution location:** decide where the quality command and traffic generator execute after
+   the target is fixed. Record the test-process revision separately from the target revision.
+3. **Connection:** select and verify the application data-plane path from that process to the target.
 
-1. **Target:** identify the exact environment, subject revision, configuration, namespace or other
-   scope, and whether it is dedicated or shared.
-2. **Runner:** decide where the quality command executes after the Target is fixed.
-3. **Connection:** choose and verify the application data-plane path from that Runner to that Target.
+Do not infer the target from whichever endpoint happens to respond. Resolve the endpoint from
+project configuration and target state, then probe its exact host, port, and protocol from the
+actual execution location. Confirm the deployed revision and health independently when applicable.
 
-Do not start from whichever endpoint happens to respond and infer the Target from it. A convenient
-connection must not silently change the selected environment, revision, or scope.
-
-Common shapes include:
-
-- **Local Target:** start or discover it through the canonical project entrypoint, then probe the
-  same host, port, and protocol used by the quality workload.
-- **Remote Target:** use a project-owned application path. For Kubernetes, API or `kubectl` access
-  proves control-plane reachability only; it does not prove that the Runner can exchange application
-  traffic with a Service or Pod endpoint.
-
-Resolve the endpoint from target state instead of guessing a hostname, namespace, address, or port.
-Probe it from the actual Runner and, when relevant, independently confirm the deployed revision and
-health from the Target side. A configured URL, successful deployment command, or control-plane
-login is not readiness evidence by itself.
+For a local target, use the project's startup or discovery mechanism. For Kubernetes, API or
+`kubectl` access proves control-plane reachability only. Neither it nor a configured Service or
+Workload proves that the test process can exchange application traffic with the target.
 
 ### Choose the Kubernetes connection by priority
 
-After selecting a Kubernetes Target, use the first applicable authorized option when the connection
-mechanism is not itself under test:
+When the connection mechanism is not itself under test, use the first applicable authorized option:
 
-1. **Run-owned port-forward:** prefer a project-owned port-forward that the quality run starts,
-   probes, observes, and stops. Use the project's wrapper when one exists; otherwise bind the
-   forward to the resolved Service or Pod and target port, choose a run-scoped local port, preserve
-   logical service authority such as TLS SNI or HTTP `Host`, retain logs, and own readiness and
-   shutdown.
-2. **Direct application endpoint:** use project-owned ingress or a `ClusterIP:port` that is routable
-   without an ambient connection helper. For a normal Service, prefer ClusterIP over Service DNS to
-   avoid local DNS and VPN DNS behavior without bypassing the Service data plane. Preserve required
-   TLS SNI, HTTP `Host`, service-mesh routing, or other logical authority through project-owned
-   Runner configuration; use Service DNS when the ClusterIP is not routable or DNS is part of the
-   intended connection path or behavior under test.
-3. **In-environment Runner:** move the Runner into the Target environment when a local connection is
-   unavailable or unsuitable, and report the changed Runner explicitly.
-4. **Ambient VPN or shared tunnel:** use this only when earlier options are unavailable or the
-   project requires that path; verify it for this run rather than trusting existing host state.
+1. **Run-owned port-forward:** prefer a project-owned forward that the run starts, probes,
+   observes, and stops. Use the project's wrapper when available; otherwise resolve the Kubernetes
+   Service or Pod and target port, choose a run-scoped local port, preserve TLS SNI or HTTP `Host`,
+   and own readiness, logs, and shutdown.
+2. **Direct application endpoint:** use project-owned ingress or a routable `ClusterIP:port`.
+   For a normal Kubernetes Service, prefer ClusterIP over Service DNS to avoid ambient DNS and VPN
+   dependencies while retaining the Service data plane. Preserve TLS SNI, HTTP `Host`, service-mesh
+   routing, and other logical authority through project configuration. Use Service DNS when
+   ClusterIP is not routable or DNS is required by the intended path or behavior.
+3. **In-environment execution:** move the test process into the target Environment when local
+   access is unavailable or unsuitable, and report the changed execution location.
+4. **Ambient VPN or shared tunnel:** use this when earlier options are unavailable or the project
+   requires that path; verify it for this run rather than trusting existing host state.
 
-Do not substitute a port-forward when Service DNS, ingress, VPN behavior, or another network path is
-part of the behavior being verified. For performance runs, also treat the forwarder as Runner
-capacity: use it only when it can carry the declared profile without becoming an unmeasured
-bottleneck. Otherwise use an authorized direct path or in-environment Runner and report the changed
-Connection.
+Do not substitute a port-forward when Service DNS, ingress, VPN behavior, or another network path
+is under test. For performance work, assess the connection helper's capacity as part of the load
+path. If it could bottleneck the declared capacity, stress, or soak profile, use an authorized
+direct path or in-environment execution and record the chosen connection.
 
-If connection setup fails, distinguish an unavailable Target, a broken Runner-to-Target path, and a
-Runner error. An alternate endpoint, tunnel, or Runner is a changed Environment: verify it,
-preserve the first failure, and report the changed execution conditions rather than silently
-retrying for green.
+If setup fails, distinguish an unavailable target, a broken connection, and a test-process error.
+Verify any alternate path, preserve the first failure, and report changed execution conditions.
+An endpoint or execution-location change is not automatically a change in Environment identity.
 
-## Prepare the environment
+## Prepare conditions and effects
 
-Keep these preparation kinds visible because they have different failure and cleanup semantics:
+Keep preparation kinds visible because they have different failure and cleanup semantics:
 
-1. **Pre-existing conditions** come from the selected Target, such as a deployed revision, enabled
-   capability, dependency, quota, or resource policy.
-2. **Run-owned fixtures** are created for the run. Give them stable run identity, isolate them from
-   concurrent work, and clean them through project-owned mechanisms.
-3. **Transient controls** deliberately alter behavior for a bounded period. Apply them only after
-   steady-state readiness is proven, verify activation, and always restore them.
+1. **Pre-existing conditions** include the target revision, enabled capabilities, dependencies,
+   quotas, and resource policy.
+2. **Run-owned fixtures** are records, identities, files, or other resources created for this run.
+   Give them stable run identity, isolate concurrent work, and clean them through project mechanisms.
+3. **Transient controls** deliberately alter behavior for a bounded period, such as fault injection,
+   load, or a resource setting. Verify steady state first, then activation, and always restore them.
 
-Do not infer readiness from setup exit status. Observe each condition at the layer the scenario
-depends on. An absent required condition makes the run `blocked` or `error`; it is not a product
-pass and must not be silently removed from the realized Environment.
+Observe each required condition at the layer the scenario depends on. Setup exit status alone is
+not readiness evidence. If a required condition is missing, preserve the `blocked` or `error` state
+and identify that condition rather than silently removing it from the run.
 
 ## Follow the lifecycle
 
 1. Read the project runbook nearest to the selected capability.
-2. Resolve the Target, then the Runner and prioritized Connection, then conditions, effects, and
-   evidence.
-3. Check authorization before deploying, creating durable data, changing resources, injecting
-   faults, or generating material load.
-4. Prepare preconditions and fixtures through canonical mechanisms.
-5. Verify Target health and application connectivity from observable state.
+2. Resolve the target, execution location, connection, required conditions, and expected effects.
+3. Check existing authorization before deployment, durable-data creation, resource changes, fault
+   injection, or material load; obtain authorization for actions outside it.
+4. Prepare prerequisites and fixtures through canonical mechanisms.
+5. Verify target health and application connectivity from observable state.
 6. Apply and verify transient controls.
-7. Execute without silently repairing or changing the Environment during measurement.
-8. Remove controls, clean fixtures, stop connection helpers, and verify restoration even after a
-   failed run.
+7. Execute under the declared conditions; record deviations instead of silently repairing the
+   target or connection during measurement.
+8. Remove controls, clean fixtures, stop connection helpers, and verify restoration even after failure.
 
-Cleanup is evidence, not a business verdict. A capability may pass its assertions or SLOs and still
-finish with a cleanup error; report both outcomes.
+Keep assertions or SLO results and cleanup health separately visible. A successful assertion does
+not erase a cleanup error or override the native run-level Verdict.
 
-## Preserve evidence safely
+## Preserve run evidence
 
-Retain the project and Runner revision, Target identity, connection path, endpoint identity,
-application readiness, conditions and controls, fixtures, start/end time, cleanup, native Verdict,
-and artifact paths. Keep credentials, private endpoint details, and volatile environment facts out
-of reusable plugin guidance.
+Retain the target and test-process revisions, Environment and Service identity, relevant Workload
+instances, execution location, connection and endpoint identity, readiness observations, conditions,
+controls, fixture identities, start/end times, and cleanup. Include native results and artifact
+paths under the provenance and privacy rules in Quality concepts.

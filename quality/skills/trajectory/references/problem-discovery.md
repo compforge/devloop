@@ -31,7 +31,7 @@ Before ranking agent problems, verify:
 - build failures, unmatched annotations, and unknown execution outcomes are visible;
 - label coverage and the exact denominator accompany every quality rate;
 - model-usage and duration coverage are sufficient for cost claims;
-- evaluator comparisons reuse the same TrajectoryDataset, while generator comparisons use aligned
+- judgment-component comparisons reuse the same TrajectoryDataset, while generator comparisons use aligned
   Case/input cohorts and explicitly control their differences;
 - target, model, tool version, feature flags, and other material dimensions are available.
 
@@ -55,7 +55,7 @@ environment, and coverage.
 
 A week-over-week decline is an operational alert, not automatically a version regression: workload
 mix and annotation coverage may have changed. Group by generation provenance within or across the time
-windows. Escalate the smell when the same effect metric declines under the same Evaluator and policy,
+windows. Escalate the smell when the same effect metric declines under the same Verifier and policy,
 especially when completion or cost also regresses.
 
 ## Search in priority order
@@ -67,7 +67,7 @@ especially when completion or cost also regresses.
 3. **Action errors:** malformed model output, invalid tool arguments, rejected calls, tool errors,
    and repair loops, including errors that a later retry hides from the final outcome.
 4. **Effect regression within a version:** wrong, unsupported, missed, repeat, low-score, or
-   low-completion outcomes, using the project's own Evaluators and annotations.
+   low-completion outcomes, using the project's own Verifiers and annotations.
 5. **Pareto regression:** effect is unchanged or worse while normalized token, time, model calls, or
    tool calls increase.
 6. **Cost hotspot:** effect is acceptable, but a high-volume target or cohort dominates avoidable

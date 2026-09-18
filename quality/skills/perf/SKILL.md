@@ -5,146 +5,110 @@ description: Discover, run, interpret, compare, and incrementally extend a proje
 
 # Performance Quality
 
-Assess how a deployed system behaves under a declared resource profile and load. Operate the
-project's existing performance capability; do not replace its load framework, workload semantics,
-target policy, or service-level objectives.
+Assess how a system behaves under declared resources and load. Operate the project's performance
+capability and explain the capacity, latency, resource use, and limitations supported by its facts.
 
-## Keep the owners separate
+Read [Quality concepts](../../CONCEPTS.md) before discovery or interpretation. It defines ownership,
+subject identity, execution facts, evaluation, comparison, and result states shared by the skills.
 
-1. Treat case-harness or another performance framework as infrastructure for load scheduling,
-   lifecycle, observation, metric reduction, artifacts, reports, and Verdicts.
-2. Treat the project as owner of its Workloads, Cases, Experiment/Profile configuration, target
-   adapters, Probes, SLOs, safety limits, canonical command, and comparison baselines.
-3. Treat this skill as the operator that discovers those assets, selects and runs the relevant
-   experiment, checks evidence validity, interprets or compares results, and helps evolve bounded
-   project-owned coverage when requested.
+The project owns its Cases, protocol Runners, Judges, resource/load profiles, Probes, SLOs, safety
+limits, and baselines. A perf Runner invokes a service protocol; Workload identifies a Service's
+platform carrier. Record where the load generator executes separately from both.
 
-Do not call a lower-level framework directly when the project exposes a wrapper. Framework code
-without a project-owned workload and runnable profile is `no_capability`.
+## Discover and select
 
-## Discover the capability
+Read the project's AGENTS.md and README, then locate:
 
-Read the project's AGENTS.md and README first, then locate:
+- the canonical performance, capacity, stress, soak, or regression commands and operating notes;
+- the target Service, Environment, deployed revision, Workloads, load-generator location, and
+  application connection path;
+- Cases or stimuli, case mix, protocol Runner, raw completion signals, and independent Judge;
+- named experiments and resource/load profiles, both request rate and maximum inflight limits,
+  phase schedules, duration, arrival distribution, and request/time budgets;
+- Probes, SLOs, breakers, stop/cancellation behavior, cooldown, cleanup, and target authorization;
+- native run schema, raw requests and resource observations, evaluation records, reports, and
+  comparison baselines.
 
-- canonical commands and directories for performance, load, capacity, stress, soak, scalability,
-  or regression testing;
-- the subject boundary and target environment, including whether it is a local process or remote
-  system such as Kubernetes, the deployed revision, where the load runner executes, and how it
-  reaches the application endpoint;
-- workload adapters, stable Cases or stimuli, case mix, and protocol-specific success judgment;
-- named profiles or experiments, resource profiles, open- or closed-loop load, stages, duration,
-  concurrency or arrival rate, and request/time limits;
-- SLOs, breakers, abort conditions, cleanup, target authorization, and operating notes;
-- request and resource observations, run models, Verdicts, reports, and historical baselines.
+Classify the requested action as `ready`, `blocked`, or `no_capability` using the shared concepts.
+An executable load test requires a project-owned adapter, runnable profile, and verified target
+connection. Existing artifacts can support offline analysis without a reachable target.
 
-Choose the smallest existing profile that answers the user's question. Do not silently replace a
-capacity scan or soak test with a smoke profile and present the narrower result as equivalent.
+Choose the smallest existing profile that answers the question. Preserve a requested capacity scan
+or soak test's scope; a smoke run cannot stand in for it. Resolve ambiguity from project evidence
+and ask when the intended profile or target remains unclear.
 
-Classify discovery as `ready`, `blocked`, or `no_capability`. `ready` requires a verified data-plane
-connection from the load runner to the intended target, not only a configured URL or Kubernetes
-control-plane access. A profile with an unavailable target, credential, dependency, quota, load
-runner, or required observer is `blocked`, not an executable pass. Report ambiguity instead of
-guessing when repository evidence cannot select a profile or target.
+## Prepare and run
 
-## Prepare a live run safely
+Before live load or target changes, read [environment preparation](../../references/environment.md)
+and [load-environment preparation](references/load-environment.md) completely. Resolve the target,
+then execution location and connection, then load-generator capacity, dependency quotas, fresh
+observations, steady state, safety limits, and cleanup.
 
-Before generating live load or changing a performance Target, read both the shared
-[Environment contract](../../references/environment.md) and
-[performance load-environment preparation](references/load-environment.md) completely. Inspection and
-offline re-analysis of an existing run do not require Environment preparation.
+Before selecting or interpreting load, read [load and evidence](references/load-and-evidence.md)
+completely. Use the project's actual scheduling contract: inspect what happens at the inflight
+limit, how phases end, and which events determine windows and statistics.
 
-Prepare three explicit layers in order:
+Use the canonical entrypoint and native lifecycle. Preserve the requested revision, resource
+envelope, load, case mix, and SLO policy. Record the exact command and realized configuration;
+respect warmup, hold, cooldown, breaker, stop, cancellation, and cleanup behavior. Do not edit a
+profile during measurement or retry a failed run only to obtain green output.
 
-1. **Target environment:** identify the local or remote Target, subject revision, scope, and
-   declared resource profile before choosing how to reach it.
-2. **Runner and connection:** select the Runner, use the first applicable authorized Connection in
-   the Environment contract's priority order, then probe the exact endpoint from that Runner. Keep
-   the path stable across compared runs; switching between Service DNS and ClusterIP is an
-   Environment change and must be reported.
-3. **Load environment:** establish load-generator capacity,
-   dependency quotas, fresh request/resource observations, initial steady state, safety limits,
-   cooldown, and cleanup path.
+Deploying, installing dependencies, creating credentials, resizing resources, switching targets,
+or generating material load requires authorization covering that action and target. Record changed
+execution conditions and preserve the first failure when an alternate connection is used.
 
-For a local Runner reaching Kubernetes, the first Connection is normally a run-owned port-forward.
-For capacity, stress, or soak work that could saturate it, skip that option and use an authorized
-direct path or in-environment Runner so the connection helper does not become an unmeasured
-bottleneck.
-
-Preserve the requested revision, target, profile, workload, resource envelope, load model, case mix,
-and SLO policy. Do not deploy, install dependencies, create credentials, resize resources, or switch
-targets unless the user authorized that action. Shared and production environments require
-authorization appropriate to the declared load and blast radius.
-
-## Run and preserve evidence
-
-Use the project-owned entrypoint and its native lifecycle. Record the exact command and realized
-configuration, not only the profile filename. Respect warmup, ramp, measurement, cooldown, breaker,
-graceful-stop, cleanup, and retry semantics; do not edit a profile midway or retry a failed run only
-to obtain green output.
-
-Keep these facts distinct:
-
-- load is an experimental input, not an observed metric;
-- request Outcomes and resource samples are observations;
-- per-request judgment and run-level SLOs are evaluation policy;
-- framework or environment errors are not SLO failures.
-
-Treat target-connection and load-generator failures as environment `error` or `blocked`, not product
-latency or error-rate regressions. An alternate runner, endpoint, tunnel, or in-cluster execution is
-a changed Environment and must be reported as such.
-
-Capture the native run model, raw request/resource facts, Verdict, report, logs, traces, and cleanup
-evidence exposed by the project. When the runner supports offline report or SLO recomputation, use
-the persisted run rather than generating load again.
+Capture the native execution model, raw requests and resource samples, independent evaluations,
+Verdict, report, logs, traces, and cleanup evidence. Use persisted facts for supported offline
+judgment, SLO recomputation, or report rendering; changing a judgment is not a reason to generate
+load again. A Judge error must remain visible even when a completed Outcome is available.
 
 ## Validate and interpret
 
 Check data health before drawing a performance conclusion:
 
-1. Verify the subject revision, target, resource profile, load model, case mix, and comparison
-   cohort are the intended ones.
-2. Check completed measurement windows, stop reasons, sample counts, error and drop counts,
-   cancellations, probe errors, missing series, and skipped SLOs.
-3. Treat latency as a fact only for completed requests. Account for open-loop drops and closed-loop
-   coordinated-omission caveats rather than comparing percentiles in isolation.
-4. Read request and resource facts over the same realized window. Ramp, hold, measurement, and
-   cooldown answer different questions and must not be flattened into one aggregate.
-5. Read throughput, latency distribution, errors, drops, saturation, resource use, restarts, and
-   scaling behavior together. Capacity claims require complete stable-load windows.
-6. Compare runs only after checking workload, load, resources, environment, and SLO comparability.
-   Describe unmatched factors instead of attributing every difference to the code revision.
+1. Verify the target and revision, resources, both load axes, case mix, and realized phase windows.
+2. Check stop reasons, completed samples, missing judgments, drops, interruptions, inflight state,
+   time limited by the inflight cap, Probe errors, missing series, and skipped SLOs.
+3. Distinguish configured rate, actual dispatch rate, and completion throughput. No drops does not
+   prove the configured rate was sustained. Read scheduling and coordinated-omission caveats.
+4. Align request and resource windows. Interpret latency by the native request cohort and
+   throughput by actual completion events; inspect warmup, hold, and cooldown separately.
+5. Confirm capacity only from complete stable-load windows with sufficient requests and passing
+   applicable SLOs. A finite-rate window blocked by its inflight cap cannot confirm that rate's
+   capacity; use the native eligibility rules in the evidence reference.
+6. Compare within a declared scan axis while holding the other axis, resources, scheduling shape,
+   and execution conditions fixed. Separate incomparable points instead of fitting one curve.
 
-A passed SLO means the declared gate passed under the realized experiment; it does not prove an
-untested capacity. A regression is an observed relationship, not a root-cause diagnosis. Profiling,
-tracing, or source investigation is separate evidence.
+A passed SLO supports its declared gate under the realized experiment. It does not establish
+untested capacity or a root cause. Correlate latency, throughput, errors, saturation, resources,
+restarts, and scaling; use profiling or trace evidence for causal investigation.
 
-Preserve native outcomes: `passed`, `failed`, `skipped`, `error`, `blocked`, and `no_capability` are
-distinct. Missing strict observations or incomplete windows cannot be converted into a pass.
+Preserve useful completed windows after later failures while reporting the run's error or cleanup
+state. Keep missing evidence, interrupted measurement, and skipped gates visible.
 
 ## Grow coverage deliberately
 
-When the user explicitly asks to add or strengthen performance coverage:
+When the user asks to add or strengthen performance coverage:
 
-1. Map the existing workload, profiles, metrics, and baselines; choose one bounded missing question.
-2. Reuse project adapters and lifecycle. Keep stable input and judgment in project Case assets;
-   keep load weights, stages, resources, and SLO selection in the Experiment/Profile.
-3. Add protocol facts in the Workload and observations in Probes before adding derived claims to a
-   report. Make a metric affect pass/fail only through an explicit project-owned SLO.
-4. Validate configuration and workload behavior offline, then run the smallest relevant live
+1. Map existing Cases, adapters, profiles, observations, and baselines; choose one missing question.
+2. Keep stable input and expected behavior in project Case assets. Select case weights, resources,
+   load phases, and SLOs in the Experiment/Profile.
+3. Capture protocol facts in the Runner and resource facts in Probes. Implement per-request
+   judgment independently; make observations affect pass/fail through explicit project SLOs.
+4. Validate configuration and adapter behavior offline, then run the smallest relevant live
    experiment when its target and impact are authorized.
-5. Do not weaken thresholds, shorten measurement until it loses meaning, or drop missing data merely
-   to make the new profile pass.
+5. Preserve meaningful windows and thresholds. Missing observations need explanation or repair,
+   not deletion to make a profile pass.
 
-Improve a shared harness only when the capability is genuinely reusable across projects. Project
-protocols, target locations, credentials, load limits, and learned thresholds stay in the project.
+Reuse project lifecycle and clients. Improve a shared harness only for a reusable mechanism;
+project protocols, endpoints, credentials, budgets, and thresholds stay in the project.
 
 ## Report and retain learning
 
-Lead with the decision-relevant result, then report the project and revision, target and subject,
-runner location and connection path, profile and exact command, resource/load/case-mix realization,
-safety controls, native Verdict, data-health caveats, SLO results, key request and resource
-observations, baseline comparison, artifact paths, cleanup, and unverified areas.
+Lead with the supported performance conclusion. Include target and generator revisions, execution
+location and connection, exact command, realized resource/load/case mix, phase boundaries, stop
+and cleanup state, native Verdict, SLO coverage, key request/resource facts, comparison conditions,
+and artifact paths. State the observed limit separately from any extrapolation and its assumptions.
 
-Persist run-specific evidence and reusable project operating knowledge beside the project's perf
-assets. Do not copy credentials, private endpoints, volatile measurements, or project-only commands
-into this skill.
+Persist evidence and reusable operating knowledge beside the project's perf assets under the
+shared provenance and privacy rules.

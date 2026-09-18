@@ -1,6 +1,6 @@
 # E2E scenario preparation
 
-Read the [shared Environment contract](../../../references/environment.md) first. This
+Read the [environment preparation](../../../references/environment.md) first. This
 reference adds the E2E-specific preparation for fixtures, scenario controls, fault injection, and
 chaos experiments.
 
@@ -44,6 +44,6 @@ mechanism and keep fault activation, business assertion, and cleanup as separate
 
 ## Retain E2E evidence
 
-In addition to the shared Environment evidence, retain selected cases, fixture identities,
+In addition to the shared run evidence, retain selected cases, fixture identities,
 control or fault activation, steady-state and recovery observations, executed/skipped coverage,
 assertion results, and cleanup outcomes.

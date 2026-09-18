@@ -4,7 +4,10 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from domain.validation import Comparison
 
 PHASES = ("pre_commit", "post_commit", "pre_mr", "post_mr")
 
@@ -21,6 +24,7 @@ _BUILTIN: dict[str, str] = {
 # 不理解 normalize/fix 的业务含义。多个 check 将来可各自声明 preparation，而无需给机制加分支。
 _PREPARER: dict[str, str] = {
     "lint": "domain.lifecycle.checks:normalize",
+    "test": "domain.lifecycle.checks:normalize",
 }
 
 
@@ -114,6 +118,7 @@ def dispatch(
     names: list[str] | None = None,
     registry: dict[str, Callable[..., HookResult]] | None = None,
     max_workers: int = 4,
+    comparison: Comparison | None = None,
 ) -> DispatchResult:
     """跑 `phase` 上配置的全部 hook（并发 join），聚合成 DispatchResult。
 
@@ -146,12 +151,15 @@ def dispatch(
     preparation_guidance: dict[str, tuple[str, ...]] = {}
     if registry is None:
         # 真实内置 checks 先完成各自声明的 preparation，再进入并发区；测试注入 registry 不触盘。
+        prepared_handlers = {}
         for name in names:
             preparer = resolve_preparer(name)
             if preparer is None:
                 continue
             try:
-                prepared = preparer(repo, paths=paths)
+                if preparer not in prepared_handlers:
+                    prepared_handlers[preparer] = preparer(repo, paths=paths)
+                prepared = prepared_handlers[preparer]
                 if not prepared.ok:
                     preparation_failures[name] = HookResult(
                         name,
@@ -164,6 +172,14 @@ def dispatch(
             except Exception as e:  # gate fail-closed
                 preparation_failures[name] = HookResult(name, ok=False, summary=f"preparation errored: {e}")
 
+    validation_plan = None
+    if registry is None and any(name in ("lint", "test") for name in names):
+        from domain import repo as repo_model
+        from domain.validation import build_plan
+        validation_plan = build_plan(repo, repo_model.select_components(repo, paths=paths),
+                                     paths=paths, comparison=comparison,
+                                     checks=tuple(name for name in names if name in ("lint", "test")))
+
     def _run(name: str) -> HookResult:
         if name in preparation_failures:
             return preparation_failures[name]
@@ -175,7 +191,10 @@ def dispatch(
             # keyword-only（`lint`/`test` 把它放在 `*,` 之后，与 capture/component 同列）。位置传在
             # 后者上炸 TypeError，而 gate 的 fail-closed 会把异常收敛成 ok=False——那不是崩，
             # 是**静默挡掉每一次 commit**。契约规定的是参数名，不是它的位置。
-            result = handler(repo, paths=paths)
+            if validation_plan is not None and name in ("lint", "test"):
+                result = handler(repo, paths=paths, plan=validation_plan)
+            else:
+                result = handler(repo, paths=paths)
             guidance = preparation_guidance.get(name, ())
             if not guidance:
                 return result

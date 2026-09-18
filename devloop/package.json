@@ -1,6 +1,6 @@
 {
   "name": "@compforge/devloop",
-  "version": "0.4.10",
+  "version": "0.4.11",
   "description": "Shared dev-loop domain runtime with Claude Code, Codex, and DeepSeek Harness adapters.",
   "type": "module",
   "engines": {
@@ -30,6 +30,7 @@
     "!scripts/tests/",
     "!scripts/**/__pycache__/",
     "!scripts/**/*.pyc",
+    "references/",
     "skills/",
     ".claude-plugin/",
     ".codex-plugin/"

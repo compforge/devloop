@@ -20,6 +20,7 @@ def main(argv: list[str]) -> int:
         description="normalize, then run Component validation checks.",
     )
     cli.add_repo_arg(ap)
+    ap.add_argument("--full", action="store_true", help="run canonical full checks")
     ns = ap.parse_args(argv)
     resolved, how = cli.resolve_repo_or_exit(ns, "run_validate")
     repo = resolved.git_root
@@ -30,7 +31,8 @@ def main(argv: list[str]) -> int:
     print(f"run_validate: components = {names}  [{workset.reason}]")
     record_active_repo(repo)
 
-    results = checks.validate_components(repo, workset)
+    results = checks.validate_components(repo, workset, full=ns.full,
+        explicit=bool(resolved.target_path and Path(resolved.target_path).resolve() != Path(repo).resolve()))
     for result in results:
         print(("✓ " if result.ok else "✗ ") + result.summary)
         for guidance in result.guidance:

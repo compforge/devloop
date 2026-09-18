@@ -37,6 +37,9 @@ the task explicitly targets that version.
 5. Trust and surface each script's `PLAN:` result. Stop on failure instead of improvising a bypass.
    Merge remains a human action.
 
+Validation scope is automatic; see [repocli](../../references/repocli.md) for direct diff inspection
+and fallback semantics. Do not guess `TEST_FILES` or `LINT_FILES` for lifecycle checks.
+
 ## Routes
 
 - Start new work on a fresh feature branch → read [[references/branch|branch flow]].

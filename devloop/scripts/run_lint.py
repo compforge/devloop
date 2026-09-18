@@ -29,7 +29,6 @@ def main(argv: list[str]) -> int:
     ns = ap.parse_args(argv)
     resolved, how = cli.resolve_repo_or_exit(ns, "run_lint")
     repo = resolved.git_root
-    paths = None if ns.full else (repo_model.changed_paths(repo) or None)
     ws = repo_model.select_components(repo, explicit=resolved.target_path)
     if how != "cwd":
         print(f"run_lint: repo = {repo} ({how})")
@@ -38,22 +37,15 @@ def main(argv: list[str]) -> int:
     print(f"run_lint: components = {names}  [{ws.reason}]")
     record_active_repo(repo)
 
-    # 对每个 component 先 normalize，再 lint；只读 check 永远观察 fixer 完成后的稳定内容。
-    ok = True
-    for component in ws.components:
-        prepared = checks.normalize(repo, capture=False, component=component, paths=paths)
-        if not prepared.ok:
-            print("✗ " + prepared.summary)
-            ok = False
-            continue
-        for guidance in prepared.guidance:
+    results = checks.validate_components(repo, ws, names=("lint",), full=ns.full,
+        explicit=bool(resolved.target_path and Path(resolved.target_path).resolve() != Path(repo).resolve()),
+        extra=None)
+    for result in results:
+        print(("✓ " if result.ok else "✗ ") + result.summary)
+        for guidance in result.guidance:
             print(f"  - {guidance}")
-        res = checks.lint(repo, capture=False, component=component, paths=paths)   # capture=False：实时走终端
-        print(("✓ " if res.ok else "✗ ") + res.summary)
-        for guidance in res.guidance:
-            print(f"  - {guidance}")
-        ok = ok and res.ok
-    return 0 if ok else 1
+    return 0 if all(result.ok for result in results) else 1
+
 
 
 if __name__ == "__main__":

@@ -38,7 +38,6 @@ def main(argv: list[str]) -> int:
         ap.error("--full cannot be combined with extra test arguments after --")
     resolved, how = cli.resolve_repo_or_exit(ns, "run_tests")
     repo = resolved.git_root
-    changed_paths = repo_model.changed_paths(repo)
     ws = repo_model.select_components(repo, explicit=resolved.target_path)
     if how != "cwd":
         print(f"run_tests: repo = {repo} ({how})")
@@ -47,18 +46,15 @@ def main(argv: list[str]) -> int:
     print(f"run_tests: components = {names}  [{ws.reason}]")
     record_active_repo(repo)
 
-    # 单 Component 保留手工入口的实时输出；多 Component 并行时 capture，避免日志互相穿插。
-    result = checks.test_components(
-        repo,
-        ws,
-        capture=len(ws.components) > 1,
-        extra=extra,
-        paths=None if ns.full else changed_paths,
-    )
-    print(("✓ " if result.ok else "✗ ") + result.summary)
-    for guidance in result.guidance:
-        print(f"  - {guidance}")
-    return 0 if result.ok else 1
+    results = checks.validate_components(repo, ws, names=("test",), full=ns.full,
+        explicit=bool(resolved.target_path and Path(resolved.target_path).resolve() != Path(repo).resolve()),
+        extra=extra)
+    for result in results:
+        print(("✓ " if result.ok else "✗ ") + result.summary)
+        for guidance in result.guidance:
+            print(f"  - {guidance}")
+    return 0 if all(result.ok for result in results) else 1
+
 
 
 if __name__ == "__main__":

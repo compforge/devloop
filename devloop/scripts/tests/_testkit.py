@@ -148,3 +148,32 @@ def run_main(g: dict) -> None:
     """单测试文件的 standalone 入口。"""
     _, failed = run_all(g)
     sys.exit(1 if failed else 0)
+
+
+def repocli_report(sources=(), tests=()):
+    """Hermetic CLI protocol fixture; executes a real subprocess, never host repocli."""
+    from contextlib import contextmanager
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+
+    @contextmanager
+    def installed():
+        with TemporaryDirectory() as root:
+            cli = Path(root) / "repocli"
+            cli.write_text(
+                "#!/usr/bin/env python3\nimport json, sys\n"
+                "sys.path.insert(0, " + repr(str(SCRIPTS)) + ")\nfrom domain.validation import content_identity\n"
+                "from pathlib import Path\n"
+                "repo = sys.argv[sys.argv.index('--repo')+1]\n"
+                "with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+                "data = " + repr({"schemaVersion": 2, "complete": True, "scope": "focused",
+                                  "impactMode": "file", "snapshot": "sha256:" + "a" * 64,
+                                  "sourceFiles": list(sources), "testFiles": list(tests),
+                                  "diagnostics": []}) + "\n"
+                "data.update(snapshot=content_identity(repo), checkout=repo, input='commit' if '--head' in sys.argv else 'working_tree')\n"
+                "print(json.dumps(data))\n"
+            )
+            cli.chmod(0o755)
+            with patch.dict(os.environ, {"DEVLOOP_REPOCLI": str(cli)}):
+                yield cli
+    return installed()

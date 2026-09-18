@@ -614,7 +614,15 @@ def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecy
     范围（`phase_paths`）在**跑 hook 之前**算好：既让 post_commit / pre_mr 不退化成跑全仓，也让
     normalize 与同相位并发的 lint/test 看到同一个集合（fix 会改工作树，各自现算会分叉）。
     """
-    res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase))
+    from domain.validation import Comparison
+    comparison = Comparison()
+    if phase == "post_commit":
+        comparison = Comparison(base="HEAD^", head="HEAD")
+    elif phase in ("pre_mr", "post_mr"):
+        base = gitcmd.git(intent.repo, "merge-base", "HEAD", f"origin/{intent.target}")
+        comparison = (Comparison(base=base.out, head="HEAD") if base.ok and base.out
+                      else Comparison(reason="branch merge base unavailable"))
+    res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase), comparison=comparison)
     if not res.results:
         return res
 

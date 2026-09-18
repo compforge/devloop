@@ -51,6 +51,12 @@ Normal lifecycle hooks launch the same ReviewRun automatically; do not duplicate
    每行是 `<comment-id>  [PENDING|verdict]  <path>[:<line>]  ccr:fp=<fp>`，`<comment-id>`
    就是下一步的定位符。GitLab/GitHub 同一套写法，不用分别拼 `gh api` / `glab api`。
 
+   Read a finding's complete body and replies before adjudicating:
+
+   ```bash
+   <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/pr.py comment <n|url> <comment-id> [--repo <name|path>]
+   ```
+
    `.devloop/review.json` 只用于辅助求证；**仅存在本地、没发布成 comment 的 finding 不打标**
    ——它没有可回复的对象，采集侧也看不见。
 

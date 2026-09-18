@@ -16,6 +16,7 @@ from _testkit import run_all  # noqa: E402  (bootstrap first)
 MODULES = [
     "test_config",
     "test_forge",
+    "test_pr",
     "test_git_ops",
     "test_worktree",
     "test_tasks",

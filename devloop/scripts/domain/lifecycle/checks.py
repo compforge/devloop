@@ -24,6 +24,7 @@ from domain import repo as repo_model
 from domain.context import RepoContext
 from domain.repo_layout import Component
 from domain.lifecycle.base import HookResult
+from domain.validation import Plan, build_plan, content_identity
 
 _TAIL_LINES = 40   # 失败时回带的输出尾行数（够定位、不淹没 PLAN）
 _SLOW_FULL_TEST_SECONDS = 10.0
@@ -94,27 +95,6 @@ def _environment_failure(name: str, component: Component, *, advisory: bool = Fa
                       summary=f"environment setup failed in {component.path}: {problem}")
 
 
-def _changed_test_files(repo: str, component: Component, paths: list[str]) -> list[str]:
-    """把仓相对 diff 路径筛成 component 相对、仍存在的测试文件。"""
-    eco = ecosystem.detect(component.path)
-    if eco is None:
-        return []
-    repo_root = Path(repo).resolve()
-    component_root = Path(component.path).resolve()
-    selected: list[str] = []
-    for path in paths:
-        absolute = repo_root / path
-        if not absolute.is_file():
-            continue
-        try:
-            relative = absolute.resolve().relative_to(component_root).as_posix()
-        except ValueError:
-            continue
-        if eco.is_test_file(relative) and relative not in selected:
-            selected.append(relative)
-    return selected
-
-
 def _changed_lint_files(repo: str, component: Component, paths: list[str] | None) -> list[str]:
     """将已冻结的仓相对范围投影到 Component；删除和无法表示的路径回退全量。"""
     root = Path(repo).resolve()
@@ -160,21 +140,21 @@ def normalize(repo: str, *, capture: bool = True, component: Component | None = 
 
     sink: list[str] = []
     command = component.focused_lint_command(_changed_lint_files(repo, component, paths), target="fix")
-    args = command[2:] if command else (("LINT_FILES=",) if component.supports_lint_files() else ())
+    args = command[2:] if command else ("LINT_FILES=",)
     rc, elapsed = _make(component, "fix", capture=capture, sink=sink, args=args)
     suffix = "" if rc == 0 else f" (exit {rc}; lint remains authoritative)"
     return HookResult("normalize", ok=True, summary=f"make fix completed in {elapsed:.1f}s{suffix}")
 
 
 def lint_components(repo: str, workset: repo_model.WorkSet, *, capture: bool = True,
-                    paths: list[str] | None = None) -> HookResult:
+                    paths: list[str] | None = None, plan: Plan | None = None) -> HookResult:
     """顺序 lint 已选中的 Component；仅全量通过时为该 Component 盖戳。"""
-    results = [lint(repo, capture=capture, component=unit, paths=paths) for unit in workset.components]
+    results = [lint(repo, capture=capture, component=unit, paths=paths, plan=plan) for unit in workset.components]
     return _aggregate("lint", workset.reason, results)
 
 
 def lint(repo: str, *, capture: bool = True, component: Component | None = None,
-         paths: list[str] | None = None) -> HookResult:
+         paths: list[str] | None = None, plan: Plan | None = None) -> HookResult:
     """跑项目 lint target；按文件通过只用于本轮 gate，全量通过才盖 Component 戳。
 
     `component` 给出即用它（CLI 已按操作目标选好）；否则是 lifecycle gate 入口，按本次改动选 WorkSet
@@ -185,7 +165,10 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     """
     if component is None:
         ws = repo_model.select_components(repo, paths=paths)
-        return lint_components(repo, ws, capture=capture, paths=paths)
+        plan = plan or build_plan(repo, ws, paths=paths, checks=("lint",))
+        return lint_components(repo, plan.workset, capture=capture, paths=paths, plan=plan)
+    if plan and plan.execution_identity and content_identity(repo) != plan.execution_identity:
+        return HookResult("lint", ok=False, summary="contents changed after planning; rerun validation")
     code_dir = component.path
     target = component.lint_target()
     if target is None:
@@ -196,16 +179,21 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
 
     sink: list[str] = []
     shutil.rmtree(Path(code_dir) / ".mypy_cache", ignore_errors=True)
-    files = _changed_lint_files(repo, component, paths)
+    files = (list(plan.selection(component, "lint").files) if plan else
+             _changed_lint_files(repo, component, paths))
     command = component.focused_lint_command(files)
     guidance = ()
-    if files and not component.supports_lint_files():
+    if not component.supports_lint_files():
         guidance = (
             f"{code_dir}/Makefile 未消费 LINT_FILES；本轮运行全量 lint。"
             "如需按改动文件校验，请让 fix 和 lint targets 同时支持 LINT_FILES，空值保留全量行为。",
         )
-    args = command[2:] if command else (("LINT_FILES=",) if component.supports_lint_files() else ())
+    args = command[2:] if command else ("LINT_FILES=",)
+    fingerprint = repo_model.component_fingerprint(repo, component)
     rc, elapsed = _make(component, target, capture=capture, sink=sink, args=args)
+    if rc == 0 and ((plan and plan.execution_identity and content_identity(repo) != plan.execution_identity) or
+                    fingerprint is None or fingerprint != repo_model.component_fingerprint(repo, component)):
+        return HookResult("lint", ok=False, summary="contents changed during lint; validation not stamped")
     if rc == 0 and command:
         # spec: focused lint 只验证当前选择，不能授予整个 Component 的可复用通行证。
         return HookResult(
@@ -214,10 +202,11 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
                     "component lint stamp unchanged",
         )
     if rc == 0:
+        if plan and not plan.execution_identity:
+            return HookResult("lint", ok=True, summary="full lint passed; input identity unavailable, not stamped")
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
-        # 指纹在**此刻**算：`make fix` 刚改过文件，跑之前算的指纹配不上刚被验过的这棵树——
-        # 盖上去就等于给一份没验过的内容发通行证。
-        ctx.mark_lint_passed(component.id, repo_model.component_fingerprint(repo, component) or "")
+        # Bind the stamp to the input fingerprint verified before and after execution.
+        ctx.mark_lint_passed(component.id, fingerprint)
         return HookResult("lint", ok=True, summary=f"make {target} passed in {elapsed:.1f}s — stamped",
                           guidance=guidance)
     detail = f"\n{_tail(sink)}" if capture else ""
@@ -236,11 +225,12 @@ def test_components(
     capture: bool = True,
     extra: list[str] | None = None,
     paths: list[str] | None = None,
+    plan: Plan | None = None,
 ) -> HookResult:
     """有界并行测试已选中的 Component，并在 join 后批量写 test stamp。"""
     def run(unit: Component) -> tuple[HookResult, bool]:
         return _test_component(
-            repo, capture=capture, extra=extra, component=unit, paths=paths,
+            repo, capture=capture, extra=extra, component=unit, paths=paths, plan=plan,
         )
 
     # Component 是相互独立的验证单位；worker 只执行命令、不写 validation segment，
@@ -265,7 +255,8 @@ def test_components(
 
 
 def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
-         component: Component | None = None, paths: list[str] | None = None) -> HookResult:
+         component: Component | None = None, paths: list[str] | None = None,
+         plan: Plan | None = None) -> HookResult:
     """跑 component 的 canonical test 命令（Make target 或 Go module 的 `go test ./...`）；
     通过则盖 test 戳。无 test 命令 → 干净跳过。`component` 给出即用它；否则按本次改动
     选 WorkSet 并 fan-out，使 gcampr lifecycle 与 validate skill 的选择逻辑一致。
@@ -279,11 +270,12 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         # lifecycle 传入的 paths 是相位边界冻结的 scope；pre_commit 未显式 --file 时才现读工作树。
         # 把同一份列表继续传到 component，避免 test 再引入第二套 diff 查询。
         effective_paths = paths if paths is not None else repo_model.changed_paths(repo)
+        plan = plan or build_plan(repo, ws, paths=effective_paths, checks=("test",), test_extra=extra)
         return test_components(
-            repo, ws, capture=capture, extra=extra, paths=effective_paths,
+            repo, plan.workset, capture=capture, extra=extra, paths=effective_paths, plan=plan,
         )
     result, should_stamp = _test_component(
-        repo, capture=capture, extra=extra, component=component, paths=paths,
+        repo, capture=capture, extra=extra, component=component, paths=paths, plan=plan,
     )
     if should_stamp:
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
@@ -291,29 +283,36 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
     return result
 
 
-def validate_components(repo: str, workset: repo_model.WorkSet) -> list[HookResult]:
-    """先顺序 normalize，再并发执行已选 Component 的 lint 与全量 test。"""
-    prepared: list[HookResult] = []
-    runnable: list[Component] = []
-    for component in workset.components:
-        result = normalize(repo, capture=False, component=component)
-        prepared.append(result)
-        if result.ok:
-            runnable.append(component)
-
-    checks_workset = repo_model.WorkSet(tuple(runnable), workset.reason)
+def validate_components(repo: str, workset: repo_model.WorkSet, *,
+                        names: tuple[str, ...] = ("lint", "test"),
+                        paths: list[str] | None = None, full: bool = False,
+                        explicit: bool = False, extra: list[str] | None = None) -> list[HookResult]:
+    """Normalize first, analyze once, then share the plan across read-only checks."""
+    selection_paths = paths
+    if paths is None and not full:
+        paths = repo_model.changed_paths(repo) or None
+    prepared = [normalize(repo, capture=False, component=unit, paths=paths)
+                for unit in workset.components]
+    if any(not result.ok for result in prepared):
+        return prepared
+    plan = build_plan(repo, workset, paths=selection_paths, full=full, explicit=explicit, test_extra=extra, checks=names)
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [
-            executor.submit(lint_components, repo, checks_workset),
-            executor.submit(test_components, repo, checks_workset),
-        ]
+        futures = []
+        for name in names:
+            if name == "lint":
+                futures.append(executor.submit(lint_components, repo, plan.workset, paths=paths, plan=plan))
+            else:
+                futures.append(executor.submit(test_components, repo, plan.workset, plan=plan, extra=extra))
         checked = [future.result() for future in futures]
     return [_aggregate("normalize", workset.reason, prepared), *checked]
 
 
 def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
-                    component: Component, paths: list[str] | None) -> tuple[HookResult, bool]:
+                    component: Component, paths: list[str] | None,
+                    plan: Plan | None = None) -> tuple[HookResult, bool]:
     """执行一个 Component 的 test；bool 表示 join 后是否应写入全量 test 戳。"""
+    if plan and plan.execution_identity and content_identity(repo) != plan.execution_identity:
+        return HookResult("test", ok=False, advisory=True, summary="contents changed after planning; rerun validation"), False
     code_dir = component.path
     make_target = component.test_target()
     command = component.test_command()
@@ -345,22 +344,19 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
         if unverified_scope:
             scope = "explicit (coverage not inferred)"
         reason = "empty TEST_FILES requests the full suite" if explicit_full else "caller supplied test arguments"
-    elif paths is None:
-        reason = "full Component validation requested"
-    elif not supports_test_files:
-        reason = "project does not consume TEST_FILES"
-    else:
-        focused_files = _changed_test_files(repo, component, paths)
+    elif plan is not None:
+        selection = plan.selection(component, "test")
+        focused_files = list(selection.files)
         focused_command = component.focused_test_command(focused_files)
-        if focused_command is not None:
+        if focused_command:
             command = focused_command
             focused = True
             scope = "focused"
-            reason = "changed test files only; source-to-test dependencies are not inferred"
-        else:
-            reason = "no usable changed test selection; specify related tests with TEST_FILES to narrow"
+        reason = selection.reason
+    else:
+        reason = "no analysis plan; canonical full Component validation"
     argv = [*command, *extra]
-    if supports_test_files and not focused and not extra:
+    if make_target is not None and not focused and not extra:
         # Full coverage must not inherit a narrower TEST_FILES from the caller's environment.
         argv.append("TEST_FILES=")
     display = " ".join(argv)
@@ -370,6 +366,7 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     if env_failure is not None:
         return env_failure, False
     sink: list[str] = []
+    fingerprint = repo_model.component_fingerprint(repo, component)
     started_at = monotonic()
     if capture:
         _progress("test", component, "started")
@@ -388,12 +385,16 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
             "请让 test target 在 TEST_FILES 非空时只运行这些 Component 相对测试文件。",
         )
     if rc == 0:
+        if ((plan and plan.execution_identity and content_identity(repo) != plan.execution_identity) or
+                fingerprint is None or fingerprint != repo_model.component_fingerprint(repo, component)):
+            return HookResult("test", ok=False, advisory=True,
+                              summary="contents changed during tests; validation not stamped"), False
         if focused:
             return HookResult(
                 "test",
                 ok=True,
                 advisory=True,
-                summary=f"{display} passed in {elapsed:.1f}s — focused {len(focused_files)} changed test file(s); "
+                summary=f"{display} passed in {elapsed:.1f}s — focused {len(focused_files)} affected test file(s); "
                         "component test stamp unchanged",
                 guidance=guidance,
             ), False
@@ -406,6 +407,8 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
                         "component test stamp unchanged",
                 guidance=guidance,
             ), False
+        if plan and not plan.execution_identity:
+            return HookResult("test", ok=True, advisory=True, summary="full tests passed; input identity unavailable, not stamped"), False
         return HookResult(
             "test",
             ok=True,

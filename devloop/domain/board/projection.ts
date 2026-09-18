@@ -43,6 +43,7 @@ export function projectBoard(root: string, workspace?: WorkspaceContext, repo?: 
   const test = loadSegment(repo, branchSegment(branch || undefined, "test")) ?? {};
   const componentIds = [...new Set([...Object.keys(lint), ...Object.keys(test)])].sort();
   items.push(boardItem("repo.validation", "state", scope, {
+    analysis: loadSegment(repo, branchSegment(branch || undefined, "validation_scope")) ?? {},
     components: componentIds.map((component) => ({
       component,
       lintAt: typeof lint[component] === "object" && lint[component] !== null && !Array.isArray(lint[component]) ? (lint[component] as Record<string, unknown>).passed_at ?? null : null,

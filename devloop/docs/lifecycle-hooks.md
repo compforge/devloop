@@ -181,3 +181,12 @@ code-review 是 signal hook（`scripts/domain/lifecycle/review.py` 的 `review`�
 
 `launch_background_relays` 是通用的:任何相位 gate 产生的 relay 都在它所裹的 git 动作完成后
 detach 起——pre/post_commit relays 在 commit 后、pre/post_mr relays 在 publish 后。
+
+## Automatic validation scope
+
+Lint and test share one repocli plan after normalization. The phase caller supplies
+the comparison: working input for pre-commit, the actual commit for post-commit,
+and the target merge-base for MR phases. Changed-path filters restrict seeds, not
+dependent test discovery. Missing or uncertain analysis runs full canonical checks
+and publishes the reason in branch-owned `validation_scope` state for Board.
+See [repocli usage and compatibility](../references/repocli.md).

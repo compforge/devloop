@@ -75,8 +75,9 @@ produce partial feedback and leave the full test stamp unchanged. `--full` rejec
 `--` so the coverage request cannot contradict the runner arguments.
 
 Before execution, devloop prints the Component, scope, selection reason and command (including files).
-Automatic selection uses changed test files only. Agents must select additional relevant tests based
-on the changed source and its consumers; use full checks when impact is uncertain or gates require it.
+Automatic selection uses repocli file dependencies, including unchanged affected tests.
+Devloop supplies file lists; agents do not normally enumerate them. Analysis gaps use full checks
+and expose the reason on Board. Required full gates still take precedence.
 Do not implement file-level selection where it changes language semantics; Go should expose package or test-name selection instead.
 
 ## Capacity and reporting

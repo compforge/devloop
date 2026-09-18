@@ -7,7 +7,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from _testkit import _git, _load_script, run_main
+from _testkit import _git, _load_script, run_main, repocli_report
 from domain import lifecycle
 from domain.context import RepoContext
 from domain.lifecycle import checks
@@ -46,6 +46,7 @@ def make_repo(root: str, *, contract: bool = True) -> Path:
     return repo
 
 
+@repocli_report(sources=["a.py"])
 def test_focused_gate_preserves_unrelated_files_and_does_not_stamp():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
@@ -95,7 +96,7 @@ def test_complete_validate_keeps_full_scope_with_a_dirty_tree():
         repo = make_repo(root)
         (repo / "a.py").write_text("OK\n")
         component = Component.at(repo, repo)
-        results = checks.validate_components(str(repo), repo_model.WorkSet((component,), "full validation"))
+        results = checks.validate_components(str(repo), repo_model.WorkSet((component,), "full validation"), full=True)
         lint = next(result for result in results if result.name == "lint")
         assert not lint.ok
         assert (repo / "fix.observed").read_text() == "a.py legacy.py"
@@ -128,6 +129,7 @@ def test_component_paths_are_relative_and_empty_scope_selects_no_components():
         assert not (repo / "lint.observed").exists()
 
 
+@repocli_report(sources=["a.py"])
 def test_manual_lint_and_commit_freeze_changed_scope_and_full_is_explicit():
     with TemporaryDirectory() as root:
         repo = make_repo(root)

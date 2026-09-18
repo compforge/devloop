@@ -9,10 +9,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from _testkit import _git, _load_script, run_main
+from _testkit import _git, _load_script, run_main, repocli_report
 from domain.context import RepoContext
 from domain.lifecycle import checks
 from domain.repo_layout import Component
+from domain.validation import build_plan
+from domain.repo import WorkSet
 
 
 def make_repo(root: str, *, contract: bool = True) -> Path:
@@ -49,6 +51,7 @@ def run_check(repo: Path, *, paths=None, extra=None):
     return result, output.getvalue()
 
 
+@repocli_report(sources=["source.py"], tests=["test_a.py"])
 def test_auto_scope_is_visible_before_preparation_and_does_not_stamp():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
@@ -59,12 +62,14 @@ def test_auto_scope_is_visible_before_preparation_and_does_not_stamp():
         def prepare(*args, **kwargs):
             text = output.getvalue()
             assert "scope=focused" in text and "TEST_FILES=test_a.py" in text
-            assert "dependencies are not inferred" in text
+            assert "repocli file dependencies" in text
             assert not (repo / "test.observed").exists()
             return original(*args, **kwargs)
 
         with redirect_stdout(output), patch.object(checks, "_environment_failure", side_effect=prepare):
-            result = checks.test(str(repo), component=Component.at(repo, repo), paths=["source.py", "test_a.py"])
+            unit = Component.at(repo, repo)
+            plan = build_plan(str(repo), WorkSet((unit,), "fixture"))
+            result = checks.test(str(repo), component=unit, plan=plan)
         assert result.ok, result.summary
         assert (repo / "test.observed").read_text() == "test_a.py"
         assert not has_full_stamp(repo)
@@ -93,7 +98,7 @@ def test_empty_test_files_runs_and_stamps_full_suite():
 
 
 def test_full_fallback_clears_inherited_selection_and_explains_scope():
-    for paths, reason in ((None, "full Component validation"), (["source.py"], "no usable changed test selection")):
+    for paths, reason in ((None, "full Component validation"), (["source.py"], "full Component validation")):
         with TemporaryDirectory() as root:
             repo = make_repo(root)
             (repo / "test_b.py").write_text("BAD\n")
@@ -117,11 +122,12 @@ def test_explicit_arguments_and_missing_contract_do_not_overclaim_full_coverage(
         repo = make_repo(root, contract=False)
         result, output = run_check(repo, paths=["test_a.py"])
         assert result.ok
-        assert "project does not consume TEST_FILES" in output
+        assert "full Component validation" in output
         assert (repo / "test.observed").read_text() == "test_a.py test_b.py"
         assert has_full_stamp(repo)
 
 
+@repocli_report(sources=["test_a.py"], tests=["test_a.py"])
 def test_manual_full_overrides_changed_tests_and_rejects_conflicting_arguments():
     with TemporaryDirectory() as root:
         repo = make_repo(root)

@@ -6,6 +6,7 @@ There is no separate repocli skill or Python forwarding script.
 
 ```sh
 repocli --version
+repocli snapshot --repo /path/to/repo --json
 repocli diff --help
 repocli diff --repo /path/to/repo --base HEAD --impact file --test-dir . --json
 repocli diff --repo /path/to/repo --base HEAD^ --head HEAD --impact file --test-dir . --json
@@ -54,3 +55,18 @@ The schema-2 release must be installed after its repocli PR is merged and releas
 until then a locally built binary can be selected explicitly for development.
 The content digest identifies observed input, not an atomic filesystem snapshot or
 proof of test coverage. Repocli diagnostics remain static-analysis estimates.
+
+## Execution identity and reporting
+
+Validation obtains content identity through `repocli snapshot --json` (snapshot
+schema 1, available since repocli 0.0.3). Use repocli 0.0.4 or later for captured
+internal symlinks and initialized submodules, including dirty submodule contents.
+The workflow does not reproduce the digest algorithm in Python. Missing, invalid
+or incomplete snapshots permit full checks but never grant a validation stamp;
+the reason is shown separately from the check result. An initial complete identity
+must still match before and after execution.
+
+Selection/fallback reasons remain in the scope lines and Board. Check summaries
+report command outcomes; selection reasons appear as separate guidance so a full
+check failure is not presented as a repocli execution error. Snapshot completeness
+does not imply complete dependency analysis or authorize focused checks.

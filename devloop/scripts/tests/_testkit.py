@@ -162,15 +162,22 @@ def repocli_report(sources=(), tests=()):
             cli = Path(root) / "repocli"
             cli.write_text(
                 "#!/usr/bin/env python3\nimport json, sys\n"
-                "sys.path.insert(0, " + repr(str(SCRIPTS)) + ")\nfrom domain.validation import content_identity\n"
+                "import hashlib, subprocess\n"
                 "from pathlib import Path\n"
                 "repo = sys.argv[sys.argv.index('--repo')+1]\n"
-                "with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+                "if sys.argv[1]=='diff':\n with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+                "digest=hashlib.sha256()\n"
+                "names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=repo).decode().split('\\0')\n"
+                "for name in sorted(set(names)-{''}):\n"
+                " p=Path(repo)/name\n"
+                " if p.is_file(): digest.update(name.encode()+b'\\0'+p.read_bytes())\n"
+                "identity='sha256:'+digest.hexdigest()\n"
                 "data = " + repr({"schemaVersion": 2, "complete": True, "scope": "focused",
                                   "impactMode": "file", "snapshot": "sha256:" + "a" * 64,
                                   "sourceFiles": list(sources), "testFiles": list(tests),
                                   "diagnostics": []}) + "\n"
-                "data.update(snapshot=content_identity(repo), checkout=repo, input='commit' if '--head' in sys.argv else 'working_tree')\n"
+                "data.update(snapshot=identity, checkout=repo, input='commit' if '--head' in sys.argv else 'working_tree')\n"
+                "if sys.argv[1]=='snapshot': data.update(schemaVersion=1)\n"
                 "print(json.dumps(data))\n"
             )
             cli.chmod(0o755)

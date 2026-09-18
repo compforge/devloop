@@ -46,7 +46,8 @@ def test_missing_cli_runs_full_and_publishes_reason():
         state = load_segment(repo, branch_segment("main", "validation_scope"))
         assert state and all(row["scope"] == "full" for row in state["checks"])
         assert "repocli fallback" in state["checks"][0]["reason"]
-        assert has_full_stamp(repo)
+        assert not has_full_stamp(repo)
+        assert state["identity_problem"]
 
 
 def test_invalid_uncertain_and_failed_cli_reports_fall_back():
@@ -148,6 +149,59 @@ def test_edit_after_planning_invalidates_selection_without_executing_checks():
         assert "contents changed" in result.summary
         assert not (repo/"test.observed").exists()
         assert not has_full_stamp(repo)
+
+
+def test_snapshot_protocol_failures_never_authorize_stamps():
+    from domain.validation import content_identity
+    for updates in ({"complete": False, "diagnostics": [{"code": "snapshot_incomplete", "message": "child not initialized"}]},
+                    {"input": "commit"}, {"snapshot": "sha256:" + "z" * 64}, {"schemaVersion": 99}):
+        with TemporaryDirectory() as root, repocli_report() as cli:
+            repo = make_repo(root)
+            script = cli.read_text().replace("if sys.argv[1]=='snapshot': data.update(schemaVersion=1)",
+                                            "if sys.argv[1]=='snapshot': data.update(schemaVersion=1); data.update(" + repr(updates) + ")")
+            cli.write_text(script)
+            identity = content_identity(str(repo))
+            assert not identity.digest and identity.problem
+            with redirect_stdout(io.StringIO()):
+                plan = build_plan(str(repo), repo_model.select_components(repo), full=True)
+                result = checks.test_components(str(repo), plan.workset, plan=plan)
+            assert result.ok and "not stamped" in result.summary
+            assert not has_full_stamp(repo)
+            assert plan.identity_problem
+
+
+def test_full_check_can_stamp_captured_symlink_inputs():
+    with TemporaryDirectory() as root, repocli_report():
+        repo = make_repo(root)
+        (repo / "AGENTS.md").write_text("instructions")
+        (repo / "CLAUDE.md").symlink_to("AGENTS.md")
+        with redirect_stdout(io.StringIO()):
+            plan = build_plan(str(repo), repo_model.select_components(repo), full=True)
+            result = checks.test_components(str(repo), plan.workset, plan=plan)
+        assert plan.execution_identity and not plan.identity_problem
+        assert result.ok and has_full_stamp(repo), result.summary
+
+
+def test_snapshot_failure_after_planning_is_not_reported_as_an_edit():
+    with TemporaryDirectory() as root, repocli_report():
+        repo = make_repo(root)
+        with redirect_stdout(io.StringIO()):
+            plan = build_plan(str(repo), repo_model.select_components(repo), full=True)
+            with patch.dict(os.environ, {"DEVLOOP_REPOCLI": "/missing/repocli"}):
+                result = checks.test_components(str(repo), plan.workset, plan=plan)
+        assert not result.ok
+        assert "cannot verify contents" in result.summary
+        assert "contents changed" not in result.summary
+        assert not (repo / "test.observed").exists()
+
+
+def test_check_failure_and_selection_reason_are_separate():
+    from domain.lifecycle.base import HookResult
+    result = checks._aggregate("test", "repocli fallback: analysis incomplete",
+                              [HookResult("test", ok=False, summary="make test failed after 1s")])
+    assert result.summary == "make test failed after 1s"
+    assert "selection: repocli fallback: analysis incomplete" in result.guidance
+    assert not result.ok
 
 
 if __name__ == "__main__":

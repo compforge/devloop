@@ -45,8 +45,9 @@ def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: b
         name,
         ok=all(r.ok for r in results),
         advisory=advisory,
-        summary=f"{reason}; {detail}" if detail else reason,
-        guidance=tuple(note for result in results for note in result.guidance),
+        summary=(detail or reason) if name in {"lint", "test"} else (f"{reason}; {detail}" if detail else reason),
+        guidance=tuple(note for result in results for note in result.guidance) +
+                 ((f"selection: {reason}",) if name in {"lint", "test"} and detail and reason else ()),
     )
 
 
@@ -146,6 +147,17 @@ def normalize(repo: str, *, capture: bool = True, component: Component | None = 
     return HookResult("normalize", ok=True, summary=f"make fix completed in {elapsed:.1f}s{suffix}")
 
 
+def _identity_problem(repo: str, plan: Plan | None, phase: str) -> str:
+    if plan is None or not plan.execution_identity:
+        return ""
+    observed = content_identity(repo)
+    if observed.problem:
+        return f"cannot verify contents {phase}: {observed.problem}; validation not stamped"
+    if observed.digest != plan.execution_identity:
+        return f"contents changed {phase}; rerun validation"
+    return ""
+
+
 def lint_components(repo: str, workset: repo_model.WorkSet, *, capture: bool = True,
                     paths: list[str] | None = None, plan: Plan | None = None) -> HookResult:
     """顺序 lint 已选中的 Component；仅全量通过时为该 Component 盖戳。"""
@@ -167,8 +179,8 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
         ws = repo_model.select_components(repo, paths=paths)
         plan = plan or build_plan(repo, ws, paths=paths, checks=("lint",))
         return lint_components(repo, plan.workset, capture=capture, paths=paths, plan=plan)
-    if plan and plan.execution_identity and content_identity(repo) != plan.execution_identity:
-        return HookResult("lint", ok=False, summary="contents changed after planning; rerun validation")
+    if problem := _identity_problem(repo, plan, "after planning"):
+        return HookResult("lint", ok=False, summary=problem)
     code_dir = component.path
     target = component.lint_target()
     if target is None:
@@ -191,8 +203,9 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     args = command[2:] if command else ("LINT_FILES=",)
     fingerprint = repo_model.component_fingerprint(repo, component)
     rc, elapsed = _make(component, target, capture=capture, sink=sink, args=args)
-    if rc == 0 and ((plan and plan.execution_identity and content_identity(repo) != plan.execution_identity) or
-                    fingerprint is None or fingerprint != repo_model.component_fingerprint(repo, component)):
+    if rc == 0 and (problem := _identity_problem(repo, plan, "during lint")):
+        return HookResult("lint", ok=False, summary=problem)
+    if rc == 0 and (fingerprint is None or fingerprint != repo_model.component_fingerprint(repo, component)):
         return HookResult("lint", ok=False, summary="contents changed during lint; validation not stamped")
     if rc == 0 and command:
         # spec: focused lint 只验证当前选择，不能授予整个 Component 的可复用通行证。
@@ -203,7 +216,7 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
         )
     if rc == 0:
         if plan and not plan.execution_identity:
-            return HookResult("lint", ok=True, summary="full lint passed; input identity unavailable, not stamped")
+            return HookResult("lint", ok=True, summary=f"full lint passed; validation not stamped: {plan.identity_problem or 'input identity unavailable'}")
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
         # Bind the stamp to the input fingerprint verified before and after execution.
         ctx.mark_lint_passed(component.id, fingerprint)
@@ -311,8 +324,8 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
                     component: Component, paths: list[str] | None,
                     plan: Plan | None = None) -> tuple[HookResult, bool]:
     """执行一个 Component 的 test；bool 表示 join 后是否应写入全量 test 戳。"""
-    if plan and plan.execution_identity and content_identity(repo) != plan.execution_identity:
-        return HookResult("test", ok=False, advisory=True, summary="contents changed after planning; rerun validation"), False
+    if problem := _identity_problem(repo, plan, "after planning"):
+        return HookResult("test", ok=False, advisory=True, summary=problem), False
     code_dir = component.path
     make_target = component.test_target()
     command = component.test_command()
@@ -385,8 +398,9 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
             "请让 test target 在 TEST_FILES 非空时只运行这些 Component 相对测试文件。",
         )
     if rc == 0:
-        if ((plan and plan.execution_identity and content_identity(repo) != plan.execution_identity) or
-                fingerprint is None or fingerprint != repo_model.component_fingerprint(repo, component)):
+        if problem := _identity_problem(repo, plan, "during tests"):
+            return HookResult("test", ok=False, advisory=True, summary=problem), False
+        if fingerprint is None or fingerprint != repo_model.component_fingerprint(repo, component):
             return HookResult("test", ok=False, advisory=True,
                               summary="contents changed during tests; validation not stamped"), False
         if focused:
@@ -408,7 +422,7 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
                 guidance=guidance,
             ), False
         if plan and not plan.execution_identity:
-            return HookResult("test", ok=True, advisory=True, summary="full tests passed; input identity unavailable, not stamped"), False
+            return HookResult("test", ok=True, advisory=True, summary=f"full tests passed; validation not stamped: {plan.identity_problem or 'input identity unavailable'}"), False
         return HookResult(
             "test",
             ok=True,

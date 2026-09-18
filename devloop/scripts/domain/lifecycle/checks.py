@@ -330,25 +330,46 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
             summary=f"no test command in {code_dir} — skipped",
             guidance=guidance,
         ), False
-    env_failure = _environment_failure("test", component, advisory=True)
-    if env_failure is not None:
-        return env_failure, False
-
     extra = extra or []
-    explicitly_narrowed = bool(extra)
+    supports_test_files = make_target is not None and component.supports_test_files()
+    # spec: Empty TEST_FILES is a full-suite request only under the project's Make contract.
+    # Other runner arguments can change coverage, so they never grant a full Component stamp.
+    explicit_full = supports_test_files and bool(extra) and all(
+        arg.startswith("TEST_FILES=") and not arg.partition("=")[2].strip() for arg in extra
+    )
+    unverified_scope = bool(extra) and not explicit_full
     focused_files: list[str] = []
     focused = False
-    supports_test_files = make_target is not None and component.supports_test_files()
-    if paths is not None and not extra and supports_test_files:
+    scope = "full"
+    if extra:
+        if unverified_scope:
+            scope = "explicit (coverage not inferred)"
+        reason = "empty TEST_FILES requests the full suite" if explicit_full else "caller supplied test arguments"
+    elif paths is None:
+        reason = "full Component validation requested"
+    elif not supports_test_files:
+        reason = "project does not consume TEST_FILES"
+    else:
         focused_files = _changed_test_files(repo, component, paths)
         focused_command = component.focused_test_command(focused_files)
         if focused_command is not None:
             command = focused_command
             focused = True
+            scope = "focused"
+            reason = "changed test files only; source-to-test dependencies are not inferred"
+        else:
+            reason = "no usable changed test selection; specify related tests with TEST_FILES to narrow"
     argv = [*command, *extra]
+    if supports_test_files and not focused and not extra:
+        # Full coverage must not inherit a narrower TEST_FILES from the caller's environment.
+        argv.append("TEST_FILES=")
     display = " ".join(argv)
-    sink: list[str] = []
     header = f"--- {display} (cwd={code_dir}) ---"
+    print(f"[validate] test {component.id}: scope={scope} — {reason}\n{header}", flush=True)
+    env_failure = _environment_failure("test", component, advisory=True)
+    if env_failure is not None:
+        return env_failure, False
+    sink: list[str] = []
     started_at = monotonic()
     if capture:
         _progress("test", component, "started")
@@ -357,7 +378,6 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
         sink += [r.stdout, r.stderr]
         rc = r.returncode
     else:
-        print(header)
         rc = subprocess.run(argv, cwd=code_dir).returncode
     elapsed = monotonic() - started_at
     if capture:
@@ -377,12 +397,12 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
                         "component test stamp unchanged",
                 guidance=guidance,
             ), False
-        if explicitly_narrowed:
+        if unverified_scope:
             return HookResult(
                 "test",
                 ok=True,
                 advisory=True,
-                summary=f"{display} passed in {elapsed:.1f}s — narrowed by explicit test arguments; "
+                summary=f"{display} passed in {elapsed:.1f}s — explicit test arguments; coverage not inferred; "
                         "component test stamp unchanged",
                 guidance=guidance,
             ), False

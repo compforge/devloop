@@ -67,9 +67,17 @@ A project may optionally consume a space-separated `TEST_FILES` list of Componen
 make test TEST_FILES="tests/a.py tests/b.py"
 ```
 
-Missing or empty `TEST_FILES` retains full-suite behavior. Focused files or explicit extra test
-arguments produce partial feedback and leave the full test stamp unchanged. Do not implement file-level
-selection where it changes language semantics; Go should expose package or test-name selection instead.
+Missing or empty `TEST_FILES` retains full-suite behavior. `run_tests.py --full` explicitly requests
+full tests in each selected Component. For a Makefile consuming `TEST_FILES`, passing only an empty
+`TEST_FILES=` also runs and stamps a successful full suite; it must not be classified as narrowed.
+Full runs explicitly clear inherited `TEST_FILES`. Non-empty files or other explicit test arguments
+produce partial feedback and leave the full test stamp unchanged. `--full` rejects arguments after
+`--` so the coverage request cannot contradict the runner arguments.
+
+Before execution, devloop prints the Component, scope, selection reason and command (including files).
+Automatic selection uses changed test files only. Agents must select additional relevant tests based
+on the changed source and its consumers; use full checks when impact is uncertain or gates require it.
+Do not implement file-level selection where it changes language semantics; Go should expose package or test-name selection instead.
 
 ## Capacity and reporting
 

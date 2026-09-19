@@ -28,12 +28,15 @@ class Comparison:
 
 @dataclass(frozen=True)
 class Selection:
-    files: tuple[str, ...] = ()  # Component relative; empty means canonical full.
+    files: tuple[str, ...] = ()  # Component relative; empty defaults to full unless skipped.
     reason: str = ""
     explicit: bool = False
+    skipped: bool = False
 
     @property
     def scope(self) -> str:
+        if self.skipped:
+            return "skipped"
         return "explicit" if self.explicit else ("focused" if self.files else "full")
 
 
@@ -131,6 +134,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     sources: list[str] = []
     tests: list[str] = []
     snapshot = ""
+    analysis_reason = "repocli file dependencies"
+    lint_reason = ""
     observed = content_identity(repo)
     identity = observed.digest
     if paths == [] and not full:
@@ -151,11 +156,19 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             data = _repocli_json(repo, "diff", argv)
             if not isinstance(data, dict) or data.get("schemaVersion") != 2:
                 raise ValueError("unsupported repocli schema (requires 2)")
-            if (data.get("complete") is not True or data.get("scope") != "focused"
-                    or data.get("diagnostics")):
-                diagnostics = data.get("diagnostics") or []
-                codes = sorted({str(d.get("code", "analysis_gap")) for d in diagnostics if isinstance(d, dict)})
-                raise ValueError("analysis incomplete" + (": " + ", ".join(codes) if codes else ""))
+            diagnostics = data.get("diagnostics")
+            if (not isinstance(data.get("complete"), bool)
+                    or data.get("scope") not in ("focused", "partial")
+                    or not isinstance(diagnostics, list)
+                    or any(not isinstance(d, dict) for d in diagnostics)):
+                raise ValueError("invalid analysis status")
+            # Dependency gaps limit coverage, not the usefulness of returned tests.
+            # Keep lint's existing complete-analysis policy independent of test selection.
+            if not data["complete"] or data["scope"] != "focused" or diagnostics:
+                codes = sorted({str(d.get("code", "analysis_gap")) for d in diagnostics})
+                detail = ": " + ", ".join(codes) if codes else ""
+                analysis_reason += " (partial analysis" + detail + ")"
+                lint_reason = "repocli fallback: analysis incomplete" + detail
             if data.get("impactMode") != "file" or Path(data.get("checkout", "")).resolve() != Path(repo).resolve():
                 raise ValueError("analysis target mismatch")
             snapshot = data.get("snapshot", "")
@@ -166,13 +179,13 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             if not identity or snapshot != identity or identity != content_identity(repo).digest:
                 raise ValueError("execution contents differ from analyzed snapshot")
             sources, tests = _paths(data.get("sourceFiles")), _paths(data.get("testFiles"))
-            if not sources and not tests:
-                raise ValueError("no usable changed selection")
             if not explicit:
                 affected = repo_model.select_components(repo, paths=list(dict.fromkeys(sources + tests)))
                 units = tuple({u.id: u for u in (*workset.components, *affected.components)}.values())
-                if not units:
+                if not units and (sources or tests):
                     raise ValueError("no Component owns the selected files")
+                if lint_reason and "lint" in checks:
+                    units = catalog
         except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as exc:
             reason = f"repocli fallback: {exc}"
             units = workset.components if explicit else catalog
@@ -181,16 +194,22 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
         for check, files in (("lint", sources), ("test", tests)):
             if check not in checks:
                 continue
-            selection_reason = reason
+            selection_reason = reason or (lint_reason if check == "lint" else "")
             relative = []
+            skipped = False
             if not selection_reason:
                 try:
                     relative = _relative(repo, unit, files)
-                    command = (unit.focused_lint_command(relative) if check == "lint"
-                               else unit.focused_test_command(relative))
-                    if not command:
-                        selection_reason = "no usable selection or project file-list contract; canonical full check"
-                        relative = []
+                    if check == "test" and not relative:
+                        # Do not pass an empty TEST_FILES to Make: that requests a full suite.
+                        skipped = True
+                        selection_reason = analysis_reason + "; no returned test files in Component"
+                    else:
+                        command = (unit.focused_lint_command(relative) if check == "lint"
+                                   else unit.focused_test_command(relative))
+                        if not command:
+                            selection_reason = "no usable selection or project file-list contract; canonical full check"
+                            relative = []
                 except ValueError as exc:
                     selection_reason = str(exc)
                     relative = []
@@ -200,7 +219,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                     for arg in test_extra)
                 selections[(unit.id, check)] = Selection(reason="caller supplied test arguments", explicit=not explicit_full)
             else:
-                selections[(unit.id, check)] = Selection(tuple(relative), selection_reason or "repocli file dependencies")
+                selections[(unit.id, check)] = Selection(
+                    tuple(relative), selection_reason or analysis_reason, skipped=skipped)
     if reason:
         observed = content_identity(repo)
     plan = Plan(repo_model.WorkSet(units, reason or "repocli affected Components"), selections,

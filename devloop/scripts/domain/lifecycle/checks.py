@@ -326,6 +326,12 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     """执行一个 Component 的 test；bool 表示 join 后是否应写入全量 test 戳。"""
     if problem := _identity_problem(repo, plan, "after planning"):
         return HookResult("test", ok=False, advisory=True, summary=problem), False
+    if plan is not None and not extra and plan.selection(component, "test").skipped:
+        selection = plan.selection(component, "test")
+        return HookResult(
+            "test", ok=True, advisory=True,
+            summary=f"{component.id}: tests skipped — {selection.reason}; component test stamp unchanged",
+        ), False
     code_dir = component.path
     make_target = component.test_target()
     command = component.test_command()

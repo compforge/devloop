@@ -187,6 +187,9 @@ detach 起——pre/post_commit relays 在 commit 后、pre/post_mr relays 在 p
 Lint and test share one repocli plan after normalization. The phase caller supplies
 the comparison: working input for pre-commit, the actual commit for post-commit,
 and the target merge-base for MR phases. Changed-path filters restrict seeds, not
-dependent test discovery. Missing or uncertain analysis runs full canonical checks
-and publishes the reason in branch-owned `validation_scope` state for Board.
+dependent test discovery. Successful valid analysis selects its returned tests,
+even with dependency gaps; empty test selections skip execution without a full
+stamp. Failed or invalid analysis runs full canonical checks. Lint still requires
+complete analysis. Scope and reasons are published in branch-owned
+`validation_scope` state for Board.
 See [repocli usage and compatibility](../references/repocli.md).

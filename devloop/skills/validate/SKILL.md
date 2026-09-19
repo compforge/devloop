@@ -15,7 +15,9 @@ for direct CLI inspection, installation and analysis boundaries. Do not select o
 
 Normalization runs before one shared repocli analysis. The workflow selects affected files,
 including dependent tests in other Components, and adapts paths to project Make contracts.
-Unavailable, incompatible or uncertain analysis falls back to full checks with a Board reason.
+Successful valid repocli reports select the returned tests even with partial analysis or diagnostics.
+An empty test list skips tests without a full stamp. Unavailable or invalid analysis falls back to
+full checks with a Board reason; lint still requires complete analysis.
 An actual check failure stays a failure. Use `--full` when the user or project gate requires
 full validation; do not repeat a full suite solely to replace a focused run's missing stamp.
 Focused results do not authorize a later bare commit.

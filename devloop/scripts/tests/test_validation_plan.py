@@ -50,7 +50,7 @@ def test_missing_cli_runs_full_and_publishes_reason():
         assert state["identity_problem"]
 
 
-def test_invalid_uncertain_and_failed_cli_reports_fall_back():
+def test_invalid_and_failed_cli_reports_fall_back():
     outputs = ['not JSON', '{"schemaVersion":1}',
                json.dumps({"schemaVersion":2,"complete":False,"diagnostics":[{"code":"snapshot_changed"}]}),
                json.dumps({"schemaVersion":2,"complete":True,"scope":"focused","impactMode":"file"})]
@@ -67,6 +67,69 @@ def test_invalid_uncertain_and_failed_cli_reports_fall_back():
         plan = build_plan(str(repo), repo_model.select_components(repo))
         assert "exited 7" in plan.workset.reason
 
+
+
+def test_partial_analysis_runs_returned_tests_and_keeps_diagnostics():
+    for status in ({"complete": False, "scope": "partial"},
+                   {"diagnostics": [{"code": "unresolved_import"}]}):
+        with TemporaryDirectory() as root, repocli_report(
+                sources=["source.py"], tests=["test_a.py"], **status):
+            repo = make_repo(root)
+            (repo / "test_b.py").write_text("BAD\n")
+            runner = _load_script("run_tests")
+            with redirect_stdout(io.StringIO()):
+                assert runner.main([str(repo)]) == 0
+            assert (repo / "test.observed").read_text() == "test_a.py"
+            assert not has_full_stamp(repo)
+            state = load_segment(repo, branch_segment("main", "validation_scope"))
+            row = state["checks"][0]
+            assert row["scope"] == "focused" and row["files"] == ["test_a.py"]
+            assert "partial analysis" in row["reason"] and "fallback" not in row["reason"]
+            if status.get("diagnostics"):
+                assert "unresolved_import" in row["reason"]
+
+
+def test_successful_empty_test_list_skips_without_preparation_or_stamp():
+    for sources in ([], ["source.py"]):
+        for complete, scope in ((True, "focused"), (False, "partial")):
+            with TemporaryDirectory() as root, repocli_report(sources=sources, complete=complete, scope=scope):
+                repo = make_repo(root)
+                (repo / "source.py").write_text("VALUE=2\n")
+                plan = build_plan(str(repo), repo_model.select_components(repo), checks=("test",))
+                with patch.object(checks, "_environment_failure") as prepare:
+                    result = checks.test_components(str(repo), plan.workset, plan=plan)
+                assert result.ok and "skipped" in result.summary
+                prepare.assert_not_called()
+                assert not (repo / "test.observed").exists()
+                assert not has_full_stamp(repo)
+                state = load_segment(repo, branch_segment("main", "validation_scope"))
+                assert state["checks"][0]["scope"] == "skipped"
+
+
+def test_partial_analysis_does_not_relax_lint_or_project_contract():
+    with TemporaryDirectory() as root, repocli_report(
+            sources=["source.py"], tests=["test_a.py"], complete=False, scope="partial"):
+        repo = make_repo(root, contract=False)
+        with (repo / "Makefile").open("a") as f:
+            f.write("lint:\n\t@echo $(LINT_FILES)\n")
+        plan = build_plan(str(repo), repo_model.select_components(repo))
+        assert plan.selections[(".", "lint")].scope == "full"
+        assert "analysis incomplete" in plan.selections[(".", "lint")].reason
+        assert plan.selections[(".", "test")].scope == "full"
+        result = checks.test_components(str(repo), plan.workset, plan=plan)
+        assert result.ok
+        assert (repo / "test.observed").read_text() == "test_a.py test_b.py"
+
+
+def test_cli_failure_executes_full_tests():
+    with TemporaryDirectory() as root, repocli_report() as cli:
+        repo = make_repo(root)
+        cli.write_text(cli.read_text().replace("if sys.argv[1]=='diff':", "if sys.argv[1]=='diff': raise SystemExit(7)\nif sys.argv[1]=='diff':"))
+        plan = build_plan(str(repo), repo_model.select_components(repo), checks=("test",))
+        assert "exited 7" in plan.workset.reason
+        result = checks.test_components(str(repo), plan.workset, plan=plan)
+        assert result.ok
+        assert (repo / "test.observed").read_text() == "test_a.py test_b.py"
 
 def test_test_failure_does_not_retry_or_stamp():
     with TemporaryDirectory() as root, repocli_report(sources=["source.py"], tests=["test_b.py"]):
@@ -94,6 +157,7 @@ def test_dependent_component_added_and_explicit_boundary_preserved():
         plan = build_plan(str(repo), ws, paths=["lib/source.py"])
         assert {u.id for u in plan.workset.components} == {"lib", "app"}
         assert plan.selections[("app", "test")].files == ("test_use.py",)
+        assert plan.selections[("lib", "test")].scope == "skipped"
         explicit = build_plan(str(repo), ws, explicit=True)
         assert [u.id for u in explicit.workset.components] == ["lib"]
 

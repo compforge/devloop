@@ -76,8 +76,10 @@ produce partial feedback and leave the full test stamp unchanged. `--full` rejec
 
 Before execution, devloop prints the Component, scope, selection reason and command (including files).
 Automatic selection uses repocli file dependencies, including unchanged affected tests.
-Devloop supplies file lists; agents do not normally enumerate them. Analysis gaps use full checks
-and expose the reason on Board. Required full gates still take precedence.
+Devloop supplies file lists; agents do not normally enumerate them. Successful valid repocli
+reports select the returned tests even with analysis gaps; diagnostics remain visible on Board.
+An empty returned list skips tests without a full stamp instead of passing `TEST_FILES=` to Make.
+CLI or report failures fall back to full checks. Required full gates still take precedence.
 Do not implement file-level selection where it changes language semantics; Go should expose package or test-name selection instead.
 
 ## Capacity and reporting

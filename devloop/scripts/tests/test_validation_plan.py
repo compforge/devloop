@@ -30,7 +30,7 @@ def test_one_analysis_after_fix_shared_by_lint_and_tests():
         assert result.proceed and all(r.ok for r in result.results)
         assert (repo / "fix.observed").read_text().splitlines() == ["normalized"]
         assert len((repo / "analysis.observed").read_text().splitlines()) == 1
-        assert (repo / "lint.observed").read_text().strip() == "source.py"
+        assert (repo / "lint.observed").read_text().strip() == "source.py test_a.py"
         assert (repo / "test.observed").read_text() == "test_a.py"
         assert not has_full_stamp(repo)
 
@@ -52,8 +52,8 @@ def test_missing_cli_runs_full_and_publishes_reason():
 
 def test_invalid_and_failed_cli_reports_fall_back():
     outputs = ['not JSON', '{"schemaVersion":1}',
-               json.dumps({"schemaVersion":2,"complete":False,"diagnostics":[{"code":"snapshot_changed"}]}),
-               json.dumps({"schemaVersion":2,"complete":True,"scope":"focused","impactMode":"file"})]
+               json.dumps({"schemaVersion":3,"complete":False,"diagnostics":[{"code":"snapshot_changed"}]}),
+               json.dumps({"schemaVersion":3,"complete":True,"scope":"focused"})]
     for output in outputs:
         with TemporaryDirectory() as root, repocli_report() as cli:
             repo = make_repo(root)
@@ -106,15 +106,15 @@ def test_successful_empty_test_list_skips_without_preparation_or_stamp():
                 assert state["checks"][0]["scope"] == "skipped"
 
 
-def test_partial_analysis_does_not_relax_lint_or_project_contract():
+def test_partial_analysis_preserves_project_file_list_contract():
     with TemporaryDirectory() as root, repocli_report(
             sources=["source.py"], tests=["test_a.py"], complete=False, scope="partial"):
         repo = make_repo(root, contract=False)
         with (repo / "Makefile").open("a") as f:
-            f.write("lint:\n\t@echo $(LINT_FILES)\n")
+            f.write("lint:\n\t@echo canonical lint\n")
         plan = build_plan(str(repo), repo_model.select_components(repo))
         assert plan.selections[(".", "lint")].scope == "full"
-        assert "analysis incomplete" in plan.selections[(".", "lint")].reason
+        assert "project file-list contract" in plan.selections[(".", "lint")].reason
         assert plan.selections[(".", "test")].scope == "full"
         result = checks.test_components(str(repo), plan.workset, plan=plan)
         assert result.ok
@@ -162,6 +162,65 @@ def test_dependent_component_added_and_explicit_boundary_preserved():
         assert [u.id for u in explicit.workset.components] == ["lib"]
 
 
+def test_partial_report_runs_all_returned_files_without_expanding_components():
+    for status in ({"complete": False, "scope": "partial"},
+                   {"diagnostics": [{"code": "impact_uncertain"}]}):
+        with TemporaryDirectory() as root, repocli_report(
+                sources=["lib/source.py"], tests=["app/test_use.py"],
+                affected=["lib/source.py", "app/helper.py", "app/test_use.py"], **status):
+            repo = make_repo(root)
+            for name in ("lib", "app", "unrelated"):
+                unit = repo / name
+                unit.mkdir()
+                (unit / "pyproject.toml").write_text(f"[project]\nname='{name}'\nversion='0'\n")
+                (unit / "Makefile").write_text(
+                    "lint:\n\t@echo '$(LINT_FILES)' > lint.observed\n"
+                    "test:\n\t@echo '$(TEST_FILES)' > test.observed\n")
+            for name in ("lib/source.py", "app/helper.py", "app/test_use.py"):
+                (repo / name).write_text("VALUE = 1\n")
+            workset = repo_model.select_components(repo, explicit=repo / "lib")
+            plan = build_plan(str(repo), workset, paths=["lib/source.py"])
+            assert {unit.id for unit in plan.workset.components} == {"lib", "app"}
+            assert plan.selections[("app", "lint")].files == ("helper.py", "test_use.py")
+            assert "partial analysis" in plan.selections[("app", "lint")].reason
+            assert "fallback" not in plan.selections[("app", "lint")].reason
+            with patch.object(checks, "_environment_failure", return_value=None):
+                assert checks.lint_components(str(repo), plan.workset, plan=plan).ok
+                assert checks.test_components(str(repo), plan.workset, plan=plan).ok
+            assert (repo / "app/lint.observed").read_text().strip() == "helper.py test_use.py"
+            assert (repo / "app/test.observed").read_text().strip() == "test_use.py"
+            assert not (repo / "unrelated/lint.observed").exists()
+
+
+def test_valid_empty_results_skip_both_checks_without_preparation_or_stamps():
+    for complete, scope in ((True, "focused"), (False, "partial")):
+        with TemporaryDirectory() as root, repocli_report(complete=complete, scope=scope):
+            repo = make_repo(root)
+            (repo / "source.py").write_text("VALUE = 2\n")
+            plan = build_plan(str(repo), repo_model.select_components(repo))
+            assert plan.selections and all(s.scope == "skipped" for s in plan.selections.values())
+            with patch.object(checks, "_environment_failure") as prepare, patch.object(checks, "_make") as make:
+                assert checks.lint_components(str(repo), plan.workset, plan=plan).ok
+                assert checks.test_components(str(repo), plan.workset, plan=plan).ok
+            prepare.assert_not_called()
+            make.assert_not_called()
+            from domain.context import RepoContext
+            context = RepoContext.load(str(repo))
+            assert context is None or not context.validation.component(".").last_lint_at
+            assert not has_full_stamp(repo)
+
+
+def test_missing_or_invalid_affected_files_are_not_an_empty_result():
+    for affected in (None, {}, [{}], [{"path": "../outside.py"}]):
+        with TemporaryDirectory() as root, repocli_report() as cli:
+            repo = make_repo(root)
+            cli.write_text(cli.read_text().replace("print(json.dumps(data))",
+                "if sys.argv[1]=='diff': data['affectedFiles']=" + repr(affected) + "\nprint(json.dumps(data))"))
+            plan = build_plan(str(repo), repo_model.select_components(repo))
+            assert "repocli fallback" in plan.workset.reason
+            assert all(s.scope == "full" for s in plan.selections.values())
+
+
 def test_phase_comparison_reaches_dispatch():
     flow = _load_script("commit_flow")
     with TemporaryDirectory() as root:
@@ -189,7 +248,7 @@ def test_timeout_falls_back_and_full_bypasses_cli():
     from domain import validation
     original = subprocess.run
     def run(argv, *args, **kwargs):
-        if "--impact" in argv:
+        if len(argv) > 1 and argv[1] == "diff":
             raise subprocess.TimeoutExpired(argv, 35)
         return original(argv, *args, **kwargs)
     with TemporaryDirectory() as root:
@@ -266,6 +325,43 @@ def test_check_failure_and_selection_reason_are_separate():
     assert result.summary == "make test failed after 1s"
     assert "selection: repocli fallback: analysis incomplete" in result.guidance
     assert not result.ok
+
+
+def test_schema3_local_outline_gap_keeps_focused_checks():
+    # +spec=`Local extraction observations do not trigger full validation`
+    observation = {"reason": "outline_incomplete", "subject": "declarations",
+                   "path": "unchanged.py", "version": "after", "scope": "document",
+                   "outline": {"omittedNameConflict": 2}, "disposition": "local_gap"}
+    with TemporaryDirectory() as root, repocli_report(
+            sources=["source.py"], tests=["test_a.py"], observations=[observation]):
+        repo = make_repo(root)
+        with (repo / "Makefile").open("a") as f:
+            f.write("fix:\n\t@echo '$(LINT_FILES)' > fix.observed\nlint:\n\t@echo '$(LINT_FILES)' > lint.observed\n")
+        (repo / "test_b.py").write_text("BAD\n")
+        with redirect_stdout(io.StringIO()):
+            result = dispatch("pre_commit", str(repo), paths=["source.py"], names=["lint", "test"])
+        assert result.proceed and all(r.ok for r in result.results)
+        assert (repo / "lint.observed").read_text().strip() == "source.py test_a.py"
+        assert (repo / "test.observed").read_text() == "test_a.py"
+        invocations = (repo / "analysis.observed").read_text().splitlines()
+        assert len(invocations) == 1
+        argv = json.loads(invocations[0])
+        assert "--impact" not in argv
+        assert argv[argv.index("--test-dir") + 1] == "."
+        state = load_segment(repo, branch_segment("main", "validation_scope"))
+        assert all(row["scope"] == "focused" for row in state["checks"])
+        assert not has_full_stamp(repo)
+
+
+def test_schema2_diff_falls_back_with_upgrade_guidance():
+    with TemporaryDirectory() as root, repocli_report(
+            sources=["source.py"], tests=["test_a.py"], schema=2):
+        repo = make_repo(root)
+        plan = build_plan(str(repo), repo_model.select_components(repo))
+        assert "requires 3" in plan.workset.reason
+        assert "repocli >= 0.5.0" in plan.workset.reason
+        assert all(selection.scope == "full" for selection in plan.selections.values())
+        assert plan.execution_identity and not plan.identity_problem  # Snapshot schema remains 1.
 
 
 if __name__ == "__main__":

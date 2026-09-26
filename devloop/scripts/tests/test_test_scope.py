@@ -62,7 +62,7 @@ def test_auto_scope_is_visible_before_preparation_and_does_not_stamp():
         def prepare(*args, **kwargs):
             text = output.getvalue()
             assert "scope=focused" in text and "TEST_FILES=test_a.py" in text
-            assert "repocli file dependencies" in text
+            assert "repocli automatic impact" in text
             assert not (repo / "test.observed").exists()
             return original(*args, **kwargs)
 

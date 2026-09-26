@@ -181,6 +181,12 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
         return lint_components(repo, plan.workset, capture=capture, paths=paths, plan=plan)
     if problem := _identity_problem(repo, plan, "after planning"):
         return HookResult("lint", ok=False, summary=problem)
+    if plan is not None and plan.selection(component, "lint").skipped:
+        selection = plan.selection(component, "lint")
+        return HookResult(
+            "lint", ok=True,
+            summary=f"{component.id}: lint skipped — {selection.reason}; component lint stamp unchanged",
+        )
     code_dir = component.path
     target = component.lint_target()
     if target is None:
@@ -211,7 +217,7 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
         # spec: focused lint 只验证当前选择，不能授予整个 Component 的可复用通行证。
         return HookResult(
             "lint", ok=True,
-            summary=f"make {target} passed in {elapsed:.1f}s — focused {len(files)} changed file(s); "
+            summary=f"make {target} passed in {elapsed:.1f}s — focused {len(files)} selected file(s); "
                     "component lint stamp unchanged",
         )
     if rc == 0:

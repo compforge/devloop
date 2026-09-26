@@ -30,7 +30,7 @@ content fingerprint so later edits invalidate it.
 
 ### Focused static quality
 
-A project may explicitly consume `LINT_FILES`, a space-separated list of Component-relative changed
+A project may explicitly consume `LINT_FILES`, a space-separated list of Component-relative
 paths, in **both** `fix` and the selected `lint-ci` / `lint` target:
 
 ```console
@@ -44,8 +44,10 @@ checks may need packages or the project graph rather than individual files. Do n
 semantics or suppress diagnostics to simulate file-level support. Fixers must only rewrite the selected
 files; read-only checks may expand their analysis where the language requires it.
 
-Lifecycle gates pass the frozen phase scope to both targets. Manual `run_lint.py` uses working-tree
-changes; `--full` and `run_validate.py` run full Component checks. Unknown scope, deleted files, or
+Normalization uses the frozen changed paths. After normalization, automatic lint uses repocli's
+returned affected files, including unchanged consumers. Valid partial reports retain that selection;
+an empty list skips lint without a stamp or a Make invocation. `--full` requests full Component checks.
+Unknown scope, deleted files, or
 paths that cannot safely be passed through Make fall back to full checks. Projects without the
 `LINT_FILES` contract retain full checks and receive adoption guidance.
 
@@ -75,9 +77,9 @@ produce partial feedback and leave the full test stamp unchanged. `--full` rejec
 `--` so the coverage request cannot contradict the runner arguments.
 
 Before execution, devloop prints the Component, scope, selection reason and command (including files).
-Automatic selection uses repocli file dependencies, including unchanged affected tests.
+Automatic selection uses repocli's automatic impact analysis, including unchanged affected tests.
 Devloop supplies file lists; agents do not normally enumerate them. Successful valid repocli
-reports select the returned tests even with analysis gaps; diagnostics remain visible on Board.
+reports select the returned files for lint and tests even with analysis gaps; diagnostics remain visible on Board.
 An empty returned list skips tests without a full stamp instead of passing `TEST_FILES=` to Make.
 CLI or report failures fall back to full checks. Required full gates still take precedence.
 Do not implement file-level selection where it changes language semantics; Go should expose package or test-name selection instead.

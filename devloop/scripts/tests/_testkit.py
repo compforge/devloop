@@ -150,7 +150,8 @@ def run_main(g: dict) -> None:
     sys.exit(1 if failed else 0)
 
 
-def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diagnostics=()):
+def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diagnostics=(),
+                   observations=(), schema=3, affected=None):
     """Hermetic CLI protocol fixture; executes a real subprocess, never host repocli."""
     from contextlib import contextmanager
     from tempfile import TemporaryDirectory
@@ -165,6 +166,7 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 "import hashlib, subprocess\n"
                 "from pathlib import Path\n"
                 "repo = sys.argv[sys.argv.index('--repo')+1]\n"
+                "if '--impact' in sys.argv: raise SystemExit(2)\n"
                 "if sys.argv[1]=='diff':\n with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
                 "digest=hashlib.sha256()\n"
                 "names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=repo).decode().split('\\0')\n"
@@ -172,10 +174,12 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 " p=Path(repo)/name\n"
                 " if p.is_file(): digest.update(name.encode()+b'\\0'+p.read_bytes())\n"
                 "identity='sha256:'+digest.hexdigest()\n"
-                "data = " + repr({"schemaVersion": 2, "complete": complete, "scope": scope,
-                                  "impactMode": "file", "snapshot": "sha256:" + "a" * 64,
+                "data = " + repr({"schemaVersion": schema, "complete": complete, "scope": scope,
+                                  "snapshot": "sha256:" + "a" * 64,
                                   "sourceFiles": list(sources), "testFiles": list(tests),
-                                  "diagnostics": list(diagnostics)}) + "\n"
+                                  "affectedFiles": [{"path": path} for path in
+                                                    (affected if affected is not None else dict.fromkeys([*sources, *tests]))],
+                                  "diagnostics": list(diagnostics), "observations": list(observations)}) + "\n"
                 "data.update(snapshot=identity, checkout=repo, input='commit' if '--head' in sys.argv else 'working_tree')\n"
                 "if sys.argv[1]=='snapshot': data.update(complete=True, diagnostics=[])\n"
                 "if sys.argv[1]=='snapshot': data.update(schemaVersion=1)\n"

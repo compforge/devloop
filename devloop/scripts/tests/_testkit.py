@@ -151,7 +151,7 @@ def run_main(g: dict) -> None:
 
 
 def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diagnostics=(),
-                   observations=(), schema=3):
+                   observations=(), schema=3, affected=None):
     """Hermetic CLI protocol fixture; executes a real subprocess, never host repocli."""
     from contextlib import contextmanager
     from tempfile import TemporaryDirectory
@@ -177,6 +177,8 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 "data = " + repr({"schemaVersion": schema, "complete": complete, "scope": scope,
                                   "snapshot": "sha256:" + "a" * 64,
                                   "sourceFiles": list(sources), "testFiles": list(tests),
+                                  "affectedFiles": [{"path": path} for path in
+                                                    (affected if affected is not None else dict.fromkeys([*sources, *tests]))],
                                   "diagnostics": list(diagnostics), "observations": list(observations)}) + "\n"
                 "data.update(snapshot=identity, checkout=repo, input='commit' if '--head' in sys.argv else 'working_tree')\n"
                 "if sys.argv[1]=='snapshot': data.update(complete=True, diagnostics=[])\n"

@@ -52,7 +52,7 @@ def test_focused_gate_preserves_unrelated_files_and_does_not_stamp():
         repo = make_repo(root)
         result = lifecycle.dispatch("pre_commit", str(repo), paths=["a.py"], names=["lint"])
         assert result.proceed, result.results
-        assert "focused 1 changed file" in result.results[0].summary
+        assert "focused 1 selected file" in result.results[0].summary
         assert (repo / "fix.observed").read_text() == "a.py"
         assert (repo / "lint.observed").read_text() == "a.py"
         assert (repo / "a.py").read_text() == "OK\n"

@@ -98,7 +98,7 @@ class Component:
         return eco.fallback_test_command(self.path) if eco else None
 
     def supports_lint_files(self) -> bool:
-        """项目显式采用 LINT_FILES 契约：fix 和 lint 都必须消费同一范围。"""
+        """项目显式采用 LINT_FILES 契约：fix 和 lint 均支持调用方指定的文件范围。"""
         try:
             makefile = (Path(self.path) / "Makefile").read_text(encoding="utf-8")
         except OSError:

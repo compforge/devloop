@@ -35,19 +35,19 @@ post-commit uses `HEAD^` versus `HEAD`; MR checks use target merge-base versus `
 If execution contents differ from the committed target, use full checks. Missing
 CLI, timeout, invalid/incompatible JSON, deleted/unsafe paths or unsupported project
 file-list contracts also select canonical full checks. A successful valid report
-supplies the test files even when its scope is `partial`, `complete` is false, or it
-has diagnostics. Dependency gaps remain visible in the selection reason; they do
-not trigger full tests. Lint retains its complete-analysis requirement. Local extraction
-`observations` do not downgrade checks: repocli accounts for them when choosing seeds
-and reporting analysis status. Devloop uses `sourceFiles` for changed-source lint and
-`testFiles` for tests, without applying a separate confidence or distance cutoff. Board
+supplies the files even when its scope is `partial`, `complete` is false, or it
+has diagnostics. Dependency gaps remain visible in the selection reason and do
+not widen lint or test scope. Local extraction `observations` likewise do not downgrade
+checks. Devloop uses `affectedFiles` for lint and `testFiles` for tests, without applying
+a separate confidence or distance cutoff. Board
 shows the latest scope and reason. Check failures remain failures; they never
 trigger a second full run under the label of analysis fallback.
 
 `--full` explicitly requests full checks. Focused or explicit narrow runs never
-grant a full Component stamp. A successful empty test selection skips that
-Component's tests without updating its test stamp; it does not prove no tests are
-affected. This differs from explicitly passing `TEST_FILES=`, which requests full tests.
+grant a full Component stamp. A valid empty file list skips the corresponding
+Component check without updating its stamp, including for partial reports. A missing or
+invalid list is an unusable result and triggers full fallback. Empty selections do not
+prove runtime independence. Explicitly passing `TEST_FILES=` requests full tests.
 Full checks clear inherited file-list variables. Custom arguments after `--` remain
 an advanced override; target one Component and report the scope accurately.
 

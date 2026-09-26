@@ -75,7 +75,7 @@ produce partial feedback and leave the full test stamp unchanged. `--full` rejec
 `--` so the coverage request cannot contradict the runner arguments.
 
 Before execution, devloop prints the Component, scope, selection reason and command (including files).
-Automatic selection uses repocli file dependencies, including unchanged affected tests.
+Automatic selection uses repocli's automatic impact analysis, including unchanged affected tests.
 Devloop supplies file lists; agents do not normally enumerate them. Successful valid repocli
 reports select the returned tests even with analysis gaps; diagnostics remain visible on Board.
 An empty returned list skips tests without a full stamp instead of passing `TEST_FILES=` to Make.

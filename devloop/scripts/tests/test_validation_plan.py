@@ -52,8 +52,8 @@ def test_missing_cli_runs_full_and_publishes_reason():
 
 def test_invalid_and_failed_cli_reports_fall_back():
     outputs = ['not JSON', '{"schemaVersion":1}',
-               json.dumps({"schemaVersion":2,"complete":False,"diagnostics":[{"code":"snapshot_changed"}]}),
-               json.dumps({"schemaVersion":2,"complete":True,"scope":"focused","impactMode":"file"})]
+               json.dumps({"schemaVersion":3,"complete":False,"diagnostics":[{"code":"snapshot_changed"}]}),
+               json.dumps({"schemaVersion":3,"complete":True,"scope":"focused"})]
     for output in outputs:
         with TemporaryDirectory() as root, repocli_report() as cli:
             repo = make_repo(root)
@@ -189,7 +189,7 @@ def test_timeout_falls_back_and_full_bypasses_cli():
     from domain import validation
     original = subprocess.run
     def run(argv, *args, **kwargs):
-        if "--impact" in argv:
+        if len(argv) > 1 and argv[1] == "diff":
             raise subprocess.TimeoutExpired(argv, 35)
         return original(argv, *args, **kwargs)
     with TemporaryDirectory() as root:
@@ -266,6 +266,43 @@ def test_check_failure_and_selection_reason_are_separate():
     assert result.summary == "make test failed after 1s"
     assert "selection: repocli fallback: analysis incomplete" in result.guidance
     assert not result.ok
+
+
+def test_schema3_local_outline_gap_keeps_focused_checks():
+    # +spec=`Local extraction observations do not trigger full validation`
+    observation = {"reason": "outline_incomplete", "subject": "declarations",
+                   "path": "unchanged.py", "version": "after", "scope": "document",
+                   "outline": {"omittedNameConflict": 2}, "disposition": "local_gap"}
+    with TemporaryDirectory() as root, repocli_report(
+            sources=["source.py"], tests=["test_a.py"], observations=[observation]):
+        repo = make_repo(root)
+        with (repo / "Makefile").open("a") as f:
+            f.write("fix:\n\t@echo '$(LINT_FILES)' > fix.observed\nlint:\n\t@echo '$(LINT_FILES)' > lint.observed\n")
+        (repo / "test_b.py").write_text("BAD\n")
+        with redirect_stdout(io.StringIO()):
+            result = dispatch("pre_commit", str(repo), paths=["source.py"], names=["lint", "test"])
+        assert result.proceed and all(r.ok for r in result.results)
+        assert (repo / "lint.observed").read_text().strip() == "source.py"
+        assert (repo / "test.observed").read_text() == "test_a.py"
+        invocations = (repo / "analysis.observed").read_text().splitlines()
+        assert len(invocations) == 1
+        argv = json.loads(invocations[0])
+        assert "--impact" not in argv
+        assert argv[argv.index("--test-dir") + 1] == "."
+        state = load_segment(repo, branch_segment("main", "validation_scope"))
+        assert all(row["scope"] == "focused" for row in state["checks"])
+        assert not has_full_stamp(repo)
+
+
+def test_schema2_diff_falls_back_with_upgrade_guidance():
+    with TemporaryDirectory() as root, repocli_report(
+            sources=["source.py"], tests=["test_a.py"], schema=2):
+        repo = make_repo(root)
+        plan = build_plan(str(repo), repo_model.select_components(repo))
+        assert "requires 3" in plan.workset.reason
+        assert "repocli >= 0.5.0" in plan.workset.reason
+        assert all(selection.scope == "full" for selection in plan.selections.values())
+        assert plan.execution_identity and not plan.identity_problem  # Snapshot schema remains 1.
 
 
 if __name__ == "__main__":

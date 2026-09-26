@@ -134,7 +134,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     sources: list[str] = []
     tests: list[str] = []
     snapshot = ""
-    analysis_reason = "repocli file dependencies"
+    analysis_reason = "repocli automatic impact"
     lint_reason = ""
     observed = content_identity(repo)
     identity = observed.digest
@@ -143,7 +143,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
         persist_plan(repo, plan)
         return plan
     if not reason:
-        argv = ["--base", comparison.base, "--impact", "file", "--test-dir", "."]
+        argv = ["--base", comparison.base, "--test-dir", "."]
         if comparison.head:
             argv += ["--head", comparison.head]
         for path in paths or []:
@@ -154,8 +154,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             if comparison.head and repo_model.changed_paths(repo):
                 raise ValueError("working tree differs from committed analysis target")
             data = _repocli_json(repo, "diff", argv)
-            if not isinstance(data, dict) or data.get("schemaVersion") != 2:
-                raise ValueError("unsupported repocli schema (requires 2)")
+            if not isinstance(data, dict) or data.get("schemaVersion") != 3:
+                raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.5.0)")
             diagnostics = data.get("diagnostics")
             if (not isinstance(data.get("complete"), bool)
                     or data.get("scope") not in ("focused", "partial")
@@ -164,12 +164,14 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                 raise ValueError("invalid analysis status")
             # Dependency gaps limit coverage, not the usefulness of returned tests.
             # Keep lint's existing complete-analysis policy independent of test selection.
+            # Schema 3 observations describe local extraction gaps; repocli owns
+            # their effect on seeds and coverage, so they do not downgrade this plan.
             if not data["complete"] or data["scope"] != "focused" or diagnostics:
                 codes = sorted({str(d.get("code", "analysis_gap")) for d in diagnostics})
                 detail = ": " + ", ".join(codes) if codes else ""
                 analysis_reason += " (partial analysis" + detail + ")"
                 lint_reason = "repocli fallback: analysis incomplete" + detail
-            if data.get("impactMode") != "file" or Path(data.get("checkout", "")).resolve() != Path(repo).resolve():
+            if Path(data.get("checkout", "")).resolve() != Path(repo).resolve():
                 raise ValueError("analysis target mismatch")
             snapshot = data.get("snapshot", "")
             if not isinstance(snapshot, str) or len(snapshot) != 71 or not snapshot.startswith("sha256:"):

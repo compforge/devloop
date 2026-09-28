@@ -35,6 +35,11 @@ Claude/Codex 作为已安装 CLI plugin 时，使用官方 manifest 与 command 
 | Compact replay | `PostCompact` / compact start | `agent/created` with `compact` |
 | Session cleanup | `SessionEnd` | `agent/disposed` |
 
+工具调用记录必须按 Harness 的结果协议判断失败：Claude 使用 `PostToolUseFailure`，Codex 的
+`PostToolUse` 也包含非零退出的执行。Codex adapter 从 shell / unified-exec 的结果头读取退出码，
+从 MCP `CallToolResult.isError` 读取工具错误；不根据命令输出正文中的错误字样判断，也不把输出
+正文写入工具调用账本。没有这些失败信号的完成事件保持原有记录语义。
+
 Adapter 应 fail-open：协议解析或本地派生状态失败不能卡死 Harness。明确命中的 deny 由共享 Decision 翻译为各端阻断结果；command hook 超时、缺失或 Harness 未覆盖路径仍可能放行，因此这些规则是工作流护栏，不是完整安全边界。DSH 的进程内 Cordis 决策可提供更强的一致性，但也复用同一 fail-open policy core。
 
 ## 构建与验证

@@ -8,6 +8,7 @@ import { BoardRuntime } from "../domain/board/runtime.js";
 import { projectBoard } from "../domain/board/projection.js";
 import { currentBranch, listWorktrees } from "../lib/git-state.js";
 import { projectTool } from "../hooks/core/project.js";
+import { codexToolFailed } from "./codex.js";
 function string(value) { return typeof value === "string" ? value : ""; }
 function cwd(payload) { return string(payload.cwd) || process.cwd(); }
 function sessionId(payload) { return string(payload.session_id); }
@@ -131,7 +132,7 @@ export function recordToolCall(payload, harness) {
             session_id: sessionId(payload), harness, tool: string(payload.tool_name),
         };
         if (phase === "finished") {
-            record.outcome = event === "PostToolUseFailure" ? "failed" : "succeeded";
+            record.outcome = event === "PostToolUseFailure" || (harness === "codex" && codexToolFailed(payload)) ? "failed" : "succeeded";
             const started = toolCallStartedAt(root, callId, timestamp);
             if (started !== undefined)
                 record.duration_ms = Math.max(0, Math.round((timestamp - started) * 1_000));

@@ -9,6 +9,7 @@ import { projectBoard } from "../domain/board/projection.js";
 import { currentBranch, listWorktrees } from "../lib/git-state.js";
 import { projectTool } from "../hooks/core/project.js";
 import type { HookHarness, HookPayload } from "./hook-payload.js";
+import { codexToolFailed } from "./codex.js";
 
 export type RuntimeHarness = HookHarness | "dsh";
 
@@ -122,7 +123,7 @@ export function recordToolCall(payload: HookPayload, harness: RuntimeHarness): v
       session_id: sessionId(payload), harness, tool: string(payload.tool_name),
     };
     if (phase === "finished") {
-      record.outcome = event === "PostToolUseFailure" ? "failed" : "succeeded";
+      record.outcome = event === "PostToolUseFailure" || (harness === "codex" && codexToolFailed(payload)) ? "failed" : "succeeded";
       const started = toolCallStartedAt(root, callId, timestamp);
       if (started !== undefined) record.duration_ms = Math.max(0, Math.round((timestamp - started) * 1_000));
     }

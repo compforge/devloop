@@ -164,9 +164,9 @@ Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 pack
 
 devloop 只定义一个 `pr-lifecycle-reconcile` task：它枚举本地 branch（包含无 checkout 的 branch），对账 Forge 状态，并强制回收 PR/MR 已 merged / closed 的 linked worktree。Claude native monitor 会循环执行该 task；Codex 可用 Scheduled task 周期调用同一个单次入口。
 
-Codex plugin 目前不能随安装注册 Scheduled task（plugin manifest 只声明 skills、MCP server、hooks 等组件）；Codex CLI 也不提供 Scheduled 管理界面，需从 ChatGPT web / desktop 创建。为避免清理完全依赖人工配置，Codex 的 SessionStart 与 PostToolUse hook 会按 task 的默认 120 秒周期做一次非阻塞、repo 级的 opportunistic trigger：前台只负责节流并启动后台单次 sweep，不等待 Forge 请求。原生 Scheduled task 仍是没有 Codex 活动时的 durable timer。参见 OpenAI 的 [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) 与 [plugin packaging](https://developers.openai.com/plugins/build/plugins) 文档。
+Codex 本地 plugin 目前没有与 Claude native monitor 对等的声明入口，安装 devloop 不会自动启动周期对账。需要周期执行时，在 ChatGPT desktop 创建能访问本地项目的 Scheduled task；Codex CLI 不提供 Scheduled 管理界面。参见 OpenAI 的 [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) 与 [plugin packaging](https://developers.openai.com/plugins/build/plugins) 文档。
 
-在支持 Scheduled 管理的 ChatGPT web / desktop 中说“为当前项目安排 `$devloop:monitor`”即可按 task 默认周期创建 Scheduled task，也可在请求中指定周期。单次手动执行时：
+在 ChatGPT desktop 中说“为当前项目安排 `$devloop:monitor`”即可按 task 默认周期创建 Scheduled task，也可在请求中指定周期。单次手动执行时：
 
 ```console
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py list
@@ -202,7 +202,7 @@ codex plugin add devloop@devloop
 ## 边界与兼容性
 
 - Claude/Codex 的 command hooks 是 fail-open 工作流护栏，不是安全沙箱：hook 超时、异常或 Harness 未覆盖的执行路径可能放行。真正的组织级强制策略应由 CLI 权限、managed policy 或外部 sandbox 承担。
-- Claude Code 与 Codex 都使用 native `SessionEnd`；Codex 尚缺的 `CwdChanged` / `FileChanged` 由 PostToolUse、下一轮刷新和 TTL 路径补足。
+- Claude Code 与 Codex 都使用 native `SessionEnd`。Codex 没有 `CwdChanged` / `FileChanged`，当前仅通过已识别的 Git 操作更新活动 repo，并在 `SessionStart` 刷新 workspace；不提供等价的目录与文件监听。
 - devloop 负责单个开发闭环中的 repo/branch、验证、commit/push、PR/MR、review 和执行守卫；不负责跨仓需求编排、部署或长期调度。
 - 多 Component 可以独立验证，但跨 Repo 的 fan-out 和发包依赖顺序不由 devloop 编排。
 - merge 始终由人完成；test 和 AI review 提供决策依据，不替代 CI 与人工判断。

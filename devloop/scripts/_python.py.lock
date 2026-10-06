@@ -1,0 +1,27 @@
+version = 1
+revision = 3
+requires-python = ">=3.11"
+
+[manifest]
+requirements = [{ name = "compforge-repocli", specifier = "==0.1.0" }]
+
+[[package]]
+name = "compforge-repocli"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "harness-common" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/96/ca/76b3c7c04a943b1a173331c0bd6e903f89516c45c02b9a60d8b8cdf0c3ec/compforge_repocli-0.1.0.tar.gz", hash = "sha256:b4045a323a3a73a714ed676656df5a06d4e17fa4734f6320d07668b6826932b2", size = 39144, upload-time = "2026-10-06T15:24:28.135Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/d0/5186a32701d5e6bfe5b644ccb218007765e91cad784b44f14f32581a8bf7/compforge_repocli-0.1.0-py3-none-any.whl", hash = "sha256:eb2ceac23f5a078ba0a9eaf1e7a7266e77b4d2ddd5aaa3236f98dd0cfdfc5d07", size = 16221, upload-time = "2026-10-06T15:24:26.586Z" },
+]
+
+[[package]]
+name = "harness-common"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c5/d6/b303f20929feaa73b0c2528e341b382e24838cfed61c30050a77ddf88702/harness_common-0.5.1.tar.gz", hash = "sha256:0fc6aa9cc234b56d684f186fc52cc7eb5fe388aa696baea47275f93845754f34", size = 35840, upload-time = "2026-09-17T14:01:12.109Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3c/fc/ce5a020c3bebe25a4dcdaa7cb3f5d9e489e2e317f3f69ebe62be7dc79227/harness_common-0.5.1-py3-none-any.whl", hash = "sha256:c7edb834727e79480112da56f1e46557f241d55519b5b46d8bb2c3f64d1a8545", size = 36470, upload-time = "2026-09-17T14:01:11.098Z" },
+]

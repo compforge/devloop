@@ -34,6 +34,6 @@ def review(repo: str, paths: list[str] | None = None) -> HookResult:
         })
         return HookResult("review", ok=False, summary=message, advisory=True)
     script = str(script_path)
-    spec = BackgroundSpec("review", ["python3", script, "--repo", repo],
+    spec = BackgroundSpec("review", [str(script_path.with_name("python")), script, "--repo", repo],
                           note="ocr review origin/<target>..HEAD → .devloop/review.json + MR comment")
     return HookResult("review", ok=True, summary="launched background code-review", relay=spec)

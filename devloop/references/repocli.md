@@ -24,13 +24,14 @@ these describe static associations, not runtime probabilities.
 ## Organization
 
 `inspect` supplies the Component catalog, language and package-tool metadata.
-The TypeScript runtime calls native `@compforge/repocli` `inspect` and `owner`; it does
-not invoke the CLI or decode its JSON protocol. Python workflows continue using the CLI.
+TypeScript uses `@compforge/repocli`; Python uses `compforge-repocli`. Both call native
+`inspect` and `owner`, sharing the toolkit contract rather than the CLI JSON protocol.
 Devloop retains execution containment, command selection, environment preparation,
 validation gates and stamps.
 
-Each policy operation shares one inspection promise per checkout, including in-flight
-work and rejection. A new operation observes fresh metadata. Ownership and validation
+Each TypeScript policy operation shares one inspection promise per checkout, including in-flight
+work and rejection. Python selection passes one explicit catalog through the operation.
+A new operation observes fresh metadata. Ownership and validation
 selection project that explicit catalog without another inspection; `owner` includes
 deleted paths. Configure repository boundaries
 in `.repocli.json`; fixture manifests such as `testdata/corpus/go.mod` are not independent
@@ -74,13 +75,28 @@ an advanced override; target one Component and report the scope accurately.
 
 ## Installation and compatibility
 
+Python entrypoints run through `<PLUGIN_ROOT>/scripts/python`. Its PEP 723 script and
+adjacent lockfile pin the toolkit and transitive dependencies. uv owns the cached
+script environment, outside both the plugin installation and the inspected repository;
+it does not select the target project's virtual environment or uv configuration.
+Python 3.11+ and uv are required. `DEVLOOP_PYTHON` selects a compatible interpreter.
+Warm the environment before offline work:
+
+```sh
+<PLUGIN_ROOT>/scripts/python -c 'import repocli'
+```
+
+Regenerate the lock with `uv lock --script devloop/scripts/_python.py` when updating
+its dependency declaration. Keep the lockfile in both Git and the npm package.
+
+
 Install a fixed repocli release from [GitHub releases](https://github.com/compforge/repocli/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
 `PATH`. `DEVLOOP_REPOCLI=/absolute/path/repocli` selects another installed binary for
-Python workflows and has no effect on the native TypeScript runtime.
-No validation workflow downloads, upgrades or compiles repocli.
+Python snapshot/diff operations; organization inspection does not use this setting.
+No validation workflow downloads, upgrades or compiles the repocli CLI.
 
-Use repocli 0.11.0 or later: inspect schema 1, snapshot schema 2, and diff schema 3.
+Use repocli CLI 0.11.0 or later: snapshot schema 2 and diff schema 3.
 Diff requires valid file lists,
 and a matching snapshot identity. Dependency analysis may be incomplete. An unsupported
 diff schema falls back to full checks and reports the required version.

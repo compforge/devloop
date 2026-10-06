@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Python skill workflow 测试入口：`python3 devloop/scripts/tests/run_all.py`。
+"""Python skill workflow 测试入口：`devloop/scripts/python devloop/scripts/tests/run_all.py`。
 
 逐模块跑所有 test_*.py（test_session_lock.py 用 pytest fixture，只归 pytest 跑）。
 """
@@ -27,6 +27,7 @@ MODULES = [
     "test_test_scope",
     "test_validation_plan",
     "test_inspect",
+    "test_python",
     "test_review",
 ]
 

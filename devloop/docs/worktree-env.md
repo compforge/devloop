@@ -36,10 +36,17 @@ normalize 后同一 lifecycle 相位会并发跑 lint/test，因此 `ensure_read
 
 ## 关键设计
 
+### 插件运行环境与项目环境分开
+
+`scripts/python` 使用 uv 的锁定脚本环境加载插件自己的 Python 依赖，环境位于 uv 缓存中。
+它不要求插件目录可写，也不修改被分析项目的 `.venv`、manifest 或 lockfile。该环境在命令退出后
+仍然存在，后台工作流可继续使用；项目的依赖恢复仍由下面的生态入口拥有。
+
+
 ### 生态是语言差异的唯一入口
 
-Component 目录、语言与包管理工具元数据由 repocli 提供：TypeScript runtime 调用原生 toolkit，
-本节的 Python worktree/validation workflow 使用 `repocli inspect` CLI。
+Component 目录、语言与包管理工具元数据由 repocli 提供：TypeScript runtime 与 Python
+worktree/validation workflow 各自调用对应语言的原生 toolkit。
 `scripts/lib/ecosystem/` 拥有环境就绪、恢复命令和无 Makefile 时的 canonical 回落命令，
 可以读取 manifest / lockfile 来执行项目选择的工具链。组件发现与环境执行各自只有一个入口。
 inspect 失败时 worktree 仍可创建，但环境准备返回明确告警；后续验证必须取得组件目录。

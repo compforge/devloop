@@ -26,6 +26,7 @@ MODULES = [
     "test_focused_lint",
     "test_test_scope",
     "test_validation_plan",
+    "test_inspect",
     "test_review",
 ]
 

@@ -27,7 +27,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from lib import gitcmd
+from lib import repocli, gitcmd
 
 from . import repo_layout, workspace
 from .context import RepoContext, WorkspaceContext
@@ -67,14 +67,9 @@ class RepoResolution:
 
 
 def default_unit(git_root: str | Path, ctx: RepoContext | None = None) -> repo_layout.Component:
-    """repo 级**默认** component：持久化 `code_dir` 缓存优先（= 探测结果的缓存），否则现探
-    （`server/` > `backend/` > repo 根）。没有更具体操作目标路径时用——解析边界的默认分支、
-    lifecycle gate 的回落、按名字选择一个仓，都收敛到这一个入口（单一事实源）。"""
-    ctx = ctx if ctx is not None else RepoContext.load(git_root)
-    cached = ctx.repo.code_dir if ctx and ctx.repo.code_dir else None
-    if cached:
-        return repo_layout.Component.at(cached, git_root)
+    """Select a default from current inspection, never a stale code_dir cache."""
     return repo_layout.default_component(git_root)
+
 
 
 @dataclass(frozen=True)
@@ -177,14 +172,18 @@ def component_fingerprint(git_root: str | Path, component: repo_layout.Component
     paths = _working_paths_or_unknown(git_root)
     if paths is None:
         return None
-    root = Path(git_root)
+    root = Path(git_root).resolve()
+    try:
+        catalog = repo_layout.inspect_catalog(git_root)
+    except repocli.InspectionError:
+        return None
     h = hashlib.sha256()
     h.update(component.id.encode())          # 拌进 component 身份：空改动集在不同 component 上不该撞同一个指纹
     try:
         # 按**归属**过滤：不属于任何 component 的共享路径（仓根 README / docs/ / .github/）不进任何
         # component 的指纹——它们不在 component 的项目边界内，改它们不该让谁的 lint 通行证作废。
         for rel in sorted(p for p in paths
-                          if (owner := repo_layout.owning_component(root / p, git_root)) is not None
+                          if (owner := catalog.owner(root / p)) is not None
                           and owner.id == component.id):
             h.update(b"\0path\0" + rel.encode())
             p = root / rel
@@ -236,7 +235,7 @@ def range_paths(git_root: str | Path, base: str, head: str = "HEAD") -> list[str
     return _paths_or_unknown(gitcmd.git(git_root, "diff", "--name-only", f"{base}...{head}"))
 
 
-def _project_components(git_root: str | Path, paths: list[str]) -> list[repo_layout.Component]:
+def _project_components(git_root: str | Path, paths: list[str], catalog: repo_layout.Catalog) -> list[repo_layout.Component]:
     """一组仓相对路径**归属**的 component，去重。这是「变更决定验证目标」的核心：
     改了 cli/** 就只投影出 cli，不受解析来源是否带路径影响。
 
@@ -254,14 +253,14 @@ def _project_components(git_root: str | Path, paths: list[str]) -> list[repo_lay
     owner」一律当成「影响所有人」。"""
     seen: dict[str, repo_layout.Component] = {}
     for p in paths:
-        u = repo_layout.owning_component(Path(git_root) / p, git_root)
+        u = catalog.owner(Path(git_root).resolve() / p)
         if u is not None:
             seen.setdefault(u.id, u)
     return list(seen.values())
 
 
 def select_components(git_root: str | Path, *, explicit: str | Path | None = None,
-                 paths: list[str] | None = None) -> WorkSet:
+                 paths: list[str] | None = None, catalog: repo_layout.Catalog | None = None) -> WorkSet:
     """本轮 WorkSet：显式目标 > 本次改动投影 > repo-wide 全量。任何一级都**不静默回默认 server**。
 
     - `explicit`（显式 --component / 路径 / cwd 落在仓内某具体子目录）→ 归属那个 component。仅当它指向仓根
@@ -276,23 +275,26 @@ def select_components(git_root: str | Path, *, explicit: str | Path | None = Non
       「不知道所以全跑」和「知道没有所以不跑」不能混为一谈，混了就是 clean tree 上跑全仓。
     """
     root = Path(git_root).resolve()
+    catalog = catalog or repo_layout.inspect_catalog(root)
+    if not catalog.components:
+        raise repocli.InspectionError("repocli inspect returned no Components for validation")
     if explicit is not None:
         ep = Path(explicit).resolve()
         if ep != root and root in ep.parents:
-            u = repo_layout.enclosing_component(ep, git_root)
+            u = repo_layout.enclosing_component(ep, git_root, catalog=catalog)
             return WorkSet((u,), f"explicit target {ep.name} → component {Path(u.path).name}")
         # ep == 仓根：没有具体目标，落到改动投影（不走 enclosing → default → server）
     if paths is not None:
-        components = _project_components(git_root, paths)
+        components = _project_components(git_root, paths, catalog)
         if not components:
             return WorkSet((), "no changed files in scope")
         names = ", ".join(Path(u.path).name for u in components)
         return WorkSet(tuple(components), f"changed files under: {names}")
-    dirty = _project_components(git_root, changed_paths(git_root))
+    dirty = _project_components(git_root, changed_paths(git_root), catalog)
     if dirty:
         names = ", ".join(Path(u.path).name for u in dirty)
         return WorkSet(tuple(dirty), f"changed files under: {names}")
-    allu = repo_layout.discover_components(git_root)
+    allu = catalog.components
     names = ", ".join(Path(u.path).name for u in allu)
     return WorkSet(tuple(allu), f"clean tree, all components: {names}")
 

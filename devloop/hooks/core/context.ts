@@ -1,6 +1,6 @@
 import { dirname, isAbsolute, resolve } from "node:path";
 import { architectureConfig, type JsonObject } from "../../lib/config.js";
-import { findGitRoot } from "../../domain/repo-layout.js";
+import { findGitRoot, inspectCatalog, type ComponentCatalog } from "../../domain/repo-layout.js";
 import type { SessionIdentity } from "../../domain/context/session.js";
 import type { Target } from "./domain.js";
 
@@ -11,7 +11,7 @@ export class PolicyContext {
   readonly anchorPath: string;
   readonly anchorDirectory: string;
 
-  constructor(cwd: string, identity: SessionIdentity, anchorPath = "") {
+  constructor(cwd: string, identity: SessionIdentity, anchorPath = "", private readonly inspections = new Map<string, ComponentCatalog | Error>()) {
     this.cwd = cwd;
     this.identity = identity;
     this.anchorPath = anchorPath ? (isAbsolute(anchorPath) ? anchorPath : resolve(cwd, anchorPath)) : "";
@@ -19,8 +19,19 @@ export class PolicyContext {
   }
 
   forTarget(target: Target): PolicyContext {
-    if (target.kind === "file_change") return new PolicyContext(this.cwd, this.identity, target.path);
-    return target.workingDirectory.path ? new PolicyContext(target.workingDirectory.path, this.identity) : this;
+    if (target.kind === "file_change") return new PolicyContext(this.cwd, this.identity, target.path, this.inspections);
+    return target.workingDirectory.path ? new PolicyContext(target.workingDirectory.path, this.identity, "", this.inspections) : this;
+  }
+
+  catalog(repo: string): ComponentCatalog {
+    const key = resolve(repo);
+    if (!this.inspections.has(key)) {
+      try { this.inspections.set(key, inspectCatalog(key)); }
+      catch (error) { this.inspections.set(key, error instanceof Error ? error : new Error(String(error))); }
+    }
+    const value = this.inspections.get(key)!;
+    if (value instanceof Error) throw value;
+    return value;
   }
 
   get sessionId(): string { return this.identity.sessionId; }

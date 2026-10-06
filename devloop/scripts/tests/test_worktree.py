@@ -7,7 +7,7 @@ import os
 import shutil
 from pathlib import Path
 
-from _testkit import _FakeForge, _git, _git_out, run_main  # noqa: E402  (bootstrap first)
+from _testkit import _FakeForge, _git, _git_out, run_main, repocli_report  # noqa: E402  (bootstrap first)
 from domain import pull_request_lifecycle, worktree  # noqa: E402
 from domain.context import PullRequest, prstate, session, store  # noqa: E402
 from domain.forge import ForgeError  # noqa: E402
@@ -106,6 +106,7 @@ def _prune(
         worktree._activity = original_activity
 
 
+@repocli_report()
 def test_new_worktree_fetches_latest_target_tip():
     repo, _, actor = _fixture("fresh")
     stale_tip = _git_out(repo, "rev-parse", "origin/main")
@@ -130,6 +131,7 @@ def test_new_worktree_refuses_a_stale_base_when_fetch_fails():
     assert _git_out(repo, "branch", "--list", "worktree-offline") == ""
 
 
+@repocli_report()
 def test_retained_branch_is_resumed_without_rewriting_it():
     repo, _, actor = _fixture("resume")
     retained_tip = _git_out(repo, "rev-parse", "HEAD")

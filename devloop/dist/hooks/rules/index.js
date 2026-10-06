@@ -93,7 +93,7 @@ function pipInstallArgs(argv) {
 }
 const pipInstall = {
     name: "pip-install", targetKind: "command", applies: () => true,
-    check: (target) => {
+    check: (target, context) => {
         const value = command(target);
         const args = pipInstallArgs(value.argv);
         if (!args || args.includes("-e") && args.includes("."))
@@ -102,7 +102,7 @@ const pipInstall = {
         const repo = runDirectory ? findGitRoot(runDirectory) : undefined;
         if (!repo)
             return [];
-        const component = enclosingComponent(runDirectory, repo).path;
+        const component = enclosingComponent(runDirectory, repo, context.catalog(repo)).path;
         if (!existsSync(join(component, "pyproject.toml")) || !existsSync(join(component, "uv.lock")))
             return [];
         return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
@@ -118,13 +118,13 @@ function pytestInvocation(argv) {
 const pytestNaked = {
     name: "pytest-naked", targetKind: "command",
     applies: (target) => command(target).environment.length === 0 && pytestInvocation(command(target).argv),
-    check: (target) => {
+    check: (target, context) => {
         const value = command(target);
         const runDirectory = value.workingDirectory.path;
         const repo = runDirectory ? findGitRoot(runDirectory) : undefined;
         if (!repo)
             return [];
-        const component = enclosingComponent(runDirectory, repo);
+        const component = enclosingComponent(runDirectory, repo, context.catalog(repo));
         return component.hasTarget("test", true)
             ? finding("pytest-naked", `Use the project's canonical test target: cd ${component.path} && make test`, commandLine(value)) : [];
     },
@@ -202,9 +202,9 @@ function stringArray(value) {
     return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }
 const precommitGate = {
-    name: "precommit-gate", targetKind: "command",
+    name: "precommit-gate", targetKind: "command", failurePolicy: "fail_closed",
     applies: (target) => command(target).subcommand === "commit",
-    check: (target) => {
+    check: (target, context) => {
         const value = command(target);
         const directory = value.workingDirectory.path;
         const repo = directory ? findGitRoot(directory) : undefined;
@@ -212,13 +212,13 @@ const precommitGate = {
             return [];
         const branch = currentBranch(repo);
         const lint = loadSegment(repo, branchSegment(branch, "lint")) ?? {};
-        const required = selectComponents(repo).components.filter((component) => component.lintTarget() !== undefined);
+        const required = selectComponents(repo, { catalog: context.catalog(repo) }).components.filter((component) => component.lintTarget() !== undefined);
         const stale = required.flatMap((component) => {
             const raw = lint[component.id];
             const stamp = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
             if (typeof stamp.passed_at !== "number")
                 return [`  ${component.id}: lint has never run for this branch.`];
-            const fingerprint = componentFingerprint(repo, component);
+            const fingerprint = componentFingerprint(repo, component, context.catalog(repo));
             return !fingerprint || typeof stamp.fingerprint !== "string" || stamp.fingerprint !== fingerprint
                 ? [`  ${component.id}: content changed since its last lint pass.`] : [];
         });

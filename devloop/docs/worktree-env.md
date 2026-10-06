@@ -38,9 +38,10 @@ normalize 后同一 lifecycle 相位会并发跑 lint/test，因此 `ensure_read
 
 ### 生态是语言差异的唯一入口
 
-项目 manifest、语言展示、环境就绪、恢复命令和无 Makefile 时的 canonical 回落命令都由
-`scripts/lib/ecosystem/` 提供。`repo_layout`、命令 guard、worktree 创建和 lifecycle check 只消费
-这个接口，不各自维护一份 `package.json` / `uv.lock` 判断。
+Component 目录、语言与包管理工具元数据由 `repocli inspect` 提供。
+`scripts/lib/ecosystem/` 拥有环境就绪、恢复命令和无 Makefile 时的 canonical 回落命令，
+可以读取 manifest / lockfile 来执行项目选择的工具链。组件发现与环境执行各自只有一个入口。
+inspect 失败时 worktree 仍可创建，但环境准备返回明确告警；后续验证必须取得组件目录。
 
 ### 自动恢复必须可重复
 

@@ -151,7 +151,7 @@ def run_main(g: dict) -> None:
 
 
 def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diagnostics=(),
-                   observations=(), schema=3, affected=None):
+                   observations=(), schema=3, affected=None, components=None):
     """Hermetic CLI protocol fixture; executes a real subprocess, never host repocli."""
     from contextlib import contextmanager
     from tempfile import TemporaryDirectory
@@ -166,6 +166,14 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 "import hashlib, subprocess\n"
                 "from pathlib import Path\n"
                 "repo = sys.argv[sys.argv.index('--repo')+1]\n"
+                "if sys.argv[1]=='inspect':\n"
+                " components = " + repr(components) + "\n"
+                " if components is None:\n"
+                # Legacy workflow fixtures use root and direct child execution targets.
+                # Adapter/ownership tests supply explicit catalogs instead.
+                "  components=[{'root':'.','name':'root'}]+[{'root':p.name,'name':p.name} for p in sorted(Path(repo).iterdir()) if p.is_dir() and not p.name.startswith('.') and any((p/m).is_file() for m in ('Makefile','pyproject.toml','go.mod','package.json'))]\n"
+                " print(json.dumps(dict(schemaVersion=1,checkout=str(Path(repo).resolve()),input='working_tree',complete=True,diagnostics=[],components=components)))\n"
+                " raise SystemExit(0)\n"
                 "if '--impact' in sys.argv: raise SystemExit(2)\n"
                 "if sys.argv[1]=='diff':\n with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
                 "digest=hashlib.sha256()\n"
@@ -182,7 +190,7 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                                   "diagnostics": list(diagnostics), "observations": list(observations)}) + "\n"
                 "data.update(snapshot=identity, checkout=repo, input='commit' if '--head' in sys.argv else 'working_tree')\n"
                 "if sys.argv[1]=='snapshot': data.update(complete=True, diagnostics=[])\n"
-                "if sys.argv[1]=='snapshot': data.update(schemaVersion=1)\n"
+                "if sys.argv[1]=='snapshot': data.update(schemaVersion=2)\n"
                 "print(json.dumps(data))\n"
             )
             cli.chmod(0o755)

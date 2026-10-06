@@ -75,6 +75,7 @@ def test_auto_scope_is_visible_before_preparation_and_does_not_stamp():
         assert not has_full_stamp(repo)
 
 
+@repocli_report()
 def test_explicit_related_files_override_automatic_changed_tests():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
@@ -85,6 +86,7 @@ def test_explicit_related_files_override_automatic_changed_tests():
         assert not has_full_stamp(repo)
 
 
+@repocli_report()
 def test_empty_test_files_runs_and_stamps_full_suite():
     for value in ("TEST_FILES=", "TEST_FILES=   "):
         with TemporaryDirectory() as root:
@@ -97,6 +99,7 @@ def test_empty_test_files_runs_and_stamps_full_suite():
             assert has_full_stamp(repo)
 
 
+@repocli_report()
 def test_full_fallback_clears_inherited_selection_and_explains_scope():
     for paths, reason in ((None, "full Component validation"), (["source.py"], "full Component validation")):
         with TemporaryDirectory() as root:
@@ -110,6 +113,7 @@ def test_full_fallback_clears_inherited_selection_and_explains_scope():
             assert not has_full_stamp(repo)
 
 
+@repocli_report()
 def test_explicit_arguments_and_missing_contract_do_not_overclaim_full_coverage():
     for contract, extra in ((True, ["TEST_FILES=", "TEST_FILTER=some_case"]), (False, ["TEST_FILES="])):
         with TemporaryDirectory() as root:

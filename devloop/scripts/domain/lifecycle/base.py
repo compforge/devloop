@@ -176,9 +176,15 @@ def dispatch(
     if registry is None and any(name in ("lint", "test") for name in names):
         from domain import repo as repo_model
         from domain.validation import build_plan
-        validation_plan = build_plan(repo, repo_model.select_components(repo, paths=paths),
-                                     paths=paths, comparison=comparison,
-                                     checks=tuple(name for name in names if name in ("lint", "test")))
+        from lib.repocli import InspectionError
+        try:
+            validation_plan = build_plan(repo, repo_model.select_components(repo, paths=paths),
+                                         paths=paths, comparison=comparison,
+                                         checks=tuple(name for name in names if name in ("lint", "test")))
+        except InspectionError as exc:
+            for name in names:
+                if name in ("lint", "test"):
+                    preparation_failures[name] = HookResult(name, ok=False, summary=str(exc))
 
     def _run(name: str) -> HookResult:
         if name in preparation_failures:

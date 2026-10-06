@@ -31,7 +31,7 @@ class Ecosystem:
 
     def matches_language(self, path: str | Path) -> bool:
         """`path` 是否"像"本生态的语言——比身份判据宽（可用依赖清单等线索）。
-        「这是什么语言」和「这是不是一个项目」是两个问题（见 repo_layout._is_component）。"""
+        「这是什么语言」和「这是不是一个项目」是两个问题（Component 目录由 repocli inspect 提供）。"""
         return any((Path(path) / m).exists() for m in self.manifests)
 
     def prepare_command(self, path: str | Path) -> list[str] | None:

@@ -1,6 +1,6 @@
 {
   "name": "devloop",
-  "version": "0.4.15",
+  "version": "0.5.0",
   "description": "TypeScript dev-loop runtime with shared Board and policy: git/PR (GitHub + GitLab), workspace/repo context, lint/test gates, and thin Codex hooks.",
   "author": {
     "name": "compforge",

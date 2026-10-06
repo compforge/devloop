@@ -1,8 +1,9 @@
+import { InspectionError } from "../lib/repocli.js";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readlinkSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { runGit } from "../lib/process.js";
-import { Component, discoverComponents, enclosingComponent, owningComponent } from "./repo-layout.js";
+import { Component, ComponentCatalog, inspectCatalog, enclosingComponent } from "./repo-layout.js";
 
 export interface WorkSet { readonly components: readonly Component[]; readonly reason: string }
 
@@ -40,43 +41,46 @@ export function rangePaths(root: string, base: string, head = "HEAD"): readonly 
   return paths(runGit(root, ["diff", "--name-only", `${base}...${head}`]));
 }
 
-function projectComponents(root: string, changed: readonly string[]): readonly Component[] {
+function projectComponents(changed: readonly string[], catalog: ComponentCatalog): readonly Component[] {
   const byId = new Map<string, Component>();
   for (const path of changed) {
-    const owner = owningComponent(join(root, path), root);
+    const owner = catalog.owner(join(catalog.root, path));
     if (owner) byId.set(owner.id, owner);
   }
   return [...byId.values()];
 }
 
-export function selectComponents(rootValue: string, options: { readonly explicit?: string; readonly paths?: readonly string[] } = {}): WorkSet {
-  const root = resolve(rootValue);
+export function selectComponents(rootValue: string, options: { readonly explicit?: string; readonly paths?: readonly string[]; readonly catalog?: ComponentCatalog } = {}): WorkSet {
+  const root = realpathSync(rootValue);
+  const catalog = options.catalog ?? inspectCatalog(root);
+  if (catalog.components.length === 0) throw new InspectionError("repocli inspect returned no Components for validation");
   if (options.explicit) {
     const explicit = resolve(options.explicit);
     if (explicit !== root && explicit.startsWith(`${root}/`)) {
-      const component = enclosingComponent(explicit, root);
+      const component = enclosingComponent(explicit, root, catalog);
       return { components: [component], reason: `explicit target ${basename(explicit)} -> component ${basename(component.path)}` };
     }
   }
   if (options.paths !== undefined) {
-    const components = projectComponents(root, options.paths);
+    const components = projectComponents(options.paths, catalog);
     return components.length === 0
       ? { components: [], reason: "no changed files in scope" }
       : { components, reason: `changed files under: ${components.map((item) => basename(item.path)).join(", ")}` };
   }
-  const dirty = projectComponents(root, changedPaths(root));
+  const dirty = projectComponents(changedPaths(root), catalog);
   if (dirty.length > 0) return { components: dirty, reason: `changed files under: ${dirty.map((item) => basename(item.path)).join(", ")}` };
-  const all = discoverComponents(root);
+  const all = catalog.components;
   return { components: all, reason: `clean tree, all components: ${all.map((item) => basename(item.path)).join(", ")}` };
 }
 
-export function componentFingerprint(root: string, component: Component): string | undefined {
+export function componentFingerprint(root: string, component: Component, catalog?: ComponentCatalog): string | undefined {
   const changed = workingPaths(root);
   if (!changed) return undefined;
   const hash = createHash("sha256").update(component.id);
   try {
+    catalog ??= inspectCatalog(root);
     for (const path of [...changed].sort()) {
-      const owner = owningComponent(join(root, path), root);
+      const owner = catalog.owner(join(catalog.root, path));
       if (owner?.id !== component.id) continue;
       const target = join(root, path);
       hash.update("\0path\0").update(path);

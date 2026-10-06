@@ -178,10 +178,13 @@ def _build_subproject(root: Path, s: dict) -> Subproject:
             sub.canonical = str(canon)
         # Auto-detect language when the table didn't pin one (table value wins).
         if not sub.language:
-            from lib import ecosystem
-
+            import logging
+            from lib import repocli
             from .. import repo_layout
-            sub.language = ecosystem.detect_language(repo_layout.find_repo_code_dir(sp_dir))
+            try:
+                sub.language = repo_layout.default_component(sp_dir).language
+            except repocli.InspectionError as exc:
+                logging.getLogger(__name__).warning("Component context unavailable for %s: %s", sp_dir, exc)
     return sub
 
 

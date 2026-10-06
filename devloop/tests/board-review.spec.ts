@@ -16,13 +16,13 @@ function record(fields: JsonObject, branch = "feature"): void {
     reviewed_sha: sha, count: 0, failed: 0, generated_at: now(), ...fields,
   });
 }
-function runtime(): BoardRuntime {
-  const board = BoardRuntime.resolve(root, "review-session");
+async function runtime(): Promise<BoardRuntime> {
+  const board = await BoardRuntime.resolve(root, "review-session");
   expect(board).toBeDefined();
   return board!;
 }
-function prompt(): string {
-  return JSON.stringify(userPromptOutput({ cwd: root, session_id: "review-session" }));
+async function prompt(): Promise<string> {
+  return JSON.stringify(await userPromptOutput({ cwd: root, session_id: "review-session" }));
 }
 
 beforeEach(() => {
@@ -46,13 +46,13 @@ describe("Review state through the TypeScript Board", () => {
     ["completed_with_warnings", 0, 0, "review warnings"],
     ["success", 0, 0, "clean (no findings)"],
     ["success", 2, 0, "2 finding(s)"],
-  ])("delivers %s (%i findings, %i failures)", (status, count, failed, expected) => {
+  ])("delivers %s (%i findings, %i failures)", async (status, count, failed, expected) => {
     record({ status, count, failed });
-    const board = runtime();
+    const board = await runtime();
     const item = board.view.items.find((item) => item.type === "repo.review");
     expect(item?.payload).toMatchObject({ status, reviewedSha: sha, findings: count, failedFiles: failed });
     expect(JSON.stringify(board.snapshot())).toContain('"repo.review"');
-    const output = prompt();
+    const output = await prompt();
     expect(output).toContain("Review:");
     expect(output).toContain(expected);
     expect(output).toContain(sha.slice(0, 9));
@@ -60,46 +60,46 @@ describe("Review state through the TypeScript Board", () => {
     if (status !== "success") expect(output).not.toContain("clean (no findings)");
   });
 
-  it("reports a stale run using the existing timeout", () => {
+  it("reports a stale run using the existing timeout", async () => {
     record({ status: "running", generated_at: now() - REVIEW_STALE_SECONDS - 1 });
-    expect(prompt()).toContain("Review: stale");
+    expect(await prompt()).toContain("Review: stale");
   });
 
-  it("includes the failure reason and does not call unknown statuses clean", () => {
+  it("includes the failure reason and does not call unknown statuses clean", async () => {
     record({ status: "error", message: "review runner not found: /plugin/scripts/run_review.py" });
-    expect(prompt()).toContain("review runner not found");
+    expect(await prompt()).toContain("review runner not found");
     record({ status: "interrupted" });
-    expect(prompt()).toContain("review interrupted");
+    expect(await prompt()).toContain("review interrupted");
   });
 
-  it("does not project absent, skipped, or unidentified runs", () => {
-    expect(prompt()).not.toContain("Review:");
+  it("does not project absent, skipped, or unidentified runs", async () => {
+    expect(await prompt()).not.toContain("Review:");
     record({ status: "skipped" });
-    expect(prompt()).not.toContain("Review:");
+    expect(await prompt()).not.toContain("Review:");
     record({ status: "error", reviewed_sha: "" });
-    expect(prompt()).not.toContain("Review:");
+    expect(await prompt()).not.toContain("Review:");
   });
 
-  it("only delivers the focused branch review", () => {
+  it("only delivers the focused branch review", async () => {
     record({ status: "error" }, "other");
-    expect(prompt()).not.toContain("Review:");
+    expect(await prompt()).not.toContain("Review:");
     execFileSync("git", ["-C", root, "symbolic-ref", "HEAD", "refs/heads/other"]);
-    expect(prompt()).toContain("review errored");
+    expect(await prompt()).toContain("review errored");
   });
 
   // case:review-result-delivery A status transition reopens delivery; compaction does not.
-  it("delivers changes once without replaying events after compaction", () => {
+  it("delivers changes once without replaying events after compaction", async () => {
     record({ status: "running" });
-    expect(runtime().deliverPrompt("session_start") ?? "").not.toContain("Review:");
-    expect(prompt()).toContain("Review: running");
-    expect(prompt()).not.toContain("Review:");
+    expect((await runtime()).deliverPrompt("session_start") ?? "").not.toContain("Review:");
+    expect(await prompt()).toContain("Review: running");
+    expect(await prompt()).not.toContain("Review:");
     record({ status: "error", message: "review runner not found" });
-    expect(prompt()).toContain("review errored");
-    expect(prompt()).not.toContain("Review:");
-    afterCompact({ cwd: root, session_id: "review-session" });
-    expect(prompt()).not.toContain("Review:");
+    expect(await prompt()).toContain("review errored");
+    expect(await prompt()).not.toContain("Review:");
+    await afterCompact({ cwd: root, session_id: "review-session" });
+    expect(await prompt()).not.toContain("Review:");
     record({ status: "success", count: 1 });
-    expect(prompt()).toContain("1 finding(s)");
-    expect(prompt()).not.toContain("Review:");
+    expect(await prompt()).toContain("1 finding(s)");
+    expect(await prompt()).not.toContain("Review:");
   });
 });

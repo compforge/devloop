@@ -4,7 +4,7 @@ export type HookHarness = "claude" | "codex";
 
 export interface ProcessHookAdapter {
   readonly harness: HookHarness;
-  preTool(payload: HookPayload): Record<string, unknown>;
+  preTool(payload: HookPayload): Promise<Record<string, unknown>>;
 }
 
 export interface HookPayload {
@@ -17,14 +17,14 @@ export interface HookPayload {
   readonly [key: string]: unknown;
 }
 
-export function preToolDecision(payload: HookPayload, configured?: HookHarness): Record<string, unknown> {
+export async function preToolDecision(payload: HookPayload, configured?: HookHarness): Promise<Record<string, unknown>> {
   const harness = configured ?? "claude";
   const rawInput = payload.tool_input;
   const toolInput: Record<string, unknown> = rawInput !== null && typeof rawInput === "object" && !Array.isArray(rawInput)
     ? { ...rawInput as Record<string, unknown> }
     : { input: String(rawInput ?? "") };
   if (typeof payload.session_id === "string") toolInput.session_id = payload.session_id;
-  const reason = deniedReason({
+  const reason = await deniedReason({
     harness,
     toolName: typeof payload.tool_name === "string" ? payload.tool_name : "",
     toolInput,

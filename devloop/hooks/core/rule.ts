@@ -6,5 +6,5 @@ export interface Rule {
   readonly targetKind: TargetKind;
   readonly failurePolicy?: "fail_open" | "fail_closed";
   applies(target: Target | Change, context: PolicyContext): boolean;
-  check(target: Target | Change, context: PolicyContext): readonly Finding[];
+  check(target: Target | Change, context: PolicyContext): readonly Finding[] | Promise<readonly Finding[]>;
 }

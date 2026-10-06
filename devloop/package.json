@@ -1,6 +1,6 @@
 {
   "name": "@compforge/devloop",
-  "version": "0.4.16",
+  "version": "0.4.17",
   "description": "Shared dev-loop domain runtime with Claude Code, Codex, and DeepSeek Harness adapters.",
   "type": "module",
   "engines": {
@@ -41,9 +41,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && esbuild hooks/runtime.ts --bundle --platform=node --format=esm --target=node22 --sourcemap --outfile=dist/hooks/runtime.js",
     "check": "npm run typecheck && npm test",
-    "test": "vitest run",
+    "test": "npm run build && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "peerDependencies": {
@@ -71,6 +71,7 @@
     }
   },
   "dependencies": {
+    "@compforge/repocli": "^0.1.0",
     "@deepseek-ai/schemastery": "^3.18.2"
   },
   "devDependencies": {
@@ -79,6 +80,7 @@
     "@deepseek-ai/dsh-llm": "^0.1.6-alpha.1",
     "@deepseek-ai/dsh-tools": "^0.1.6-alpha.1",
     "@types/node": "^24.7.0",
+    "esbuild": "^0.28.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
   }

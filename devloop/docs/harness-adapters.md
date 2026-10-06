@@ -49,4 +49,11 @@ npm --prefix devloop run check
 npm --prefix devloop run build
 ```
 
-Git marketplace 直接执行已提交的 `dist/hooks/runtime.js`；npm 消费方通过 package exports 加载 `@compforge/devloop` 或 `@compforge/devloop/dsh`，DSH profile 通过包内声明的 bundle layer 自动加载后者。
+构建先生成公共 ESM/types，再将进程 hook 与其 repocli 依赖打包到 `dist/hooks/runtime.js`。
+Git marketplace 直接执行这个已提交产物，不要求安装 `node_modules`，运行时不下载依赖；npm 消费方通过 package exports 加载 `@compforge/devloop` 或 `@compforge/devloop/dsh`，DSH profile 通过包内声明的 bundle layer 自动加载后者。
+
+原生仓库识别是异步操作，`inspectCatalog`、`defaultComponent`、`discoverComponents`、
+`resolveRepo`、`BoardRuntime.resolve` 和 `evaluateTool` 返回 Promise，调用方必须等待结果。
+`owningComponent` / `enclosingComponent` 接受显式 `ComponentCatalog`，只做同步投影。
+PolicyContext 在一次评估内复用识别；新事件创建新上下文。识别失败仍按规则的 fail-open /
+fail-closed 策略产生 warning / deny，Board 保留 Git/review 状态并显示识别缺口。

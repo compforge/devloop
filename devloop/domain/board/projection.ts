@@ -7,7 +7,7 @@ import { REVIEW_STALE_SECONDS, now } from "../context/base.js";
 import type { WorkspaceContext } from "../context/workspace.js";
 import { Board, boardItem } from "./model.js";
 
-export function projectBoard(root: string, workspace?: WorkspaceContext, repo?: string, staleBindingHours?: number): Board {
+export async function projectBoard(root: string, workspace?: WorkspaceContext, repo?: string, staleBindingHours?: number): Promise<Board> {
   const items = [];
   if (workspace && (workspace.agentsDocument.references.length > 0 || workspace.subprojects.length > 0)) {
     items.push(boardItem("workspace", "state", { workspaceRoot: root }, {
@@ -21,7 +21,7 @@ export function projectBoard(root: string, workspace?: WorkspaceContext, repo?: 
   if (!repo) return new Board(root, items);
   const scope = { workspaceRoot: root, repoRoot: repo };
   let component: Component | undefined, inspectionProblem = "";
-  try { component = defaultComponent(repo); }
+  try { component = await defaultComponent(repo); }
   catch (error) {
     if (!(error instanceof InspectionError)) throw error;
     inspectionProblem = error.message;

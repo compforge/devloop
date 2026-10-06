@@ -7,16 +7,16 @@ import { codexProcessAdapter } from "../adapters/codex.js";
 import { afterTool, sessionStartOutput } from "../adapters/process-hooks.js";
 
 describe("harness adapters", () => {
-  it("maps Claude Code payloads into the shared guard", () => {
-    const output = evaluateClaudePreTool({
+  it("maps Claude Code payloads into the shared guard", async () => {
+    const output = await evaluateClaudePreTool({
       hook_event_name: "PreToolUse", tool_name: "Bash", cwd: process.cwd(), session_id: "s1",
       tool_input: { command: "git add -A" },
     });
     expect(output).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny" } });
   });
 
-  it("does not emit Claude-only watchPaths to Codex", () => {
-    const output = sessionStartOutput({ hook_event_name: "SessionStart", cwd: process.cwd(), session_id: "s1" }, "codex");
+  it("does not emit Claude-only watchPaths to Codex", async () => {
+    const output = await sessionStartOutput({ hook_event_name: "SessionStart", cwd: process.cwd(), session_id: "s1" }, "codex");
     expect(JSON.stringify(output)).not.toContain("watchPaths");
   });
 
@@ -29,10 +29,10 @@ describe("harness adapters", () => {
     expect(toolInput).toEqual({ command: "true" });
   });
 
-  it("keeps harness identity in the selected adapter instead of guessing from payload shape", () => {
+  it("keeps harness identity in the selected adapter instead of guessing from payload shape", async () => {
     expect(claudeProcessAdapter.harness).toBe("claude");
     expect(codexProcessAdapter.harness).toBe("codex");
-    expect(claudeProcessAdapter.preTool({ hook_event_name: "PreToolUse", model: "claude-opus-4-1" })).toEqual({});
+    expect(await claudeProcessAdapter.preTool({ hook_event_name: "PreToolUse", model: "claude-opus-4-1" })).toEqual({});
   });
 
   it("registers the same guard natively in Cordis", async () => {

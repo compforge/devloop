@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { runGit } from "../lib/process.js";
-import { Component, ComponentCatalog, inspectCatalog, enclosingComponent } from "./repo-layout.js";
+import { Component, ComponentCatalog, enclosingComponent } from "./repo-layout.js";
 
 export interface WorkSet { readonly components: readonly Component[]; readonly reason: string }
 
@@ -50,14 +50,14 @@ function projectComponents(changed: readonly string[], catalog: ComponentCatalog
   return [...byId.values()];
 }
 
-export function selectComponents(rootValue: string, options: { readonly explicit?: string; readonly paths?: readonly string[]; readonly catalog?: ComponentCatalog } = {}): WorkSet {
+export function selectComponents(rootValue: string, options: { readonly explicit?: string; readonly paths?: readonly string[]; readonly catalog: ComponentCatalog }): WorkSet {
   const root = realpathSync(rootValue);
-  const catalog = options.catalog ?? inspectCatalog(root);
+  const catalog = options.catalog;
   if (catalog.components.length === 0) throw new InspectionError("repocli inspect returned no Components for validation");
   if (options.explicit) {
     const explicit = resolve(options.explicit);
     if (explicit !== root && explicit.startsWith(`${root}/`)) {
-      const component = enclosingComponent(explicit, root, catalog);
+      const component = enclosingComponent(explicit, catalog);
       return { components: [component], reason: `explicit target ${basename(explicit)} -> component ${basename(component.path)}` };
     }
   }
@@ -73,12 +73,11 @@ export function selectComponents(rootValue: string, options: { readonly explicit
   return { components: all, reason: `clean tree, all components: ${all.map((item) => basename(item.path)).join(", ")}` };
 }
 
-export function componentFingerprint(root: string, component: Component, catalog?: ComponentCatalog): string | undefined {
+export function componentFingerprint(root: string, component: Component, catalog: ComponentCatalog): string | undefined {
   const changed = workingPaths(root);
   if (!changed) return undefined;
   const hash = createHash("sha256").update(component.id);
   try {
-    catalog ??= inspectCatalog(root);
     for (const path of [...changed].sort()) {
       const owner = catalog.owner(join(catalog.root, path));
       if (owner?.id !== component.id) continue;

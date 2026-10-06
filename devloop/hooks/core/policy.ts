@@ -6,14 +6,14 @@ import { RULES } from "../rules/index.js";
 import { recordDeniedDecision } from "../friction.js";
 
 /** One harness-neutral entrypoint for every pre-tool adapter. */
-export function evaluateTool(input: HarnessToolInput): Decision {
+export async function evaluateTool(input: HarnessToolInput): Promise<Decision> {
   const change = projectTool(input);
   const identity = {
     harness: input.harness,
     sessionId: typeof input.toolInput.session_id === "string" ? input.toolInput.session_id : "",
   } as const;
   const context = new PolicyContext(input.cwd, identity);
-  const result = evaluate(change, context, RULES);
+  const result = await evaluate(change, context, RULES);
   if (result.action === "deny" && context.gitRoot) {
     recordDeniedDecision(context.gitRoot, result, {
       tool: input.toolName,
@@ -24,7 +24,7 @@ export function evaluateTool(input: HarnessToolInput): Decision {
   return result;
 }
 
-export function deniedReason(input: HarnessToolInput): string | undefined {
-  const result = evaluateTool(input);
+export async function deniedReason(input: HarnessToolInput): Promise<string | undefined> {
+  const result = await evaluateTool(input);
   return result.action === "deny" ? decisionMessage(result) : undefined;
 }

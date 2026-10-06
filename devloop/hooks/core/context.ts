@@ -11,7 +11,7 @@ export class PolicyContext {
   readonly anchorPath: string;
   readonly anchorDirectory: string;
 
-  constructor(cwd: string, identity: SessionIdentity, anchorPath = "", private readonly inspections = new Map<string, ComponentCatalog | Error>()) {
+  constructor(cwd: string, identity: SessionIdentity, anchorPath = "", private readonly inspections = new Map<string, Promise<ComponentCatalog>>()) {
     this.cwd = cwd;
     this.identity = identity;
     this.anchorPath = anchorPath ? (isAbsolute(anchorPath) ? anchorPath : resolve(cwd, anchorPath)) : "";
@@ -23,15 +23,11 @@ export class PolicyContext {
     return target.workingDirectory.path ? new PolicyContext(target.workingDirectory.path, this.identity, "", this.inspections) : this;
   }
 
-  catalog(repo: string): ComponentCatalog {
+  catalog(repo: string): Promise<ComponentCatalog> {
     const key = resolve(repo);
-    if (!this.inspections.has(key)) {
-      try { this.inspections.set(key, inspectCatalog(key)); }
-      catch (error) { this.inspections.set(key, error instanceof Error ? error : new Error(String(error))); }
-    }
-    const value = this.inspections.get(key)!;
-    if (value instanceof Error) throw value;
-    return value;
+    // Store before awaiting: sibling targets share in-flight work and the same failure.
+    if (!this.inspections.has(key)) this.inspections.set(key, inspectCatalog(key));
+    return this.inspections.get(key)!;
   }
 
   get sessionId(): string { return this.identity.sessionId; }

@@ -5,7 +5,7 @@ import { parseReferencesSection } from "../../lib/parsers.js";
 import { branchSegment, loadSegment, segmentFile } from "../context/store.js";
 import { REVIEW_STALE_SECONDS, now } from "../context/base.js";
 import { Board, boardItem } from "./model.js";
-export function projectBoard(root, workspace, repo, staleBindingHours) {
+export async function projectBoard(root, workspace, repo, staleBindingHours) {
     const items = [];
     if (workspace && (workspace.agentsDocument.references.length > 0 || workspace.subprojects.length > 0)) {
         items.push(boardItem("workspace", "state", { workspaceRoot: root }, {
@@ -21,7 +21,7 @@ export function projectBoard(root, workspace, repo, staleBindingHours) {
     const scope = { workspaceRoot: root, repoRoot: repo };
     let component, inspectionProblem = "";
     try {
-        component = defaultComponent(repo);
+        component = await defaultComponent(repo);
     }
     catch (error) {
         if (!(error instanceof InspectionError))

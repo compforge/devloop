@@ -1,5 +1,5 @@
 import { deniedReason } from "../hooks/core/policy.js";
-export function preToolDecision(payload, configured) {
+export async function preToolDecision(payload, configured) {
     const harness = configured ?? "claude";
     const rawInput = payload.tool_input;
     const toolInput = rawInput !== null && typeof rawInput === "object" && !Array.isArray(rawInput)
@@ -7,7 +7,7 @@ export function preToolDecision(payload, configured) {
         : { input: String(rawInput ?? "") };
     if (typeof payload.session_id === "string")
         toolInput.session_id = payload.session_id;
-    const reason = deniedReason({
+    const reason = await deniedReason({
         harness,
         toolName: typeof payload.tool_name === "string" ? payload.tool_name : "",
         toolInput,

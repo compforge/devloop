@@ -8,7 +8,7 @@ import type { Board, BoardView } from "./model.js";
 
 export class BoardRuntime {
   constructor(readonly root: string, readonly sessionId: string | undefined, readonly board: Board, readonly view: BoardView, readonly repo?: string) {}
-  static resolve(cwd: string, sessionId?: string): BoardRuntime | undefined {
+  static async resolve(cwd: string, sessionId?: string): Promise<BoardRuntime | undefined> {
     let workspaceRoot = findContainingWorkspace(cwd);
     let repo = findGitRoot(cwd);
     let staleHours: number | undefined;
@@ -23,7 +23,7 @@ export class BoardRuntime {
     }
     const root = workspaceRoot ?? repo;
     if (!root) return undefined;
-    const board = projectBoard(root, workspace, repo, staleHours);
+    const board = await projectBoard(root, workspace, repo, staleHours);
     return new BoardRuntime(root, sessionId, board, board.view({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
   }
   deliverPrompt(trigger: PromptTrigger = "user_prompt"): string | undefined {

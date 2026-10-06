@@ -22,18 +22,10 @@ export class PolicyContext {
     }
     catalog(repo) {
         const key = resolve(repo);
-        if (!this.inspections.has(key)) {
-            try {
-                this.inspections.set(key, inspectCatalog(key));
-            }
-            catch (error) {
-                this.inspections.set(key, error instanceof Error ? error : new Error(String(error)));
-            }
-        }
-        const value = this.inspections.get(key);
-        if (value instanceof Error)
-            throw value;
-        return value;
+        // Store before awaiting: sibling targets share in-flight work and the same failure.
+        if (!this.inspections.has(key))
+            this.inspections.set(key, inspectCatalog(key));
+        return this.inspections.get(key);
     }
     get sessionId() { return this.identity.sessionId; }
     get harness() { return this.identity.harness; }

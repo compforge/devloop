@@ -29,18 +29,18 @@ export const Config: Schema<Config> = Schema.object({
  * @spec Board context preserves downstream step admission and request-series boundaries.
  */
 export function apply(ctx: Context, config: Config = {}): void {
-  const boardFor = (agent: Agent): BoardRuntime | undefined =>
+  const boardFor = (agent: Agent): Promise<BoardRuntime | undefined> =>
     BoardRuntime.resolve(agent.session.header.cwd ?? config.cwd ?? process.cwd(), String(agent.id));
   const contextMessage = (content: string) => createUserMessage({
     content: [{ type: "text", text: content }],
     source: { kind: "plugin", plugin: name },
   });
 
-  ctx.on("agent/created", ({ agent, source }) => {
-    const board = initializeBoard({
+  ctx.on("agent/created", async ({ agent, source }) => {
+    const board = (await initializeBoard({
       cwd: agent.session.header.cwd ?? config.cwd ?? process.cwd(),
       session_id: String(agent.id),
-    }).runtime ?? boardFor(agent);
+    })).runtime ?? await boardFor(agent);
     if (!board) return;
     if (source === "compact") board.afterCompact();
     const content = board.deliverPrompt("session_start");
@@ -50,7 +50,7 @@ export function apply(ctx: Context, config: Config = {}): void {
   ctx.on("agent/pre-step", async ({ agent }, next): Promise<PreStepDecision> => {
     const downstream = await next();
     if (downstream.kind !== "enter") return downstream;
-    const content = boardFor(agent)?.deliverPrompt("user_prompt");
+    const content = (await boardFor(agent))?.deliverPrompt("user_prompt");
     // Goal rounds can start a fresh request series even when Board adds context.
     return content
       ? { ...downstream, messages: [...downstream.messages, contextMessage(content)] }
@@ -68,7 +68,7 @@ export function apply(ctx: Context, config: Config = {}): void {
       hook_event_name: "PreToolUse", tool_name: exec.name, tool_input: toolInput,
       cwd: exec.agent?.session.header.cwd ?? config.cwd ?? process.cwd(), session_id: sessionId,
     }, "dsh");
-    const result = evaluateTool({
+    const result = await evaluateTool({
       harness: "dsh",
       toolName: exec.name,
       toolInput,

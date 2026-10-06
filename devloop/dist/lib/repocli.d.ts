@@ -1,16 +1,6 @@
+import { type InspectReport } from "@compforge/repocli";
 export declare class InspectionError extends Error {
 }
-export interface PackageTool {
-    readonly name: string;
-    readonly version: string;
-    readonly evidence: readonly string[];
-}
-export interface ComponentInfo {
-    readonly root: string;
-    readonly name: string;
-    readonly language: string | undefined;
-    readonly packageTools: readonly PackageTool[];
-}
-/** A bounded protocol adapter, not a second repository scanner. */
-export declare function inspectRepository(repo: string): readonly ComponentInfo[];
+/** Repository organization comes from the toolkit; execution containment is devloop policy. */
+export declare function inspectRepository(repo: string): Promise<InspectReport>;
 //# sourceMappingURL=repocli.d.ts.map

@@ -7,16 +7,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import re
-import json
-import os
 from pathlib import Path, PurePosixPath
 import subprocess
 import time
 
 from domain import repo as repo_model
-from domain.repo_layout import Component, discover_components
+from domain.repo_layout import Component, inspect_catalog
 from domain.context.store import branch_segment, save_segment
-from lib import gitcmd
+from lib import gitcmd, repocli
 
 
 @dataclass(frozen=True)
@@ -59,26 +57,12 @@ class ContentIdentity:
     problem: str = ""
 
 
-def _repocli_json(repo: str, command: str, args: list[str]) -> dict:
-    argv = [os.environ.get("DEVLOOP_REPOCLI", "repocli"), command, "--repo", repo,
-            "--json", "--timeout", "30s", *args]
-    completed = subprocess.run(argv, cwd=repo, capture_output=True, text=True,
-                               timeout=35, check=False)
-    if completed.returncode:
-        detail = completed.stderr.strip()[-2000:]
-        raise ValueError(f"repocli {command} exited {completed.returncode}" + (f": {detail}" if detail else ""))
-    data = json.loads(completed.stdout)
-    if not isinstance(data, dict):
-        raise ValueError(f"repocli {command} returned a non-object report")
-    return data
-
-
 def content_identity(repo: str) -> ContentIdentity:
     """Use repocli's content contract; unavailable identity never authorizes a stamp."""
     try:
-        data = _repocli_json(repo, "snapshot", [])
-        if data.get("schemaVersion") != 1:
-            raise ValueError("unsupported snapshot schema (requires 1)")
+        data = repocli.read_report(repo, "snapshot", [])
+        if data.get("schemaVersion") != 2:
+            raise ValueError("unsupported snapshot schema (requires 2; install repocli >= 0.11.0)")
         if data.get("input") != "working_tree" or Path(data.get("checkout", "")).resolve() != Path(repo).resolve():
             raise ValueError("snapshot target mismatch")
         if data.get("complete") is not True or data.get("diagnostics") != []:
@@ -134,7 +118,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                checks: tuple[str, ...] = ("lint", "test")) -> Plan:
     """Analyze once after normalization, including dependencies outside dirty owners."""
     comparison = comparison or Comparison()
-    catalog = tuple(discover_components(repo))
+    inspection = inspect_catalog(repo)
+    catalog = inspection.components
     units = workset.components if explicit else catalog
     reason = "explicit full Component validation" if full else comparison.reason
     affected_files: list[str] = []
@@ -158,9 +143,9 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             # inherit its focused scope, even if the dirty files are outside the seeds.
             if comparison.head and repo_model.changed_paths(repo):
                 raise ValueError("working tree differs from committed analysis target")
-            data = _repocli_json(repo, "diff", argv)
+            data = repocli.read_report(repo, "diff", argv)
             if not isinstance(data, dict) or data.get("schemaVersion") != 3:
-                raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.5.0)")
+                raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.11.0)")
             diagnostics = data.get("diagnostics")
             if (not isinstance(data.get("complete"), bool)
                     or data.get("scope") not in ("focused", "partial")
@@ -185,7 +170,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             affected_files = _affected_paths(data.get("affectedFiles"))
             tests = _paths(data.get("testFiles"))
             if not explicit:
-                affected = repo_model.select_components(repo, paths=list(dict.fromkeys(affected_files + tests)))
+                affected = repo_model.select_components(repo, paths=list(dict.fromkeys(affected_files + tests)), catalog=inspection)
                 units = tuple({u.id: u for u in (*workset.components, *affected.components)}.values())
                 if not units and (affected_files or tests):
                     raise ValueError("no Component owns the selected files")
@@ -202,7 +187,10 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             skipped = False
             if not selection_reason:
                 try:
-                    relative = _relative(repo, unit, files)
+                    owned = [path for path in files
+                             if (owner := inspection.owner(inspection.root / path)) is not None
+                             and owner.id == unit.id]
+                    relative = _relative(repo, unit, owned)
                     if not relative:
                         # Empty Make file-list variables request full checks, while
                         # an empty valid analysis result explicitly selects no files.

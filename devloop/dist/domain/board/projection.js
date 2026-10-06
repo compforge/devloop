@@ -1,6 +1,6 @@
 import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, worktreeMetadata } from "../../lib/git-state.js";
-import { findAgentsDocument, findRepoCodeDirectory } from "../repo-layout.js";
-import { detectLanguage } from "../../lib/ecosystem.js";
+import { findAgentsDocument, defaultComponent } from "../repo-layout.js";
+import { InspectionError } from "../../lib/repocli.js";
 import { parseReferencesSection } from "../../lib/parsers.js";
 import { branchSegment, loadSegment, segmentFile } from "../context/store.js";
 import { REVIEW_STALE_SECONDS, now } from "../context/base.js";
@@ -19,7 +19,16 @@ export function projectBoard(root, workspace, repo, staleBindingHours) {
     if (!repo)
         return new Board(root, items);
     const scope = { workspaceRoot: root, repoRoot: repo };
-    const agents = findAgentsDocument(repo, findRepoCodeDirectory(repo));
+    let component, inspectionProblem = "";
+    try {
+        component = defaultComponent(repo);
+    }
+    catch (error) {
+        if (!(error instanceof InspectionError))
+            throw error;
+        inspectionProblem = error.message;
+    }
+    const agents = findAgentsDocument(repo, component?.path);
     const references = agents ? parseReferencesSection(agents) : [];
     if (references.length > 0) {
         items.push(boardItem("repo.references", "state", scope, {
@@ -30,9 +39,9 @@ export function projectBoard(root, workspace, repo, staleBindingHours) {
     const base = localDefaultTarget(repo);
     const [ahead, behind] = aheadBehind(repo, base) ?? [0, 0];
     const status = workspaceStatus(repo);
-    const codeDir = findRepoCodeDirectory(repo) ?? repo;
+    const codeDir = component?.path ?? "";
     items.push(boardItem("repo.identity", "state", scope, {
-        codeDir, language: detectLanguage(codeDir) ?? "", branch,
+        codeDir, repoRoot: repo, language: component?.language ?? "", inspectionProblem, branch,
         linkedWorktree: worktreeMetadata(repo).linked, ahead, behind, baseBranch: base,
         targetBranch: base, workspaceDirty: status.dirty, modifiedCount: status.modifiedCount,
         untrackedCount: status.untrackedCount, protected: isProtectedBranch(branch),

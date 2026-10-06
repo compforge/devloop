@@ -10,7 +10,7 @@ import os
 from enum import Enum
 from pathlib import Path
 
-from lib import config, ecosystem, git_state, gitcmd
+from lib import config, ecosystem, git_state, gitcmd, repocli
 
 from . import repo_layout
 from .context import session
@@ -19,7 +19,11 @@ from .context import session
 def prepare_environment(path: str) -> list[str]:
     """Prepare every component in a new/reused worktree; return environment warnings."""
     warnings = []
-    for component in repo_layout.discover_components(path):
+    try:
+        components = repo_layout.discover_components(path)
+    except repocli.InspectionError as exc:
+        return [str(exc)]
+    for component in components:
         if problem := ecosystem.ensure_ready(component.path):
             warnings.append(f"component {component.id}: {problem}")
     return warnings

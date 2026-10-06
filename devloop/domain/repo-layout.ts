@@ -1,10 +1,10 @@
-import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { basename, dirname, join, relative, resolve } from "node:path";
-import { detectEcosystem, detectLanguage } from "../lib/ecosystem.js";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { basename, join, relative, resolve } from "node:path";
+import { detectEcosystem } from "../lib/ecosystem.js";
+import { inspectRepository, InspectionError, type ComponentInfo, type PackageTool } from "../lib/repocli.js";
 import { runGit } from "../lib/process.js";
 
 const SAFE_SCOPE = /^[A-Za-z0-9_./@+][A-Za-z0-9_./@+:-]*$/;
-const DISCOVERY_SKIP = new Set([".git", "node_modules", ".venv", "venv", "env", ".tox", "dist", "build", "target", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".idea", ".vscode", "vendor"]);
 
 /** Independently buildable and validatable directory within a repository. */
 export class Component {
@@ -12,7 +12,7 @@ export class Component {
   readonly id: string;
   readonly language: string | undefined;
 
-  private constructor(path: string, id: string, language: string | undefined) {
+  private constructor(path: string, id: string, language: string | undefined, readonly name = "", readonly packageTools: readonly PackageTool[] = []) {
     this.path = path; this.id = id; this.language = language;
   }
 
@@ -20,7 +20,11 @@ export class Component {
     const path = realpathSync(pathValue);
     const root = realpathSync(gitRoot);
     const id = relative(root, path).replaceAll("\\", "/") || ".";
-    return new Component(pathValue, id.startsWith("../") ? path.replaceAll("\\", "/") : id, detectLanguage(pathValue));
+    return new Component(pathValue, id.startsWith("../") ? path.replaceAll("\\", "/") : id, undefined);
+  }
+
+  static fromInfo(root: string, info: ComponentInfo): Component {
+    return new Component(join(root, info.root), info.root, info.language, info.name, info.packageTools);
   }
 
   hasTarget(name: string, suffix = false): boolean {
@@ -60,61 +64,29 @@ export function findGitRoot(path: string): string | undefined {
 }
 export function isGitRepository(path: string): boolean { return findGitRoot(path) !== undefined; }
 
-function isComponent(path: string): boolean { return detectEcosystem(path) !== undefined; }
-
-export function defaultComponent(rootValue: string): Component {
-  const root = resolve(rootValue);
-  for (const name of ["server", "backend"]) {
-    const candidate = join(root, name);
-    if (existsSync(candidate) && isComponent(candidate)) return Component.at(candidate, root);
+/** One operation's catalog; file ownership is a projection of declared roots. */
+export class ComponentCatalog {
+  readonly components: readonly Component[];
+  constructor(readonly root: string) { this.components = inspectRepository(root).map((info) => Component.fromInfo(root, info)); }
+  owner(target: string): Component | undefined {
+    const path = resolve(target);
+    return this.components.filter((c) => path === c.path || path.startsWith(c.path + "/")).sort((a, b) => b.path.length - a.path.length)[0];
   }
-  return Component.at(root, root);
-}
-
-export function findRepoCodeDirectory(rootValue: string): string {
-  return defaultComponent(rootValue).path;
-}
-
-export function owningComponent(targetValue: string, rootValue: string): Component | undefined {
-  const root = realpathSync(rootValue);
-  const target = resolve(targetValue);
-  let current: string;
-  try { current = lstatSync(target).isDirectory() ? realpathSync(target) : dirname(realpathSync(target)); }
-  catch { current = dirname(target); }
-  let nested = current;
-  while (nested !== root && nested.startsWith(`${root}/`)) {
-    if (existsSync(join(nested, ".git"))) { current = dirname(nested); break; }
-    nested = dirname(nested);
-  }
-  while (current !== root && current.startsWith(`${root}/`)) {
-    if (isComponent(current)) return Component.at(current, rootValue);
-    current = dirname(current);
-  }
-  return isComponent(root) ? Component.at(rootValue, rootValue) : undefined;
-}
-
-export function enclosingComponent(target: string, root: string): Component { return owningComponent(target, root) ?? defaultComponent(root); }
-
-export function discoverComponents(rootValue: string, maxDepth = 4): readonly Component[] {
-  const root = realpathSync(rootValue);
-  const components: Component[] = [];
-  const walk = (directory: string, depth: number): void => {
-    if (depth > maxDepth) return;
-    let names: string[];
-    try { names = readdirSync(directory).sort(); } catch { return; }
-    for (const name of names) {
-      const path = join(directory, name);
-      let stat;
-      try { stat = lstatSync(path); } catch { continue; }
-      if (name.startsWith(".") || DISCOVERY_SKIP.has(name) || stat.isSymbolicLink() || !stat.isDirectory() || existsSync(join(path, ".git"))) continue;
-      if (isComponent(path)) components.push(Component.at(path, rootValue));
-      else walk(path, depth + 1);
+  default(): Component {
+    for (const preferred of ["server", "backend", "."]) {
+      const component = this.components.find((c) => c.id === preferred);
+      if (component) return component;
     }
-  };
-  if (isComponent(root)) components.push(Component.at(rootValue, rootValue));
-  walk(root, 1);
-  return components.length > 0 ? components : [defaultComponent(rootValue)];
+    if (this.components.length === 1) return this.components[0]!;
+    throw new InspectionError("no default Component; select a declared component explicitly");
+  }
 }
+export function inspectCatalog(root: string): ComponentCatalog { return new ComponentCatalog(realpathSync(root)); }
+export function defaultComponent(root: string): Component { return inspectCatalog(root).default(); }
+export function findRepoCodeDirectory(root: string): string { return defaultComponent(root).path; }
+export function owningComponent(target: string, root: string, catalog = inspectCatalog(root)): Component | undefined { return catalog.owner(target); }
+export function enclosingComponent(target: string, root: string, catalog = inspectCatalog(root)): Component { return catalog.owner(target) ?? catalog.default(); }
+export function discoverComponents(root: string): readonly Component[] { return inspectCatalog(root).components; }
 
 export function findAgentsDocument(repo: string, component?: string): string | undefined {
   return [component ? join(component, "AGENTS.md") : "", join(repo, "AGENTS.md")].find((path) => path && existsSync(path));

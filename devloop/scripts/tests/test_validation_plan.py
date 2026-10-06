@@ -6,7 +6,6 @@ import io
 import json
 import os
 from contextlib import redirect_stdout
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -35,19 +34,13 @@ def test_one_analysis_after_fix_shared_by_lint_and_tests():
         assert not has_full_stamp(repo)
 
 
-def test_missing_cli_runs_full_and_publishes_reason():
+def test_missing_inspect_stops_validation_without_fabricated_component():
     with TemporaryDirectory() as root, patch.dict(os.environ, {"DEVLOOP_REPOCLI": "/missing/repocli"}):
         repo = make_repo(root)
-        (repo / "source.py").write_text("VALUE = 2\n")
         runner = _load_script("run_tests")
-        with redirect_stdout(io.StringIO()):
-            assert runner.main([str(repo)]) == 0
-        assert (repo / "test.observed").read_text() == "test_a.py test_b.py"
-        state = load_segment(repo, branch_segment("main", "validation_scope"))
-        assert state and all(row["scope"] == "full" for row in state["checks"])
-        assert "repocli fallback" in state["checks"][0]["reason"]
+        assert runner.main([str(repo)]) == 1
+        assert not (repo / "test.observed").exists()
         assert not has_full_stamp(repo)
-        assert state["identity_problem"]
 
 
 def test_invalid_and_failed_cli_reports_fall_back():
@@ -57,13 +50,13 @@ def test_invalid_and_failed_cli_reports_fall_back():
     for output in outputs:
         with TemporaryDirectory() as root, repocli_report() as cli:
             repo = make_repo(root)
-            cli.write_text("#!/usr/bin/env python3\nprint("+repr(output)+")\n")
+            cli.write_text(cli.read_text().replace("if sys.argv[1]=='diff':", "if sys.argv[1]=='diff': print("+repr(output)+"); raise SystemExit(0)\nif sys.argv[1]=='diff':"))
             plan = build_plan(str(repo), repo_model.select_components(repo))
             assert all(not selection.files for selection in plan.selections.values())
             assert "repocli fallback" in plan.workset.reason
     with TemporaryDirectory() as root, repocli_report() as cli:
         repo = make_repo(root)
-        cli.write_text("#!/usr/bin/env python3\nraise SystemExit(7)\n")
+        cli.write_text(cli.read_text().replace("if sys.argv[1]=='diff':", "if sys.argv[1]=='diff': raise SystemExit(7)\nif sys.argv[1]=='diff':"))
         plan = build_plan(str(repo), repo_model.select_components(repo))
         assert "exited 7" in plan.workset.reason
 
@@ -243,6 +236,7 @@ def test_committed_report_with_dirty_execution_uses_full_scope():
         assert not (repo/"analysis.observed").exists()
 
 
+@repocli_report()
 def test_timeout_falls_back_and_full_bypasses_cli():
     import subprocess
     from domain import validation
@@ -280,8 +274,8 @@ def test_snapshot_protocol_failures_never_authorize_stamps():
                     {"input": "commit"}, {"snapshot": "sha256:" + "z" * 64}, {"schemaVersion": 99}):
         with TemporaryDirectory() as root, repocli_report() as cli:
             repo = make_repo(root)
-            script = cli.read_text().replace("if sys.argv[1]=='snapshot': data.update(schemaVersion=1)",
-                                            "if sys.argv[1]=='snapshot': data.update(schemaVersion=1); data.update(" + repr(updates) + ")")
+            script = cli.read_text().replace("if sys.argv[1]=='snapshot': data.update(schemaVersion=2)",
+                                            "if sys.argv[1]=='snapshot': data.update(schemaVersion=2); data.update(" + repr(updates) + ")")
             cli.write_text(script)
             identity = content_identity(str(repo))
             assert not identity.digest and identity.problem
@@ -359,9 +353,27 @@ def test_schema2_diff_falls_back_with_upgrade_guidance():
         repo = make_repo(root)
         plan = build_plan(str(repo), repo_model.select_components(repo))
         assert "requires 3" in plan.workset.reason
-        assert "repocli >= 0.5.0" in plan.workset.reason
+        assert "repocli >= 0.11.0" in plan.workset.reason
         assert all(selection.scope == "full" for selection in plan.selections.values())
         assert plan.execution_identity and not plan.identity_problem  # Snapshot schema remains 1.
+
+
+
+def test_parent_component_does_not_receive_child_owned_files():
+    with TemporaryDirectory() as root, repocli_report(
+            affected=["child/source.py"], tests=["child/test_a.py"],
+            components=[{"root": ".", "name": "workspace"}, {"root": "child", "name": "api"}]):
+        repo = make_repo(root)
+        child = repo / "child"
+        child.mkdir()
+        (child / "source.py").write_text("VALUE=1\n")
+        (child / "test_a.py").write_text("OK\n")
+        (child / "Makefile").write_text("test:\n\t@echo $(TEST_FILES)\nlint:\n\t@echo $(LINT_FILES)\n")
+        plan = build_plan(str(repo), repo_model.select_components(repo, paths=["source.py", "child/source.py"]))
+        assert plan.selections[(".", "lint")].skipped
+        assert plan.selections[(".", "test")].skipped
+        assert plan.selections[("child", "lint")].files == ("source.py",)
+        assert plan.selections[("child", "test")].files == ("test_a.py",)
 
 
 if __name__ == "__main__":

@@ -66,6 +66,7 @@ def test_focused_gate_preserves_unrelated_files_and_does_not_stamp():
         assert not failed.proceed
 
 
+@repocli_report(sources=["a.py"])
 def test_without_contract_runs_full_lint_and_reports_adoption_guidance():
     with TemporaryDirectory() as root:
         repo = make_repo(root, contract=False)
@@ -75,20 +76,22 @@ def test_without_contract_runs_full_lint_and_reports_adoption_guidance():
         assert "未消费 LINT_FILES" in result.results[0].guidance[0]
 
 
+@repocli_report(sources=["a.py"])
 def test_full_lint_clears_inherited_selection_and_stamps_only_full_success():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         (repo / "a.py").write_text("OK\n")
         with patch.dict(os.environ, {"LINT_FILES": "a.py"}):
-            result = checks.lint(str(repo))
+            result = checks.lint(str(repo), component=Component.at(repo, repo))
             assert not result.ok
             assert (repo / "lint.observed").read_text() == "a.py legacy.py"
         (repo / "legacy.py").write_text("OK\n")
-        assert checks.lint(str(repo)).ok
+        assert checks.lint(str(repo), component=Component.at(repo, repo)).ok
         context = RepoContext.load(str(repo))
         assert context.validation.component(".").last_lint_at
 
 
+@repocli_report(sources=["a.py"])
 def test_complete_validate_keeps_full_scope_with_a_dirty_tree():
     from domain import repo as repo_model
 
@@ -103,6 +106,7 @@ def test_complete_validate_keeps_full_scope_with_a_dirty_tree():
         assert (repo / "lint.observed").read_text() == "a.py legacy.py"
 
 
+@repocli_report(sources=["a.py"])
 def test_deleted_and_unrepresentable_paths_fall_back_to_full_lint():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
@@ -118,6 +122,7 @@ def test_deleted_and_unrepresentable_paths_fall_back_to_full_lint():
         assert not (repo / "injected").exists()
 
 
+@repocli_report(sources=["a.py"])
 def test_component_paths_are_relative_and_empty_scope_selects_no_components():
     with TemporaryDirectory() as root:
         repo = make_repo(root)

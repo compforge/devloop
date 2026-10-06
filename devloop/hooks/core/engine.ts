@@ -1,3 +1,4 @@
+import { InspectionError } from "../../lib/repocli.js";
 import type { PolicyContext } from "./context.js";
 import { decision, type Change, type Decision, type Finding } from "./domain.js";
 import type { Rule } from "./rule.js";
@@ -10,8 +11,9 @@ export function evaluate(change: Change, context: PolicyContext, rules: readonly
     for (const rule of rules.filter((candidate) => candidate.targetKind === target.kind)) {
       try {
         if (rule.applies(target, targetContext)) findings.push(...rule.check(target, targetContext));
-      } catch {
-        if (rule.failurePolicy === "fail_closed") findings.push({ rule: rule.name, severity: "deny", message: `${rule.name}: policy evaluation failed (fail-closed)` });
+      } catch (error) {
+        if (error instanceof InspectionError) findings.push({ rule: rule.name, severity: rule.failurePolicy === "fail_closed" ? "deny" : "warn", message: error.message });
+        else if (rule.failurePolicy === "fail_closed") findings.push({ rule: rule.name, severity: "deny", message: `${rule.name}: policy evaluation failed (fail-closed)` });
       }
     }
   }

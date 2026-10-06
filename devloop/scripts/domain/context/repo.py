@@ -35,7 +35,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from lib import ecosystem, git_state, parsers
+import logging
+
+from lib import git_state, parsers, repocli
 from domain.forge import ForgeError
 from lib.forge import forge_for_repo
 
@@ -378,8 +380,13 @@ class RepoContext:
         are merged in (via prev) only to keep the *returned* object complete."""
         repo_dir_in = str(Path(repo_dir))
         repo_dir_abs = str(Path(repo_dir).resolve())
-        code_dir = repo_layout.find_repo_code_dir(repo_dir_abs)
-        language = ecosystem.detect_language(code_dir)
+        code_dir, language = "", None
+        try:
+            component = repo_layout.default_component(repo_dir_abs)
+            code_dir, language = component.path, component.language
+        except repocli.InspectionError as exc:
+            # Optional context metadata must not turn a completed Git action into failure.
+            logging.getLogger(__name__).warning("Component context unavailable for %s: %s", repo_dir_abs, exc)
         agents_md_path = repo_layout.find_agents_md(repo_dir_abs, code_dir)
 
         prev = cls.load(repo_dir_abs) or cls()

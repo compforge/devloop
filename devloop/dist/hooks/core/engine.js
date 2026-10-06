@@ -1,3 +1,4 @@
+import { InspectionError } from "../../lib/repocli.js";
 import { decision } from "./domain.js";
 /** Evaluate independent policy rules; rule bugs fail open unless explicitly declared otherwise. */
 export function evaluate(change, context, rules) {
@@ -9,8 +10,10 @@ export function evaluate(change, context, rules) {
                 if (rule.applies(target, targetContext))
                     findings.push(...rule.check(target, targetContext));
             }
-            catch {
-                if (rule.failurePolicy === "fail_closed")
+            catch (error) {
+                if (error instanceof InspectionError)
+                    findings.push({ rule: rule.name, severity: rule.failurePolicy === "fail_closed" ? "deny" : "warn", message: error.message });
+                else if (rule.failurePolicy === "fail_closed")
                     findings.push({ rule: rule.name, severity: "deny", message: `${rule.name}: policy evaluation failed (fail-closed)` });
             }
         }

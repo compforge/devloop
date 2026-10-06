@@ -11,10 +11,18 @@ sys.path.insert(0, str(HERE.parent))
 from domain import repo as repo_model  # noqa: E402
 from domain.context import record_active_repo  # noqa: E402
 from domain.lifecycle import checks  # noqa: E402
-from lib import cli  # noqa: E402
+from lib import cli, repocli  # noqa: E402
 
 
 def main(argv: list[str]) -> int:
+    try:
+        return _run(argv)
+    except repocli.InspectionError as exc:
+        print(f"run_validate: {exc}", file=sys.stderr)
+        return 1
+
+
+def _run(argv: list[str]) -> int:
     ap = cli.ArgParser(
         prog="run_validate.py",
         description="normalize, then run Component validation checks.",

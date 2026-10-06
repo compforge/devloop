@@ -1,4 +1,4 @@
-"""repo_dir / repo_code_dir / language / AGENTS.md location helpers. Pure stdlib.
+"""repo_dir / repo_code_dir / language / AGENTS.md location helpers.
 
 Routes the git call through `gitcmd`
 (the single git runner) instead of an inline subprocess.
@@ -9,6 +9,8 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+
+from repocli import InspectReport
 
 from lib import ecosystem, gitcmd, repocli
 
@@ -138,11 +140,14 @@ class Catalog:
     """One inspection, reused for every path in a selection or fingerprint."""
     root: Path
     components: tuple[Component, ...]
+    report: InspectReport
 
     def owner(self, target: str | Path) -> Component | None:
-        path = Path(target).absolute()
-        candidates = [c for c in self.components if path == Path(c.path) or Path(c.path) in path.parents]
-        return max(candidates, key=lambda c: len(Path(c.path).parts), default=None)
+        path = Path(os.path.abspath(target))
+        if not path.is_relative_to(self.root):
+            return None
+        binding = repocli.owner(self.report, path.relative_to(self.root).as_posix())
+        return next((c for c in self.components if binding and c.id == binding.root), None)
 
     def default(self) -> Component:
         # This is execution selection, not discovery or a claim of file ownership.
@@ -156,9 +161,10 @@ class Catalog:
 
 def inspect_catalog(git_root: str | Path) -> Catalog:
     root = Path(git_root).resolve()
+    report = repocli.inspect(str(root))
     components = tuple(Component(str(root / item.root), item.root, item.language, item.name, item.package_tools)
-                       for item in repocli.inspect(str(root)))
-    return Catalog(root, components)
+                       for item in report.components)
+    return Catalog(root, components, report)
 
 
 def find_repo_code_dir(repo_dir: str | Path) -> str:

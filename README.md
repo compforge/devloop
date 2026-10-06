@@ -42,7 +42,7 @@ For the validation contract, configuration, commands, and advanced workflows, se
 
 ## Quick start
 
-Runtime requirements: **Node.js 22.19+** for the shared runtime and harness adapters, plus **Python 3.10+** for skill-invoked Git, release, validation, and review scripts. Set `DEVLOOP_PYTHON` only when you need to force a specific Python interpreter.
+Runtime requirements: **Node.js 22.19+** for the shared runtime and harness adapters; **uv and Python 3.11+** for skill workflows. The `scripts/python` launcher prepares a locked environment in uv’s cache (network access is needed on first use). Set `DEVLOOP_PYTHON` to select a compatible interpreter. Repository organization uses native repocli libraries; snapshot/diff operations still require the repocli CLI.
 
 ### Claude Code
 

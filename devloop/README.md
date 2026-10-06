@@ -31,7 +31,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 
 ## 快速开始
 
-运行时要求：共享核心与 Harness adapter 使用 **Node.js 22.19+**；skill 调用的 Git、release、validation、review 工作流脚本继续使用 **Python 3.10+**。需要固定 Python 解释器时设置 `DEVLOOP_PYTHON`。Harness runtime 的组件识别内置原生 repocli toolkit；Python 工作流的组件识别、变更分析与验证依赖 **repocli 0.11.0+**，需预先安装并放入 `PATH`，详见 [repocli 接入](references/repocli.md)。
+运行时要求：共享核心与 Harness adapter 使用 **Node.js 22.19+**；Python 工作流使用 **uv 与 Python 3.11+**。`scripts/python` 通过 uv 准备隔离的 Python 环境和锁定依赖，首次准备需要联网；`DEVLOOP_PYTHON` 可指定兼容解释器。两种 runtime 的组件识别都直接使用原生 repocli toolkit。变更分析与验证戳仍需预先安装 **repocli CLI 0.11.0+**，详见 [repocli 接入](references/repocli.md)。
 
 ### Claude Code
 

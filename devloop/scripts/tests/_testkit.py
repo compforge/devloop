@@ -7,7 +7,7 @@ import 本模块的副作用即完成两件 bootstrap（必须发生在任何 `d
    （否则一个全局 lifecycle.pre_commit 会让 precommit-gate 在每个测试 repo 上生效、拦住 commit）。
    需要 config 的测试各自写自己的。
 
-各测试文件独立可跑（`python3 devloop/scripts/tests/test_xxx.py`，也 pytest-collectable）；
+各测试文件独立可跑（`devloop/scripts/python devloop/scripts/tests/test_xxx.py`，也 pytest-collectable）；
 全量入口是 `run_all.py`。
 """
 from __future__ import annotations
@@ -151,7 +151,7 @@ def run_main(g: dict) -> None:
 
 
 def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diagnostics=(),
-                   observations=(), schema=3, affected=None, components=None):
+                   observations=(), schema=3, affected=None):
     """Hermetic CLI protocol fixture; executes a real subprocess, never host repocli."""
     from contextlib import contextmanager
     from tempfile import TemporaryDirectory
@@ -166,14 +166,7 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 "import hashlib, subprocess\n"
                 "from pathlib import Path\n"
                 "repo = sys.argv[sys.argv.index('--repo')+1]\n"
-                "if sys.argv[1]=='inspect':\n"
-                " components = " + repr(components) + "\n"
-                " if components is None:\n"
-                # Legacy workflow fixtures use root and direct child execution targets.
-                # Adapter/ownership tests supply explicit catalogs instead.
-                "  components=[{'root':'.','name':'root'}]+[{'root':p.name,'name':p.name} for p in sorted(Path(repo).iterdir()) if p.is_dir() and not p.name.startswith('.') and any((p/m).is_file() for m in ('Makefile','pyproject.toml','go.mod','package.json'))]\n"
-                " print(json.dumps(dict(schemaVersion=1,checkout=str(Path(repo).resolve()),input='working_tree',complete=True,diagnostics=[],components=components)))\n"
-                " raise SystemExit(0)\n"
+                "if sys.argv[1]=='inspect': raise SystemExit('inspect must use the toolkit')\n"
                 "if '--impact' in sys.argv: raise SystemExit(2)\n"
                 "if sys.argv[1]=='diff':\n with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
                 "digest=hashlib.sha256()\n"

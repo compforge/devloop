@@ -34,9 +34,10 @@ def test_one_analysis_after_fix_shared_by_lint_and_tests():
         assert not has_full_stamp(repo)
 
 
-def test_missing_inspect_stops_validation_without_fabricated_component():
+def test_invalid_inspect_stops_validation_without_fabricated_component():
     with TemporaryDirectory() as root, patch.dict(os.environ, {"DEVLOOP_REPOCLI": "/missing/repocli"}):
         repo = make_repo(root)
+        (repo / ".repocli.json").write_text("{")
         runner = _load_script("run_tests")
         assert runner.main([str(repo)]) == 1
         assert not (repo / "test.observed").exists()
@@ -361,9 +362,10 @@ def test_schema2_diff_falls_back_with_upgrade_guidance():
 
 def test_parent_component_does_not_receive_child_owned_files():
     with TemporaryDirectory() as root, repocli_report(
-            affected=["child/source.py"], tests=["child/test_a.py"],
-            components=[{"root": ".", "name": "workspace"}, {"root": "child", "name": "api"}]):
+            affected=["child/source.py"], tests=["child/test_a.py"]):
         repo = make_repo(root)
+        (repo / ".repocli.json").write_text(json.dumps({"components": [
+            {"root": ".", "name": "workspace"}, {"root": "child", "name": "api"}]}))
         child = repo / "child"
         child.mkdir()
         (child / "source.py").write_text("VALUE=1\n")

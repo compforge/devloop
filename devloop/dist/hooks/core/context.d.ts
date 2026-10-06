@@ -9,9 +9,9 @@ export declare class PolicyContext {
     readonly identity: SessionIdentity;
     readonly anchorPath: string;
     readonly anchorDirectory: string;
-    constructor(cwd: string, identity: SessionIdentity, anchorPath?: string, inspections?: Map<string, Error | ComponentCatalog>);
+    constructor(cwd: string, identity: SessionIdentity, anchorPath?: string, inspections?: Map<string, Promise<ComponentCatalog>>);
     forTarget(target: Target): PolicyContext;
-    catalog(repo: string): ComponentCatalog;
+    catalog(repo: string): Promise<ComponentCatalog>;
     get sessionId(): string;
     get harness(): string;
     get gitRoot(): string | undefined;

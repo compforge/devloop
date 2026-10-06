@@ -23,11 +23,11 @@ export function apply(ctx, config = {}) {
         content: [{ type: "text", text: content }],
         source: { kind: "plugin", plugin: name },
     });
-    ctx.on("agent/created", ({ agent, source }) => {
-        const board = initializeBoard({
+    ctx.on("agent/created", async ({ agent, source }) => {
+        const board = (await initializeBoard({
             cwd: agent.session.header.cwd ?? config.cwd ?? process.cwd(),
             session_id: String(agent.id),
-        }).runtime ?? boardFor(agent);
+        })).runtime ?? await boardFor(agent);
         if (!board)
             return;
         if (source === "compact")
@@ -40,7 +40,7 @@ export function apply(ctx, config = {}) {
         const downstream = await next();
         if (downstream.kind !== "enter")
             return downstream;
-        const content = boardFor(agent)?.deliverPrompt("user_prompt");
+        const content = (await boardFor(agent))?.deliverPrompt("user_prompt");
         // Goal rounds can start a fresh request series even when Board adds context.
         return content
             ? { ...downstream, messages: [...downstream.messages, contextMessage(content)] }
@@ -57,7 +57,7 @@ export function apply(ctx, config = {}) {
             hook_event_name: "PreToolUse", tool_name: exec.name, tool_input: toolInput,
             cwd: exec.agent?.session.header.cwd ?? config.cwd ?? process.cwd(), session_id: sessionId,
         }, "dsh");
-        const result = evaluateTool({
+        const result = await evaluateTool({
             harness: "dsh",
             toolName: exec.name,
             toolInput,

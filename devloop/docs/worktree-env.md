@@ -38,7 +38,8 @@ normalize 后同一 lifecycle 相位会并发跑 lint/test，因此 `ensure_read
 
 ### 生态是语言差异的唯一入口
 
-Component 目录、语言与包管理工具元数据由 `repocli inspect` 提供。
+Component 目录、语言与包管理工具元数据由 repocli 提供：TypeScript runtime 调用原生 toolkit，
+本节的 Python worktree/validation workflow 使用 `repocli inspect` CLI。
 `scripts/lib/ecosystem/` 拥有环境就绪、恢复命令和无 Makefile 时的 canonical 回落命令，
 可以读取 manifest / lockfile 来执行项目选择的工具链。组件发现与环境执行各自只有一个入口。
 inspect 失败时 worktree 仍可创建，但环境准备返回明确告警；后续验证必须取得组件目录。

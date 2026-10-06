@@ -5,6 +5,7 @@ import { acquireOwner, clearActiveRepo, recordActiveRepo, releaseOwner } from ".
 import { appendToolCall, TOOL_CALL_SCHEMA, toolCallStartedAt } from "../domain/context/tool-calls.js";
 import { findContainingWorkspace, maybeRegisterWorkspace } from "../domain/workspace.js";
 import { BoardRuntime } from "../domain/board/runtime.js";
+import { PromptDelivery } from "../domain/board/delivery.js";
 import { projectBoard } from "../domain/board/projection.js";
 import { currentBranch, listWorktrees } from "../lib/git-state.js";
 import { projectTool } from "../hooks/core/project.js";
@@ -14,7 +15,7 @@ function cwd(payload) { return string(payload.cwd) || process.cwd(); }
 function sessionId(payload) { return string(payload.session_id); }
 function identity(payload, harness) { return { harness, sessionId: sessionId(payload) }; }
 /** Refresh discoverable workspace facts and construct the shared Board for session startup. */
-export function initializeBoard(payload) {
+export async function initializeBoard(payload) {
     const directory = cwd(payload);
     const workspaceRoot = findContainingWorkspace(directory) ?? maybeRegisterWorkspace(directory);
     const workspace = workspaceRoot ? WorkspaceContext.refresh(workspaceRoot) : undefined;
@@ -22,7 +23,7 @@ export function initializeBoard(payload) {
     const root = workspaceRoot ?? repo;
     if (!root)
         return { watchPaths: [] };
-    const board = projectBoard(root, workspace, repo);
+    const board = await projectBoard(root, workspace, repo);
     const runtime = new BoardRuntime(root, sessionId(payload), board, board.view({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
     const watchPaths = new Set();
     if (workspace?.agentsDocument.path)
@@ -39,8 +40,8 @@ export function initializeBoard(payload) {
     }
     return { runtime, watchPaths: [...watchPaths] };
 }
-export function sessionStartOutput(payload, harness = "claude") {
-    const { runtime, watchPaths } = initializeBoard(payload);
+export async function sessionStartOutput(payload, harness = "claude") {
+    const { runtime, watchPaths } = await initializeBoard(payload);
     const content = runtime?.deliverPrompt("session_start");
     const deliveredWatches = harness === "claude" ? watchPaths : [];
     if (!content && deliveredWatches.length === 0)
@@ -53,12 +54,12 @@ export function sessionStartOutput(payload, harness = "claude") {
         },
     };
 }
-export function userPromptOutput(payload) {
-    const content = BoardRuntime.resolve(cwd(payload), sessionId(payload))?.deliverPrompt("user_prompt");
+export async function userPromptOutput(payload) {
+    const content = (await BoardRuntime.resolve(cwd(payload), sessionId(payload)))?.deliverPrompt("user_prompt");
     return content ? { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: content } } : {};
 }
-export function afterCompact(payload) {
-    BoardRuntime.resolve(cwd(payload), sessionId(payload))?.afterCompact();
+export async function afterCompact(payload) {
+    (await BoardRuntime.resolve(cwd(payload), sessionId(payload)))?.afterCompact();
 }
 export function afterCwdChanged(payload) {
     const directory = string(payload.new_cwd) || cwd(payload);
@@ -141,13 +142,15 @@ export function recordToolCall(payload, harness) {
     }
 }
 export function endSession(payload, harness) {
-    const runtime = BoardRuntime.resolve(cwd(payload), sessionId(payload));
-    runtime?.close();
-    const workspace = findContainingWorkspace(cwd(payload));
+    const direct = findGitRoot(cwd(payload));
+    const workspace = findContainingWorkspace(cwd(payload)) ?? (direct ? findContainingWorkspace(direct) : undefined);
+    const root = workspace ?? direct;
+    // Cleanup needs only the session location; inspection must not delay releasing ownership.
+    if (root)
+        new PromptDelivery(root, sessionId(payload)).clear();
     if (workspace)
         clearActiveRepo(workspace, sessionId(payload));
     const candidates = new Set();
-    const direct = findGitRoot(cwd(payload));
     if (direct)
         candidates.add(direct);
     const workspaceContext = workspace ? WorkspaceContext.load(workspace) ?? WorkspaceContext.refresh(workspace) : undefined;

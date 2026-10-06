@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { runGit } from "../lib/process.js";
-import { Component, ComponentCatalog, inspectCatalog, enclosingComponent } from "./repo-layout.js";
+import { Component, ComponentCatalog, enclosingComponent } from "./repo-layout.js";
 function paths(result) {
     return result.ok ? result.stdout.split("\n").map((path) => path.trim()).filter(Boolean) : undefined;
 }
@@ -52,15 +52,15 @@ function projectComponents(changed, catalog) {
     }
     return [...byId.values()];
 }
-export function selectComponents(rootValue, options = {}) {
+export function selectComponents(rootValue, options) {
     const root = realpathSync(rootValue);
-    const catalog = options.catalog ?? inspectCatalog(root);
+    const catalog = options.catalog;
     if (catalog.components.length === 0)
         throw new InspectionError("repocli inspect returned no Components for validation");
     if (options.explicit) {
         const explicit = resolve(options.explicit);
         if (explicit !== root && explicit.startsWith(`${root}/`)) {
-            const component = enclosingComponent(explicit, root, catalog);
+            const component = enclosingComponent(explicit, catalog);
             return { components: [component], reason: `explicit target ${basename(explicit)} -> component ${basename(component.path)}` };
         }
     }
@@ -82,7 +82,6 @@ export function componentFingerprint(root, component, catalog) {
         return undefined;
     const hash = createHash("sha256").update(component.id);
     try {
-        catalog ??= inspectCatalog(root);
         for (const path of [...changed].sort()) {
             const owner = catalog.owner(join(catalog.root, path));
             if (owner?.id !== component.id)

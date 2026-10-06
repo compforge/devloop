@@ -14,11 +14,11 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 
-it("delivers full fallback reason from persisted state to the prompt", () => {
+it("delivers full fallback reason from persisted state to the prompt", async () => {
   saveSegment(root, branchSegment("feature", "validation_scope"), {
     snapshot: "", checks: [{ component: "server", check: "test", scope: "full", reason: "repocli fallback: CLI unavailable" }],
   });
-  const output = JSON.stringify(userPromptOutput({ cwd: root, session_id: "validation-session" }));
+  const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "validation-session" }));
   expect(output).toContain("server test=full");
   expect(output).toContain("repocli fallback: CLI unavailable");
   expect(output).not.toContain("stamped");

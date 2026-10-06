@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { detectEcosystem } from "../lib/ecosystem.js";
-import { inspectRepository, InspectionError, type ComponentInfo, type PackageTool } from "../lib/repocli.js";
+import { inspectRepository, InspectionError } from "../lib/repocli.js";
+import { owner, type ComponentBinding, type InspectReport, type PackageTool } from "@compforge/repocli";
 import { runGit } from "../lib/process.js";
 
 const SAFE_SCOPE = /^[A-Za-z0-9_./@+][A-Za-z0-9_./@+:-]*$/;
@@ -23,8 +24,8 @@ export class Component {
     return new Component(pathValue, id.startsWith("../") ? path.replaceAll("\\", "/") : id, undefined);
   }
 
-  static fromInfo(root: string, info: ComponentInfo): Component {
-    return new Component(join(root, info.root), info.root, info.language, info.name, info.packageTools);
+  static fromInfo(root: string, info: ComponentBinding): Component {
+    return new Component(join(root, info.root), info.root, info.language, info.name, info.packageTools ?? []);
   }
 
   hasTarget(name: string, suffix = false): boolean {
@@ -67,10 +68,12 @@ export function isGitRepository(path: string): boolean { return findGitRoot(path
 /** One operation's catalog; file ownership is a projection of declared roots. */
 export class ComponentCatalog {
   readonly components: readonly Component[];
-  constructor(readonly root: string) { this.components = inspectRepository(root).map((info) => Component.fromInfo(root, info)); }
+  constructor(readonly root: string, private readonly report: InspectReport) { this.components = report.components.map((info) => Component.fromInfo(root, info)); }
   owner(target: string): Component | undefined {
-    const path = resolve(target);
-    return this.components.filter((c) => path === c.path || path.startsWith(c.path + "/")).sort((a, b) => b.path.length - a.path.length)[0];
+    const path = relative(this.root, resolve(target)).replaceAll("\\", "/");
+    if (path === ".." || path.startsWith("../")) return undefined;
+    const binding = owner(this.report, path || ".");
+    return binding ? this.components.find((component) => component.id === binding.root) : undefined;
   }
   default(): Component {
     for (const preferred of ["server", "backend", "."]) {
@@ -81,12 +84,15 @@ export class ComponentCatalog {
     throw new InspectionError("no default Component; select a declared component explicitly");
   }
 }
-export function inspectCatalog(root: string): ComponentCatalog { return new ComponentCatalog(realpathSync(root)); }
-export function defaultComponent(root: string): Component { return inspectCatalog(root).default(); }
-export function findRepoCodeDirectory(root: string): string { return defaultComponent(root).path; }
-export function owningComponent(target: string, root: string, catalog = inspectCatalog(root)): Component | undefined { return catalog.owner(target); }
-export function enclosingComponent(target: string, root: string, catalog = inspectCatalog(root)): Component { return catalog.owner(target) ?? catalog.default(); }
-export function discoverComponents(root: string): readonly Component[] { return inspectCatalog(root).components; }
+export async function inspectCatalog(root: string): Promise<ComponentCatalog> {
+  const checkout = realpathSync(root);
+  return new ComponentCatalog(checkout, await inspectRepository(checkout));
+}
+export async function defaultComponent(root: string): Promise<Component> { return (await inspectCatalog(root)).default(); }
+export async function findRepoCodeDirectory(root: string): Promise<string> { return (await defaultComponent(root)).path; }
+export function owningComponent(target: string, catalog: ComponentCatalog): Component | undefined { return catalog.owner(target); }
+export function enclosingComponent(target: string, catalog: ComponentCatalog): Component { return catalog.owner(target) ?? catalog.default(); }
+export async function discoverComponents(root: string): Promise<readonly Component[]> { return (await inspectCatalog(root)).components; }
 
 export function findAgentsDocument(repo: string, component?: string): string | undefined {
   return [component ? join(component, "AGENTS.md") : "", join(repo, "AGENTS.md")].find((path) => path && existsSync(path));
@@ -94,8 +100,8 @@ export function findAgentsDocument(repo: string, component?: string): string | u
 
 /** Repository identity independent of the caller's current directory. */
 export interface Repo { readonly name: string; readonly root: string; readonly components: readonly Component[] }
-export function resolveRepo(path: string): Repo | undefined {
+export async function resolveRepo(path: string): Promise<Repo | undefined> {
   const root = findGitRoot(resolve(path));
-  return root ? { name: basename(root), root, components: discoverComponents(root) } : undefined;
+  return root ? { name: basename(root), root, components: await discoverComponents(root) } : undefined;
 }
 export function containsPath(repo: Repo, path: string): boolean { const value = resolve(path); return value === resolve(repo.root) || value.startsWith(`${resolve(repo.root)}/`); }

@@ -23,9 +23,16 @@ these describe static associations, not runtime probabilities.
 
 ## Organization
 
-`inspect` supplies the Component catalog, language and package-tool metadata. Devloop
-projects paths onto the deepest declared Component root, including deleted paths, and
-reuses the catalog within a selection/policy operation. Configure repository boundaries
+`inspect` supplies the Component catalog, language and package-tool metadata.
+The TypeScript runtime calls native `@compforge/repocli` `inspect` and `owner`; it does
+not invoke the CLI or decode its JSON protocol. Python workflows continue using the CLI.
+Devloop retains execution containment, command selection, environment preparation,
+validation gates and stamps.
+
+Each policy operation shares one inspection promise per checkout, including in-flight
+work and rejection. A new operation observes fresh metadata. Ownership and validation
+selection project that explicit catalog without another inspection; `owner` includes
+deleted paths. Configure repository boundaries
 in `.repocli.json`; fixture manifests such as `testdata/corpus/go.mod` are not independent
 Components unless the repository explicitly declares them. Submodule contents belong to
 their own repository inspection; a parent gitlink remains a parent-repository change.
@@ -69,7 +76,8 @@ an advanced override; target one Component and report the scope accurately.
 
 Install a fixed repocli release from [GitHub releases](https://github.com/compforge/repocli/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. `DEVLOOP_REPOCLI=/absolute/path/repocli` selects another installed binary.
+`PATH`. `DEVLOOP_REPOCLI=/absolute/path/repocli` selects another installed binary for
+Python workflows and has no effect on the native TypeScript runtime.
 No validation workflow downloads, upgrades or compiles repocli.
 
 Use repocli 0.11.0 or later: inspect schema 1, snapshot schema 2, and diff schema 3.

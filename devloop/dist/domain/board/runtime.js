@@ -17,7 +17,7 @@ export class BoardRuntime {
         this.view = view;
         this.repo = repo;
     }
-    static resolve(cwd, sessionId) {
+    static async resolve(cwd, sessionId) {
         let workspaceRoot = findContainingWorkspace(cwd);
         let repo = findGitRoot(cwd);
         let staleHours;
@@ -35,7 +35,7 @@ export class BoardRuntime {
         const root = workspaceRoot ?? repo;
         if (!root)
             return undefined;
-        const board = projectBoard(root, workspace, repo, staleHours);
+        const board = await projectBoard(root, workspace, repo, staleHours);
         return new BoardRuntime(root, sessionId, board, board.view({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
     }
     deliverPrompt(trigger = "user_prompt") {

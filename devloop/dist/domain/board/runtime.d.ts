@@ -7,7 +7,7 @@ export declare class BoardRuntime {
     readonly view: BoardView;
     readonly repo?: string | undefined;
     constructor(root: string, sessionId: string | undefined, board: Board, view: BoardView, repo?: string | undefined);
-    static resolve(cwd: string, sessionId?: string): BoardRuntime | undefined;
+    static resolve(cwd: string, sessionId?: string): Promise<BoardRuntime | undefined>;
     deliverPrompt(trigger?: PromptTrigger): string | undefined;
     snapshot(): Record<string, unknown>;
     afterCompact(): void;

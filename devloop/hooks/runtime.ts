@@ -12,13 +12,13 @@ function readPayload(): HookPayload {
   } catch { return {}; }
 }
 
-function run(payload: HookPayload, adapter: ProcessHookAdapter): Record<string, unknown> {
+async function run(payload: HookPayload, adapter: ProcessHookAdapter): Promise<Record<string, unknown>> {
   const event = typeof payload.hook_event_name === "string" ? payload.hook_event_name : "";
   recordToolCall(payload, adapter.harness);
   if (event === "PreToolUse") return adapter.preTool(payload);
   if (event === "SessionStart") return sessionStartOutput(payload, adapter.harness);
   if (event === "UserPromptSubmit") return userPromptOutput(payload);
-  if (event === "PostCompact") afterCompact(payload);
+  if (event === "PostCompact") await afterCompact(payload);
   else if (event === "PostToolUse") afterTool(payload, adapter.harness);
   else if (event === "CwdChanged") afterCwdChanged(payload);
   else if (event === "FileChanged") afterFileChanged(payload);
@@ -29,7 +29,7 @@ function run(payload: HookPayload, adapter: ProcessHookAdapter): Record<string, 
 try {
   const payload = readPayload();
   const adapter = process.env.DEVLOOP_HARNESS === "codex" ? codexProcessAdapter : claudeProcessAdapter;
-  process.stdout.write(JSON.stringify(run(payload, adapter)));
+  process.stdout.write(JSON.stringify(await run(payload, adapter)));
 } catch {
   // Process hooks are policy adapters: runtime defects must fail open.
   process.stdout.write("{}");

@@ -33,8 +33,8 @@ from domain.forge import (
     pr_label,
     vocab,
 )
-from .github import GitHubForge
-from .gitlab import GitLabForge
+from repocli.forge import GitHubForge
+from repocli.forge import GitLabForge
 
 
 def parse_origin(repo_dir: str | Path) -> tuple[str, str] | None:

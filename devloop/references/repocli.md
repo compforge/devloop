@@ -118,3 +118,7 @@ check failure is not presented as a repocli execution error. Snapshot completene
 verifies captured input; dependency-analysis completeness describes blocking input,
 workset and repository-resolution gaps, while local observations retain extraction limits. A
 partial dependency report can select tests only while the input identity still matches.
+
+Repository operations and working-tree content identities use the native toolkit. Python workflows
+consume compforge-repocli; TypeScript hooks consume @compforge/repocli. Only diff analysis uses the
+Go CLI. Content identity is shared by validation execution and the commit gate.

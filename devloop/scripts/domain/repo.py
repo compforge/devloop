@@ -21,9 +21,11 @@ Fuzzy scoring is shared with the managed-worktree resolver, so a name means the
 same thing everywhere.
 """
 from __future__ import annotations
+from repocli import snapshot
+from repocli.git import changed_paths as toolkit_changed_paths
 
-import hashlib
 import os
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -88,32 +90,11 @@ class WorkSet:
 
 
 def _working_paths_or_unknown(git_root: str | Path) -> list[str] | None:
-    """working tree 里有改动的文件（仓相对），**任一 git 查询失败返回 `None`**（不知道）。
-
-    与 `_paths_or_unknown` 同一条铁律：`gitcmd` failure-safe，「查不到」和「确实没改」的输出
-    长得一样；把失败读成 `[]` 就是把「不知道」伪装成 clean。用它的两个消费方对这个区分很敏感：
-    `component_fingerprint` 靠 `None` 走 fail-closed，而 `changed_paths` 有意压平成 `[]`（见下）。
-
-    **刻意不用 `status --porcelain`**——`gitcmd` 对输出整体 `strip()`，会吃掉 porcelain 首行的
-    前导状态空格（` M path`）导致列错位；这两条命令输出纯路径、strip 无害。"""
-    d = gitcmd.git(git_root, "diff", "--name-only", "HEAD")          # tracked: staged+unstaged
-    o = gitcmd.git(git_root, "ls-files", "--others", "--exclude-standard")   # untracked
-    if not d.ok or not o.ok:
+    try:
+        return toolkit_changed_paths(git_root)
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
-    paths: list[str] = d.out.splitlines() if d.out else []
-    if o.out:
-        root = Path(git_root)
-        for raw in o.out.splitlines():
-            p = raw.strip()
-            if not p:
-                continue
-            target = root / p
-            # git 会把未跟踪的软链或嵌套 repo/worktree 折叠成一条顶层路径。
-            # 它们不是当前 repo 的代码改动；投影进 WorkSet 只会误选仓根 component。
-            if target.is_symlink() or (target.is_dir() and (target / ".git").exists()):
-                continue
-            paths.append(p)
-    return [p.strip() for p in paths if p.strip()]
+
 
 
 def changed_paths(git_root: str | Path) -> list[str]:
@@ -159,48 +140,13 @@ def changed_paths_in_scope(
 
 
 def component_fingerprint(git_root: str | Path, component: repo_layout.Component) -> str | None:
-    """`component` 当前待验证内容的指纹——**lint 通行证绑定它**。算不出 → `None`（gate 按未验证处理）。
-
-    为什么绑内容而不是绑「改了几次」：旧的 `edits_since_lint` 由 PostToolUse 计数，而那个 hook 只
-    认 `Edit`/`Write`/`NotebookEdit`——**Codex CLI 用 `apply_patch` 改文件，一次都不会计**（`MultiEdit`
-    同理，Bash 里的 `sed -i` / 脚本更不会）。一个只在部分 CLI、部分工具上生效的计数器守不住硬 gate：
-    它读出的 0 不是「没改过」，是「没人报告」。改问内容，则谁改的、怎么改的都不重要。
-
-    hash 的是本 component 名下**已改动文件的当前 bytes**，不是 diff：新建的未跟踪文件改了内容路径不变，
-    diff 看不出来，而 lint 会 lint 它。删除写 tombstone、symlink 写 target（换指向也算变）。
-    """
-    paths = _working_paths_or_unknown(git_root)
-    if paths is None:
-        return None
-    root = Path(git_root).resolve()
+    """Full-repository identity conservatively binds each Component validation result."""
     try:
-        catalog = repo_layout.inspect_catalog(git_root)
-    except repocli.InspectionError:
+        observed = snapshot(git_root)
+        return observed.digest if observed.complete else None
+    except (OSError, ValueError, subprocess.SubprocessError):
         return None
-    h = hashlib.sha256()
-    h.update(component.id.encode())          # 拌进 component 身份：空改动集在不同 component 上不该撞同一个指纹
-    try:
-        # 按**归属**过滤：不属于任何 component 的共享路径（仓根 README / docs/ / .github/）不进任何
-        # component 的指纹——它们不在 component 的项目边界内，改它们不该让谁的 lint 通行证作废。
-        for rel in sorted(p for p in paths
-                          if (owner := catalog.owner(root / p)) is not None
-                          and owner.id == component.id):
-            h.update(b"\0path\0" + rel.encode())
-            p = root / rel
-            if p.is_symlink():
-                h.update(b"\0symlink\0" + os.readlink(p).encode())
-            elif not p.exists():
-                h.update(b"\0deleted\0")
-            elif p.is_file():
-                h.update(b"\0file\0")
-                with p.open("rb") as f:
-                    for chunk in iter(lambda: f.read(1024 * 1024), b""):
-                        h.update(chunk)
-            else:
-                h.update(b"\0other\0")
-    except OSError:
-        return None                     # 读不动就别猜，交给 fail-closed
-    return h.hexdigest()
+
 
 
 def _paths_or_unknown(r) -> list[str] | None:

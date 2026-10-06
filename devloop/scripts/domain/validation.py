@@ -6,7 +6,6 @@ select canonical full commands; check failures never cause an analysis retry.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import re
 from pathlib import Path, PurePosixPath
 import subprocess
 import time
@@ -15,6 +14,7 @@ from domain import repo as repo_model
 from domain.repo_layout import Component, inspect_catalog
 from domain.context.store import branch_segment, save_segment
 from lib import gitcmd, repocli
+from repocli import snapshot
 
 
 @dataclass(frozen=True)
@@ -46,6 +46,7 @@ class Plan:
     comparison: Comparison = Comparison()
     execution_identity: str = ""
     identity_problem: str = ""
+    component_impacts: tuple[dict, ...] = ()
 
     def selection(self, component: Component, check: str) -> Selection:
         return self.selections[(component.id, check)]
@@ -58,24 +59,15 @@ class ContentIdentity:
 
 
 def content_identity(repo: str) -> ContentIdentity:
-    """Use repocli's content contract; unavailable identity never authorizes a stamp."""
+    """Native repocli content identity; unavailable inputs never authorize a stamp."""
     try:
-        data = repocli.read_report(repo, "snapshot", [])
-        if data.get("schemaVersion") != 2:
-            raise ValueError("unsupported snapshot schema (requires 2; install repocli >= 0.11.0)")
-        if data.get("input") != "working_tree" or Path(data.get("checkout", "")).resolve() != Path(repo).resolve():
-            raise ValueError("snapshot target mismatch")
-        if data.get("complete") is not True or data.get("diagnostics") != []:
-            diagnostics = data.get("diagnostics") or []
-            detail = "; ".join(str(d.get("message") or d.get("code", "unknown gap"))
-                               for d in diagnostics[:3] if isinstance(d, dict))
-            raise ValueError("snapshot incomplete" + (f": {detail}" if detail else ""))
-        digest = data.get("snapshot")
-        if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-            raise ValueError("invalid snapshot identity")
-        return ContentIdentity(digest=digest)
-    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as exc:
+        observed = snapshot(repo)
+        if not observed.complete:
+            return ContentIdentity(problem="; ".join(observed.diagnostics))
+        return ContentIdentity(digest=observed.digest)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return ContentIdentity(problem=str(exc))
+
 
 
 def _paths(value: object) -> list[str]:
@@ -126,6 +118,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     tests: list[str] = []
     snapshot = ""
     analysis_reason = "repocli automatic impact"
+    component_impacts: tuple[dict, ...] = ()
     observed = content_identity(repo)
     identity = observed.digest
     if paths == [] and not full:
@@ -167,6 +160,10 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                 raise ValueError("analysis input mismatch")
             if not identity or snapshot != identity or identity != content_identity(repo).digest:
                 raise ValueError("execution contents differ from analyzed snapshot")
+            impacts = data.get("components", [])
+            if not isinstance(impacts, list) or any(not isinstance(item, dict) for item in impacts):
+                raise ValueError("invalid ComponentImpact list")
+            component_impacts = tuple(impacts)
             affected_files = _affected_paths(data.get("affectedFiles"))
             tests = _paths(data.get("testFiles"))
             if not explicit:
@@ -179,6 +176,10 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             units = workset.components if explicit else catalog
     selections = {}
     for unit in units:
+        impact_gaps = [str(reason) for impact in component_impacts
+                       if impact.get("root") == unit.id
+                       for reason in impact.get("fallbackReasons", [])]
+        unit_analysis_reason = analysis_reason + ("; " + "; ".join(impact_gaps) if impact_gaps else "")
         for check, files in (("lint", affected_files), ("test", tests)):
             if check not in checks:
                 continue
@@ -195,7 +196,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                         # Empty Make file-list variables request full checks, while
                         # an empty valid analysis result explicitly selects no files.
                         skipped = True
-                        selection_reason = analysis_reason + f"; no returned {check} files in Component"
+                        selection_reason = unit_analysis_reason + f"; no returned {check} files in Component"
                     else:
                         command = (unit.focused_lint_command(relative) if check == "lint"
                                    else unit.focused_test_command(relative))
@@ -212,11 +213,11 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                 selections[(unit.id, check)] = Selection(reason="caller supplied test arguments", explicit=not explicit_full)
             else:
                 selections[(unit.id, check)] = Selection(
-                    tuple(relative), selection_reason or analysis_reason, skipped=skipped)
+                    tuple(relative), selection_reason or unit_analysis_reason, skipped=skipped)
     if reason:
         observed = content_identity(repo)
     plan = Plan(repo_model.WorkSet(units, reason or "repocli affected Components"), selections,
-                snapshot, comparison, observed.digest, observed.problem)
+                snapshot, comparison, observed.digest, observed.problem, component_impacts)
     persist_plan(repo, plan)
     return plan
 
@@ -226,6 +227,7 @@ def persist_plan(repo: str, plan: Plan) -> None:
     payload = {
         "generated_at": time.time(), "base": plan.comparison.base, "head": plan.comparison.head,
         "snapshot": plan.snapshot,
+        "component_impacts": list(plan.component_impacts),
         "execution_identity": plan.execution_identity, "identity_problem": plan.identity_problem,
         "checks": [{"component": component, "check": check, "scope": selection.scope,
                     "reason": selection.reason, "files": list(selection.files)}

@@ -80,7 +80,7 @@ class Component:
         target = self.test_target()
         if target is not None:
             return ("make", target)
-        eco = ecosystem.detect(self.path)
+        eco = ecosystem.detect(self.path, self.language)
         return eco.fallback_test_command(self.path) if eco else None
 
     def supports_lint_files(self) -> bool:

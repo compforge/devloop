@@ -23,6 +23,7 @@ A fresh-cut branch is then asserted to carry only this run's commit(s) before pu
 mis-based branch is caught at creation rather than at merge. Emits a self-narrating PLAN banner.
 """
 from __future__ import annotations
+from repocli import git as operations
 
 import argparse
 import os
@@ -240,7 +241,7 @@ def stage(repo: str, files: list[str], plan: list[str]) -> None:
                 continue
             to_add.append(path)
     if to_add:
-        run(repo, "add", "--", *to_add)
+        check_operation(operations.stage(repo, to_add))
     shown = ", ".join(to_add[:8]) + (" …" if len(to_add) > 8 else "")
     plan.append(f"staged {len(to_add)} file(s): {shown}" if to_add else "nothing to stage")
     # Safety: refuse an accidental embedded-repo gitlink (mode 160000) in the index.
@@ -438,7 +439,7 @@ def stage_and_commit(intent: GitIntent, plan: list[str]) -> StageResult:
     if not staged:
         plan.append("nothing staged — skipped commit")
         return StageResult(committed=False)
-    run(intent.repo, "commit", "-m", intent.message)
+    check_operation(operations.commit(intent.repo, intent.message))
     plan.append("committed")
     return StageResult(committed=True)
 
@@ -462,7 +463,7 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
             )
 
     if intent.mode in ("push", "mr"):
-        run(repo, "push", "-u", "origin", current, timeout=60)
+        check_operation(operations.push(repo, current, upstream=True))
         plan.append(f"pushed origin/{current}")
 
     if intent.mode == "push" and staged.committed and intent.description and branch.active_pr:
@@ -720,6 +721,13 @@ def _banner(plan: list[str]) -> None:
     print("PLAN:")
     for line in plan:
         print(f"  - {line}")
+
+
+
+def check_operation(result: operations.GitResult) -> str:
+    if not result.ok:
+        raise SmartError(result.err or result.out)
+    return result.out
 
 
 if __name__ == "__main__":

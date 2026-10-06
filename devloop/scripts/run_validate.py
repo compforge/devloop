@@ -42,7 +42,7 @@ def _run(argv: list[str]) -> int:
     results = checks.validate_components(repo, workset, full=ns.full,
         explicit=bool(resolved.target_path and Path(resolved.target_path).resolve() != Path(repo).resolve()))
     for result in results:
-        print(("✓ " if result.ok else "✗ ") + result.summary)
+        print(({"passed": "✓ ", "failed": "✗ ", "skipped": "− ", "unavailable": "? "}[result.status]) + result.summary)
         for guidance in result.guidance:
             print(f"  - {guidance}")
     return 0 if all(result.ok for result in results) else 1

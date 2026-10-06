@@ -5,6 +5,7 @@ reuse, pruning, and dependency preparation behind this module prevents callers f
 reproducing only the visible ``git worktree add`` step and skipping lifecycle policy.
 """
 from __future__ import annotations
+from repocli import git as operations
 
 import os
 from enum import Enum
@@ -24,7 +25,7 @@ def prepare_environment(path: str) -> list[str]:
     except repocli.InspectionError as exc:
         return [str(exc)]
     for component in components:
-        if problem := ecosystem.ensure_ready(component.path):
+        if problem := ecosystem.ensure_ready(component.path, component.language, component.package_tools or None):
             warnings.append(f"component {component.id}: {problem}")
     return warnings
 
@@ -53,7 +54,7 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
     target = git_state.local_default_target(repo_dir)
     branch = f"worktree-{tag}"
     if git_state.rev_parse(repo_dir, f"refs/heads/{branch}"):
-        result = gitcmd.git(repo_dir, "worktree", "add", str(rel), branch, timeout=30)
+        result = operations.add_worktree(repo_dir, str(rel), branch)
         message = "reused existing branch"
     else:
         remote_ref = f"origin/{target}"
@@ -65,16 +66,7 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
             )
         if not git_state.rev_parse(repo_dir, remote_ref):
             return None, f"could not resolve refreshed {remote_ref}"
-        result = gitcmd.git(
-            repo_dir,
-            "worktree",
-            "add",
-            "-b",
-            branch,
-            str(rel),
-            remote_ref,
-            timeout=30,
-        )
+        result = operations.add_worktree(repo_dir, str(rel), remote_ref, branch=branch)
         message = f"created worktree from refreshed {remote_ref}"
     if not result.ok:
         return None, f"worktree add failed for {branch}: {result.err or result.out}"
@@ -164,9 +156,12 @@ def remove_if_safe(
         return RemovalOutcome.CURRENT_CHECKOUT
     if session.active_owner(target):
         return RemovalOutcome.ACTIVE_OWNER
-    if git_state.get_workspace_status(target)["dirty"]:
+    observed = git_state.get_workspace_status(target)
+    if not observed["complete"]:
+        return RemovalOutcome.GIT_ERROR
+    if observed["dirty"]:
         return RemovalOutcome.DIRTY
-    if not gitcmd.git(repo_dir, "worktree", "remove", target, timeout=30).ok:
+    if not operations.remove_worktree(repo_dir, target).ok:
         return RemovalOutcome.GIT_ERROR
     gitcmd.git(repo_dir, "worktree", "prune", timeout=15)
     return RemovalOutcome.REMOVED
@@ -191,15 +186,7 @@ def remove_finished(repo_dir: str, path: str) -> RemovalOutcome:
     if target not in linked:
         return RemovalOutcome.NOT_MANAGED
 
-    removed = gitcmd.git(
-        control_repo,
-        "worktree",
-        "remove",
-        "--force",
-        "--force",
-        target,
-        timeout=30,
-    )
+    removed = operations.remove_worktree(control_repo, target, force=True)
     if not removed.ok:
         return RemovalOutcome.GIT_ERROR
     gitcmd.git(control_repo, "worktree", "prune", timeout=15)

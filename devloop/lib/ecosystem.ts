@@ -1,39 +1,29 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { runCommand } from "./process.js";
 
 export type EcosystemName = "python" | "go" | "node";
 
 export interface Ecosystem {
   readonly name: EcosystemName;
-  readonly manifests: readonly string[];
-  language(path: string): string;
-  matchesLanguage(path: string): boolean;
   prepareCommand(path: string): readonly string[] | undefined;
   environmentProblem(path: string): string | undefined;
   markPrepared(path: string): void;
   fallbackTestCommand(path: string): readonly string[] | undefined;
-  isTestFile(path: string): boolean;
 }
 
 abstract class BaseEcosystem implements Ecosystem {
   abstract readonly name: EcosystemName;
-  abstract readonly manifests: readonly string[];
-  language(_path: string): string { return this.name; }
-  matchesLanguage(path: string): boolean { return this.manifests.some((manifest) => existsSync(join(path, manifest))); }
   prepareCommand(_path: string): readonly string[] | undefined { return undefined; }
   environmentProblem(_path: string): string | undefined { return undefined; }
   markPrepared(_path: string): void {}
   fallbackTestCommand(_path: string): readonly string[] | undefined { return undefined; }
-  isTestFile(_path: string): boolean { return false; }
 }
 
 class GoEcosystem extends BaseEcosystem {
   readonly name = "go";
-  readonly manifests = ["go.mod"];
   override fallbackTestCommand(): readonly string[] { return ["go", "test", "./..."]; }
-  override isTestFile(path: string): boolean { return basename(path).endsWith("_test.go"); }
 }
 
 function hashFiles(path: string, names: readonly string[]): string {
@@ -54,13 +44,6 @@ const NODE_LOCKFILES: readonly [name: string, command: readonly string[]][] = [
 
 class NodeEcosystem extends BaseEcosystem {
   readonly name = "node";
-  readonly manifests = ["package.json"];
-  override language(path: string): string {
-    try {
-      const content = readFileSync(join(path, "package.json"), "utf8").toLowerCase();
-      return content.includes("typescript") || content.includes("@types/") ? "typescript" : "javascript";
-    } catch { return "javascript"; }
-  }
   private lockfile(path: string): readonly [string, readonly string[]] | undefined {
     return NODE_LOCKFILES.find(([name]) => existsSync(join(path, name)));
   }
@@ -86,13 +69,10 @@ class NodeEcosystem extends BaseEcosystem {
     const modules = join(path, "node_modules");
     if (lockfile && existsSync(modules)) writeFileSync(join(modules, ".devloop-envhash"), hashFiles(path, ["package.json", lockfile[0]]));
   }
-  override isTestFile(path: string): boolean { return /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/.test(basename(path)); }
 }
 
 class PythonEcosystem extends BaseEcosystem {
   readonly name = "python";
-  readonly manifests = ["pyproject.toml", "setup.py"];
-  override matchesLanguage(path: string): boolean { return super.matchesLanguage(path) || existsSync(join(path, "requirements.txt")); }
   isUvManaged(path: string): boolean { return existsSync(join(path, "pyproject.toml")) && existsSync(join(path, "uv.lock")); }
   override prepareCommand(path: string): readonly string[] | undefined { return this.isUvManaged(path) ? ["uv", "sync", "--frozen"] : undefined; }
   override environmentProblem(path: string): string | undefined {
@@ -110,25 +90,18 @@ class PythonEcosystem extends BaseEcosystem {
     const environment = join(path, ".venv");
     if (this.isUvManaged(path) && existsSync(environment)) writeFileSync(join(environment, ".devloop-envhash"), hashFiles(path, ["pyproject.toml", "uv.lock"]));
   }
-  override isTestFile(path: string): boolean {
-    const name = basename(path);
-    return name.endsWith(".py") && (name.startsWith("test_") || name.endsWith("_test.py"));
-  }
 }
 
 export const ECOSYSTEMS: readonly Ecosystem[] = [new PythonEcosystem(), new GoEcosystem(), new NodeEcosystem()];
 
-export function detectEcosystem(path: string): Ecosystem | undefined {
-  return ECOSYSTEMS.find((ecosystem) => ecosystem.manifests.some((manifest) => existsSync(join(path, manifest))));
-}
-
-export function detectLanguage(path: string): string | undefined {
-  return ECOSYSTEMS.find((ecosystem) => ecosystem.matchesLanguage(path))?.language(path);
+export function detectEcosystem(language: string | undefined): Ecosystem | undefined {
+  const name = ["javascript", "typescript", "tsx", "jsx"].includes(language ?? "") ? "node" : language;
+  return ECOSYSTEMS.find(ecosystem => ecosystem.name === name);
 }
 
 /** Prepare a component with the ecosystem's frozen install command. */
-export function ensureEnvironmentReady(path: string): string | undefined {
-  const ecosystem = detectEcosystem(path);
+export function ensureEnvironmentReady(path: string, language?: string): string | undefined {
+  const ecosystem = detectEcosystem(language);
   if (!ecosystem) return undefined;
   const problem = ecosystem.environmentProblem(path);
   if (!problem) return undefined;

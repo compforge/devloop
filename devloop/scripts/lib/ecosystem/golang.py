@@ -12,12 +12,8 @@ class GoEcosystem(Ecosystem):
     也就没有跨 checkout 泄漏面。prepare/env_problem 用基类的中性默认值。"""
 
     name = "go"
-    manifests = ("go.mod",)
 
     def fallback_test_command(self, path):
         # 纯 Go module 无 Makefile 也能测——避免多 component 仓已正确识别 Go component 却被误跳过
         # （原 Component.test_command 的回落，迁到生态：这是 Go 的事实，不是 component 模型的）。
         return ("go", "test", "./...")
-
-    def is_test_file(self, path):
-        return Path(path).name.endswith("_test.go")

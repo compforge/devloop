@@ -173,7 +173,7 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 "names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=repo).decode().split('\\0')\n"
                 "for name in sorted(set(names)-{''}):\n"
                 " p=Path(repo)/name\n"
-                " if p.is_file(): digest.update(name.encode()+b'\\0'+p.read_bytes())\n"
+                " if p.is_file():\n  data=p.read_bytes(); digest.update(str(len(name.encode())).encode()+b':'+name.encode()+str(len(data)).encode()+b':'+data)\n"
                 "identity='sha256:'+digest.hexdigest()\n"
                 "data = " + repr({"schemaVersion": schema, "complete": complete, "scope": scope,
                                   "snapshot": "sha256:" + "a" * 64,

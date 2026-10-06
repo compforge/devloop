@@ -47,16 +47,15 @@ devloop/
 │   ├── process-hooks.ts           #   Claude/Codex lifecycle translation
 │   └── dsh.ts                     #   原生 Cordis plugin（ctx.on）
 ├── domain/                         # TypeScript 领域 owner
-│   ├── repo.ts                    #   ★Repo/Component WorkSet 与内容指纹
+│   ├── repo.ts                    #   ★Repo/Component WorkSet 与验证范围策略
 │   ├── workspace.ts               #   ★Workspace 注册、发现与归属
 │   ├── repo-layout.ts             #   ★Component 模型 + repo/component 路径边界
 │   ├── context/                   #   ★状态源：workspace/session/gate/store
 │   ├── board/                     #   ★Board model/projection/view/delivery/render/runtime
-│   └── forge.ts                   #   ★PullRequest/Comment/Release 中立模型 + Forge port
+│   └── forge.ts                   #   ★Review window 与展示策略；对象来自 repocli
 ├── lib/                            # TypeScript 技术能力：被 domain/adapters 消费
-│   ├── process.ts  git-state.ts   #   ★统一 command seam 与 git/branch/worktree 事实
-│   ├── forge/                     #   ★GitHub/GitLab 平级 adapter + HTTP/按 repo 分发
-│   ├── ecosystem/                 #   ★工具链身份、环境准备与 canonical fallback
+│   ├── process.ts  git-state.ts   #   ★项目命令与 Git 策略；仓库事实来自 repocli
+│   ├── ecosystem.ts               #   ★消费 Component 语言，选择执行 fallback
 │   └── config.ts  parsers.ts      #   ★配置持久化与文字源解析
 ├── hooks/                          # 共享 policy engine + 进程 hook 入口
 │   ├── hooks.json                 # Claude 事件注册
@@ -69,7 +68,7 @@ devloop/
 ├── scripts/                        # skill-owned Python workflow，不进入 Harness runtime
 │   ├── python / _python.py[.lock]  #   uv 锁定的 Python 3.11+ 脚本环境入口
 │   ├── *.py                        #   git / validation / review / task CLI 入口
-│   ├── domain/  lib/  tasks/       #   workflow-private 辅助包
+│   ├── domain/  lib/  tasks/       #   workflow-private 策略、环境准备与 Forge 配置装配
 │   └── tests/                      #   Python workflow 回归测试
 ├── monitors/monitors.json          # Claude native-monitor adapter：循环调用共享 task
 ├── commands/                       # slash：enter / gcam / gcamp / gcampr（validation 归 skill，gate 自动触发）
@@ -101,3 +100,5 @@ devloop/
 - 仓库级（marketplace / 多 CLI）：[`../AGENTS.md`](../AGENTS.md)
 - 完整方案与设计决策：plan 文档（开发者本地 `~/.claude/plans/devloop-plugin-0.1.md`）
 - Harness adapter 边界与事件映射：[`docs/harness-adapters.md`](./docs/harness-adapters.md)
+
+- [仓库工具包与开发流程](docs/repository-toolkit.md)：事实、操作、验证身份与门禁边界。

@@ -35,7 +35,4 @@ export function runCommand(command: string, args: readonly string[], options: Ru
   };
 }
 
-/** Run git through the one process seam used by domain and workflow code. */
-export function runGit(repo: string, args: readonly string[], timeoutMs = 5_000): CommandResult {
-  return runCommand("git", ["-C", repo, ...args], { timeoutMs });
-}
+export { runGit } from "@compforge/repocli";

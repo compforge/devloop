@@ -45,6 +45,9 @@ def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: b
         name,
         ok=all(r.ok for r in results),
         advisory=advisory,
+        status=("unavailable" if any(r.status == "unavailable" for r in results) else
+                "failed" if any(r.status == "failed" for r in results) else
+                "skipped" if not results or all(r.status == "skipped" for r in results) else "passed"),
         summary=(detail or reason) if name in {"lint", "test"} else (f"{reason}; {detail}" if detail else reason),
         guidance=tuple(note for result in results for note in result.guidance) +
                  ((f"selection: {reason}",) if name in {"lint", "test"} and detail and reason else ()),
@@ -89,7 +92,7 @@ def _environment_failure(name: str, component: Component, *, advisory: bool = Fa
     lint/test 会在 lifecycle 里并发进入；`ecosystem.ensure_ready` 自带 per-component single-flight，
     所以同一份 node_modules/.venv 只会有一个 writer。
     """
-    problem = ecosystem.ensure_ready(component.path)
+    problem = ecosystem.ensure_ready(component.path, component.language, component.package_tools or None)
     if problem is None:
         return None
     return HookResult(name, ok=False, advisory=advisory,
@@ -173,7 +176,7 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     并 fan-out，避免多 component 仓静默回落 server / 仓根。`paths`（相位边界冻结的改动范围）给出即用它，
     不再自己读工作树——commit 后工作树已干净，读出来会是「无改动」→ 退化成跑全仓。
     跑 lint 前清 `.mypy_cache`：热缓存对一棵冷跑会被标红的树报过绿，一个能放行坏 MR 的戳比慢
-    一点更糟。无 lint target → 干净跳过（ok，无可验证）。
+    一点更糟。无 lint target → unavailable（硬 gate 不放行）。
     """
     if component is None:
         ws = repo_model.select_components(repo, paths=paths)
@@ -185,12 +188,13 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
         selection = plan.selection(component, "lint")
         return HookResult(
             "lint", ok=True,
+            status="skipped",
             summary=f"{component.id}: lint skipped — {selection.reason}; component lint stamp unchanged",
         )
     code_dir = component.path
     target = component.lint_target()
     if target is None:
-        return HookResult("lint", ok=True, summary=f"no make lint/lint-ci target in {code_dir} — skipped")
+        return HookResult("lint", ok=False, status="unavailable", summary=f"no make lint/lint-ci target in {code_dir} — unavailable")
     env_failure = _environment_failure("lint", component)
     if env_failure is not None:
         return env_failure
@@ -207,11 +211,11 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
             "如需按改动文件校验，请让 fix 和 lint targets 同时支持 LINT_FILES，空值保留全量行为。",
         )
     args = command[2:] if command else ("LINT_FILES=",)
-    fingerprint = repo_model.component_fingerprint(repo, component)
+    fingerprint = plan.execution_identity if plan else repo_model.component_fingerprint(repo, component)
     rc, elapsed = _make(component, target, capture=capture, sink=sink, args=args)
     if rc == 0 and (problem := _identity_problem(repo, plan, "during lint")):
         return HookResult("lint", ok=False, summary=problem)
-    if rc == 0 and (fingerprint is None or fingerprint != repo_model.component_fingerprint(repo, component)):
+    if rc == 0 and (fingerprint is None or not plan and fingerprint != repo_model.component_fingerprint(repo, component)):
         return HookResult("lint", ok=False, summary="contents changed during lint; validation not stamped")
     if rc == 0 and command:
         # spec: focused lint 只验证当前选择，不能授予整个 Component 的可复用通行证。
@@ -277,7 +281,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
          component: Component | None = None, paths: list[str] | None = None,
          plan: Plan | None = None) -> HookResult:
     """跑 component 的 canonical test 命令（Make target 或 Go module 的 `go test ./...`）；
-    通过则盖 test 戳。无 test 命令 → 干净跳过。`component` 给出即用它；否则按本次改动
+    通过则盖 test 戳。无 test 命令 → unavailable。`component` 给出即用它；否则按本次改动
     选 WorkSet 并 fan-out，使 gcampr lifecycle 与 validate skill 的选择逻辑一致。
     `paths` 同 `lint`：相位边界冻结的改动范围，给出即用它，不自己读工作树。
 
@@ -335,7 +339,7 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     if plan is not None and not extra and plan.selection(component, "test").skipped:
         selection = plan.selection(component, "test")
         return HookResult(
-            "test", ok=True, advisory=True,
+            "test", ok=True, advisory=True, status="skipped",
             summary=f"{component.id}: tests skipped — {selection.reason}; component test stamp unchanged",
         ), False
     code_dir = component.path
@@ -351,7 +355,8 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
             "test",
             ok=True,
             advisory=True,
-            summary=f"no test command in {code_dir} — skipped",
+            summary=f"no test command in {code_dir} — unavailable",
+            status="unavailable",
             guidance=guidance,
         ), False
     extra = extra or []
@@ -391,7 +396,7 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     if env_failure is not None:
         return env_failure, False
     sink: list[str] = []
-    fingerprint = repo_model.component_fingerprint(repo, component)
+    fingerprint = plan.execution_identity if plan else repo_model.component_fingerprint(repo, component)
     started_at = monotonic()
     if capture:
         _progress("test", component, "started")
@@ -412,7 +417,7 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     if rc == 0:
         if problem := _identity_problem(repo, plan, "during tests"):
             return HookResult("test", ok=False, advisory=True, summary=problem), False
-        if fingerprint is None or fingerprint != repo_model.component_fingerprint(repo, component):
+        if fingerprint is None or not plan and fingerprint != repo_model.component_fingerprint(repo, component):
             return HookResult("test", ok=False, advisory=True,
                               summary="contents changed during tests; validation not stamped"), False
         if focused:

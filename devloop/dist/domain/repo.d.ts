@@ -12,6 +12,6 @@ export declare function selectComponents(rootValue: string, options: {
     readonly paths?: readonly string[];
     readonly catalog: ComponentCatalog;
 }): WorkSet;
-export declare function componentFingerprint(root: string, component: Component, catalog: ComponentCatalog): string | undefined;
+export declare function componentFingerprint(root: string, _component: Component, _catalog: ComponentCatalog): Promise<string | undefined>;
 export declare function fuzzyScore(query: string, name: string): number | undefined;
 //# sourceMappingURL=repo.d.ts.map

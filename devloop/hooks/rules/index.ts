@@ -196,12 +196,13 @@ const precommitGate: Rule = {
     const branch = currentBranch(repo);
     const lint = loadSegment(repo, branchSegment(branch, "lint")) ?? {};
     const catalog = await context.catalog(repo);
-    const required = selectComponents(repo, { catalog }).components.filter((component) => component.lintTarget() !== undefined);
+    const required = selectComponents(repo, { catalog }).components;
+    const fingerprint = required.length ? await componentFingerprint(repo, required[0]!, catalog) : undefined;
     const stale = required.flatMap((component): string[] => {
+      if (!component.lintTarget()) return [`  ${component.id}: lint entrypoint unavailable.`];
       const raw = lint[component.id];
       const stamp = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
       if (typeof stamp.passed_at !== "number") return [`  ${component.id}: lint has never run for this branch.`];
-      const fingerprint = componentFingerprint(repo, component, catalog);
       return !fingerprint || typeof stamp.fingerprint !== "string" || stamp.fingerprint !== fingerprint
         ? [`  ${component.id}: content changed since its last lint pass.`] : [];
     });

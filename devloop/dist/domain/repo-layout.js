@@ -42,7 +42,7 @@ export class Component {
     testTarget() { return ["test", "test-ci", "test-local"].find((target) => this.hasTarget(target)); }
     testCommand() {
         const target = this.testTarget();
-        return target ? ["make", target] : detectEcosystem(this.path)?.fallbackTestCommand(this.path);
+        return target ? ["make", target] : detectEcosystem(this.language)?.fallbackTestCommand(this.path);
     }
     supportsLintFiles() { return this.makefileUses("LINT_FILES"); }
     supportsTestFiles() { return this.makefileUses("TEST_FILES"); }

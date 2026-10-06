@@ -269,15 +269,13 @@ def test_edit_after_planning_invalidates_selection_without_executing_checks():
         assert not has_full_stamp(repo)
 
 
-def test_snapshot_protocol_failures_never_authorize_stamps():
+def test_native_snapshot_failures_never_authorize_stamps():
     from domain.validation import content_identity
-    for updates in ({"complete": False, "diagnostics": [{"code": "snapshot_incomplete", "message": "child not initialized"}]},
-                    {"input": "commit"}, {"snapshot": "sha256:" + "z" * 64}, {"schemaVersion": 99}):
-        with TemporaryDirectory() as root, repocli_report() as cli:
-            repo = make_repo(root)
-            script = cli.read_text().replace("if sys.argv[1]=='snapshot': data.update(schemaVersion=2)",
-                                            "if sys.argv[1]=='snapshot': data.update(schemaVersion=2); data.update(" + repr(updates) + ")")
-            cli.write_text(script)
+    from repocli import Snapshot
+    with TemporaryDirectory() as root, repocli_report():
+        repo = make_repo(root)
+        unavailable = Snapshot(str(repo), "sha256:" + "a" * 64, 0, False, ("child not initialized",))
+        with patch("domain.validation.snapshot", return_value=unavailable):
             identity = content_identity(str(repo))
             assert not identity.digest and identity.problem
             with redirect_stdout(io.StringIO()):
@@ -305,7 +303,7 @@ def test_snapshot_failure_after_planning_is_not_reported_as_an_edit():
         repo = make_repo(root)
         with redirect_stdout(io.StringIO()):
             plan = build_plan(str(repo), repo_model.select_components(repo), full=True)
-            with patch.dict(os.environ, {"DEVLOOP_REPOCLI": "/missing/repocli"}):
+            with patch("domain.validation.snapshot", side_effect=OSError("capture unavailable")):
                 result = checks.test_components(str(repo), plan.workset, plan=plan)
         assert not result.ok
         assert "cannot verify contents" in result.summary

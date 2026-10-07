@@ -91,12 +91,10 @@ def _activity(path: str) -> float:
         times.append(os.stat(path).st_mtime)
     except OSError:
         pass
-    result = gitcmd.git(path, "rev-parse", "--git-path", "index")
-    if result.ok and result.out:
-        try:
-            times.append(os.stat(Path(path) / result.out).st_mtime)
-        except OSError:
-            pass
+    try:
+        times.append(os.stat(git_state.git_path(path, "index")).st_mtime)
+    except OSError:
+        pass
     return max(times) if times else 0.0
 
 

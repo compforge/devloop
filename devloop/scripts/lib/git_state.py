@@ -20,6 +20,8 @@ from repocli.git_state import (
     main_repo_root as main_repo_root,
     list_local_branches as list_local_branches,
     fetch as fetch,
+    git_path as git_path,
+    rebase_in_progress as rebase_in_progress,
 )
 PROTECTED_BRANCH_PATTERNS = tuple(re.compile(p) for p in (r"^main$",r"^master$",r"^release$",r"^release.*",r".*release$"))
 
@@ -54,11 +56,8 @@ def ensure_gitignore_excluded(repo_dir: str | Path, pattern: str = "/.devloop/")
     `git rev-parse --git-path info/exclude` so linked worktrees (where `.git`
     is a gitlink file) work — hard-coding `<repo>/.git/info` silently failed there.
     """
-    r = gitcmd.git(repo_dir, "rev-parse", "--git-path", "info/exclude")
-    if not r.ok or not r.out:
-        return
-    exclude_path = Path(repo_dir) / r.out
     try:
+        exclude_path = git_path(repo_dir, "info/exclude")
         exclude_path.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
         return

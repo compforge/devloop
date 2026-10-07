@@ -142,5 +142,42 @@ def test_invalid_explicit_path_does_not_install_anything():
         assert_rejected(root, [""], "nonempty literal path")
 
 
+def test_sensitive_removals_can_be_committed_without_readding_local_files():
+    flow = _load_script("commit_flow")
+    for explicit in (False, True):
+        with repository() as root:
+            names = [".env", ".idea/config", "__pycache__/module.pyc"]
+            for name in names:
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("previously tracked")
+            _git(str(root), "add", "--", *names)
+            _git(str(root), "commit", "-qm", "tracked sensitive fixtures")
+            _git(str(root), "rm", ".env", ".idea/config")
+            _git(str(root), "rm", "--cached", "__pycache__/module.pyc")
+            flow.stage(str(root), names if explicit else [], [])
+            changes = staged_changes(root)
+            assert {c.path for c in changes} == set(names)
+            assert all(c.new_mode == "000000" for c in changes)
+            _git(str(root), "commit", "-qm", "remove sensitive fixtures")
+            tracked = set(_git_out(str(root), "ls-tree", "-r", "--name-only", "HEAD").splitlines())
+            assert tracked.isdisjoint(names)
+            assert (root / "__pycache__/module.pyc").read_text() == "previously tracked"
+
+
+def test_sensitive_deletion_does_not_exempt_other_sensitive_writes():
+    for mutation in ("add", "modify", "recreate"):
+        with repository() as root:
+            for name in (".env", ".env.local"):
+                (root / name).write_text("previously tracked")
+            _git(str(root), "add", ".env", ".env.local")
+            _git(str(root), "commit", "-qm", "tracked sensitive fixtures")
+            _git(str(root), "rm", ".env")
+            name = {"add": ".env.new", "modify": ".env.local", "recreate": ".env"}[mutation]
+            (root / name).write_text("new content")
+            _git(str(root), "add", "--", name)
+            assert_rejected(root, [], "sensitive")
+
+
 if __name__ == "__main__":
     run_main(globals())

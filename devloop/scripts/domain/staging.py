@@ -70,7 +70,9 @@ def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
                 f"index contains paths outside --file scope: {outside!r}; index unchanged. "
                 "Include these paths explicitly or handle their staging separately."
             )
-        sensitive = [e.path for e in changes if is_sensitive(e.path)]
+        # why: removing tracked sensitive content must remain possible; only changes
+        # that leave content at a sensitive path violate the policy.
+        sensitive = [e.path for e in changes if e.new_mode != "000000" and is_sensitive(e.path)]
         if sensitive:
             raise StagingError(f"index contains sensitive paths: {sensitive!r}; index unchanged")
         # Deleting a gitlink is safe; only links remaining in the proposed index need registration.

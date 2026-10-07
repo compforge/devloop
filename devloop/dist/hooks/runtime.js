@@ -4,11 +4,11 @@
 import { readFileSync as readFileSync9 } from "node:fs";
 
 // adapters/process-hooks.ts
-import { basename as basename8, dirname as dirname11, isAbsolute as isAbsolute5, resolve as resolve14 } from "node:path";
+import { basename as basename8, dirname as dirname11, isAbsolute as isAbsolute5, resolve as resolve13 } from "node:path";
 
 // domain/repo-layout.ts
 import { existsSync as existsSync3, readFileSync, realpathSync as realpathSync3 } from "node:fs";
-import { basename, join as join5, relative, resolve as resolve2 } from "node:path";
+import { basename, join as join5, relative, resolve } from "node:path";
 
 // node_modules/@compforge/repocli/dist/inspect.js
 import { realpath as realpath2 } from "node:fs/promises";
@@ -51,7 +51,7 @@ function parseRemoteUrl(value) {
   if (value.includes("://")) {
     try {
       const url = new URL(value);
-      if (!["ssh:", "git:", "http:", "https:"].includes(url.protocol))
+      if (url.protocol === "file:")
         return void 0;
       host = url.hostname;
       path = decodeURIComponent(url.pathname).replace(/^\//, "");
@@ -1423,7 +1423,7 @@ var Git = class {
   }
   run(args, input, allowMissing = false, maxBuffer = 16 << 20) {
     this.signal.throwIfAborted();
-    return new Promise((resolve15, reject) => {
+    return new Promise((resolve14, reject) => {
       const child = execFile("git", ["-C", this.root, ...args], {
         encoding: "buffer",
         signal: this.signal,
@@ -1433,7 +1433,7 @@ var Git = class {
         if (error && !(allowMissing && error.code === 1))
           reject(error);
         else
-          resolve15(stdout);
+          resolve14(stdout);
       });
       child.stdin?.on("error", () => {
       });
@@ -1625,7 +1625,7 @@ function owner(layout, path) {
 
 // node_modules/@compforge/repocli/dist/git-state.js
 import { existsSync, realpathSync } from "node:fs";
-import { join as join2, resolve } from "node:path";
+import { join as join2 } from "node:path";
 function currentBranch(repo) {
   const result = runGit(repo, ["branch", "--show-current"]);
   return result.ok && result.stdout ? result.stdout : void 0;
@@ -1691,6 +1691,8 @@ function checkoutInfo(repo) {
     return realpathSync(result.stdout.replace(/\n$/, ""));
   };
   const root = query(repo, "--show-toplevel");
+  if (!existsSync(join2(root, ".git")))
+    throw new Error("Git metadata directory is not a checkout");
   const gitDir = query(repo, "--git-dir");
   const commonDir = query(repo, "--git-common-dir");
   const first = listWorktrees(repo)[0];
@@ -1705,24 +1707,23 @@ function checkoutInfo(repo) {
   }
   return { root, gitDir, commonDir, linked: gitDir !== commonDir, ...mainRoot ? { mainRoot } : {} };
 }
-function mainRepoRoot(repo) {
-  try {
-    return checkoutInfo(repo).mainRoot;
-  } catch {
-    return void 0;
-  }
+function listCheckouts(repo) {
+  const info = checkoutInfo(repo);
+  const main = info.linked ? info.mainRoot : info.root;
+  return listWorktrees(repo).flatMap((entry, index) => {
+    if (!entry.sha)
+      return [];
+    const path = index === 0 ? main : entry.path;
+    return [{
+      ...path === void 0 ? {} : { path },
+      sha: entry.sha,
+      ...entry.branch ? { branch: entry.branch } : {},
+      primary: index === 0
+    }];
+  });
 }
-function worktreeMetadata(repo) {
-  const gitDir = runGit(repo, ["rev-parse", "--git-dir"]);
-  const commonDir = runGit(repo, ["rev-parse", "--git-common-dir"]);
-  if (!gitDir.ok || !commonDir.ok || !gitDir.stdout || !commonDir.stdout)
-    return { linked: false, commonDir: "" };
-  const resolvedGit = resolve(repo, gitDir.stdout);
-  const resolvedCommon = resolve(repo, commonDir.stdout);
-  if (resolvedGit === resolvedCommon)
-    return { linked: false, commonDir: "" };
-  const mainBranch = listWorktrees(repo)[0]?.branch;
-  return { linked: true, commonDir: resolvedCommon, ...mainBranch ? { mainBranch } : {} };
+function mainRepoRoot(repo) {
+  return checkoutInfo(repo).mainRoot;
 }
 
 // node_modules/@compforge/repocli/dist/snapshot.js
@@ -1968,7 +1969,7 @@ var ComponentCatalog = class {
   report;
   components;
   owner(target) {
-    const path = relative(this.root, resolve2(target)).replaceAll("\\", "/");
+    const path = relative(this.root, resolve(target)).replaceAll("\\", "/");
     if (path === ".." || path.startsWith("../")) return void 0;
     const binding = owner(this.report, path || ".");
     return binding ? this.components.find((component) => component.id === binding.root) : void 0;
@@ -1998,11 +1999,11 @@ function findAgentsDocument(repo, component) {
 
 // domain/context/workspace.ts
 import { existsSync as existsSync7, lstatSync, readdirSync, realpathSync as realpathSync4 } from "node:fs";
-import { join as join7, resolve as resolve6 } from "node:path";
+import { join as join7, resolve as resolve5 } from "node:path";
 
 // lib/git-state.ts
 import { appendFileSync, existsSync as existsSync4, mkdirSync, readFileSync as readFileSync2 } from "node:fs";
-import { dirname as dirname4, resolve as resolve3 } from "node:path";
+import { dirname as dirname4, resolve as resolve2 } from "node:path";
 var PROTECTED_BRANCHES = [/^main$/, /^master$/, /^release$/, /^release.*/, /.*release$/];
 function isProtectedBranch(branch) {
   return branch !== void 0 && PROTECTED_BRANCHES.some((pattern) => pattern.test(branch));
@@ -2018,7 +2019,7 @@ function localDefaultTarget(repo) {
 function ensureGitExclude(repo, pattern = "/.devloop/") {
   const result = runGit(repo, ["rev-parse", "--git-path", "info/exclude"]);
   if (!result.ok || !result.stdout) return;
-  const path = resolve3(repo, result.stdout);
+  const path = resolve2(repo, result.stdout);
   try {
     mkdirSync(dirname4(path), { recursive: true });
     const existing = existsSync4(path) ? readFileSync2(path, "utf8") : "";
@@ -2031,7 +2032,7 @@ function ensureGitExclude(repo, pattern = "/.devloop/") {
 
 // lib/parsers.ts
 import { existsSync as existsSync5, readFileSync as readFileSync3 } from "node:fs";
-import { basename as basename2, dirname as dirname5, isAbsolute, resolve as resolve4 } from "node:path";
+import { basename as basename2, dirname as dirname5, isAbsolute, resolve as resolve3 } from "node:path";
 function read(path) {
   if (!existsSync5(path)) return void 0;
   try {
@@ -2043,7 +2044,7 @@ function read(path) {
 function concretePath(value, base) {
   if (value.includes("<") || value.includes(">")) return value;
   const expanded = value.startsWith("~") ? `${process.env.HOME ?? ""}${value.slice(1)}` : value;
-  return isAbsolute(expanded) ? expanded : resolve4(base, expanded);
+  return isAbsolute(expanded) ? expanded : resolve3(base, expanded);
 }
 function parseReferencesSection(path) {
   const content = read(path);
@@ -2135,7 +2136,7 @@ function formatTimestamp(timestamp) {
 
 // domain/context/store.ts
 import { appendFileSync as appendFileSync2, existsSync as existsSync6, mkdirSync as mkdirSync2, readFileSync as readFileSync4, renameSync, statSync, writeFileSync } from "node:fs";
-import { dirname as dirname6, join as join6, parse, resolve as resolve5 } from "node:path";
+import { dirname as dirname6, join as join6, parse, resolve as resolve4 } from "node:path";
 var STATE_DIRECTORY_NAME = ".devloop";
 var WORKSPACE_STATE_FILE = "context.json";
 var stateRoots = /* @__PURE__ */ new Map();
@@ -2153,10 +2154,10 @@ function sharedStateRoot(root) {
   return home;
 }
 function stateDirectory(root) {
-  return join6(sharedStateRoot(resolve5(root)), STATE_DIRECTORY_NAME);
+  return join6(sharedStateRoot(resolve4(root)), STATE_DIRECTORY_NAME);
 }
 function workingTreeStateDirectory(root) {
-  return join6(resolve5(root), STATE_DIRECTORY_NAME);
+  return join6(resolve4(root), STATE_DIRECTORY_NAME);
 }
 function branchSegment(branch, name) {
   return `branches/${branch ?? "@detached"}/${name}`;
@@ -2235,7 +2236,7 @@ function mergeSubprojects(root, declared) {
     let canonical;
     try {
       const real = realpathSync4(path);
-      if (real !== resolve6(path)) canonical = real;
+      if (real !== resolve5(path)) canonical = real;
     } catch {
     }
     return {
@@ -2268,7 +2269,7 @@ var WorkspaceContext = class _WorkspaceContext {
       ...reference2.hook ? { hook: reference2.hook } : {}
     }));
     return new _WorkspaceContext(
-      record.workspace_root || resolve6(root),
+      record.workspace_root || resolve5(root),
       { ...record.agents_md?.path ? { path: record.agents_md.path } : {}, references },
       record.subprojects.map((entry) => ({
         name: entry.name ?? "",
@@ -2282,7 +2283,7 @@ var WorkspaceContext = class _WorkspaceContext {
     );
   }
   static refresh(rootValue) {
-    const root = resolve6(rootValue);
+    const root = resolve5(rootValue);
     const agentsPath = join7(root, "AGENTS.md");
     const hasAgents = existsSync7(agentsPath);
     const context = new _WorkspaceContext(
@@ -2324,7 +2325,7 @@ var WorkspaceContext = class _WorkspaceContext {
 
 // domain/context/session.ts
 import { closeSync, existsSync as existsSync8, mkdirSync as mkdirSync3, openSync, readFileSync as readFileSync5, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync2, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { basename as basename3, dirname as dirname7, join as join8, resolve as resolve7 } from "node:path";
+import { basename as basename3, dirname as dirname7, join as join8, resolve as resolve6 } from "node:path";
 var OWNER_TTL_SECONDS = 1800;
 function identityFromEnvironment() {
   const codex = process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID;
@@ -2478,7 +2479,7 @@ function recordActiveRepo(workspaceRoot2, repo, sessionId2) {
   try {
     mkdirSync3(dirname7(path), { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync2(temporary, JSON.stringify({ repo_dir: resolve7(repo), ts: now() }));
+    writeFileSync2(temporary, JSON.stringify({ repo_dir: resolve6(repo), ts: now() }));
     renameSync2(temporary, path);
   } catch {
   }
@@ -2565,12 +2566,12 @@ function compact(path, cutoff) {
 // domain/workspace.ts
 import { existsSync as existsSync11, statSync as statSync4 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { join as join11, resolve as resolve9 } from "node:path";
+import { join as join11, resolve as resolve8 } from "node:path";
 
 // lib/config.ts
 import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync4, writeFileSync as writeFileSync4 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname as dirname8, isAbsolute as isAbsolute2, join as join10, resolve as resolve8 } from "node:path";
+import { dirname as dirname8, isAbsolute as isAbsolute2, join as join10, resolve as resolve7 } from "node:path";
 var DEFAULTS = {
   workspaces: [],
   forges: {},
@@ -2617,13 +2618,13 @@ function readJson2(path) {
   }
 }
 function ancestorFiles(root) {
-  const global = resolve8(configFile());
-  const home = resolve8(homedir());
+  const global = resolve7(configFile());
+  const home = resolve7(homedir());
   const found = [];
   let current = root;
   while (true) {
     const candidate = join10(current, ".devloop", "config.json");
-    if (resolve8(candidate) !== global && existsSync10(candidate)) found.push(candidate);
+    if (resolve7(candidate) !== global && existsSync10(candidate)) found.push(candidate);
     if (current === home || current === dirname8(current)) break;
     current = dirname8(current);
   }
@@ -2641,8 +2642,14 @@ function resolveLayer(layer, repoKeys) {
   return result;
 }
 function loadConfig(repo) {
-  const checkout = repo ? resolve8(expandPath(repo)) : void 0;
-  const repoKeys = checkout ? [...new Set([mainRepoRoot(checkout), checkout].filter((path) => path !== void 0))] : [];
+  const checkout = repo ? resolve7(expandPath(repo)) : void 0;
+  let main;
+  try {
+    main = checkout ? mainRepoRoot(checkout) : void 0;
+  } catch {
+    main = void 0;
+  }
+  const repoKeys = [...new Set([main, checkout].filter((path) => path !== void 0))];
   const files = [...new Set(repoKeys.flatMap(ancestorFiles))];
   const global = deepMerge(DEFAULTS, readJson2(configFile()) ?? {});
   let result = resolveLayer(global, repoKeys);
@@ -2682,23 +2689,23 @@ function architectureConfig(repo) {
 
 // domain/workspace.ts
 function reserved(path) {
-  const root = resolve9(path);
+  const root = resolve8(path);
   return [
     process.env.CODEX_HOME ?? join11(homedir2(), ".codex"),
     process.env.CLAUDE_HOME ?? join11(homedir2(), ".claude")
-  ].some((candidate) => resolve9(expandPath(candidate)) === root);
+  ].some((candidate) => resolve8(expandPath(candidate)) === root);
 }
 function registeredWorkspaces() {
-  return workspaces().map((path) => resolve9(path)).filter((path) => !reserved(path));
+  return workspaces().map((path) => resolve8(path)).filter((path) => !reserved(path));
 }
 function registerWorkspace(path) {
-  const root = resolve9(expandPath(path));
+  const root = resolve8(expandPath(path));
   if (reserved(root)) return;
   const current = [...registeredWorkspaces()];
   if (!current.includes(root)) setWorkspaces([...current, root]);
 }
 function maybeRegisterWorkspace(path) {
-  const root = resolve9(path);
+  const root = resolve8(path);
   if (reserved(root) || !existsSync11(root) || !statSync4(root).isDirectory() || existsSync11(join11(root, ".git"))) return void 0;
   const agents = join11(root, "AGENTS.md");
   if (!existsSync11(agents)) return void 0;
@@ -2707,7 +2714,7 @@ function maybeRegisterWorkspace(path) {
   return root;
 }
 function findContainingWorkspace(path) {
-  const target = resolve9(path);
+  const target = resolve8(path);
   return registeredWorkspaces().find((root) => target === root || target.startsWith(`${root}/`));
 }
 
@@ -2751,7 +2758,7 @@ function renderItem(item) {
     const dirty = payload.workspaceDirty ? `dirty(${number(payload.modifiedCount)} modified, ${number(payload.untrackedCount)} untracked)` : payload.workspaceDirty === null ? "unknown" : "clean";
     const warnings = [payload.protected ? "PROTECTED" : "", typeof payload.staleBindingHours === "number" ? `repo binding is ${payload.staleBindingHours.toFixed(1)}h old; confirm the repo with cd` : ""].filter(Boolean);
     if (payload.inspectionProblem) warnings.push(text(payload.inspectionProblem));
-    return `[Current repo: ${text(payload.codeDir) || text(payload.repoRoot)} (${text(payload.language) || "?"})] | Branch: ${text(payload.branch) || "?"}${payload.linkedWorktree ? " (worktree)" : ""} (ahead ${number(payload.ahead)}, behind ${number(payload.behind)} vs ${text(payload.baseBranch)}, target=${text(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` \u26A0\uFE0F ${warnings.join("; ")}` : ""}`;
+    return `[Current repo: ${text(payload.codeDir) || text(payload.repoRoot)} (${text(payload.language) || "?"})] | Branch: ${text(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${number(payload.ahead)}, behind ${number(payload.behind)} vs ${text(payload.baseBranch)}, target=${text(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` \u26A0\uFE0F ${warnings.join("; ")}` : ""}`;
   }
   if (item.type === "repo.validation") {
     const components = rows(payload.components);
@@ -2959,13 +2966,19 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   const [ahead, behind] = aheadBehind(repo, base) ?? [0, 0];
   const status = workspaceStatus(repo);
   const codeDir = component?.path ?? "";
+  let linkedWorktree;
+  try {
+    linkedWorktree = checkoutInfo(repo).linked;
+  } catch {
+    linkedWorktree = null;
+  }
   items.push(boardItem("repo.identity", "state", scope, {
     codeDir,
     repoRoot: repo,
     language: component?.language ?? "",
     inspectionProblem,
     branch,
-    linkedWorktree: worktreeMetadata(repo).linked,
+    linkedWorktree,
     ahead,
     behind,
     baseBranch: base,
@@ -3054,7 +3067,7 @@ var BoardRuntime = class _BoardRuntime {
 };
 
 // hooks/core/project.ts
-import { basename as basename5, isAbsolute as isAbsolute3, resolve as resolve10 } from "node:path";
+import { basename as basename5, isAbsolute as isAbsolute3, resolve as resolve9 } from "node:path";
 var FILE_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "write", "edit", "str_replace_editor", "apply_patch"]);
 function splitShell(command2) {
   const parts = [];
@@ -3160,7 +3173,7 @@ function commandTarget(words, base) {
     if (index >= 0 && argv[index + 1]) {
       const configuredPath = argv[index + 1];
       dashC = configuredPath;
-      const path = isAbsolute3(configuredPath) ? configuredPath : base.path ? resolve10(base.path, configuredPath) : void 0;
+      const path = isAbsolute3(configuredPath) ? configuredPath : base.path ? resolve9(base.path, configuredPath) : void 0;
       workingDirectory = { ...path ? { path } : {}, source: "git -C" };
       if (basename5(argv[0]) === "git") argv = [...argv.slice(0, index), ...argv.slice(index + 2)];
     }
@@ -3190,7 +3203,7 @@ function commandTargets(command2, base) {
     for (const nested of commandSubstitutions(trimmed)) targets.push(...commandTargets(nested, current));
     const words = shellWords(part);
     if (words[0] === "cd" && words[1]) {
-      const path = isAbsolute3(words[1]) ? words[1] : current.path ? resolve10(current.path, words[1]) : void 0;
+      const path = isAbsolute3(words[1]) ? words[1] : current.path ? resolve9(current.path, words[1]) : void 0;
       current = { ...path ? { path } : {}, source: "command cd" };
       continue;
     }
@@ -3207,7 +3220,7 @@ function commandTargets(command2, base) {
     for (const target of patchFileChanges(match[2])) {
       targets.push({
         ...target,
-        path: isAbsolute3(target.path) || !current.path ? target.path : resolve10(current.path, target.path)
+        path: isAbsolute3(target.path) || !current.path ? target.path : resolve9(current.path, target.path)
       });
     }
   }
@@ -3304,7 +3317,7 @@ function projectTool(input) {
   if (toolName === "Bash" || toolName === "bash" || toolName === "shell" || toolName === "exec_command") {
     const command2 = typeof toolInput.command === "string" ? toolInput.command : typeof toolInput.cmd === "string" ? toolInput.cmd : "";
     const configured = typeof toolInput.workdir === "string" && toolInput.workdir.trim() ? toolInput.workdir : void 0;
-    const path = configured ? isAbsolute3(configured) ? configured : resolve10(cwd2, configured) : input.harness === "codex" && toolName === "Bash" ? void 0 : cwd2;
+    const path = configured ? isAbsolute3(configured) ? configured : resolve9(cwd2, configured) : input.harness === "codex" && toolName === "Bash" ? void 0 : cwd2;
     return { targets: commandTargets(command2, { ...path ? { path } : {}, source: configured ? "tool workdir" : "hook cwd" }), cwd: cwd2, tool: toolName, command: command2 };
   }
   if (toolName === "apply_patch") {
@@ -3354,13 +3367,13 @@ async function evaluate(change, context, rules) {
 }
 
 // hooks/core/context.ts
-import { dirname as dirname9, isAbsolute as isAbsolute4, resolve as resolve11 } from "node:path";
+import { dirname as dirname9, isAbsolute as isAbsolute4, resolve as resolve10 } from "node:path";
 var PolicyContext = class _PolicyContext {
   constructor(cwd2, identity2, anchorPath = "", inspections = /* @__PURE__ */ new Map()) {
     this.inspections = inspections;
     this.cwd = cwd2;
     this.identity = identity2;
-    this.anchorPath = anchorPath ? isAbsolute4(anchorPath) ? anchorPath : resolve11(cwd2, anchorPath) : "";
+    this.anchorPath = anchorPath ? isAbsolute4(anchorPath) ? anchorPath : resolve10(cwd2, anchorPath) : "";
     this.anchorDirectory = this.anchorPath ? dirname9(this.anchorPath) : cwd2;
   }
   inspections;
@@ -3373,7 +3386,7 @@ var PolicyContext = class _PolicyContext {
     return target.workingDirectory.path ? new _PolicyContext(target.workingDirectory.path, this.identity, "", this.inspections) : this;
   }
   catalog(repo) {
-    const key = resolve11(repo);
+    const key = resolve10(repo);
     if (!this.inspections.has(key)) this.inspections.set(key, inspectCatalog(key));
     return this.inspections.get(key);
   }
@@ -3393,7 +3406,7 @@ var PolicyContext = class _PolicyContext {
 
 // hooks/rules/index.ts
 import { existsSync as existsSync12, readFileSync as readFileSync8 } from "node:fs";
-import { basename as basename7, dirname as dirname10, extname, join as join13, resolve as resolve13 } from "node:path";
+import { basename as basename7, dirname as dirname10, extname, join as join13, resolve as resolve12 } from "node:path";
 
 // domain/forge.ts
 function pullRequestInactive(pr) {
@@ -3448,7 +3461,7 @@ function evaluateGate(repo) {
 
 // domain/repo.ts
 import { realpathSync as realpathSync5 } from "node:fs";
-import { basename as basename6, join as join12, resolve as resolve12 } from "node:path";
+import { basename as basename6, join as join12, resolve as resolve11 } from "node:path";
 function workingPaths(root) {
   try {
     return changedPaths(root);
@@ -3472,7 +3485,7 @@ function selectComponents(rootValue, options) {
   const catalog = options.catalog;
   if (catalog.components.length === 0) throw new InspectionError("repocli inspect returned no Components for validation");
   if (options.explicit) {
-    const explicit = resolve12(options.explicit);
+    const explicit = resolve11(options.explicit);
     if (explicit !== root && explicit.startsWith(`${root}/`)) {
       const component = enclosingComponent(explicit, catalog);
       return { components: [component], reason: `explicit target ${basename6(explicit)} -> component ${basename6(component.path)}` };
@@ -3522,7 +3535,11 @@ var worktreeAdd = {
   check: (target) => {
     const runDirectory = command(target).workingDirectory.path;
     const repo = runDirectory ? findGitRoot(runDirectory) : void 0;
-    const primary = repo ? listWorktrees(repo)[0]?.path ?? repo : "<repo>";
+    let primary = repo ?? "<repo>";
+    try {
+      if (repo) primary = listCheckouts(repo).find((entry) => entry.primary)?.path ?? repo;
+    } catch {
+    }
     return finding("worktree-add", `Direct \`git worktree add\` bypasses devloop lifecycle policy. Use \`python3 "<PLUGIN_ROOT>/scripts/checkout.py" ${basename7(primary)} --worktree <tag>\`.`, commandLine(command(target)));
   }
 };
@@ -3629,7 +3646,7 @@ function projectLocal(value) {
   return subcommand !== void 0 && PROJECT_COMMANDS[base]?.has(subcommand) === true;
 }
 function workspaceRoot(path) {
-  return workspaces().some((root) => resolve13(root) === resolve13(path)) || WorkspaceContext.load(path) !== void 0 && !findGitRoot(path);
+  return workspaces().some((root) => resolve12(root) === resolve12(path)) || WorkspaceContext.load(path) !== void 0 && !findGitRoot(path);
 }
 var workspaceCwd = {
   name: "workspace-cwd",
@@ -3639,7 +3656,7 @@ var workspaceCwd = {
     const path = command(target).workingDirectory.path;
     if (!path || !workspaceRoot(path)) return [];
     const names = WorkspaceContext.load(path)?.subprojects.slice(0, 10).map((item) => item.name).join(", ");
-    return finding("workspace-cwd", `You're at aggregate workspace '${resolve13(path)}', not a subproject. Enter a repository or pass --repo explicitly.${names ? ` Subprojects: ${names}` : ""}`, commandLine(command(target)));
+    return finding("workspace-cwd", `You're at aggregate workspace '${resolve12(path)}', not a subproject. Enter a repository or pass --repo explicitly.${names ? ` Subprojects: ${names}` : ""}`, commandLine(command(target)));
   }
 };
 var editOwner = {
@@ -3946,14 +3963,14 @@ function recordToolCall(payload, harness) {
   const anchors = [];
   for (const target of change.targets) {
     if (target.kind === "file_change") {
-      const path = isAbsolute5(target.path) ? target.path : resolve14(directory, target.path);
+      const path = isAbsolute5(target.path) ? target.path : resolve13(directory, target.path);
       anchors.push(dirname11(path));
     } else if (target.workingDirectory.path) anchors.push(target.workingDirectory.path);
   }
   for (const key of ["file_path", "notebook_path", "path"]) {
     const value = toolInput[key];
     if (typeof value !== "string" || !value.trim()) continue;
-    const path = isAbsolute5(value) ? value : resolve14(directory, value);
+    const path = isAbsolute5(value) ? value : resolve13(directory, value);
     anchors.push(dirname11(path));
   }
   if (anchors.length === 0) anchors.push(directory);
@@ -3992,7 +4009,12 @@ function endSession(payload, harness) {
     const repo = findGitRoot(project.path);
     if (repo) candidates.add(repo);
   }
-  for (const repo of [...candidates]) for (const worktree of listWorktrees(repo)) candidates.add(worktree.path);
+  for (const repo of [...candidates]) {
+    try {
+      for (const checkout of listCheckouts(repo)) if (checkout.path) candidates.add(checkout.path);
+    } catch {
+    }
+  }
   for (const repo of candidates) releaseOwner(repo, identity(payload, harness));
 }
 

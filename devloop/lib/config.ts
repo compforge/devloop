@@ -100,7 +100,10 @@ function resolveLayer(layer: JsonObject, repoKeys: readonly string[]): JsonObjec
  */
 export function loadConfig(repo?: string): JsonObject {
   const checkout = repo ? resolve(expandPath(repo)) : undefined;
-  const repoKeys = checkout ? [...new Set([mainRepoRoot(checkout), checkout].filter((path): path is string => path !== undefined))] : [];
+  // Configuration also applies outside Git; unavailable ancestry uses explicit paths.
+  let main: string | undefined;
+  try { main = checkout ? mainRepoRoot(checkout) : undefined; } catch { main = undefined; }
+  const repoKeys = [...new Set([main, checkout].filter((path): path is string => path !== undefined))];
   const files = [...new Set(repoKeys.flatMap(ancestorFiles))];
   const global = deepMerge(DEFAULTS, readJson(configFile()) ?? {});
   let result = resolveLayer(global, repoKeys);

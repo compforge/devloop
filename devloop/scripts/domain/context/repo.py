@@ -111,7 +111,7 @@ class Branch:
     name: str | None = None
     commit: str = ""               # tip sha
     fork_from: str | None = None   # branch it forked from; recorded by gcampr at cut, else inferred/None
-    path: str = ""                 # worktree path (empty for the non-worktree local / remote views)
+    path: str | None = ""          # None means a registered checkout with unknown location.
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "Branch":
@@ -539,7 +539,7 @@ def _build_topology(repo_dir: str, target: str, prev: BranchTopology | None) -> 
     name = git_state.get_current_branch(repo_dir)
     commit = git_state.get_head_sha(repo_dir)
     fork_from = prev.local.fork_from if (prev is not None and prev.local.name == name) else None
-    worktrees = [Branch(name=b, commit=sha, path=p) for (p, sha, b) in git_state.list_worktrees(repo_dir)]
+    worktrees = [Branch(name=e.branch, commit=e.head, path=e.path) for e in git_state.list_checkouts(repo_dir)]
     topo = BranchTopology(
         local=Branch(name=name, commit=commit, fork_from=fork_from),
         worktrees=worktrees,

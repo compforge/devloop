@@ -52,3 +52,8 @@ workflow 执行，TypeScript 的 Component 只保留验证命令选择。
 
 PR 生命周期清单消费 checkout 清单，保留主工作区与 linked checkout 的区别。已知分支的 checkout
 位置未知时不发布完整清单，避免将独立 Git 元数据目录当成工作区，或将未知位置当成已回收。
+
+仓库上下文、Session owner 清理与 worktree 生命周期统一消费 checkout 语义清单；原始 Git 注册记录
+由工具包解释。未知 checkout 位置保留为未知，读取失败由调用方处理：监控保留旧清单，Board 显示
+未知，Session 结束时继续释放已知位置的 owner，写操作前的必要读取失败则停止流程。
+配置也适用于非 Git 目录，无法观察主仓位置时只使用显式目录的配置层级。

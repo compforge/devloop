@@ -88,7 +88,7 @@ def _reference(reference: ReferenceCard) -> str:
 
 
 def _repo_identity(card: RepoIdentityCard) -> str:
-    worktree = " (worktree)" if card.linked_worktree else ""
+    worktree = " (checkout unknown)" if card.linked_worktree is None else " (worktree)" if card.linked_worktree else ""
     extras: list[str] = []
     if card.protected:
         extras.append("PROTECTED")

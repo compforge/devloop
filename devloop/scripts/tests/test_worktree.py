@@ -204,6 +204,37 @@ def test_prune_old_respects_zero_and_negative_retention():
     assert Path(disabled).is_dir()
 
 
+def test_failed_inventory_read_preserves_monitor_snapshot():
+    from unittest.mock import patch
+    from repocli import git
+    repo, _, _ = _fixture("inventory_read_failure")
+    previous = {"branches": [{"branch": "main"}], "provider": "github", "fetched_at": 1}
+    prstate.persist_local_pull_requests(repo, previous)
+    before = store.load_segment(repo, "local_pull_requests")
+    original = git.git
+    def fail_branches(path, *args, **kwargs):
+        if args[0] in {"for-each-ref", "ls-remote"}:
+            return git.GitResult(-1, "", "injected read failure")
+        return original(path, *args, **kwargs)
+    with patch.object(git, "git", side_effect=fail_branches), patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])):
+        assert prstate.refresh_local_pull_requests(repo) is False
+        assert store.load_segment(repo, "local_pull_requests") == before
+        assert prstate.poll_remote_branches(repo) is None
+
+
+def test_repo_context_topology_uses_checkout_locations():
+    from domain.context.repo import _build_topology
+    repo, _, _ = _fixture("context_checkout_locations")
+    metadata = Path(repo).parent / "metadata"
+    _git(repo, "init", "--separate-git-dir", str(metadata))
+    linked = _add_external_worktree(repo, "context-linked")
+    direct = _build_topology(repo, "main", None)
+    assert next(b.path for b in direct.worktrees if b.name == "main") == str(Path(repo).resolve())
+    observed = _build_topology(linked, "main", None)
+    assert next(b.path for b in observed.worktrees if b.name == "main") is None
+    assert str(metadata) not in [b.path for b in observed.worktrees]
+
+
 def test_local_pr_inventory_never_projects_separate_metadata_as_checkout():
     from unittest.mock import patch
     repo, _, _ = _fixture("separate_metadata_inventory")

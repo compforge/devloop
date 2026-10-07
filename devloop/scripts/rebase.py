@@ -27,7 +27,7 @@ def _run(ns) -> int:
             plan = rebase_flow.abort(repo)
         else:
             plan = rebase_flow.status(repo)
-    except rebase_flow.RebaseError as exc:
+    except (rebase_flow.RebaseError, OSError) as exc:
         print(f"rebase {verb}: {exc}", file=sys.stderr)
         return 1
 

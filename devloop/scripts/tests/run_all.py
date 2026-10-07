@@ -18,6 +18,7 @@ MODULES = [
     "test_forge",
     "test_pr",
     "test_git_ops",
+    "test_staging",
     "test_worktree",
     "test_tasks",
     "test_rebase",

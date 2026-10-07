@@ -125,5 +125,57 @@ def test_uncertain_rebase_retains_transaction_for_inspection():
     assert rebase.load_state(repo) is not None
 
 
+
+def test_linked_rebase_has_independent_transaction_and_abort():
+    repo, _ = _fixture("linked", conflict=True)
+    _git(repo, "checkout", "-q", "main")
+    linked = str(Path(repo).parent / " linked 工作区 ")
+    _git(repo, "worktree", "add", "-q", linked, "feat/rebase")
+    before = _git_out(linked, "rev-parse", "HEAD")
+    rebase.start(linked, "main")
+    assert rebase.load_state(linked) is not None
+    assert rebase.load_state(repo) is None
+    assert rebase.git_state.rebase_in_progress(linked)
+    assert not rebase.git_state.rebase_in_progress(repo)
+    rebase.abort(linked)
+    assert rebase.load_state(linked) is None
+    assert _git_out(linked, "rev-parse", "HEAD") == before
+
+
+def test_continue_and_abort_uncertainty_preserve_lease():
+    from unittest.mock import patch
+    from repocli.git import GitResult
+
+    repo, _ = _fixture("resume_uncertain", conflict=True)
+    rebase.start(repo, "main")
+    state = rebase.load_state(repo)
+    for method, operation in (("continue_rebase", rebase.continue_rebase), ("abort_rebase", rebase.abort)):
+        with patch.object(rebase.operations, method, return_value=GitResult(-1, "", "timeout", uncertain=True)):
+            try:
+                operation(repo)
+                assert False, "an uncertain write must retain the transaction"
+            except rebase.RebaseError as exc:
+                assert "outcome unknown" in str(exc)
+        assert rebase.load_state(repo) == state
+    rebase.abort(repo)
+
+
+def test_rebase_observation_failure_preserves_lease():
+    from unittest.mock import patch
+
+    repo, _ = _fixture("observation_failed", conflict=True)
+    rebase.start(repo, "main")
+    state = rebase.load_state(repo)
+    with patch.object(rebase.git_state, "rebase_in_progress", side_effect=OSError("metadata unreadable")):
+        for operation in (rebase.continue_rebase, rebase.abort, rebase.finish):
+            try:
+                operation(repo)
+                assert False, "unknown rebase state must stop the workflow"
+            except OSError as exc:
+                assert "metadata unreadable" in str(exc)
+            assert rebase.load_state(repo) == state
+    rebase.abort(repo)
+
+
 if __name__ == "__main__":
     run_main(globals())

@@ -62,3 +62,8 @@ PR 生命周期清单消费 checkout 清单，保留主工作区与 linked check
 Board 的 ahead/behind 不可用时显示 `?`，不投影为 0/0。PR 选择跳过缺少身份的候选，但祖先查询
 失败不会当成明确的“非祖先”：监控保留原观察，写入 gate 停止。保护分支、终态分支及 checkout
 owner 规则使用既有 fail_closed 策略，避免必要事实读取失败后被通用 hook 容错路径放行。
+
+Git 元数据路径由 repocli 的 `git_path` / `gitPath` 解析，rebase backend 状态与继续/终止操作也由
+Python 工具包提供。devloop 选择 `devloop-rebase.json` 的文件名并管理 lease、恢复、验证和推送；
+index 的修改时间用于 worktree 活跃度排序，`info/exclude` 中的忽略项也由 devloop 决定。
+排序与本地忽略是 best-effort；rebase 必要状态读取失败则停止操作，保留已有事务供检查。

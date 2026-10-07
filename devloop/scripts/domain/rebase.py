@@ -49,18 +49,10 @@ class RebaseState:
         )
 
 
-def _git_path(repo: str, name: str) -> Path:
-    result = gitcmd.git(repo, "rev-parse", "--git-path", name)
-    if not result.ok or not result.out:
-        raise RebaseError(f"cannot resolve checkout-local Git metadata path: {gitcmd.operation_detail(result)}")
-    path = Path(result.out)
-    return path if path.is_absolute() else Path(repo) / path
-
-
 def _state_path(repo: str) -> Path:
     # `--git-path` resolves inside the linked worktree's own git-dir, so parallel worktrees
     # never share a transaction and detached HEAD during a conflict can still find its state.
-    return _git_path(repo, "devloop-rebase.json")
+    return git_state.git_path(repo, "devloop-rebase.json")
 
 
 def load_state(repo: str) -> RebaseState | None:
@@ -95,10 +87,6 @@ def _clear_state(repo: str) -> None:
         pass
     except OSError as exc:
         raise RebaseError(f"rebase completed but its saved state could not be removed: {exc}") from exc
-
-
-def _in_progress(repo: str) -> bool:
-    return any(_git_path(repo, name).exists() for name in ("rebase-merge", "rebase-apply"))
 
 
 def _require_state(repo: str) -> RebaseState:
@@ -138,7 +126,7 @@ def start(repo: str, target: str | None = None) -> list[str]:
     """
     if load_state(repo) is not None:
         raise RebaseError("a devloop rebase transaction already exists; use status/continue/finish/abort")
-    if _in_progress(repo):
+    if git_state.rebase_in_progress(repo):
         raise RebaseError("Git already has a rebase in progress that devloop did not start")
     _require_clean(repo, "starting rebase")
 
@@ -221,7 +209,7 @@ def start(repo: str, target: str | None = None) -> list[str]:
         plan.append("run relevant tests, then `smart_rebase.sh finish` (no --message needed)")
         _refresh(repo)
         return plan
-    if _in_progress(repo):
+    if git_state.rebase_in_progress(repo):
         detail = (result.err or result.out).splitlines()
         plan.append(f"rebase paused on conflicts: {detail[-1] if detail else 'resolve conflicted files'}")
         plan.append("resolve + git add the files, then run `smart_rebase.sh continue`")
@@ -234,13 +222,13 @@ def start(repo: str, target: str | None = None) -> list[str]:
 
 def continue_rebase(repo: str) -> list[str]:
     state = _require_state(repo)
-    if not _in_progress(repo):
+    if not git_state.rebase_in_progress(repo):
         branch = git_state.get_current_branch(repo)
         if branch == state.branch:
             return ["rebase is already complete", "run relevant tests, then `smart_rebase.sh finish`"]
         raise RebaseError("saved transaction exists, but Git has no rebase in progress on its source branch")
 
-    result = gitcmd.git(repo, "-c", "core.editor=true", "rebase", "--continue", timeout=120)
+    result = operations.continue_rebase(repo, editor="true")
     if result.uncertain:
         raise RebaseError(gitcmd.operation_detail(result))
     if result.ok:
@@ -249,7 +237,7 @@ def continue_rebase(repo: str) -> list[str]:
             f"rebase of {state.branch} onto origin/{state.target} is complete",
             "run relevant tests, then `smart_rebase.sh finish`",
         ]
-    if _in_progress(repo):
+    if git_state.rebase_in_progress(repo):
         detail = (result.err or result.out).splitlines()
         return [
             f"rebase remains paused: {detail[-1] if detail else 'resolve the remaining conflicts'}",
@@ -260,7 +248,7 @@ def continue_rebase(repo: str) -> list[str]:
 
 def finish(repo: str) -> list[str]:
     state = _require_state(repo)
-    if _in_progress(repo):
+    if git_state.rebase_in_progress(repo):
         raise RebaseError("rebase still has unresolved steps; run continue or abort before finish")
     branch = git_state.get_current_branch(repo)
     if branch != state.branch:
@@ -304,12 +292,12 @@ def finish(repo: str) -> list[str]:
 
 def abort(repo: str) -> list[str]:
     state = _require_state(repo)
-    if not _in_progress(repo):
+    if not git_state.rebase_in_progress(repo):
         raise RebaseError(
             f"rebase of {state.branch!r} is already complete; automatic abort is no longer safe. "
             f"Inspect HEAD and the saved start {state.started_head[:9]} before resetting manually"
         )
-    result = gitcmd.git(repo, "rebase", "--abort", timeout=30)
+    result = operations.abort_rebase(repo)
     if not result.ok:
         raise RebaseError(f"git rebase --abort failed: {gitcmd.operation_detail(result)}")
     _clear_state(repo)
@@ -323,7 +311,7 @@ def status(repo: str) -> list[str]:
         return ["no devloop rebase transaction"]
     current = git_state.get_current_branch(repo) or "detached HEAD"
     head = git_state.get_head_sha(repo)
-    phase = "conflict/continue" if _in_progress(repo) else "ready for tests/finish"
+    phase = "conflict/continue" if git_state.rebase_in_progress(repo) else "ready for tests/finish"
     return [
         f"phase={phase} branch={state.branch} target={state.target}",
         f"checkout={current} HEAD={head[:9]}",

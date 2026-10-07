@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { runGit, targetExists } from "@compforge/repocli";
+import { dirname } from "node:path";
+import { gitPath, runGit, targetExists } from "@compforge/repocli";
 export { currentBranch, aheadBehind, workspaceStatus, revParse, headSha, targetExists, refreshRemoteHead, setLocalDefaultHead, isAncestor, upstreamAheadBehind, remoteTips, listCheckouts, checkoutInfo, mainRepoRoot, localBranches, fetchRemote } from "@compforge/repocli";
 export type { WorkspaceStatus, CheckoutEntry } from "@compforge/repocli";
 const PROTECTED_BRANCHES = [/^main$/, /^master$/, /^release$/, /^release.*/, /.*release$/];
@@ -20,10 +20,8 @@ export function localDefaultTarget(repo: string): string {
 }
 
 export function ensureGitExclude(repo: string, pattern = "/.devloop/"): void {
-  const result = runGit(repo, ["rev-parse", "--git-path", "info/exclude"]);
-  if (!result.ok || !result.stdout) return;
-  const path = resolve(repo, result.stdout);
   try {
+    const path = gitPath(repo, "info/exclude");
     mkdirSync(dirname(path), { recursive: true });
     const existing = existsSync(path) ? readFileSync(path, "utf8") : "";
     if (existing.split("\n").some((line) => line.trim() === pattern.trim())) return;

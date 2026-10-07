@@ -87,7 +87,8 @@ def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
     selection = select(repo, files, plan)
     scope, to_add = selection.scope, selection.to_add
 
-    def validate(changes: list[git_index.IndexChange]) -> None:
+    def validate(index: git_index.IndexView) -> None:
+        changes = index.changes
         outside = [e.path for e in changes if scope and not _matches(e.path, scope)]
         if outside:
             raise StagingError(
@@ -99,10 +100,13 @@ def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
         sensitive = [e.path for e in changes if e.new_mode != "000000" and is_sensitive(e.path)]
         if sensitive:
             raise StagingError(f"index contains sensitive paths: {sensitive!r}; index unchanged")
-        # Deleting a gitlink is safe; only links remaining in the proposed index need registration.
-        links = [e.path for e in changes if e.new_mode == "160000"]
+        # why: registration must describe the candidate commit, not an unstaged
+        # manifest. Changing the manifest can also orphan an unchanged gitlink.
+        changed = {e.path for e in changes}
+        links = [e.path for e in index.entries if e.mode == "160000"
+                 and (e.path in changed or ".gitmodules" in changed)]
         if links:
-            registered = set(git_index.registered_submodules(repo))
+            registered = set(index.config_values(".gitmodules", r"^submodule\..*\.path$"))
             unregistered = [p for p in links if p not in registered]
             if unregistered:
                 raise StagingError(f"unregistered gitlink: {unregistered!r}; index unchanged")

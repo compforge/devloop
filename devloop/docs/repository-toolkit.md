@@ -29,7 +29,9 @@ Worktree 的命名、任务/session 归属、复用、清理时机和环境准�
 目录选择先用逐文件 status 展开，再过滤敏感路径；已有暂存的敏感内容新增和修改同样阻止提交。
 已暂存的敏感文件删除允许提交，以便清理误跟踪内容；`git rm --cached` 留在工作区的文件不会被重新加入。
 候选 add 和完整 index 检查通过 repocli 的验证式 stage 完成，拒绝时原有暂存（包括部分 hunk）保持
-原样。只有检查通过才安装 index；之后 commit 失败时，已验证的暂存内容仍保留供检查。
+原样。gitlink 及其注册配置从同一候选 index 读取；修改 `.gitmodules` 时也检查保留的
+gitlink，避免删除注册后留下悬空条目。是否要求注册是 devloop 的提交规则。
+只有检查通过才安装 index；之后 commit 失败时，已验证的暂存内容仍保留供检查。
 保护分支规则、rebase 事务进度和 review window 留在 devloop；库的配置和凭据由 devloop 显式装配。
 
 环境适配器消费 inspect 的工具证据；明确声明的 packageManager 优先，多种冲突线索要求澄清配置。

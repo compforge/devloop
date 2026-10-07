@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from repocli import git, git_index
@@ -37,11 +38,19 @@ def _scope(repo: str, files: list[str]) -> list[str]:
     return paths
 
 
-def _matches(path: str, scope: list[str]) -> bool:
+def _matches(path: str, scope: list[str] | tuple[str, ...]) -> bool:
     return any(s == "." or path == s or path.startswith(s + "/") for s in scope)
 
 
-def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
+@dataclass(frozen=True)
+class Selection:
+    """Literal commit paths shared by validation and staging, plus worktree additions."""
+    scope: tuple[str, ...]
+    paths: tuple[str, ...]
+    to_add: tuple[str, ...]
+
+
+def select(repo: str, files: list[str], plan: list[str] | None = None) -> Selection:
     scope = _scope(repo, files)
     entries = git_index.status_entries(repo)
     for path in scope:
@@ -51,17 +60,32 @@ def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
         if not known and not os.path.lexists(Path(repo) / path):
             raise StagingError(f"--file path does not exist or name a tracked deletion: {path!r}")
 
-    to_add = []
+    paths: list[str] = []
+    to_add: list[str] = []
     for entry in entries:
-        path = entry.path.rstrip("/")  # Git represents an embedded repository with a trailing slash.
+        path = entry.path.rstrip("/")
+        if entry.original_path and entry.index_status == "R":
+            original = entry.original_path
+            if not scope or _matches(original, scope):
+                paths.append(original)
         if scope and not _matches(path, scope):
             continue
         if is_sensitive(path):
-            plan.append(f"skipped sensitive: {path}")
+            if entry.index_status == "D":
+                paths.append(path)
+            elif plan is not None:
+                plan.append(f"skipped sensitive: {path}")
             continue
-        # An index-only deletion/rename is already staged; re-adding a missing path fails.
+        paths.append(path)
+        # Index-only deletions/renames are already staged; do not re-add absent paths.
         if entry.worktree_status != " ":
             to_add.append(path)
+    return Selection(tuple(scope), tuple(dict.fromkeys(paths)), tuple(dict.fromkeys(to_add)))
+
+
+def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
+    selection = select(repo, files, plan)
+    scope, to_add = selection.scope, selection.to_add
 
     def validate(changes: list[git_index.IndexChange]) -> None:
         outside = [e.path for e in changes if scope and not _matches(e.path, scope)]
@@ -85,7 +109,7 @@ def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
 
     # spec: only a validated full index may replace the user's original staging,
     # including partial hunks. Rejecting any candidate never requires reset/rollback.
-    result = git.stage(repo, to_add, validate=validate)
+    result = git.stage(repo, list(to_add), validate=validate)
     if result.ok:
         shown = ", ".join(to_add[:8]) + (" …" if len(to_add) > 8 else "")
         plan.append(f"staged {len(to_add)} file(s): {shown}" if to_add else "validated existing index")

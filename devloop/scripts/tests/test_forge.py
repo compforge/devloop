@@ -403,5 +403,13 @@ def test_resolve_default_branch_ttl():
         R.forge_for_repo = orig
 
 
+
+def test_merge_reminders_are_devloop_policy():
+    from domain.forge import MergeReadiness, blocks_merge
+    assert {state for state in MergeReadiness if blocks_merge(state)} == {
+        MergeReadiness.CONFLICT, MergeReadiness.DISCUSSIONS_UNRESOLVED, MergeReadiness.CI_BLOCKED,
+    }
+
+
 if __name__ == "__main__":
     run_main(globals())

@@ -179,5 +179,85 @@ def test_sensitive_deletion_does_not_exempt_other_sensitive_writes():
             assert_rejected(root, [], "sensitive")
 
 
+def test_validation_and_staging_share_literal_scope_and_sensitive_filter():
+    from types import SimpleNamespace
+    flow = _load_script("commit_flow")
+    for scope in ([" a.py "], ["src"], []):
+        with repository() as root:
+            names = [" a.py ", "src/line\nbreak.py", "src/gone.py"]
+            for name in names:
+                path = root / name
+                path.parent.mkdir(exist_ok=True)
+                path.write_text("base")
+            _git(str(root), "add", "--", *names)
+            _git(str(root), "commit", "-qm", "fixtures")
+            (root / " a.py ").write_text("selected")
+            (root / "a.py").write_text("different file")
+            (root / "src/line\nbreak.py").write_text("changed")
+            (root / "src/gone.py").unlink()
+            (root / "src/.env").write_text("excluded")
+            intent = SimpleNamespace(repo=str(root), files=scope)
+            selected = flow.phase_paths(intent, "pre_commit")
+            flow.stage(str(root), scope, [])
+            assert set(selected) == {c.path for c in staged_changes(root)}
+            if scope == [" a.py "]:
+                assert selected == [" a.py "]
+
+
+def test_validation_retains_staged_rename_and_sensitive_removal():
+    from types import SimpleNamespace
+    flow = _load_script("commit_flow")
+    with repository() as root:
+        (root / ".env").write_text("tracked")
+        _git(str(root), "add", ".env")
+        _git(str(root), "commit", "-qm", "fixture")
+        _git(str(root), "rm", "--cached", ".env")
+        _git(str(root), "mv", "a.py", "renamed.py")
+        expected = {".env", "a.py", "renamed.py"}
+        selected = flow.phase_paths(SimpleNamespace(repo=str(root), files=[]), "pre_commit")
+        assert set(selected) == expected
+        flow.stage(str(root), [], [])
+        assert {c.path for c in staged_changes(root)} == expected
+
+
+def test_branch_carry_preserves_index_and_reports_backup():
+    from domain import branch
+    from domain.context.session import SessionIdentity
+    with repository() as root:
+        (root / "a.py").write_text("staged")
+        _git(str(root), "add", "a.py")
+        (root / "a.py").write_text("working")
+        (root / "untracked").write_text("new")
+        before = _git_out(str(root), "write-tree")
+        result = branch.create(str(root), "next", "HEAD", carry_changes=True,
+                               identity=SessionIdentity("test", ""))
+        assert _git_out(str(root), "write-tree") == before
+        assert (root / "a.py").read_text() == "working"
+        assert (root / "untracked").read_text() == "new"
+        assert result.stash_oid and result.stash_oid in _git_out(str(root), "stash", "list", "--format=%H")
+
+
+def test_branch_checkout_failure_restores_partial_staging():
+    from unittest.mock import patch
+    from domain import branch
+    from domain.context.session import SessionIdentity
+    from repocli.git import GitResult
+    with repository() as root:
+        (root / "a.py").write_text("staged")
+        _git(str(root), "add", "a.py")
+        (root / "a.py").write_text("working")
+        before = _git_out(str(root), "write-tree")
+        with patch("repocli.git.create_branch", return_value=GitResult(1, "", "checkout failed")):
+            try:
+                branch.create(str(root), "next", "HEAD", carry_changes=True,
+                              identity=SessionIdentity("test", ""))
+            except branch.BranchError as exc:
+                assert "checkout failed" in str(exc)
+            else:
+                raise AssertionError("expected failure")
+        assert _git_out(str(root), "write-tree") == before
+        assert (root / "a.py").read_text() == "working"
+
+
 if __name__ == "__main__":
     run_main(globals())

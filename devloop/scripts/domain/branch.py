@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from repocli import git as operations, stash
+
 from lib import git_state, gitcmd
 
 from .context import RepoContext, session
@@ -19,6 +21,7 @@ class CreateResult:
     created: bool
     carried_changes: bool
     fork_from: str | None
+    stash_oid: str | None = None
 
 
 def create(
@@ -81,22 +84,28 @@ def create(
     if not session.acquire(repo, ident.session_id, current or "", harness=ident.harness):
         raise _owner_error(repo, ident)
 
-    stashed = False
+    stash_oid: str | None = None
     switched = False
     uncertain = False
     try:
         if status["dirty"]:
-            stash = gitcmd.git(repo, "stash", "push", "-u", "-m", f"devloop: cutting {name}")
-            uncertain = stash.uncertain
-            if not stash.ok:
-                raise BranchError(f"could not preserve local changes before creating {name!r}: {gitcmd.operation_detail(stash)}")
-            stashed = "No local changes" not in (stash.out + stash.err)
+            saved = stash.save(repo, include_untracked=True, message=f"devloop: cutting {name}")
+            stash_oid = saved.oid
+            uncertain = saved.result.uncertain
+            if not saved.result.ok:
+                raise BranchError(f"could not preserve local changes before creating {name!r}: {gitcmd.operation_detail(saved.result)}")
 
-        checkout = gitcmd.git(repo, "checkout", "-b", name, base)
+        checkout = operations.create_branch(repo, name, base)
         uncertain = checkout.uncertain
         if not checkout.ok:
-            if stashed and not uncertain:
-                gitcmd.git(repo, "stash", "pop")
+            if stash_oid and not uncertain:
+                restored = stash.restore(repo, stash_oid)
+                uncertain = restored.uncertain
+                if not restored.ok:
+                    raise BranchError(
+                        f"could not cut {name!r} off {base}: {gitcmd.operation_detail(checkout)}; "
+                        f"restoring stash {stash_oid} also failed: {gitcmd.operation_detail(restored)}"
+                    )
             raise BranchError(f"could not cut {name!r} off {base}: {gitcmd.operation_detail(checkout)}")
         switched = True
 
@@ -107,22 +116,23 @@ def create(
         RepoContext.refresh_branch(repo).set_fork_from(fork_from)
         session.acquire(repo, ident.session_id, name, harness=ident.harness)
 
-        if stashed:
-            pop = gitcmd.git(repo, "stash", "pop")
-            if pop.uncertain:
-                raise BranchError(gitcmd.operation_detail(pop))
-            if not pop.ok:
+        if stash_oid:
+            restored = stash.restore(repo, stash_oid)
+            if restored.uncertain:
+                raise BranchError(gitcmd.operation_detail(restored))
+            if not restored.ok:
                 raise BranchError(
-                    f"cut {name!r} off {base} but reapplying local changes conflicted: "
-                    f"{pop.err or pop.out}. The changes remain in the working tree and stash; "
-                    "resolve the conflicts, then drop the stash."
+                    f"cut {name!r} off {base} but reapplying local changes failed: "
+                    f"{restored.err or restored.out}. Recovery stash retained: {stash_oid}; "
+                    "inspect the index and working tree before retrying."
                 )
 
         return CreateResult(
             name=name,
             base=base,
             created=True,
-            carried_changes=stashed,
+            carried_changes=stash_oid is not None,
+            stash_oid=stash_oid,
             fork_from=fork_from,
         )
     except BranchError:

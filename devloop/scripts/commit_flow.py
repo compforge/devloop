@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """gcam / gcamp / gcampr orchestrator — the one place the commit→push→MR flow lives.
 
-Routes ALL git through `gitcmd` and ALL code-review hosting through the `lib.forge` facade
-(GitHub / GitLab picked per-repo) — no scattered subprocess/urllib. Skills call this
+Repository operations come from repocli; Forge configuration is assembled by `lib.forge`.
+This workflow owns scope, gates and lifecycle decisions. Skills call this
 (via smart_gcamp.sh / smart_gcampr.sh)
 rather than raw git, so the AI never issues raw `git commit/push` (which the PreToolUse
 guards would otherwise intercept), and the decision logic lives here, not in markdown.
@@ -333,6 +333,8 @@ def prepare_branch(intent: GitIntent, gv: gate.GateView, plan: list[str]) -> Bra
         carried = " (carried over local changes)" if created.carried_changes else ""
         plan.append(f"cut new branch '{created.name}' off {created.base}{carried}")
         plan.append(f"recorded fork_from={created.fork_from}")
+        if created.stash_oid:
+            plan.append(f"restored index and worktree; recovery stash retained: {created.stash_oid}")
         return BranchResult(branch=intent.requested_branch, cut=True)
     if gv.in_flight():
         # continuing onto a branch whose PR is still open — the loop's between-rounds state.
@@ -503,11 +505,8 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
     - `pre_mr` / `post_mr`：整条分支 vs target——MR 承载的是整条分支，不是最后那个 commit。
     """
     if phase == "pre_commit":
-        return (
-            repo_model.changed_paths_in_scope(intent.repo, intent.files)
-            if intent.files
-            else (repo_model.changed_paths(intent.repo) or None)
-        )
+        paths = repo_model.changed_paths_in_scope(intent.repo, intent.files)
+        return paths if intent.files else (paths or None)
     if phase == "post_commit":
         return repo_model.committed_paths(intent.repo)
     if phase in ("pre_mr", "post_mr"):

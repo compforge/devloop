@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from domain.forge import MergeReadiness, pr_label
+from domain.forge import MergeReadiness, blocks_merge, pr_label
 from lib import git_state
 
 from domain.context import base, store
@@ -229,7 +229,7 @@ def _blocked_pr(repo: RepoContext, scope: BoardScope) -> BoardItem | None:
         readiness = MergeReadiness(repo.merge_readiness)
     except ValueError:
         return None
-    if not readiness.blocks_merge:
+    if not blocks_merge(readiness):
         return None
     return BoardItem(
         type=BoardItemType.REPO_PR_BLOCKED,

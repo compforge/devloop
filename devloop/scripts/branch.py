@@ -64,6 +64,8 @@ def main(argv: list[str]) -> int:
         carried = " (carried local changes)" if result.carried_changes else ""
         plan.append(f"cut new branch {result.name!r} off {result.base}{carried}")
         plan.append(f"recorded fork_from={result.fork_from}")
+        if result.stash_oid:
+            plan.append(f"restored index and worktree; recovery stash retained: {result.stash_oid}")
     else:
         plan.append(f"already on branch {result.name!r}; kept existing branch")
     _banner(plan)

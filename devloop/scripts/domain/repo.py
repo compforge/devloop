@@ -31,7 +31,7 @@ from pathlib import Path
 
 from lib import repocli
 
-from . import repo_layout, workspace
+from . import repo_layout, staging, workspace
 from .context import RepoContext, WorkspaceContext
 from .context.session import active_repo_candidates, load_active_repo
 from .context.workspace import workspace_for_repo
@@ -108,35 +108,12 @@ def changed_paths(git_root: str | Path) -> list[str]:
     return _working_paths_or_unknown(git_root) or []
 
 
-def changed_paths_in_scope(
-    git_root: str | Path,
-    scopes: list[str],
-) -> list[str] | None:
-    """展开显式 staging scope，返回其中真实发生改动的仓相对文件。
-
-    `git add -- cli` 接受目录，但 validation 不能把 `cli` 当作一份测试文件。相位边界需要的事实是
-    这次 scope 最终会提交哪些叶子文件，所以在 staging 前用同一 working-tree diff 展开目录。
-    git 查询失败返回 None，让 gate 保守回退全量，而不是拿目录名伪装成精确范围。
-    """
-    changed = _working_paths_or_unknown(git_root)
-    if changed is None:
+def changed_paths_in_scope(git_root: str | Path, scopes: list[str]) -> list[str] | None:
+    """Use the same literal file selection as staging; failed observation is unknown."""
+    try:
+        return list(staging.select(str(git_root), scopes).paths)
+    except (OSError, ValueError, subprocess.SubprocessError, staging.StagingError):
         return None
-    normalized = [scope.strip().rstrip("/") or "." for scope in scopes if scope.strip()]
-    if not normalized:
-        return []
-    selected: list[str] = []
-    for scope in normalized:
-        matches = [
-            path
-            for path in changed
-            if scope == "." or path == scope or path.startswith(f"{scope}/")
-        ]
-        # 没有 working-tree match 时保留显式 scope：调用方可能在测试 phase_paths 的其它相位语义，
-        # 或 git 尚未把目标投影成 diff。保留它会多验证，不能把已知 scope 静默缩成空集合。
-        for path in matches or [scope]:
-            if path not in selected:
-                selected.append(path)
-    return selected
 
 
 def component_fingerprint(git_root: str | Path, component: repo_layout.Component) -> str | None:

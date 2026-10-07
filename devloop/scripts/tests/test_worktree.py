@@ -561,5 +561,29 @@ def test_local_pull_request_refresh_records_only_authoritative_state_changes():
         prstate.forge_for_repo = original_forge
 
 
+def test_failed_scalar_queries_preserve_pr_observation_and_block_gate():
+    from unittest.mock import patch
+    from domain.context import gate
+
+    repo, _, _ = _fixture("scalar_read_failure")
+    previous = {"branch": "main", "pr_number": 31, "prs": [], "fetched_at": 1}
+    prstate.persist_pr(repo, previous)
+    before = store.load_segment(repo, "pr")
+    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])), \
+         patch.object(git_state, "get_current_branch", side_effect=OSError("injected read failure")):
+        assert prstate.refresh_pr(repo) is False
+        assert store.load_segment(repo, "pr") == before
+        try:
+            gate.evaluate(repo)
+        except OSError as exc:
+            assert "injected read failure" in str(exc)
+        else:
+            raise AssertionError("write gate accepted unavailable identity")
+    closed = PullRequest(number=31, state="merged", source_branch="main", sha="missing-object")
+    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([closed])):
+        assert prstate.poll_pr(repo) is None
+        assert prstate.poll_local_pull_requests(repo) is None
+
+
 if __name__ == "__main__":
     run_main(globals())

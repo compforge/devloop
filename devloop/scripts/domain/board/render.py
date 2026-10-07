@@ -116,7 +116,7 @@ def _repo_identity(card: RepoIdentityCard) -> str:
     )
     return (
         f"[Current repo: {card.code_dir} ({card.language or '?'})] | "
-        f"Branch: {card.branch or '?'}{worktree} (ahead {card.ahead}, behind {card.behind} vs "
+        f"Branch: {card.branch or '?'}{worktree} (ahead {card.ahead if card.ahead is not None else '?'}, behind {card.behind if card.behind is not None else '?'} vs "
         f"{card.base_branch}{as_of}, target={card.target_branch}) | Workspace: {workspace}{warning}"
     )
 

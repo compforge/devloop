@@ -64,7 +64,9 @@ def pick_branch_pr(branch_prs: list, repo: str, head_sha: str):
     if opens:
         return opens[0]
     for p in branch_prs:                       # forge.list() returns created desc
-        if git_state.is_ancestor(repo, p.sha, head_sha):
+        # Missing identities cannot establish ownership; failed ancestry reads propagate
+        # so a monitor retains its snapshot and a write gate stops.
+        if p.sha and head_sha and git_state.is_ancestor(repo, p.sha, head_sha):
             return p
     return None
 
@@ -76,13 +78,13 @@ def poll_pr(repo: str) -> dict | None:
     forge = forge_for_repo(repo)
     if forge is None:
         return None
-    branch = git_state.get_current_branch(repo)
-    head = git_state.get_head_sha(repo)
     try:
+        branch = git_state.get_current_branch(repo)
+        head = git_state.get_head_sha(repo)
         branch_pr = pick_branch_pr(forge.prs_for_branch(branch), repo, head) if branch else None
         anchor = branch_pr.number if branch_pr else None
         window = build_window(forge, anchor)
-    except ForgeError:
+    except (ForgeError, OSError):
         return None
     # Readiness is a derived verdict over source×target tips (goes stale when either moves), so we
     # compute it live HERE per poll rather than storing it on each PullRequest — see MergeReadiness.
@@ -201,7 +203,7 @@ def poll_local_pull_requests(repo: str) -> dict | None:
             }
             for branch, head in branches
         ]
-    except ForgeError:
+    except (ForgeError, OSError):
         return None
     return {
         "fetched_at": base.now(),

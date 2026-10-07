@@ -7,7 +7,9 @@ export function isProtectedBranch(branch) {
     return branch !== undefined && PROTECTED_BRANCHES.some((pattern) => pattern.test(branch));
 }
 export function localDefaultTarget(repo) {
-    const result = runGit(repo, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
+    const result = runGit(repo, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
+    if (!result.ok && result.code !== 1)
+        throw new Error(`cannot read default branch reference: ${result.stderr}`);
     const prefix = "refs/remotes/origin/";
     if (result.ok && result.stdout.startsWith(prefix))
         return result.stdout.slice(prefix.length);

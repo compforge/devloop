@@ -175,12 +175,19 @@ def _repo_identity(repo: RepoContext, stale_binding_hours: float | None) -> Repo
     branch = repo.branch
     checkout = repo.repo.real_repo_dir or repo.repo.repo_dir
     base_branch = branch.base_branch()
-    ahead, behind = git_state.get_ahead_behind(checkout, base_branch) or (0, 0)
+    try:
+        divergence = git_state.get_ahead_behind(checkout, base_branch)
+    except OSError:
+        divergence = None
+    ahead, behind = divergence if divergence is not None else (None, None)
     remote = branch.remote_tip(base_branch)
     trunk_moved = False
     if remote and remote.commit:
-        local_mirror = git_state.rev_parse(checkout, f"origin/{base_branch}")
-        trunk_moved = bool(local_mirror and local_mirror != remote.commit)
+        try:
+            local_mirror = git_state.rev_parse(checkout, f"origin/{base_branch}")
+            trunk_moved = local_mirror != remote.commit if local_mirror else None
+        except OSError:
+            trunk_moved = None
     dirty = git_state.get_workspace_status(checkout)
     current_pr = repo.current_pr()
     lifecycle = ""

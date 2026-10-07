@@ -57,3 +57,8 @@ PR 生命周期清单消费 checkout 清单，保留主工作区与 linked check
 由工具包解释。未知 checkout 位置保留为未知，读取失败由调用方处理：监控保留旧清单，Board 显示
 未知，Session 结束时继续释放已知位置的 owner，写操作前的必要读取失败则停止流程。
 配置也适用于非 Git 目录，无法观察主仓位置时只使用显式目录的配置层级。
+
+单值 Git 查询中，detached/unborn、缺失 ref 或 upstream 是正常缺失；执行失败必须保留失败语义。
+Board 的 ahead/behind 不可用时显示 `?`，不投影为 0/0。PR 选择跳过缺少身份的候选，但祖先查询
+失败不会当成明确的“非祖先”：监控保留原观察，写入 gate 停止。保护分支、终态分支及 checkout
+owner 规则使用既有 fail_closed 策略，避免必要事实读取失败后被通用 hook 容错路径放行。

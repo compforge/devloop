@@ -35,9 +35,24 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
             references: references.map((item) => ({ title: item.title, path: item.path, description: item.description })),
         }));
     }
-    const branch = currentBranch(repo) ?? "";
-    const base = localDefaultTarget(repo);
-    const [ahead, behind] = aheadBehind(repo, base) ?? [0, 0];
+    // Display each unavailable observation independently; never turn a failed read into 0/0.
+    let branch;
+    let base = "?";
+    try {
+        branch = currentBranch(repo) ?? "";
+    }
+    catch { /* Identity stays unknown. */ }
+    try {
+        base = localDefaultTarget(repo);
+    }
+    catch { /* Default target stays unknown. */ }
+    let divergence;
+    try {
+        if (base !== "?")
+            divergence = aheadBehind(repo, base);
+    }
+    catch { /* Counts stay unknown. */ }
+    const [ahead, behind] = divergence ?? [null, null];
     const status = workspaceStatus(repo);
     const codeDir = component?.path ?? "";
     let linkedWorktree;
@@ -54,6 +69,9 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
         untrackedCount: status.untrackedCount, protected: isProtectedBranch(branch),
         ...(staleBindingHours === undefined ? {} : { staleBindingHours }),
     }));
+    // An unavailable identity cannot select detached-HEAD or another branch's persisted state.
+    if (branch === undefined)
+        return new Board(root, items);
     const lint = loadSegment(repo, branchSegment(branch || undefined, "lint")) ?? {};
     const test = loadSegment(repo, branchSegment(branch || undefined, "test")) ?? {};
     const componentIds = [...new Set([...Object.keys(lint), ...Object.keys(test)])].sort();

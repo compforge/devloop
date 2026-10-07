@@ -37,7 +37,9 @@ def local_default_target(repo_dir: str | Path) -> str:
     here when it's empty / unavailable. No "release" bias: when origin/HEAD is absent, fall back
     to whichever of main/master exists, else main.
     """
-    r = gitcmd.git(repo_dir, "symbolic-ref", "refs/remotes/origin/HEAD")
+    r = gitcmd.git(repo_dir, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
+    if not r.ok and r.rc != 1:
+        raise OSError(f"cannot read default branch reference: {r.err}")
     if r.ok and r.out.startswith("refs/remotes/origin/"):
         return r.out.split("/", 3)[-1]
     for b in ("main", "master"):

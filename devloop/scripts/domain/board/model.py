@@ -66,11 +66,11 @@ class RepoIdentityCard:
     language: str
     branch: str
     linked_worktree: bool | None
-    ahead: int
-    behind: int
+    ahead: int | None
+    behind: int | None
     base_branch: str
     remote_checked_at: float | None
-    trunk_moved_since_fetch: bool
+    trunk_moved_since_fetch: bool | None
     target_branch: str
     workspace_dirty: bool | None
     modified_count: int

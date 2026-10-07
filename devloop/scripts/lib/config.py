@@ -116,7 +116,7 @@ def load(repo_dir: str | Path | None = None) -> dict:
     workspaces 始终只取全局；不传 repo_dir 时只读取内置默认值和全局配置。
     """
     checkout = os.path.abspath(_expand(str(repo_dir))) if repo_dir else None
-    repo_keys = list(dict.fromkeys((main_repo_root(checkout), checkout))) if checkout else []
+    repo_keys = list(dict.fromkeys(p for p in (main_repo_root(checkout), checkout) if p)) if checkout else []
     files = dict.fromkeys(f for root in repo_keys for f in _ancestor_files(root))
     global_config = _deep_merge(_DEFAULTS, _read_global())
     out = _resolve_layer(global_config, repo_keys)

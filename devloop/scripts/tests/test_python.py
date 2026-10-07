@@ -47,7 +47,7 @@ print(json.dumps(dict(version=version('compforge-repocli'), cwd=os.getcwd(),
             # uv may invoke python on creation and python3 on reuse; the environment is stable.
             assert {k: v for k, v in first.items() if k != 'executable'} == {
                 k: v for k, v in observations[1].items() if k != 'executable'}
-            assert first['version'] == '0.2.0'
+            assert first['version'] == '0.2.1'
             assert Path(first['cwd']).resolve() == target.resolve()
             assert first['args'] == ['space argument', '--flag'] and first['stdin'] == 'payload'
             executable = Path(first['executable'])

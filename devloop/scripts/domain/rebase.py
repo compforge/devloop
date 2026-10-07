@@ -52,7 +52,7 @@ class RebaseState:
 def _git_path(repo: str, name: str) -> Path:
     result = gitcmd.git(repo, "rev-parse", "--git-path", name)
     if not result.ok or not result.out:
-        raise RebaseError(f"cannot resolve checkout-local Git metadata path: {result.err or result.out}")
+        raise RebaseError(f"cannot resolve checkout-local Git metadata path: {gitcmd.operation_detail(result)}")
     path = Path(result.out)
     return path if path.is_absolute() else Path(repo) / path
 
@@ -111,7 +111,7 @@ def _require_state(repo: str) -> RebaseState:
 def _require_clean(repo: str, action: str) -> None:
     result = gitcmd.git(repo, "status", "--porcelain")
     if not result.ok:
-        raise RebaseError(f"cannot inspect the working tree before {action}: {result.err or result.out}")
+        raise RebaseError(f"cannot inspect the working tree before {action}: {gitcmd.operation_detail(result)}")
     if result.out:
         raise RebaseError(
             f"working tree is dirty; commit/stash the listed changes before {action}:\n{result.out}"
@@ -121,7 +121,7 @@ def _require_clean(repo: str, action: str) -> None:
 def _check_branch_name(repo: str, branch: str, label: str) -> None:
     result = gitcmd.git(repo, "check-ref-format", "--branch", branch)
     if not result.ok:
-        raise RebaseError(f"invalid {label} branch {branch!r}: {result.err or result.out}")
+        raise RebaseError(f"invalid {label} branch {branch!r}: {gitcmd.operation_detail(result)}")
 
 
 def _refresh(repo: str) -> None:
@@ -214,6 +214,8 @@ def start(repo: str, target: str | None = None) -> list[str]:
     ]
 
     result = operations.rebase(repo, f"origin/{selected_target}")
+    if result.uncertain:
+        raise RebaseError(gitcmd.operation_detail(result))
     if result.ok:
         plan.append(f"rebased {branch} onto origin/{selected_target}")
         plan.append("run relevant tests, then `smart_rebase.sh finish` (no --message needed)")
@@ -227,7 +229,7 @@ def start(repo: str, target: str | None = None) -> list[str]:
         return plan
 
     _clear_state(repo)
-    raise RebaseError(f"rebase could not start: {result.err or result.out}")
+    raise RebaseError(f"rebase could not start: {gitcmd.operation_detail(result)}")
 
 
 def continue_rebase(repo: str) -> list[str]:
@@ -239,6 +241,8 @@ def continue_rebase(repo: str) -> list[str]:
         raise RebaseError("saved transaction exists, but Git has no rebase in progress on its source branch")
 
     result = gitcmd.git(repo, "-c", "core.editor=true", "rebase", "--continue", timeout=120)
+    if result.uncertain:
+        raise RebaseError(gitcmd.operation_detail(result))
     if result.ok:
         _refresh(repo)
         return [
@@ -251,7 +255,7 @@ def continue_rebase(repo: str) -> list[str]:
             f"rebase remains paused: {detail[-1] if detail else 'resolve the remaining conflicts'}",
             "resolve + git add the files, then run `smart_rebase.sh continue` again",
         ]
-    raise RebaseError(f"rebase --continue failed: {result.err or result.out}")
+    raise RebaseError(f"rebase --continue failed: {gitcmd.operation_detail(result)}")
 
 
 def finish(repo: str) -> list[str]:
@@ -287,7 +291,7 @@ def finish(repo: str) -> list[str]:
     result = operations.push(repo, state.branch, upstream=True, lease=state.remote_sha)
     if not result.ok:
         raise RebaseError(
-            f"lease-protected push failed; transaction retained for inspection: {result.err or result.out}"
+            f"lease-protected push failed; transaction retained for inspection: {gitcmd.operation_detail(result)}"
         )
 
     _clear_state(repo)
@@ -307,7 +311,7 @@ def abort(repo: str) -> list[str]:
         )
     result = gitcmd.git(repo, "rebase", "--abort", timeout=30)
     if not result.ok:
-        raise RebaseError(f"git rebase --abort failed: {result.err or result.out}")
+        raise RebaseError(f"git rebase --abort failed: {gitcmd.operation_detail(result)}")
     _clear_state(repo)
     _refresh(repo)
     return [f"aborted rebase of {state.branch} and cleared its saved lease"]

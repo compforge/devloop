@@ -72,7 +72,7 @@ class RepoIdentityCard:
     remote_checked_at: float | None
     trunk_moved_since_fetch: bool
     target_branch: str
-    workspace_dirty: bool
+    workspace_dirty: bool | None
     modified_count: int
     untracked_count: int
     protected: bool = False

@@ -145,3 +145,22 @@ describe("repository policy inheritance", () => {
     expect(lifecycleConfig(root).pre_commit).toEqual([]);
   });
 });
+
+it("separate metadata shares devloop state across checkouts", async () => {
+  const { stateDirectory } = await import("../domain/context/store.js");
+  const { committedPaths, rangePaths } = await import("../domain/repo.js");
+  expect(stateDirectory(repo)).toBe(join(repo, ".devloop"));
+  const metadata = join(root, "metadata");
+  git(repo, "init", "--separate-git-dir", metadata);
+  const linked = join(root, "linked");
+  git(repo, "worktree", "add", "-qb", "linked", linked);
+  expect(stateDirectory(repo)).toBe(join(metadata, ".devloop"));
+  expect(stateDirectory(linked)).toBe(stateDirectory(repo));
+  const name = "中文 file.py ";
+  writeFileSync(join(repo, name), "pass\n");
+  git(repo, "add", "--", name);
+  git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "unicode");
+  expect(committedPaths(repo)).toEqual([name]);
+  expect(rangePaths(repo, "linked")).toEqual([name]);
+  expect(rangePaths(repo, "missing")).toBeUndefined();
+});

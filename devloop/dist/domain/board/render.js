@@ -29,7 +29,7 @@ export function renderItem(item) {
     if (item.type === "repo.references")
         return ["Repo AGENTS.md references (Read when the task touches these topics):", ...rows(payload.references).map((row) => `  - ${reference(row)}`)].join("\n");
     if (item.type === "repo.identity") {
-        const dirty = payload.workspaceDirty ? `dirty(${number(payload.modifiedCount)} modified, ${number(payload.untrackedCount)} untracked)` : "clean";
+        const dirty = payload.workspaceDirty ? `dirty(${number(payload.modifiedCount)} modified, ${number(payload.untrackedCount)} untracked)` : payload.workspaceDirty === null ? "unknown" : "clean";
         const warnings = [payload.protected ? "PROTECTED" : "", typeof payload.staleBindingHours === "number" ? `repo binding is ${payload.staleBindingHours.toFixed(1)}h old; confirm the repo with cd` : ""].filter(Boolean);
         if (payload.inspectionProblem)
             warnings.push(text(payload.inspectionProblem));

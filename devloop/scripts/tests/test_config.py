@@ -190,5 +190,28 @@ def test_defaults_and_exact_path_override_without_git_identity():
         assert config.lifecycle(root)["pre_commit"] == []
 
 
+def test_separate_git_directory_shares_state_and_remote_identity():
+    from domain.context.store import state_dir
+    from lib.forge import parse_origin
+    from domain.repo import committed_paths, range_paths
+
+    with _repository() as (root, repo):
+        assert state_dir(repo) == repo / ".devloop"
+        metadata = root / "metadata"
+        _git(repo, "init", "--separate-git-dir", str(metadata))
+        linked = root / "linked"
+        _git(repo, "worktree", "add", "-qb", "linked", str(linked))
+        assert state_dir(repo) == state_dir(linked) == metadata / ".devloop"
+        _git(repo, "remote", "add", "origin", "ssh://git@github.com/compforge/example.git")
+        assert parse_origin(repo) == ("github.com", "compforge/example")
+        name = "中文 file.py "
+        (repo / name).write_text("pass\n")
+        _git(repo, "add", "--", name)
+        _git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "unicode")
+        assert committed_paths(repo) == [name]
+        assert range_paths(repo, "linked") == [name]
+        assert range_paths(repo, "missing") is None
+
+
 if __name__ == "__main__":
     run_main(globals())

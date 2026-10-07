@@ -13,11 +13,11 @@ coexist. Cross-provider window *policy* is `build_window` (domain-level), not pe
 """
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from .. import config, gitcmd
+from .. import config
+from repocli.remote import remote
 from domain.forge import (
     Comment,
     Forge,
@@ -38,22 +38,9 @@ from repocli.forge import GitLabForge
 
 
 def parse_origin(repo_dir: str | Path) -> tuple[str, str] | None:
-    """`origin` remote URL → (host, path). None if unresolvable.
-
-    Handles `git@host:group/proj.git` and `https://host/group/proj.git`. `path` keeps the
-    full group/subgroup tail (GitLab) or `owner/repo` (GitHub).
-    """
-    r = gitcmd.git(repo_dir, "remote", "get-url", "origin")
-    if not r.ok or not r.out:
-        return None
-    url = r.out
-    if url.startswith("git@") or ("@" in url and "://" not in url):
-        m = re.match(r"\w+@([^:]+):(.+?)(?:\.git)?$", url)
-    else:
-        m = re.match(r"https?://[^/]*?([^/@]+)/(.+?)(?:\.git)?$", url)
-    if not m:
-        return None
-    return m.group(1), m.group(2)
+    """Configured Git identity; provider and credential policy stay in devloop."""
+    observed = remote(repo_dir)
+    return (observed.host, observed.path) if observed else None
 
 
 def detect_provider(host: str, explicit_type: str | None) -> str:

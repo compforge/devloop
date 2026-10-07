@@ -159,5 +159,18 @@ def test_shared_board_scopes_views_and_receipts_per_repo():
     assert "feat/right" in delivery.deliver(right_view)
 
 
+def test_board_preserves_unknown_workspace_status():
+    from unittest.mock import patch
+    from domain.board import BoardRuntime
+
+    root = "/tmp/dlut_board_unknown"
+    ctx = _repo(root)
+    with patch("domain.board.projection.git_state.get_workspace_status", return_value={
+        "dirty": False, "complete": False, "modified_count": 0, "untracked_count": 0,
+    }):
+        prompt = BoardRuntime.from_facts(root, "unknown", repo=ctx).deliver_prompt()
+    assert "Workspace: unknown" in prompt and "Workspace: clean" not in prompt
+
+
 if __name__ == "__main__":
     run_main(globals())

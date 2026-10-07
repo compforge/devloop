@@ -29,3 +29,19 @@ Worktree 的命名、任务/session 归属、复用、清理时机和环境准�
 
 环境适配器消费 inspect 的工具证据；明确声明的 packageManager 优先，多种冲突线索要求澄清配置。
 适配器仍负责 frozen 安装、环境就绪和项目命令回退，避免把开发执行策略塞入解析工具包。
+
+## 事实缺口与执行结果
+
+Working / commit / range 的改动路径由 repocli 读取，保留原始路径及 rename 两端；devloop 将路径映射
+到本次验证的 Component。范围未知时退回完整验证，不当成空改动。Remote URL 的 host/path 同样来自
+repocli，provider override、API 地址和 token 装配留在 devloop。
+
+Git status 不完整时，Board 展示 unknown，branch create 拒绝依赖 clean 假设继续操作。
+写操作返回 uncertain 时，devloop 明确提示先检查实际 Git 状态再重试；rebase 保留事务，branch create
+不自动 pop stash，也不释放本轮持有的 checkout owner，以免尚未确认结果时继续改变现场。
+
+checkout 与 common Git directory 的关系由 repocli 提供。普通仓库和 linked worktree 的仓库级状态
+共享主 checkout 的 `.devloop`；独立 Git 目录无法反查主 checkout 时，共享 common directory 下的
+`.devloop`。当前 checkout 的 owner 与 commit_msg 仍存放在当前 checkout；子模块独立拥有状态。
+主 checkout 无法确认时，devloop 不推断 `.worktrees` 清理范围。命名、归属、保留期限、终态清理和
+依赖准备都是 devloop 工作流策略，不进入可供 CCR 等应用复用的 repocli lib。

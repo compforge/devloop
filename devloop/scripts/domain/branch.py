@@ -54,6 +54,8 @@ def create(
         )
 
     status = git_state.get_workspace_status(repo)
+    if not status["complete"]:
+        raise BranchError("cannot inspect working tree; branch was not created")
     if status["dirty"] and not carry_changes:
         raise BranchError(
             "working tree is dirty "
@@ -81,18 +83,21 @@ def create(
 
     stashed = False
     switched = False
+    uncertain = False
     try:
         if status["dirty"]:
             stash = gitcmd.git(repo, "stash", "push", "-u", "-m", f"devloop: cutting {name}")
+            uncertain = stash.uncertain
             if not stash.ok:
-                raise BranchError(f"could not preserve local changes before creating {name!r}: {stash.err}")
+                raise BranchError(f"could not preserve local changes before creating {name!r}: {gitcmd.operation_detail(stash)}")
             stashed = "No local changes" not in (stash.out + stash.err)
 
         checkout = gitcmd.git(repo, "checkout", "-b", name, base)
+        uncertain = checkout.uncertain
         if not checkout.ok:
-            if stashed:
+            if stashed and not uncertain:
                 gitcmd.git(repo, "stash", "pop")
-            raise BranchError(f"could not cut {name!r} off {base}: {checkout.err or checkout.out}")
+            raise BranchError(f"could not cut {name!r} off {base}: {gitcmd.operation_detail(checkout)}")
         switched = True
 
         # The checkout has already changed even if stash reapplication conflicts below. Refresh
@@ -104,6 +109,8 @@ def create(
 
         if stashed:
             pop = gitcmd.git(repo, "stash", "pop")
+            if pop.uncertain:
+                raise BranchError(gitcmd.operation_detail(pop))
             if not pop.ok:
                 raise BranchError(
                     f"cut {name!r} off {base} but reapplying local changes conflicted: "
@@ -119,7 +126,7 @@ def create(
             fork_from=fork_from,
         )
     except BranchError:
-        if ident.session_id and not already_mine and not switched:
+        if ident.session_id and not already_mine and not switched and not uncertain:
             session.release(repo, ident.session_id, harness=ident.harness)
         raise
 

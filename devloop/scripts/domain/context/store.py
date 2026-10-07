@@ -28,6 +28,7 @@ import os
 from dataclasses import asdict
 from functools import lru_cache
 from pathlib import Path
+from repocli.git_state import checkout_info
 
 STATE_DIRNAME = ".devloop"
 STATE_FILENAME = "context.json"   # workspace-level state (single owner: the refresh)
@@ -49,39 +50,26 @@ STATE_FILENAME = "context.json"   # workspace-level state (single owner: the ref
 
 
 @lru_cache(maxsize=64)
-def _main_repo_root(root: str) -> Path:
-    """Resolve a working-tree root to the MAIN repo root — pure file parse, no subprocess.
+def _observed_state_root(root: str, marker_identity: tuple[int, int, int]) -> Path:
+    """Reuse topology until this checkout's .git marker changes or is replaced."""
+    info = checkout_info(root)
+    return Path(info.main_root or info.common_dir)
 
-    `.git` is a dir (main checkout) or absent (workspace root / not a repo) → `root` itself.
-    `.git` is a FILE → parse its `gitdir:` line: a linked worktree points into
-    `<main>/.git/worktrees/<name>` → return `<main>`. Anything else (a SUBMODULE points into
-    the superproject's `.git/modules/…` — writing state there would be a data accident) →
-    fall back to `root` itself (local, safe). Cached: the mapping is immutable per process."""
+
+def _state_root(root: str) -> Path:
     p = Path(root)
-    g = p / ".git"
     try:
-        if not g.is_file():
-            return p
-        text = g.read_text(encoding="utf-8", errors="replace")
-    except OSError:
+        marker = (p / ".git").stat()
+    except FileNotFoundError:
         return p
-    for line in text.splitlines():
-        if line.startswith("gitdir:"):
-            gitdir = Path(line[len("gitdir:"):].strip())
-            if not gitdir.is_absolute():
-                gitdir = (p / gitdir).resolve()
-            parts = gitdir.parts
-            #  <main>/.git/worktrees/<name>  →  <main>
-            if len(parts) >= 3 and parts[-3] == ".git" and parts[-2] == "worktrees":
-                return Path(*parts[:-3])
-            break
-    return p
+    # Do not turn a failed query into a different state home. The marker key
+    # invalidates cached topology when Git relocates metadata or repairs a worktree.
+    return _observed_state_root(root, (marker.st_dev, marker.st_ino, marker.st_mtime_ns))
 
 
 def state_dir(root: str | Path) -> Path:
-    """Repo-domain state dir: the MAIN repo's `.devloop` (a linked worktree resolves to its
-    main checkout, so ledgers/segments have ONE home and survive worktree cleanup)."""
-    return _main_repo_root(str(root)) / STATE_DIRNAME
+    """Shared repo state in the verified main checkout, or common metadata directory."""
+    return _state_root(str(root)) / STATE_DIRNAME
 
 
 def worktree_state_dir(root: str | Path) -> Path:

@@ -111,5 +111,19 @@ def test_rebase_abort_restores_branch_and_clears_state():
     assert any("aborted" in line for line in plan)
 
 
+def test_uncertain_rebase_retains_transaction_for_inspection():
+    from unittest.mock import patch
+    from repocli.git import GitResult
+
+    repo, _ = _fixture("uncertain")
+    with patch.object(rebase.operations, "rebase", return_value=GitResult(-1, "", "timeout", uncertain=True)):
+        try:
+            rebase.start(repo, "main")
+            assert False, "timeout must not be reported as a known failure"
+        except rebase.RebaseError as exc:
+            assert "outcome unknown" in str(exc)
+    assert rebase.load_state(repo) is not None
+
+
 if __name__ == "__main__":
     run_main(globals())

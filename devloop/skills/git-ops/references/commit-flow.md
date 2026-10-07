@@ -30,6 +30,9 @@ overwriting human edits.
 - Pass `--target <branch>` only when the destination differs from the repository default.
 - Repeat `--file <path>` when unrelated or untracked files exist; otherwise only tracked modifications
   are staged. Paths are resolved against the repo root. Never use `git add -A`.
+  Explicit paths bound the entire commit: existing staged changes outside that scope cause refusal.
+  Directories are expanded and filtered per file; rejection preserves the original index, including
+  partial staging. Do not clear unrelated staging to make the check pass.
 
 Trust the `PLAN:` banner. On `INACTIVE`, the script performs an authoritative forge refresh and
 reports the matching PR/MR state and SHA; add `--branch` and retry rather than bypassing the script.

@@ -28,7 +28,6 @@ from repocli import git as operations, git_index
 import argparse
 import os
 import re
-import shlex
 import subprocess
 import sys
 from dataclasses import dataclass, replace
@@ -36,7 +35,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from domain import branch as branch_domain, lifecycle, repo as repo_model  # noqa: E402
+from domain import branch as branch_domain, lifecycle, repo as repo_model, staging  # noqa: E402
 from domain.context import RepoContext, gate, prstate, record_active_repo, store
 from domain.forge import Forge, ForgeError, PullRequest, pr_label  # noqa: E402
 from lib import cli, git_state, gitcmd  # noqa: E402
@@ -127,17 +126,6 @@ def decide_branch(
     return ("continue", None)
 
 
-_SENSITIVE_BASENAMES = {".env", ".DS_Store"}
-_SENSITIVE_DIRS = {".idea", ".vscode", "__pycache__", ".devloop"}
-
-
-def _is_sensitive(path: str) -> bool:
-    parts = path.split("/")
-    if parts[-1] in _SENSITIVE_BASENAMES or parts[-1].startswith(".env"):
-        return True
-    return any(p in _SENSITIVE_DIRS for p in parts)
-
-
 def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: list[str]) -> list[str]:
     """Rebase explicit --file entries onto repo-root-relative paths.
 
@@ -156,14 +144,14 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
         rebased: Path | None = None
         if p.is_absolute():
             try:
-                rebased = p.resolve().relative_to(repo_real)
+                rebased = (p.parent.resolve() / p.name).relative_to(repo_real)
             except ValueError:
                 pass   # outside the repo — let git report it
         elif not (repo_real / f).exists():
             cand = Path(invoke_cwd) / f
             if cand.exists():
                 try:
-                    rebased = cand.resolve().relative_to(repo_real)
+                    rebased = (cand.parent.resolve() / cand.name).relative_to(repo_real)
                 except ValueError:
                     pass
             else:
@@ -175,7 +163,7 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
                     deleted = set(git_index.deleted_tracked_paths(repo))
                 if deleted:
                     try:
-                        rel = cand.resolve().relative_to(repo_real)
+                        rel = (cand.parent.resolve() / cand.name).relative_to(repo_real)
                     except ValueError:
                         pass   # invoke_cwd outside the repo — can't form an in-repo path
                     else:
@@ -190,50 +178,10 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
 
 
 def stage(repo: str, files: list[str], plan: list[str]) -> None:
-    if files:
-        # Explicit list still honors the sensitive blocklist (a named dir could pull in
-        # .env/__pycache__; symmetry with implicit staging). Transparent in the PLAN.
-        to_add = []
-        for f in files:
-            if _is_sensitive(f):
-                plan.append(f"skipped sensitive (explicit): {f}")
-                continue
-            to_add.append(f)
-    else:
-        # repocli returns individual literal paths, including untracked children;
-        # selection and sensitive-file policy stay in the workflow.
-        to_add = []
-        for entry in git_index.status_entries(repo):
-            path = entry.path
-            if _is_sensitive(path):
-                plan.append(f"skipped sensitive: {path}")
-                continue
-            to_add.append(path)
-    if to_add:
-        check_operation(operations.stage(repo, to_add))
-    shown = ", ".join(to_add[:8]) + (" …" if len(to_add) > 8 else "")
-    plan.append(f"staged {len(to_add)} file(s): {shown}" if to_add else "nothing to stage")
-    # Safety: refuse an accidental embedded-repo gitlink (mode 160000) in the index.
-    # Exempt paths registered in .gitmodules: bumping a real submodule pointer is a
-    # legit commit (some repos' whole job, e.g. bedbox bumping hostel) — the accident
-    # this guard exists for is an UNregistered nested repo captured by `git add`.
-    changes = git_index.staged_changes(repo)
-    gitlinks, real = [], []
-    for change in changes:
-        (gitlinks if "160000" in (change.old_mode, change.new_mode) else real).append(change.path)
-    if gitlinks:
-        registered = set(git_index.registered_submodules(repo))
-        real += [p for p in gitlinks if p in registered]
-        gitlinks = [p for p in gitlinks if p not in registered]
-    if gitlinks:
-        gitcmd.git(repo, "reset", "-q")
-        # Hand back the safe retry instead of making the caller re-enumerate by hand.
-        retry = "\nRetry with the real files only: " + " ".join(
-            f"--file {shlex.quote(path)}" for path in real
-        ) if real else ""
-        raise SmartError(
-            f"staging captured a submodule/embedded-repo gitlink ({', '.join(gitlinks)}) — unstaged.{retry}"
-        )
+    try:
+        check_operation(staging.stage(repo, files, plan))
+    except staging.StagingError as exc:
+        raise SmartError(str(exc)) from exc
 
 
 _VERSION_BASENAMES = {"pyproject.toml", "package.json", "plugin.json", "VERSION", "version.py", "__version__.py"}

@@ -25,7 +25,7 @@ def test_workflow_entrypoints_are_executable():
 
 
 def test_sensitive_filter():
-    is_sensitive = _load_script("commit_flow")._is_sensitive
+    from domain.staging import is_sensitive
     assert is_sensitive(".env") and is_sensitive("sub/.env.local")
     assert is_sensitive("a/.idea/x") and is_sensitive("pkg/__pycache__/m.pyc")
     assert not is_sensitive("src/main.py") and not is_sensitive("README.md")
@@ -41,7 +41,7 @@ def test_gitlink_guard_exempts_registered_submodule():
     S = f"{R}/sub"; os.makedirs(S)
     _git(S, "init", "-q"); _git(S, "config", "user.email", "t@t.t"); _git(S, "config", "user.name", "t")
     Path(f"{S}/f").write_text("1"); _git(S, "add", "f"); _git(S, "commit", "-qm", "s")
-    # 未注册 → 拦，且 index 已回滚
+    # 未注册 → 拦，且 index 保持原样
     try:
         sgo.stage(R, [], [])
         assert False, "expected SmartError for unregistered gitlink"

@@ -45,3 +45,10 @@ checkout 与 common Git directory 的关系由 repocli 提供。普通仓库和 
 `.devloop`。当前 checkout 的 owner 与 commit_msg 仍存放在当前 checkout；子模块独立拥有状态。
 主 checkout 无法确认时，devloop 不推断 `.worktrees` 清理范围。命名、归属、保留期限、终态清理和
 依赖准备都是 devloop 工作流策略，不进入可供 CCR 等应用复用的 repocli lib。
+
+暂存候选、工作区删除路径、index 前后文件模式和 submodule 注册事实来自 repocli 的结构化查询。
+devloop 按原始路径执行范围与敏感文件策略；读取失败阻止提交，不解释成空改动。环境准备由 Python
+workflow 执行，TypeScript 的 Component 只保留验证命令选择。
+
+PR 生命周期清单消费 checkout 清单，保留主工作区与 linked checkout 的区别。已知分支的 checkout
+位置未知时不发布完整清单，避免将独立 Git 元数据目录当成工作区，或将未知位置当成已回收。

@@ -53,6 +53,49 @@ def test_gitlink_guard_exempts_registered_submodule():
     sgo.stage(R, [], [])
     assert "sub" in _git_out(R, "diff", "--cached", "--name-only").splitlines()
 
+def test_staging_preserves_literal_paths_and_sensitive_policy():
+    from tempfile import TemporaryDirectory
+    from repocli.git_index import staged_changes
+
+    sgo = _load_script("commit_flow")
+    with TemporaryDirectory() as repo:
+        _git(repo, "init", "-q")
+        _git(repo, "config", "user.email", "fixture@example.invalid")
+        _git(repo, "config", "user.name", "Fixture")
+        names = ['line\nbreak.py', ' literal -> 中文.py ', 'quote".py', '[a].py']
+        for name in names:
+            Path(repo, name).write_text("base")
+        Path(repo, "nested").mkdir()
+        Path(repo, "nested/.env").write_text("sensitive")
+        Path(repo, "nested/code.py").write_text("code")
+        plan = []
+        sgo.stage(repo, [], plan)
+        assert {e.path for e in staged_changes(repo)} == {*names, "nested/code.py"}
+        assert any("skipped sensitive: nested/.env" in line for line in plan)
+        _git(repo, "commit", "-qm", "base")
+        # A missing explicit path is resolved against the invocation directory
+        # using tracked deletion facts, without stripping whitespace or escapes.
+        Path(repo, "nested/code.py").unlink()
+        assert sgo.normalize_files(repo, ["code.py"], Path(repo, "nested"), []) == ["nested/code.py"]
+        name = names[0]
+        renamed = 'renamed\nfile.py'
+        _git(repo, "mv", name, renamed)
+        sgo.stage(repo, [], [])
+        assert {e.path for e in staged_changes(repo)} == {name, renamed, "nested/code.py"}
+
+
+def test_failed_git_facts_do_not_become_empty_staging():
+    from tempfile import TemporaryDirectory
+    sgo = _load_script("commit_flow")
+    with TemporaryDirectory() as directory:
+        try:
+            sgo.stage(directory, [], [])
+        except OSError:
+            pass
+        else:
+            raise AssertionError("failed status must not become nothing to stage")
+
+
 def test_decide_branch_is_intent_driven():
     """--branch 一律基于 base(默认 origin/<target>),与当前停在哪条分支无关——避免新 MR
     夹带上一条未合 feature 分支的提交。"""
@@ -279,6 +322,7 @@ def test_normalize_files_rebase():
     R = "/tmp/dlut_nf"
     shutil.rmtree(R, ignore_errors=True)
     os.makedirs(f"{R}/repo/server", exist_ok=True)
+    _git(f"{R}/repo", "init", "-q")
     Path(f"{R}/repo/server/a.py").write_text("x")
     plan: list[str] = []
     assert sgo.normalize_files(f"{R}/repo", [f"{R}/repo/server/a.py"], "/", plan) == ["server/a.py"]

@@ -18,6 +18,7 @@ from repocli.git_state import (
     get_upstream_ahead_behind as get_upstream_ahead_behind,
     ls_remote_tips as ls_remote_tips,
     list_worktrees as list_worktrees,
+    list_checkouts as list_checkouts,
     main_repo_root as main_repo_root,
     list_local_branches as list_local_branches,
     fetch as fetch,

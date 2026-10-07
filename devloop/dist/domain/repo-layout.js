@@ -1,6 +1,5 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
-import { detectEcosystem } from "../lib/ecosystem.js";
 import { inspectRepository, InspectionError } from "../lib/repocli.js";
 import { owner } from "@compforge/repocli";
 import { runGit } from "../lib/process.js";
@@ -42,7 +41,7 @@ export class Component {
     testTarget() { return ["test", "test-ci", "test-local"].find((target) => this.hasTarget(target)); }
     testCommand() {
         const target = this.testTarget();
-        return target ? ["make", target] : detectEcosystem(this.language)?.fallbackTestCommand(this.path);
+        return target ? ["make", target] : this.language === "go" ? ["go", "test", "./..."] : undefined;
     }
     supportsLintFiles() { return this.makefileUses("LINT_FILES"); }
     supportsTestFiles() { return this.makefileUses("TEST_FILES"); }

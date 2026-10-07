@@ -16,7 +16,7 @@ enter repo → 基于 branch 开发 → 按 Component 验证 → commit / push �
 
 **Workspace 是运行上下文，不是 PR/MR 的归属边界**：它可以聚合多个 repo，为项目知识和多 session 协作提供共同根；单仓库模式同样完整支持。跨 repo Requirement 与长期编排由 Baton/reqloop 拥有，devloop 不维护需求状态机。
 
-**目录按 owner 表达这个模型**：TypeScript `domain/` 承载 Workspace / Repo / Component、Board、branch/PR 状态与合法变化；`lib/` 提供 Git、forge、ecosystem、config、parser 等技术能力；`adapters/` 与 `hooks/` 只翻译各 Harness 的事件和输出。skill 调用的 Git/release/validation/review workflow 保留在 `scripts/` 的 Python 子树中，其辅助 `domain/lib/tasks` 也是 script-private，不得被 Harness runtime 依赖或复制 TypeScript Board/policy 语义。
+**目录按 owner 表达这个模型**：TypeScript `domain/` 承载 Workspace / Repo / Component、Board、branch/PR 状态与合法变化；`lib/` 提供 Git、forge、config、parser 等技术能力；`adapters/` 与 `hooks/` 只翻译各 Harness 的事件和输出。skill 调用的 Git/release/validation/review workflow 保留在 `scripts/` 的 Python 子树中，其辅助 `domain/lib/tasks` 也是 script-private，不得被 Harness runtime 依赖或复制 TypeScript Board/policy 语义。
 
 AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.json` 是由 hooks、scripts、monitors 从 git、forge、验证命令和文字源派生的**结构化运行态**。Board 在两者之上组织当前 session 相关的紧凑视图并投递给 prompt。三者共同服务于同一个目标：让 LLM 对 workspace/repo 的作用可控、可观测、可验证。一轮循环的端到端时序见 [`docs/loop.md`](./docs/loop.md)。
 
@@ -55,7 +55,6 @@ devloop/
 │   └── forge.ts                   #   ★Review window 与展示策略；对象来自 repocli
 ├── lib/                            # TypeScript 技术能力：被 domain/adapters 消费
 │   ├── process.ts  git-state.ts   #   ★项目命令与 Git 策略；仓库事实来自 repocli
-│   ├── ecosystem.ts               #   ★消费 Component 语言，选择执行 fallback
 │   └── config.ts  parsers.ts      #   ★配置持久化与文字源解析
 ├── hooks/                          # 共享 policy engine + 进程 hook 入口
 │   ├── hooks.json                 # Claude 事件注册

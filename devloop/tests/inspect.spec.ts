@@ -98,6 +98,29 @@ describe("native repocli organization", () => {
     expect(toolkit.inspect).not.toHaveBeenCalled();
   });
 
+  it("releases known owners when checkout enumeration fails", () => {
+    const { root } = fixture();
+    vi.stubEnv("DEVLOOP_CONFIG_DIR", join(root, "config"));
+    const identity = { sessionId: "cleanup-failure", harness: "codex" } as const;
+    expect(acquireOwner(root, identity, "feature")).toBe(true);
+    vi.mocked(toolkit.listCheckouts).mockImplementationOnce(() => { throw new Error("read failed"); });
+    endSession({ cwd: root, session_id: identity.sessionId }, identity.harness);
+    expect(anyActiveOwner(root)).toBeUndefined();
+  });
+
+  it("excludes separate metadata from session owner cleanup", () => {
+    const { root } = fixture();
+    const metadata = root + "-metadata"; roots.push(metadata);
+    execFileSync("git", ["-C", root, "init", "--separate-git-dir", metadata]);
+    vi.stubEnv("DEVLOOP_CONFIG_DIR", join(root, "config"));
+    const identity = { sessionId: "separate-cleanup", harness: "codex" } as const;
+    expect(acquireOwner(root, identity, "feature")).toBe(true);
+    expect(acquireOwner(metadata, identity, "sentinel")).toBe(true);
+    endSession({ cwd: root, session_id: identity.sessionId }, identity.harness);
+    expect(anyActiveOwner(root)).toBeUndefined();
+    expect(anyActiveOwner(metadata)).toBeDefined();
+  });
+
   it("denies a gate with missing organization and warns for optional policies", async () => {
     const { root, write } = fixture(); write({ components: [{ root: "../escape", name: "bad" }] });
     const context = new PolicyContext(root, { sessionId: "test", harness: "codex" });

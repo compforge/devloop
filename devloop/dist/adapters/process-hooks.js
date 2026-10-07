@@ -7,7 +7,7 @@ import { findContainingWorkspace, maybeRegisterWorkspace } from "../domain/works
 import { BoardRuntime } from "../domain/board/runtime.js";
 import { PromptDelivery } from "../domain/board/delivery.js";
 import { projectBoard } from "../domain/board/projection.js";
-import { currentBranch, listWorktrees } from "../lib/git-state.js";
+import { currentBranch, listCheckouts } from "../lib/git-state.js";
 import { projectTool } from "../hooks/core/project.js";
 import { codexToolFailed } from "./codex.js";
 function string(value) { return typeof value === "string" ? value : ""; }
@@ -159,9 +159,15 @@ export function endSession(payload, harness) {
         if (repo)
             candidates.add(repo);
     }
-    for (const repo of [...candidates])
-        for (const worktree of listWorktrees(repo))
-            candidates.add(worktree.path);
+    for (const repo of [...candidates]) {
+        // One unavailable repository must not prevent releasing the known session owners.
+        try {
+            for (const checkout of listCheckouts(repo))
+                if (checkout.path)
+                    candidates.add(checkout.path);
+        }
+        catch { /* Keep direct and already-known candidates; never invent a checkout path. */ }
+    }
     for (const repo of candidates)
         releaseOwner(repo, identity(payload, harness));
 }

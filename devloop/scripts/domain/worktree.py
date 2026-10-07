@@ -6,7 +6,7 @@ reproducing only the visible ``git worktree add`` step and skipping lifecycle po
 """
 from __future__ import annotations
 from repocli import git as operations
-from repocli.git_state import main_repo_root
+from repocli.git_state import checkout_info
 
 import os
 from enum import Enum
@@ -106,19 +106,15 @@ def _managed(repo_dir: str) -> list[str]:
     External or sibling worktrees created by a human are intentionally excluded and are
     never pruning targets.
     """
-    worktrees = git_state.list_worktrees(repo_dir)
-    if not worktrees:
-        return []
-    main_root = main_repo_root(repo_dir)
+    checkouts = git_state.list_checkouts(repo_dir)
+    main_root = next((entry.path for entry in checkouts if entry.primary), None)
     if main_root is None:
         return []  # Unknown primary checkout cannot establish managed-home ownership.
-    main = Path(main_root).resolve()
+    main = Path(main_root)
     homes = {main / ".worktrees", main / "worktrees"}
-    return [
-        str(Path(path).resolve())
-        for path, _sha, _branch in worktrees[1:]
-        if Path(path).resolve().parent in homes
-    ]
+    return [entry.path for entry in checkouts
+            if not entry.primary and entry.path and Path(entry.path).parent in homes]
+
 
 
 class RemovalOutcome(str, Enum):
@@ -135,7 +131,8 @@ class RemovalOutcome(str, Enum):
 
 def primary(repo_dir: str) -> str:
     """Return the stable primary checkout used to mutate linked-worktree metadata."""
-    return main_repo_root(repo_dir) or str(Path(repo_dir).resolve())
+    info = checkout_info(repo_dir)
+    return info.main_root or info.root
 
 
 def remove_if_safe(
@@ -183,8 +180,8 @@ def remove_finished(repo_dir: str, path: str) -> RemovalOutcome:
     control_repo = primary(repo_dir)
     target = str(Path(path).resolve())
     linked = {
-        str(Path(worktree_path).resolve())
-        for worktree_path, _sha, _branch in git_state.list_worktrees(control_repo)[1:]
+        entry.path for entry in git_state.list_checkouts(control_repo)
+        if not entry.primary and entry.path
     }
     if target not in linked:
         return RemovalOutcome.NOT_MANAGED

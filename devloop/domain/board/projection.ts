@@ -1,4 +1,4 @@
-import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, worktreeMetadata } from "../../lib/git-state.js";
+import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, checkoutInfo } from "../../lib/git-state.js";
 import { findAgentsDocument, defaultComponent, type Component } from "../repo-layout.js";
 import { InspectionError } from "../../lib/repocli.js";
 import { parseReferencesSection } from "../../lib/parsers.js";
@@ -38,9 +38,11 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
   const [ahead, behind] = aheadBehind(repo, base) ?? [0, 0];
   const status = workspaceStatus(repo);
   const codeDir = component?.path ?? "";
+  let linkedWorktree: boolean | null;
+  try { linkedWorktree = checkoutInfo(repo).linked; } catch { linkedWorktree = null; }
   items.push(boardItem("repo.identity", "state", scope, {
     codeDir, repoRoot: repo, language: component?.language ?? "", inspectionProblem, branch,
-    linkedWorktree: worktreeMetadata(repo).linked, ahead, behind, baseBranch: base,
+    linkedWorktree, ahead, behind, baseBranch: base,
     targetBranch: base, workspaceDirty: status.complete ? status.dirty : null, modifiedCount: status.modifiedCount,
     untrackedCount: status.untrackedCount, protected: isProtectedBranch(branch),
     ...(staleBindingHours === undefined ? {} : { staleBindingHours }),

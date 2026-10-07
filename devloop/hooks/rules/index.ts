@@ -8,7 +8,7 @@ import { enclosingComponent, findGitRoot } from "../../domain/repo-layout.js";
 import { componentFingerprint, selectComponents } from "../../domain/repo.js";
 import { workspaces } from "../../lib/config.js";
 import { lifecycleConfig, type JsonObject } from "../../lib/config.js";
-import { currentBranch, listWorktrees } from "../../lib/git-state.js";
+import { currentBranch, listCheckouts } from "../../lib/git-state.js";
 import { runGit } from "../../lib/process.js";
 import { WorkspaceContext } from "../../domain/context/workspace.js";
 import type { Change, CommandTarget, FileChangeTarget, Finding, Target } from "../core/domain.js";
@@ -32,7 +32,10 @@ const worktreeAdd: Rule = {
   check: (target) => {
     const runDirectory = command(target).workingDirectory.path;
     const repo = runDirectory ? findGitRoot(runDirectory) : undefined;
-    const primary = repo ? listWorktrees(repo)[0]?.path ?? repo : "<repo>";
+    let primary = repo ?? "<repo>";
+    // Topology only improves the suggested command; lookup failure cannot waive the rule.
+    try { if (repo) primary = listCheckouts(repo).find(entry => entry.primary)?.path ?? repo; }
+    catch { /* Use the known invocation repository in the guidance. */ }
     return finding("worktree-add", `Direct \`git worktree add\` bypasses devloop lifecycle policy. Use \`python3 "<PLUGIN_ROOT>/scripts/checkout.py" ${basename(primary)} --worktree <tag>\`.`, commandLine(command(target)));
   },
 };

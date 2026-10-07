@@ -65,7 +65,7 @@ class RepoIdentityCard:
     code_dir: str
     language: str
     branch: str
-    linked_worktree: bool
+    linked_worktree: bool | None
     ahead: int
     behind: int
     base_branch: str

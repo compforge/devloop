@@ -188,11 +188,15 @@ def _repo_identity(repo: RepoContext, stale_binding_hours: float | None) -> Repo
         lifecycle = "inactive"
     elif current_pr and current_pr.is_open:
         lifecycle = "in_flight"
+    try:
+        linked = git_state.checkout_info(checkout).linked
+    except OSError:
+        linked = None
     return RepoIdentityCard(
         code_dir=_display_code_dir(repo),
         language=repo.repo.language or "",
         branch=branch.local.name or "",
-        linked_worktree=git_state.is_linked_worktree(repo.repo.real_repo_dir),
+        linked_worktree=linked,
         ahead=ahead,
         behind=behind,
         base_branch=base_branch,

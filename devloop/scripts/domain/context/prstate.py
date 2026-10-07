@@ -263,7 +263,10 @@ def poll_remote_branches(repo: str, branches: tuple[str, ...] = TRUNK_CANDIDATES
     """`git ls-remote` the candidate trunk branches → the `remote_branches` payload, or None
     offline. No object fetch (cheap); the SHAs are the TRUE remote tips — a colleague's push is
     visible here before any local fetch, which is the whole point of polling them."""
-    tips = git_state.ls_remote_tips(repo, *branches)
+    try:
+        tips = git_state.ls_remote_tips(repo, *branches)
+    except OSError:
+        return None
     if not tips:
         return None
     return {

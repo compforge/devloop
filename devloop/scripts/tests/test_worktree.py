@@ -204,6 +204,24 @@ def test_prune_old_respects_zero_and_negative_retention():
     assert Path(disabled).is_dir()
 
 
+def test_local_pr_inventory_never_projects_separate_metadata_as_checkout():
+    from unittest.mock import patch
+    repo, _, _ = _fixture("separate_metadata_inventory")
+    metadata = Path(repo).parent / "metadata"
+    _git(repo, "init", "--separate-git-dir", str(metadata))
+    linked = _add_external_worktree(repo, "separate-linked")
+    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])):
+        payload = prstate.poll_local_pull_requests(repo)
+        assert payload is not None
+        branches = {item["branch"]: item for item in payload["branches"]}
+        assert branches["main"]["checkout"] == {"path": str(Path(repo).resolve()), "kind": "primary"}
+        assert branches["external-separate-linked"]["checkout"]["path"] == str(Path(linked).resolve())
+        # From the linked checkout Git cannot locate the primary checkout.
+        # Do not replace the previous complete lifecycle inventory with a gap.
+        assert prstate.poll_local_pull_requests(linked) is None
+        assert prstate.poll_local_pull_requests(str(metadata.parent)) is None
+
+
 def test_local_pull_request_inventory_joins_primary_and_linked_checkouts():
     repo, _, _ = _fixture("local_pr_inventory")
     managed = _add_worktree(repo, "managed")

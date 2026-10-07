@@ -23,7 +23,7 @@ A fresh-cut branch is then asserted to carry only this run's commit(s) before pu
 mis-based branch is caught at creation rather than at merge. Emits a self-narrating PLAN banner.
 """
 from __future__ import annotations
-from repocli import git as operations
+from repocli import git as operations, git_index
 
 import argparse
 import os
@@ -138,15 +138,6 @@ def _is_sensitive(path: str) -> bool:
     return any(p in _SENSITIVE_DIRS for p in parts)
 
 
-def _deleted_tracked(repo: str) -> set[str]:
-    """Repo-root-relative paths of tracked files missing from the worktree (`ls-files -d`).
-    Non-git dir / any git error → empty set (normalize_files then just passes paths through)."""
-    r = gitcmd.git(repo, "-c", "core.quotepath=false", "ls-files", "-d")
-    if not r.ok:
-        return set()
-    return {line.strip().strip('"') for line in r.out.splitlines() if line.strip()}
-
-
 def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: list[str]) -> list[str]:
     """Rebase explicit --file entries onto repo-root-relative paths.
 
@@ -181,7 +172,7 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
                 # die as a raw pathspec error, failing the whole batch `git add`. Resolve
                 # syntactically and accept only paths git itself reports as deleted-tracked.
                 if deleted is None:
-                    deleted = _deleted_tracked(repo)
+                    deleted = set(git_index.deleted_tracked_paths(repo))
                 if deleted:
                     try:
                         rel = cand.resolve().relative_to(repo_real)
@@ -198,14 +189,6 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
     return out
 
 
-def _registered_submodules(repo: str) -> set[str]:
-    """`.gitmodules` 里注册过的 submodule 路径集合；文件缺失/解析失败 → 空集（即全拦）。"""
-    r = gitcmd.git(repo, "config", "-f", ".gitmodules", "--get-regexp", r"^submodule\..*\.path$")
-    if not r.ok:
-        return set()
-    return {parts[1] for line in r.out.splitlines() if len(parts := line.split(None, 1)) == 2}
-
-
 def stage(repo: str, files: list[str], plan: list[str]) -> None:
     if files:
         # Explicit list still honors the sensitive blocklist (a named dir could pull in
@@ -217,25 +200,11 @@ def stage(repo: str, files: list[str], plan: list[str]) -> None:
                 continue
             to_add.append(f)
     else:
-        # Stage modified + NEW (untracked) files that git isn't ignoring, minus a small
-        # sensitive blocklist. `git add -u` would miss new files (a dev-loop creates them
-        # constantly); `git add -A` is too broad (the guard blocks the AI from it). This is
-        # the controlled middle: `status --porcelain` already excludes ignored files.
-        out = gitcmd.git(repo, "-c", "core.quotepath=false", "status", "--porcelain").out
+        # repocli returns individual literal paths, including untracked children;
+        # selection and sensitive-file policy stay in the workflow.
         to_add = []
-        for line in out.splitlines():
-            # Split status-code from path on whitespace (NOT fixed columns): gitcmd
-            # strips output, which eats the leading space of an unstaged-modified
-            # first line, so column slicing would drop a char.
-            parts = line.split(None, 1)
-            if len(parts) < 2:
-                continue
-            path = parts[1]
-            if " -> " in path:                      # rename: stage the new path
-                path = path.split(" -> ", 1)[1]
-            path = path.strip().strip('"')
-            if not path:
-                continue
+        for entry in git_index.status_entries(repo):
+            path = entry.path
             if _is_sensitive(path):
                 plan.append(f"skipped sensitive: {path}")
                 continue
@@ -248,15 +217,12 @@ def stage(repo: str, files: list[str], plan: list[str]) -> None:
     # Exempt paths registered in .gitmodules: bumping a real submodule pointer is a
     # legit commit (some repos' whole job, e.g. bedbox bumping hostel) — the accident
     # this guard exists for is an UNregistered nested repo captured by `git add`.
-    raw = gitcmd.git(repo, "diff", "--cached", "--raw").out
+    changes = git_index.staged_changes(repo)
     gitlinks, real = [], []
-    for line in raw.splitlines():
-        if "\t" not in line:
-            continue
-        meta, path = line.split("\t", 1)
-        (gitlinks if (meta.startswith(":160000") or " 160000 " in meta) else real).append(path)
+    for change in changes:
+        (gitlinks if "160000" in (change.old_mode, change.new_mode) else real).append(change.path)
     if gitlinks:
-        registered = _registered_submodules(repo)
+        registered = set(git_index.registered_submodules(repo))
         real += [p for p in gitlinks if p in registered]
         gitlinks = [p for p in gitlinks if p not in registered]
     if gitlinks:
@@ -279,7 +245,7 @@ def warn_mixed_version_bump(repo: str, plan: list[str]) -> None:
     files is the 'tangled bump needs a manual discard later' friction — flag it so the
     caller can split with repeatable --file when the bump is unrelated. Amend/release commits
     that intentionally pair them just read past the note."""
-    staged = gitcmd.git(repo, "diff", "--cached", "--name-only").out.splitlines()
+    staged = [change.path for change in git_index.staged_changes(repo)]
     vfiles = [f for f in staged if Path(f).name in _VERSION_BASENAMES]
     others = [f for f in staged if Path(f).name not in _VERSION_BASENAMES]
     if not vfiles or not others:
@@ -435,7 +401,7 @@ def stage_and_commit(intent: GitIntent, plan: list[str]) -> StageResult:
     会各拿一份、且 PLAN 重复报 rebase。"""
     stage(intent.repo, intent.files, plan)
     warn_mixed_version_bump(intent.repo, plan)
-    staged = gitcmd.git(intent.repo, "diff", "--cached", "--name-only").out.strip()
+    staged = git_index.staged_changes(intent.repo)
     if not staged:
         plan.append("nothing staged — skipped commit")
         return StageResult(committed=False)
@@ -689,9 +655,9 @@ def main(argv: list[str]) -> int:
     # 当 `git add` 目标——两处必须是同一份，各自归一必然漂。`GitIntent` 的契约本就是
     # 「resolved ONCE from argv + state」，`files` 此前是唯一一个还生着的字段（原地归一在
     # stage_and_commit 里，gate 比它早跑，压根看不到）。
-    if intent.files:
-        intent = replace(intent, files=normalize_files(intent.repo, intent.files, intent.invoke_cwd, plan))
     try:
+        if intent.files:
+            intent = replace(intent, files=normalize_files(intent.repo, intent.files, intent.invoke_cwd, plan))
         # signal hook（如 review）可配在任意相位（由 config 决定）；每相位的 relay 在它所「裹」的
         # git 动作完成后 detach 起：pre/post_commit 在 commit 后、pre/post_mr 在 publish 后。
         # review 的 MR 评论是机会性的——relay 跑时查到分支有开放 MR 就发，没有就只落 review.json。
@@ -707,7 +673,7 @@ def main(argv: list[str]) -> int:
             post_m = run_lifecycle_gate(intent, "post_mr", plan)   # MR 此刻已建好
             launch_background_relays((pre_m.to_launch if pre_m else []) + post_m.to_launch, intent.repo, plan)
         RepoContext.refresh_branch(intent.repo)
-    except SmartError as e:
+    except (SmartError, OSError) as e:
         _banner(plan)
         print(f"\n✗ {e}", file=sys.stderr)
         return 1

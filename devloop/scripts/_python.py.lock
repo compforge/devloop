@@ -3,18 +3,14 @@ revision = 3
 requires-python = ">=3.11"
 
 [manifest]
-requirements = [{ name = "compforge-repocli", specifier = "==0.2.1" }]
+requirements = [{ name = "compforge-repocli", git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=64b73882b99ee562c0a346d1aa8ca71a22ccc52c" }]
 
 [[package]]
 name = "compforge-repocli"
-version = "0.2.1"
-source = { registry = "https://pypi.org/simple" }
+version = "0.2.3"
+source = { git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=64b73882b99ee562c0a346d1aa8ca71a22ccc52c#64b73882b99ee562c0a346d1aa8ca71a22ccc52c" }
 dependencies = [
     { name = "harness-common" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/46/76/0581d2830bea2d66ed2c4e10a5a15a3d08601e884030794a7ea40a25f6db/compforge_repocli-0.2.1.tar.gz", hash = "sha256:ef2cf2904ea29377d94b7de466b333f7678f62f127ad0e70c21de38e42ec3a9a", size = 65484, upload-time = "2026-10-07T01:47:14.862Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/e0/ff95f79b8b33ef123ab3d35197e43764647a0aea15e93aee2c8251990e55/compforge_repocli-0.2.1-py3-none-any.whl", hash = "sha256:6c9597967680e8c9199dfa1f0eaab86e5744e6c7ad3c90436230abb96cb35ced", size = 40333, upload-time = "2026-10-07T01:47:13.357Z" },
 ]
 
 [[package]]

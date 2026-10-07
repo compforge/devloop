@@ -141,10 +141,10 @@ def refresh_pr(repo: str) -> bool:
 
 
 # ── local_pull_requests.json (all local branches joined to forge state) ──────
-def _checkout_kind(main: Path, path: Path) -> str:
+def _checkout_kind(main: Path | None, path: Path) -> str:
     if path == main:
         return "primary"
-    if path.parent in {main / ".worktrees", main / "worktrees"}:
+    if main is not None and path.parent in {main / ".worktrees", main / "worktrees"}:
         return "managed"
     return "external"
 
@@ -162,18 +162,25 @@ def poll_local_pull_requests(repo: str) -> dict | None:
     partial inventory, because absence from a partial list must never authorize cleanup.
     """
     forge = forge_for_repo(repo)
-    branches = git_state.list_local_branches(repo)
-    worktrees = git_state.list_worktrees(repo)
     if forge is None:
         return None
-    main = Path(worktrees[0][0]).resolve() if worktrees else Path(repo).resolve()
+    try:
+        branches = git_state.list_local_branches(repo)
+        checkouts = git_state.list_checkouts(repo)
+    except OSError:
+        return None
+    # A located Git directory does not locate its checkout. Keep the whole
+    # inventory unknown so reconciliation cannot read that gap as reclaimed.
+    if any(entry.branch and entry.path is None for entry in checkouts):
+        return None
+    main = next((Path(entry.path) for entry in checkouts if entry.primary and entry.path), None)
     checkout_by_branch = {
-        branch: {
-            "path": str(Path(path).resolve()),
-            "kind": _checkout_kind(main, Path(path).resolve()),
+        entry.branch: {
+            "path": entry.path,
+            "kind": _checkout_kind(main, Path(entry.path)),
         }
-        for path, _head, branch in worktrees
-        if branch
+        for entry in checkouts
+        if entry.branch and entry.path is not None
     }
 
     def lookup(item: tuple[str, str]) -> tuple[str, object | None]:

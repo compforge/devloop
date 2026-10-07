@@ -1,19 +1,14 @@
 #!/usr/bin/env node
 
 // hooks/runtime.ts
-import { readFileSync as readFileSync10 } from "node:fs";
+import { readFileSync as readFileSync9 } from "node:fs";
 
 // adapters/process-hooks.ts
 import { basename as basename8, dirname as dirname11, isAbsolute as isAbsolute5, resolve as resolve14 } from "node:path";
 
 // domain/repo-layout.ts
-import { existsSync as existsSync4, readFileSync as readFileSync2, realpathSync as realpathSync3 } from "node:fs";
-import { basename, join as join6, relative, resolve as resolve2 } from "node:path";
-
-// lib/ecosystem.ts
-import { createHash as createHash2 } from "node:crypto";
-import { existsSync as existsSync2, readFileSync, writeFileSync } from "node:fs";
-import { join as join4 } from "node:path";
+import { existsSync as existsSync3, readFileSync, realpathSync as realpathSync3 } from "node:fs";
+import { basename, join as join5, relative, resolve as resolve2 } from "node:path";
 
 // node_modules/@compforge/repocli/dist/inspect.js
 import { realpath as realpath2 } from "node:fs/promises";
@@ -1873,107 +1868,9 @@ async function capture(root, signal, depth) {
   return { checkout: root, digest: `sha256:${digest.digest("hex")}`, fileCount: files.size, complete: issues.length === 0, diagnostics: issues };
 }
 
-// lib/ecosystem.ts
-var BaseEcosystem = class {
-  prepareCommand(_path) {
-    return void 0;
-  }
-  environmentProblem(_path) {
-    return void 0;
-  }
-  markPrepared(_path) {
-  }
-  fallbackTestCommand(_path) {
-    return void 0;
-  }
-};
-var GoEcosystem = class extends BaseEcosystem {
-  name = "go";
-  fallbackTestCommand() {
-    return ["go", "test", "./..."];
-  }
-};
-function hashFiles(path, names) {
-  const hash = createHash2("sha256");
-  for (const name of names) {
-    hash.update(name);
-    hash.update("\0");
-    try {
-      hash.update(readFileSync(join4(path, name)));
-    } catch {
-    }
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
-var NODE_LOCKFILES = [
-  ["pnpm-lock.yaml", ["pnpm", "install", "--frozen-lockfile", "--prefer-offline"]],
-  ["package-lock.json", ["npm", "ci", "--prefer-offline"]],
-  ["yarn.lock", ["yarn", "install", "--immutable"]]
-];
-var NodeEcosystem = class extends BaseEcosystem {
-  name = "node";
-  lockfile(path) {
-    return NODE_LOCKFILES.find(([name]) => existsSync2(join4(path, name)));
-  }
-  prepareCommand(path) {
-    return this.lockfile(path)?.[1];
-  }
-  environmentProblem(path) {
-    const lockfile = this.lockfile(path);
-    const modules = join4(path, "node_modules");
-    if (!existsSync2(modules)) {
-      return lockfile ? "node_modules missing - in-repo worktrees can resolve dependencies from another checkout" : "node_modules missing and no supported lockfile exists - cannot prepare without changing project state";
-    }
-    if (!lockfile) return void 0;
-    const marker = join4(modules, ".devloop-envhash");
-    if (!existsSync2(marker)) return void 0;
-    try {
-      return readFileSync(marker, "utf8").trim() === hashFiles(path, ["package.json", lockfile[0]]) ? void 0 : "package.json or lockfile changed since devloop installed dependencies";
-    } catch (error) {
-      return `cannot read devloop environment fingerprint: ${String(error)}`;
-    }
-  }
-  markPrepared(path) {
-    const lockfile = this.lockfile(path);
-    const modules = join4(path, "node_modules");
-    if (lockfile && existsSync2(modules)) writeFileSync(join4(modules, ".devloop-envhash"), hashFiles(path, ["package.json", lockfile[0]]));
-  }
-};
-var PythonEcosystem = class extends BaseEcosystem {
-  name = "python";
-  isUvManaged(path) {
-    return existsSync2(join4(path, "pyproject.toml")) && existsSync2(join4(path, "uv.lock"));
-  }
-  prepareCommand(path) {
-    return this.isUvManaged(path) ? ["uv", "sync", "--frozen"] : void 0;
-  }
-  environmentProblem(path) {
-    if (!this.isUvManaged(path)) return void 0;
-    const environment = join4(path, ".venv");
-    if (!existsSync2(environment)) return ".venv missing - a stale VIRTUAL_ENV could run another checkout's editable install";
-    const marker = join4(environment, ".devloop-envhash");
-    if (!existsSync2(marker)) return void 0;
-    try {
-      return readFileSync(marker, "utf8").trim() === hashFiles(path, ["pyproject.toml", "uv.lock"]) ? void 0 : "pyproject.toml or uv.lock changed since devloop synced dependencies";
-    } catch (error) {
-      return `cannot read devloop environment fingerprint: ${String(error)}`;
-    }
-  }
-  markPrepared(path) {
-    const environment = join4(path, ".venv");
-    if (this.isUvManaged(path) && existsSync2(environment)) writeFileSync(join4(environment, ".devloop-envhash"), hashFiles(path, ["pyproject.toml", "uv.lock"]));
-  }
-};
-var ECOSYSTEMS = [new PythonEcosystem(), new GoEcosystem(), new NodeEcosystem()];
-function detectEcosystem(language2) {
-  const name = ["javascript", "typescript", "tsx", "jsx"].includes(language2 ?? "") ? "node" : language2;
-  return ECOSYSTEMS.find((ecosystem) => ecosystem.name === name);
-}
-
 // lib/repocli.ts
-import { realpathSync as realpathSync2, existsSync as existsSync3 } from "node:fs";
-import { dirname as dirname3, join as join5, sep } from "node:path";
+import { realpathSync as realpathSync2, existsSync as existsSync2 } from "node:fs";
+import { dirname as dirname3, join as join4, sep } from "node:path";
 var InspectionError = class extends Error {
 };
 async function inspectRepository(repo) {
@@ -1982,8 +1879,8 @@ async function inspectRepository(repo) {
     if (!report.complete || report.diagnostics.length > 0) throw new Error("repository inspection incomplete");
     const checkout = realpathSync2(repo);
     for (const component of report.components) {
-      let ancestor = join5(checkout, component.root);
-      while (!existsSync3(ancestor)) ancestor = dirname3(ancestor);
+      let ancestor = join4(checkout, component.root);
+      while (!existsSync2(ancestor)) ancestor = dirname3(ancestor);
       const resolved = realpathSync2(ancestor);
       if (resolved !== checkout && !resolved.startsWith(checkout + sep)) throw new Error("component root escapes checkout");
     }
@@ -2015,11 +1912,11 @@ var Component = class _Component {
     return new _Component(pathValue, id.startsWith("../") ? path.replaceAll("\\", "/") : id, void 0);
   }
   static fromInfo(root, info) {
-    return new _Component(join6(root, info.root), info.root, info.language, info.name, info.packageTools ?? []);
+    return new _Component(join5(root, info.root), info.root, info.language, info.name, info.packageTools ?? []);
   }
   hasTarget(name, suffix = false) {
     try {
-      const makefile = readFileSync2(join6(this.path, "Makefile"), "utf8");
+      const makefile = readFileSync(join5(this.path, "Makefile"), "utf8");
       const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return new RegExp(`^${escaped}${suffix ? "(-\\w+)?" : ""}\\s*:`, "m").test(makefile);
     } catch {
@@ -2034,7 +1931,7 @@ var Component = class _Component {
   }
   testCommand() {
     const target = this.testTarget();
-    return target ? ["make", target] : detectEcosystem(this.language)?.fallbackTestCommand(this.path);
+    return target ? ["make", target] : this.language === "go" ? ["go", "test", "./..."] : void 0;
   }
   supportsLintFiles() {
     return this.makefileUses("LINT_FILES");
@@ -2044,7 +1941,7 @@ var Component = class _Component {
   }
   makefileUses(variable) {
     try {
-      return new RegExp(`\\$\\(${variable}\\)|\\$\\{${variable}\\}`).test(readFileSync2(join6(this.path, "Makefile"), "utf8"));
+      return new RegExp(`\\$\\(${variable}\\)|\\$\\{${variable}\\}`).test(readFileSync(join5(this.path, "Makefile"), "utf8"));
     } catch {
       return false;
     }
@@ -2096,15 +1993,15 @@ function enclosingComponent(target, catalog) {
   return catalog.owner(target) ?? catalog.default();
 }
 function findAgentsDocument(repo, component) {
-  return [component ? join6(component, "AGENTS.md") : "", join6(repo, "AGENTS.md")].find((path) => path && existsSync4(path));
+  return [component ? join5(component, "AGENTS.md") : "", join5(repo, "AGENTS.md")].find((path) => path && existsSync3(path));
 }
 
 // domain/context/workspace.ts
-import { existsSync as existsSync8, lstatSync, readdirSync, realpathSync as realpathSync4 } from "node:fs";
-import { join as join8, resolve as resolve6 } from "node:path";
+import { existsSync as existsSync7, lstatSync, readdirSync, realpathSync as realpathSync4 } from "node:fs";
+import { join as join7, resolve as resolve6 } from "node:path";
 
 // lib/git-state.ts
-import { appendFileSync, existsSync as existsSync5, mkdirSync, readFileSync as readFileSync3 } from "node:fs";
+import { appendFileSync, existsSync as existsSync4, mkdirSync, readFileSync as readFileSync2 } from "node:fs";
 import { dirname as dirname4, resolve as resolve3 } from "node:path";
 var PROTECTED_BRANCHES = [/^main$/, /^master$/, /^release$/, /^release.*/, /.*release$/];
 function isProtectedBranch(branch) {
@@ -2124,7 +2021,7 @@ function ensureGitExclude(repo, pattern = "/.devloop/") {
   const path = resolve3(repo, result.stdout);
   try {
     mkdirSync(dirname4(path), { recursive: true });
-    const existing = existsSync5(path) ? readFileSync3(path, "utf8") : "";
+    const existing = existsSync4(path) ? readFileSync2(path, "utf8") : "";
     if (existing.split("\n").some((line) => line.trim() === pattern.trim())) return;
     appendFileSync(path, `${existing && !existing.endsWith("\n") ? "\n" : ""}${pattern}
 `, "utf8");
@@ -2133,12 +2030,12 @@ function ensureGitExclude(repo, pattern = "/.devloop/") {
 }
 
 // lib/parsers.ts
-import { existsSync as existsSync6, readFileSync as readFileSync4 } from "node:fs";
+import { existsSync as existsSync5, readFileSync as readFileSync3 } from "node:fs";
 import { basename as basename2, dirname as dirname5, isAbsolute, resolve as resolve4 } from "node:path";
 function read(path) {
-  if (!existsSync6(path)) return void 0;
+  if (!existsSync5(path)) return void 0;
   try {
-    return readFileSync4(path, "utf8");
+    return readFileSync3(path, "utf8");
   } catch {
     return void 0;
   }
@@ -2237,14 +2134,14 @@ function formatTimestamp(timestamp) {
 }
 
 // domain/context/store.ts
-import { appendFileSync as appendFileSync2, existsSync as existsSync7, mkdirSync as mkdirSync2, readFileSync as readFileSync5, renameSync, statSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { dirname as dirname6, join as join7, parse, resolve as resolve5 } from "node:path";
+import { appendFileSync as appendFileSync2, existsSync as existsSync6, mkdirSync as mkdirSync2, readFileSync as readFileSync4, renameSync, statSync, writeFileSync } from "node:fs";
+import { dirname as dirname6, join as join6, parse, resolve as resolve5 } from "node:path";
 var STATE_DIRECTORY_NAME = ".devloop";
 var WORKSPACE_STATE_FILE = "context.json";
 var stateRoots = /* @__PURE__ */ new Map();
 function sharedStateRoot(root) {
-  const path = join7(root, ".git");
-  if (!existsSync7(path)) return root;
+  const path = join6(root, ".git");
+  if (!existsSync6(path)) return root;
   const metadata = statSync(path);
   const marker = `${metadata.dev}:${metadata.ino}:${metadata.mtimeMs}`;
   const cached = stateRoots.get(root);
@@ -2256,33 +2153,33 @@ function sharedStateRoot(root) {
   return home;
 }
 function stateDirectory(root) {
-  return join7(sharedStateRoot(resolve5(root)), STATE_DIRECTORY_NAME);
+  return join6(sharedStateRoot(resolve5(root)), STATE_DIRECTORY_NAME);
 }
 function workingTreeStateDirectory(root) {
-  return join7(resolve5(root), STATE_DIRECTORY_NAME);
+  return join6(resolve5(root), STATE_DIRECTORY_NAME);
 }
 function branchSegment(branch, name) {
   return `branches/${branch ?? "@detached"}/${name}`;
 }
 function workspaceStateFile(root) {
-  return join7(stateDirectory(root), WORKSPACE_STATE_FILE);
+  return join6(stateDirectory(root), WORKSPACE_STATE_FILE);
 }
 function segmentFile(root, name) {
-  return join7(stateDirectory(root), `${name}.json`);
+  return join6(stateDirectory(root), `${name}.json`);
 }
 function atomicWrite(path, data) {
   try {
     mkdirSync2(dirname6(path), { recursive: true });
-    const temporary = join7(dirname6(path), `${parse(path).base}.${process.pid}.tmp`);
-    writeFileSync2(temporary, JSON.stringify(data, null, 2), "utf8");
+    const temporary = join6(dirname6(path), `${parse(path).base}.${process.pid}.tmp`);
+    writeFileSync(temporary, JSON.stringify(data, null, 2), "utf8");
     renameSync(temporary, path);
   } catch {
   }
 }
 function readJson(path) {
-  if (!existsSync7(path)) return void 0;
+  if (!existsSync6(path)) return void 0;
   try {
-    const value = JSON.parse(readFileSync5(path, "utf8"));
+    const value = JSON.parse(readFileSync4(path, "utf8"));
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   } catch {
     return void 0;
@@ -2302,7 +2199,7 @@ function saveSegment(root, name, data) {
 }
 function appendLedger(root, name, record) {
   try {
-    const path = join7(stateDirectory(root), `${name}.jsonl`);
+    const path = join6(stateDirectory(root), `${name}.jsonl`);
     mkdirSync2(dirname6(path), { recursive: true });
     appendFileSync2(path, `${JSON.stringify(record)}
 `, "utf8");
@@ -2313,13 +2210,13 @@ function appendLedger(root, name, record) {
 // domain/context/workspace.ts
 var DISCOVERY_SKIP = /* @__PURE__ */ new Set(["docs", "worktrees", "worktree", "node_modules"]);
 function isGitRepository(path) {
-  return existsSync8(join8(path, ".git"));
+  return existsSync7(join7(path, ".git"));
 }
 function discoverSubprojectNames(root) {
   try {
     return readdirSync(root).filter((name) => {
       if (name.startsWith(".") || DISCOVERY_SKIP.has(name)) return false;
-      const path = join8(root, name);
+      const path = join7(root, name);
       try {
         return (lstatSync(path).isDirectory() || lstatSync(path).isSymbolicLink()) && isGitRepository(path);
       } catch {
@@ -2334,7 +2231,7 @@ function mergeSubprojects(root, declared) {
   const byName = new Map(declared.map((entry) => [entry.name, entry]));
   return discoverSubprojectNames(root).map((name) => {
     const entry = byName.get(name);
-    const path = join8(root, name);
+    const path = join7(root, name);
     let canonical;
     try {
       const real = realpathSync4(path);
@@ -2386,8 +2283,8 @@ var WorkspaceContext = class _WorkspaceContext {
   }
   static refresh(rootValue) {
     const root = resolve6(rootValue);
-    const agentsPath = join8(root, "AGENTS.md");
-    const hasAgents = existsSync8(agentsPath);
+    const agentsPath = join7(root, "AGENTS.md");
+    const hasAgents = existsSync7(agentsPath);
     const context = new _WorkspaceContext(
       root,
       { ...hasAgents ? { path: agentsPath } : {}, references: hasAgents ? parseReferencesSection(agentsPath).map(referenceFrom) : [] },
@@ -2418,7 +2315,7 @@ var WorkspaceContext = class _WorkspaceContext {
       })),
       parsed_at: this.parsedAt
     });
-    if (existsSync8(join8(this.workspaceRoot, ".git"))) ensureGitExclude(this.workspaceRoot);
+    if (existsSync7(join7(this.workspaceRoot, ".git"))) ensureGitExclude(this.workspaceRoot);
   }
   isStale(ttl = WORKSPACE_STALE_SECONDS) {
     return stale(this.parsedAt || void 0, ttl);
@@ -2426,8 +2323,8 @@ var WorkspaceContext = class _WorkspaceContext {
 };
 
 // domain/context/session.ts
-import { closeSync, existsSync as existsSync9, mkdirSync as mkdirSync3, openSync, readFileSync as readFileSync6, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync2, unlinkSync, writeFileSync as writeFileSync3 } from "node:fs";
-import { basename as basename3, dirname as dirname7, join as join9, resolve as resolve7 } from "node:path";
+import { closeSync, existsSync as existsSync8, mkdirSync as mkdirSync3, openSync, readFileSync as readFileSync5, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync2, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { basename as basename3, dirname as dirname7, join as join8, resolve as resolve7 } from "node:path";
 var OWNER_TTL_SECONDS = 1800;
 function identityFromEnvironment() {
   const codex = process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID;
@@ -2439,14 +2336,14 @@ function safeHarness(harness) {
   return harness.trim().toLowerCase().replace(/[^A-Za-z0-9._-]/g, "-") || "unknown";
 }
 function lockFile(repo) {
-  return join9(workingTreeStateDirectory(repo), "owner.lock");
+  return join8(workingTreeStateDirectory(repo), "owner.lock");
 }
 function legacyLockFile(repo, harness) {
-  return join9(workingTreeStateDirectory(repo), `${safeHarness(harness)}.owner.lock`);
+  return join8(workingTreeStateDirectory(repo), `${safeHarness(harness)}.owner.lock`);
 }
 function readOwnerFile(path) {
   try {
-    const value = JSON.parse(readFileSync6(path, "utf8"));
+    const value = JSON.parse(readFileSync5(path, "utf8"));
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   } catch {
     return void 0;
@@ -2477,7 +2374,7 @@ function anyActiveOwner(repo, at = now()) {
   try {
     for (const name of readdirSync2(workingTreeStateDirectory(repo))) {
       if (!name.endsWith(".owner.lock")) continue;
-      const owner2 = readOwnerFile(join9(workingTreeStateDirectory(repo), name));
+      const owner2 = readOwnerFile(join8(workingTreeStateDirectory(repo), name));
       if (active(owner2, at)) return owner2;
     }
   } catch {
@@ -2493,7 +2390,7 @@ function acquireOwner(repo, identity2, branch = currentBranch(repo) ?? "", at = 
   if (owner2?.session_id === identity2.sessionId && owner2.harness === harness) {
     try {
       const temporary = `${path}.${process.pid}.tmp`;
-      writeFileSync3(temporary, JSON.stringify(record));
+      writeFileSync2(temporary, JSON.stringify(record));
       renameSync2(temporary, path);
       try {
         unlinkSync(legacyLockFile(repo, harness));
@@ -2507,11 +2404,11 @@ function acquireOwner(repo, identity2, branch = currentBranch(repo) ?? "", at = 
   try {
     ensureGitExclude(repo);
     mkdirSync3(workingTreeStateDirectory(repo), { recursive: true });
-    if (existsSync9(path)) unlinkSync(path);
+    if (existsSync8(path)) unlinkSync(path);
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const descriptor = openSync(path, "wx", 420);
-        writeFileSync3(descriptor, JSON.stringify(record));
+        writeFileSync2(descriptor, JSON.stringify(record));
         closeSync(descriptor);
         return true;
       } catch (error) {
@@ -2561,14 +2458,14 @@ function sessionName(sessionId2) {
   return (sessionId2 ?? identityFromEnvironment().sessionId).replace(/[^A-Za-z0-9._-]/g, "-") || "anon";
 }
 function activeRepoFile(workspaceRoot2, sessionId2) {
-  return join9(stateDirectory(workspaceRoot2), "active", `${sessionName(sessionId2)}.json`);
+  return join8(stateDirectory(workspaceRoot2), "active", `${sessionName(sessionId2)}.json`);
 }
 function activeBinding(path, enforceTtl) {
   try {
-    const value = JSON.parse(readFileSync6(path, "utf8"));
+    const value = JSON.parse(readFileSync5(path, "utf8"));
     if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
     const row = value;
-    if (typeof row.repo_dir !== "string" || !existsSync9(row.repo_dir)) return void 0;
+    if (typeof row.repo_dir !== "string" || !existsSync8(row.repo_dir)) return void 0;
     const timestamp = typeof row.ts === "number" ? row.ts : statSync2(path).mtimeMs / 1e3;
     const age = Math.max(0, now() - timestamp);
     return enforceTtl && age >= ACTIVE_REPO_TTL_SECONDS ? void 0 : { repo: row.repo_dir, age };
@@ -2581,7 +2478,7 @@ function recordActiveRepo(workspaceRoot2, repo, sessionId2) {
   try {
     mkdirSync3(dirname7(path), { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync3(temporary, JSON.stringify({ repo_dir: resolve7(repo), ts: now() }));
+    writeFileSync2(temporary, JSON.stringify({ repo_dir: resolve7(repo), ts: now() }));
     renameSync2(temporary, path);
   } catch {
   }
@@ -2603,22 +2500,22 @@ function recordSessionEvent(repo, sessionId2, kind, fields = {}) {
 }
 
 // domain/context/tool-calls.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync4, readFileSync as readFileSync7, renameSync as renameSync3, statSync as statSync3, utimesSync, writeFileSync as writeFileSync4 } from "node:fs";
-import { join as join10 } from "node:path";
+import { existsSync as existsSync9, mkdirSync as mkdirSync4, readFileSync as readFileSync6, renameSync as renameSync3, statSync as statSync3, utimesSync, writeFileSync as writeFileSync3 } from "node:fs";
+import { join as join9 } from "node:path";
 var TOOL_CALL_SCHEMA = "devloop.tool-call/v1";
 var FILE_NAME = "tool-calls.jsonl";
 var WINDOW_SECONDS = 3600;
 var COMPACT_INTERVAL_SECONDS = 60;
 function appendToolCall(root, record, at = Date.now() / 1e3) {
   const directory = stateDirectory(root);
-  const path = join10(directory, FILE_NAME);
-  const marker = join10(directory, "tool-calls.compact");
+  const path = join9(directory, FILE_NAME);
+  const marker = join9(directory, "tool-calls.compact");
   try {
     mkdirSync4(directory, { recursive: true });
-    const due = !existsSync10(marker) || at - statSync3(marker).mtimeMs / 1e3 >= COMPACT_INTERVAL_SECONDS;
+    const due = !existsSync9(marker) || at - statSync3(marker).mtimeMs / 1e3 >= COMPACT_INTERVAL_SECONDS;
     if (due) {
       compact(path, at - WINDOW_SECONDS);
-      writeFileSync4(marker, "", { flag: "a" });
+      writeFileSync3(marker, "", { flag: "a" });
       utimesSync(marker, at, at);
     }
     appendLedger(root, "tool-calls", record);
@@ -2628,7 +2525,7 @@ function appendToolCall(root, record, at = Date.now() / 1e3) {
 function toolCallStartedAt(root, callId, at = Date.now() / 1e3) {
   if (!callId) return void 0;
   try {
-    const rows2 = readFileSync7(join10(stateDirectory(root), FILE_NAME), "utf8").trimEnd().split("\n").reverse();
+    const rows2 = readFileSync6(join9(stateDirectory(root), FILE_NAME), "utf8").trimEnd().split("\n").reverse();
     for (const row of rows2) {
       let value;
       try {
@@ -2647,9 +2544,9 @@ function toolCallStartedAt(root, callId, at = Date.now() / 1e3) {
   return void 0;
 }
 function compact(path, cutoff) {
-  if (!existsSync10(path)) return;
+  if (!existsSync9(path)) return;
   try {
-    const retained = readFileSync7(path, "utf8").split("\n").flatMap((line) => {
+    const retained = readFileSync6(path, "utf8").split("\n").flatMap((line) => {
       try {
         const record = JSON.parse(line);
         return record !== null && typeof record === "object" && !Array.isArray(record) && typeof record.ts === "number" && record.ts >= cutoff ? [JSON.stringify(record)] : [];
@@ -2658,7 +2555,7 @@ function compact(path, cutoff) {
       }
     });
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync4(temporary, retained.map((line) => `${line}
+    writeFileSync3(temporary, retained.map((line) => `${line}
 `).join(""), "utf8");
     renameSync3(temporary, path);
   } catch {
@@ -2666,14 +2563,14 @@ function compact(path, cutoff) {
 }
 
 // domain/workspace.ts
-import { existsSync as existsSync12, statSync as statSync4 } from "node:fs";
+import { existsSync as existsSync11, statSync as statSync4 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { join as join12, resolve as resolve9 } from "node:path";
+import { join as join11, resolve as resolve9 } from "node:path";
 
 // lib/config.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync5, readFileSync as readFileSync8, renameSync as renameSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync4, writeFileSync as writeFileSync4 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname as dirname8, isAbsolute as isAbsolute2, join as join11, resolve as resolve8 } from "node:path";
+import { dirname as dirname8, isAbsolute as isAbsolute2, join as join10, resolve as resolve8 } from "node:path";
 var DEFAULTS = {
   workspaces: [],
   forges: {},
@@ -2692,15 +2589,15 @@ function object2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 function expandPath(value) {
-  let expanded = value.startsWith("~") ? join11(homedir(), value.slice(1)) : value;
+  let expanded = value.startsWith("~") ? join10(homedir(), value.slice(1)) : value;
   expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, braced, bare) => process.env[braced || bare] ?? "");
   return expanded;
 }
 function configDirectory() {
-  return process.env.DEVLOOP_CONFIG_DIR ? expandPath(process.env.DEVLOOP_CONFIG_DIR) : join11(homedir(), ".devloop");
+  return process.env.DEVLOOP_CONFIG_DIR ? expandPath(process.env.DEVLOOP_CONFIG_DIR) : join10(homedir(), ".devloop");
 }
 function configFile() {
-  return join11(configDirectory(), "config.json");
+  return join10(configDirectory(), "config.json");
 }
 function deepMerge(base, override) {
   const result = { ...base };
@@ -2711,9 +2608,9 @@ function deepMerge(base, override) {
   return result;
 }
 function readJson2(path) {
-  if (!existsSync11(path)) return void 0;
+  if (!existsSync10(path)) return void 0;
   try {
-    const parsed = JSON.parse(readFileSync8(path, "utf8"));
+    const parsed = JSON.parse(readFileSync7(path, "utf8"));
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
   } catch {
     return void 0;
@@ -2725,8 +2622,8 @@ function ancestorFiles(root) {
   const found = [];
   let current = root;
   while (true) {
-    const candidate = join11(current, ".devloop", "config.json");
-    if (resolve8(candidate) !== global && existsSync11(candidate)) found.push(candidate);
+    const candidate = join10(current, ".devloop", "config.json");
+    if (resolve8(candidate) !== global && existsSync10(candidate)) found.push(candidate);
     if (current === home || current === dirname8(current)) break;
     current = dirname8(current);
   }
@@ -2757,7 +2654,7 @@ function saveConfig(data) {
   const path = configFile();
   mkdirSync5(dirname8(path), { recursive: true });
   const temporary = `${path}.tmp`;
-  writeFileSync5(temporary, `${JSON.stringify(data, null, 2)}
+  writeFileSync4(temporary, `${JSON.stringify(data, null, 2)}
 `, "utf8");
   renameSync4(temporary, path);
 }
@@ -2787,8 +2684,8 @@ function architectureConfig(repo) {
 function reserved(path) {
   const root = resolve9(path);
   return [
-    process.env.CODEX_HOME ?? join12(homedir2(), ".codex"),
-    process.env.CLAUDE_HOME ?? join12(homedir2(), ".claude")
+    process.env.CODEX_HOME ?? join11(homedir2(), ".codex"),
+    process.env.CLAUDE_HOME ?? join11(homedir2(), ".claude")
   ].some((candidate) => resolve9(expandPath(candidate)) === root);
 }
 function registeredWorkspaces() {
@@ -2802,9 +2699,9 @@ function registerWorkspace(path) {
 }
 function maybeRegisterWorkspace(path) {
   const root = resolve9(path);
-  if (reserved(root) || !existsSync12(root) || !statSync4(root).isDirectory() || existsSync12(join12(root, ".git"))) return void 0;
-  const agents = join12(root, "AGENTS.md");
-  if (!existsSync12(agents)) return void 0;
+  if (reserved(root) || !existsSync11(root) || !statSync4(root).isDirectory() || existsSync11(join11(root, ".git"))) return void 0;
+  const agents = join11(root, "AGENTS.md");
+  if (!existsSync11(agents)) return void 0;
   if (discoverSubprojectNames(root).length === 0 && parseSubprojectsSection(agents).length === 0) return void 0;
   registerWorkspace(root);
   return root;
@@ -2972,7 +2869,7 @@ function number2(value) {
 }
 
 // domain/board/model.ts
-import { createHash as createHash3 } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (value !== null && typeof value === "object") {
@@ -2989,7 +2886,7 @@ function boardItem(type, kind, scope, payload) {
     kind,
     scope,
     payload,
-    signature: createHash3("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
+    signature: createHash2("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
   };
 }
 var BoardView = class _BoardView {
@@ -3495,8 +3392,8 @@ var PolicyContext = class _PolicyContext {
 };
 
 // hooks/rules/index.ts
-import { existsSync as existsSync13, readFileSync as readFileSync9 } from "node:fs";
-import { basename as basename7, dirname as dirname10, extname, join as join14, resolve as resolve13 } from "node:path";
+import { existsSync as existsSync12, readFileSync as readFileSync8 } from "node:fs";
+import { basename as basename7, dirname as dirname10, extname, join as join13, resolve as resolve13 } from "node:path";
 
 // domain/forge.ts
 function pullRequestInactive(pr) {
@@ -3551,7 +3448,7 @@ function evaluateGate(repo) {
 
 // domain/repo.ts
 import { realpathSync as realpathSync5 } from "node:fs";
-import { basename as basename6, join as join13, resolve as resolve12 } from "node:path";
+import { basename as basename6, join as join12, resolve as resolve12 } from "node:path";
 function workingPaths(root) {
   try {
     return changedPaths(root);
@@ -3565,7 +3462,7 @@ function changedPaths2(root) {
 function projectComponents(changed, catalog) {
   const byId = /* @__PURE__ */ new Map();
   for (const path of changed) {
-    const owner2 = catalog.owner(join13(catalog.root, path));
+    const owner2 = catalog.owner(join12(catalog.root, path));
     if (owner2) byId.set(owner2.id, owner2);
   }
   return [...byId.values()];
@@ -3692,7 +3589,7 @@ var pipInstall = {
     const repo = runDirectory ? findGitRoot(runDirectory) : void 0;
     if (!repo) return [];
     const component = enclosingComponent(runDirectory, await context.catalog(repo)).path;
-    if (!existsSync13(join14(component, "pyproject.toml")) || !existsSync13(join14(component, "uv.lock"))) return [];
+    if (!existsSync12(join13(component, "pyproject.toml")) || !existsSync12(join13(component, "uv.lock"))) return [];
     return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
   }
 };
@@ -3781,7 +3678,7 @@ var requirementsEdit = {
     const path = context.anchorPath || file(target).path;
     if (basename7(path) !== "requirements.txt") return [];
     const parent = dirname10(path);
-    return existsSync13(join14(parent, "pyproject.toml")) || existsSync13(join14(dirname10(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
+    return existsSync12(join13(parent, "pyproject.toml")) || existsSync12(join13(dirname10(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
   }
 };
 function stringArray(value) {
@@ -3824,7 +3721,7 @@ function resultingText(target) {
   if (typeof input.file_text === "string") return input.file_text;
   let current;
   try {
-    current = readFileSync9(target.path, "utf8");
+    current = readFileSync8(target.path, "utf8");
   } catch {
     current = "";
   }
@@ -4111,7 +4008,7 @@ var claudeProcessAdapter = {
 // hooks/runtime.ts
 function readPayload() {
   try {
-    const parsed = JSON.parse(readFileSync10(0, "utf8") || "{}");
+    const parsed = JSON.parse(readFileSync9(0, "utf8") || "{}");
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};

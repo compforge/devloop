@@ -41,7 +41,7 @@ export class Component {
     testTarget() { return ["test", "test-ci", "test-local"].find((target) => this.hasTarget(target)); }
     testCommand() {
         const target = this.testTarget();
-        return target ? ["make", target] : this.language === "go" ? ["go", "test", "./..."] : undefined;
+        return target ? ["make", target] : undefined;
     }
     supportsLintFiles() { return this.makefileUses("LINT_FILES"); }
     supportsTestFiles() { return this.makefileUses("TEST_FILES"); }

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from repocli import InspectReport
 
-from lib import ecosystem, gitcmd, repocli
+from lib import gitcmd, repocli
 
 
 @dataclass(frozen=True)
@@ -74,14 +74,9 @@ class Component:
         return None
 
     def test_command(self) -> tuple[str, ...] | None:
-        """本 component 的 canonical test 命令。Makefile target 优先；无 Makefile 时回落所属
-        生态的 canonical 命令（如 Go 的 `go test ./...`），避免多 component 仓已正确识别的
-        component 因没有 Makefile 被误跳过。"""
+        """只执行项目声明的测试入口；缺少入口由 validation 提示，不猜测生态命令。"""
         target = self.test_target()
-        if target is not None:
-            return ("make", target)
-        eco = ecosystem.detect(self.path, self.language)
-        return eco.fallback_test_command(self.path) if eco else None
+        return ("make", target) if target is not None else None
 
     def supports_lint_files(self) -> bool:
         """项目显式采用 LINT_FILES 契约：fix 和 lint 均支持调用方指定的文件范围。"""

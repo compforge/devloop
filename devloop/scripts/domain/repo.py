@@ -22,14 +22,14 @@ same thing everywhere.
 """
 from __future__ import annotations
 from repocli import snapshot
-from repocli.git import changed_paths as toolkit_changed_paths
+from repocli.git import changed_paths as toolkit_changed_paths, committed_paths as toolkit_committed_paths, range_paths as toolkit_range_paths
 
 import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from lib import repocli, gitcmd
+from lib import repocli
 
 from . import repo_layout, workspace
 from .context import RepoContext, WorkspaceContext
@@ -149,36 +149,20 @@ def component_fingerprint(git_root: str | Path, component: repo_layout.Component
 
 
 
-def _paths_or_unknown(r) -> list[str] | None:
-    """git 结果 → 「本次改动」的路径列表，**算不出时是 `None` 不是 `[]`**。
-
-    `gitcmd` 是 failure-safe 的（rc≠0 不抛），所以「命令失败」和「确实没有改动」的原始输出长得
-    一模一样。但下游把这两者当两回事：`[]` = 知道且为空 → 0 个 component → 干净跳过验证；`None` =
-    不知道 → 回落全跑。把失败读成 `[]`，就等于 `origin/<target>` 没 fetch 时**静默跳过整个 lint
-    gate**——gate 上的 fail-open 是最不能有的方向。故失败一律降级成「不知道」。"""
-    if not r.ok:
-        return None
-    return [p.strip() for p in r.out.splitlines() if p.strip()]
-
-
 def committed_paths(git_root: str | Path, rev: str = "HEAD") -> list[str] | None:
-    """`rev` 这个 commit 自身改了哪些文件（仓相对）。commit 已落地、工作树已干净后的「本次改动」。
-    算不出 → `None`（见 `_paths_or_unknown`）。
-
-    用 `diff-tree -r --root`：**根 commit（无父）也能答**，而 `diff HEAD~1 HEAD` 在仓库第一个
-    commit 上直接失败。"""
-    return _paths_or_unknown(
-        gitcmd.git(git_root, "diff-tree", "--no-commit-id", "--name-only", "-r", "--root", rev))
+    """One commit's paths; unknown falls back to repo-wide validation."""
+    try:
+        return toolkit_committed_paths(git_root, rev)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
 
 
 def range_paths(git_root: str | Path, base: str, head: str = "HEAD") -> list[str] | None:
-    """`base`..`head` 这条分支相对基线改了哪些文件（仓相对）——整条分支的「本次改动」，
-    pre_mr / post_mr 的答案（MR 承载的是整条分支，不是最后那个 commit）。
-    算不出（如 `origin/<target>` 尚未 fetch）→ `None`（见 `_paths_or_unknown`）。
-
-    用三点 `base...head`：与 fork point 比，而不是与 base 的当前 tip 比——否则 base 在你开发
-    期间前进过，别人的提交会被算成你的改动，凭空扩大验证范围。"""
-    return _paths_or_unknown(gitcmd.git(git_root, "diff", "--name-only", f"{base}...{head}"))
+    """Merge-base changes for a PR/MR; unknown must not skip validation."""
+    try:
+        return toolkit_range_paths(git_root, base, head)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
 
 
 def _project_components(git_root: str | Path, paths: list[str], catalog: repo_layout.Catalog) -> list[repo_layout.Component]:

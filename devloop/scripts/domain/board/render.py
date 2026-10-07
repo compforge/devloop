@@ -112,7 +112,7 @@ def _repo_identity(card: RepoIdentityCard) -> str:
         as_of = ""
     workspace = (
         f"dirty({card.modified_count} modified, {card.untracked_count} untracked)"
-        if card.workspace_dirty else "clean"
+        if card.workspace_dirty else "unknown" if card.workspace_dirty is None else "clean"
     )
     return (
         f"[Current repo: {card.code_dir} ({card.language or '?'})] | "

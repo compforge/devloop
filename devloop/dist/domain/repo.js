@@ -1,12 +1,8 @@
 import { InspectionError } from "../lib/repocli.js";
-import { snapshot, changedPaths as toolkitChangedPaths } from "@compforge/repocli";
+import { snapshot, changedPaths as toolkitChangedPaths, committedPaths as toolkitCommittedPaths, rangePaths as toolkitRangePaths } from "@compforge/repocli";
 import { realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { runGit } from "../lib/process.js";
 import { Component, ComponentCatalog, enclosingComponent } from "./repo-layout.js";
-function paths(result) {
-    return result.ok ? result.stdout.split("\n").map((path) => path.trim()).filter(Boolean) : undefined;
-}
 function workingPaths(root) {
     try {
         return toolkitChangedPaths(root);
@@ -31,10 +27,20 @@ export function changedPathsInScope(root, scopes) {
     return selected;
 }
 export function committedPaths(root, revision = "HEAD") {
-    return paths(runGit(root, ["diff-tree", "--no-commit-id", "--name-only", "-r", "--root", revision]));
+    try {
+        return toolkitCommittedPaths(root, revision);
+    }
+    catch {
+        return undefined;
+    }
 }
 export function rangePaths(root, base, head = "HEAD") {
-    return paths(runGit(root, ["diff", "--name-only", `${base}...${head}`]));
+    try {
+        return toolkitRangePaths(root, base, head);
+    }
+    catch {
+        return undefined;
+    }
 }
 function projectComponents(changed, catalog) {
     const byId = new Map();

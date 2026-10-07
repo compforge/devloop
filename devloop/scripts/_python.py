@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["compforge-repocli==0.2.0"]
+# dependencies = ["compforge-repocli==0.2.1"]
 # ///
 """Keep workflow dependencies in uv's locked script environment, outside user repos."""
 import os

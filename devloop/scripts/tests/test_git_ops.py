@@ -567,5 +567,54 @@ def test_sync_pr_description_append_only():
         sgo.forge_for_repo = orig
 
 
+def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+    from domain import branch
+    from domain.context import session
+    from lib import gitcmd
+
+    with TemporaryDirectory(prefix="devloop-outcome-") as root:
+        _git(root, "init", "-qb", "main")
+        _git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "init")
+        Path(root, "dirty").write_text("preserve")
+        original = gitcmd.git
+        calls = []
+
+        def fail_status(repo, *args, **kwargs):
+            return gitcmd.GitResult(1, "", "unavailable") if args[0] == "status" else original(repo, *args, **kwargs)
+
+        with patch("repocli.git.git", side_effect=fail_status):
+            try:
+                branch.create(root, "feature", "main", identity=session.SessionIdentity("test", ""))
+                assert False, "unknown status must block branch creation"
+            except branch.BranchError as exc:
+                assert "cannot inspect" in str(exc)
+        assert _git_out(root, "branch", "--show-current") == "main"
+        assert Path(root, "dirty").read_text() == "preserve"
+
+        def timeout_checkout(repo, *args, **kwargs):
+            calls.append(args)
+            if args[0] == "checkout":
+                return gitcmd.GitResult(-1, "", "timeout", uncertain=True)
+            return original(repo, *args, **kwargs)
+
+        with patch.object(gitcmd, "git", side_effect=timeout_checkout):
+            try:
+                branch.create(root, "feature", "main", carry_changes=True, identity=session.SessionIdentity("test", ""))
+                assert False, "timeout must be reported"
+            except branch.BranchError as exc:
+                assert "outcome unknown" in str(exc)
+        assert ("stash", "pop") not in calls
+        assert _git_out(root, "stash", "list")
+        result = gitcmd.GitResult(-1, "", "timeout", uncertain=True)
+        flow = _load_script("commit_flow")
+        try:
+            flow.check_operation(result)
+            assert False
+        except flow.SmartError as exc:
+            assert "outcome unknown" in str(exc)
+
+
 if __name__ == "__main__":
     run_main(globals())

@@ -91,7 +91,7 @@ function resolveLayer(layer, repoKeys) {
  */
 export function loadConfig(repo) {
     const checkout = repo ? resolve(expandPath(repo)) : undefined;
-    const repoKeys = checkout ? [...new Set([mainRepoRoot(checkout), checkout])] : [];
+    const repoKeys = checkout ? [...new Set([mainRepoRoot(checkout), checkout].filter((path) => path !== undefined))] : [];
     const files = [...new Set(repoKeys.flatMap(ancestorFiles))];
     const global = deepMerge(DEFAULTS, readJson(configFile()) ?? {});
     let result = resolveLayer(global, repoKeys);

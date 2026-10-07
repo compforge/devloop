@@ -199,7 +199,7 @@ def _repo_identity(repo: RepoContext, stale_binding_hours: float | None) -> Repo
         remote_checked_at=branch.remotes_fetched_at,
         trunk_moved_since_fetch=trunk_moved,
         target_branch=branch.target,
-        workspace_dirty=bool(dirty.get("dirty")),
+        workspace_dirty=bool(dirty.get("dirty")) if dirty.get("complete") else None,
         modified_count=int(dirty.get("modified_count", 0)),
         untracked_count=int(dirty.get("untracked_count", 0)),
         protected=branch.local.is_protected(),

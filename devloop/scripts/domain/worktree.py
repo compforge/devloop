@@ -6,6 +6,7 @@ reproducing only the visible ``git worktree add`` step and skipping lifecycle po
 """
 from __future__ import annotations
 from repocli import git as operations
+from repocli.git_state import main_repo_root
 
 import os
 from enum import Enum
@@ -69,7 +70,7 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
         result = operations.add_worktree(repo_dir, str(rel), remote_ref, branch=branch)
         message = f"created worktree from refreshed {remote_ref}"
     if not result.ok:
-        return None, f"worktree add failed for {branch}: {result.err or result.out}"
+        return None, f"worktree add failed for {branch}: {gitcmd.operation_detail(result)}"
 
     path = str((base / rel).resolve())
     _prune_old(repo_dir, keep_path=path)
@@ -108,7 +109,10 @@ def _managed(repo_dir: str) -> list[str]:
     worktrees = git_state.list_worktrees(repo_dir)
     if not worktrees:
         return []
-    main = Path(worktrees[0][0]).resolve()
+    main_root = main_repo_root(repo_dir)
+    if main_root is None:
+        return []  # Unknown primary checkout cannot establish managed-home ownership.
+    main = Path(main_root).resolve()
     homes = {main / ".worktrees", main / "worktrees"}
     return [
         str(Path(path).resolve())
@@ -126,14 +130,12 @@ class RemovalOutcome(str, Enum):
     ACTIVE_OWNER = "active_owner"
     DIRTY = "dirty"
     GIT_ERROR = "git_error"
+    UNCERTAIN = "uncertain"
 
 
 def primary(repo_dir: str) -> str:
     """Return the stable primary checkout used to mutate linked-worktree metadata."""
-    worktrees = git_state.list_worktrees(repo_dir)
-    if worktrees:
-        return str(Path(worktrees[0][0]).resolve())
-    return str(Path(repo_dir).resolve())
+    return main_repo_root(repo_dir) or str(Path(repo_dir).resolve())
 
 
 def remove_if_safe(
@@ -161,8 +163,9 @@ def remove_if_safe(
         return RemovalOutcome.GIT_ERROR
     if observed["dirty"]:
         return RemovalOutcome.DIRTY
-    if not operations.remove_worktree(repo_dir, target).ok:
-        return RemovalOutcome.GIT_ERROR
+    removed = operations.remove_worktree(repo_dir, target)
+    if not removed.ok:
+        return RemovalOutcome.UNCERTAIN if removed.uncertain else RemovalOutcome.GIT_ERROR
     gitcmd.git(repo_dir, "worktree", "prune", timeout=15)
     return RemovalOutcome.REMOVED
 
@@ -188,7 +191,7 @@ def remove_finished(repo_dir: str, path: str) -> RemovalOutcome:
 
     removed = operations.remove_worktree(control_repo, target, force=True)
     if not removed.ok:
-        return RemovalOutcome.GIT_ERROR
+        return RemovalOutcome.UNCERTAIN if removed.uncertain else RemovalOutcome.GIT_ERROR
     gitcmd.git(control_repo, "worktree", "prune", timeout=15)
     return RemovalOutcome.REMOVED
 

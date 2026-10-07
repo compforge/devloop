@@ -726,7 +726,7 @@ def _banner(plan: list[str]) -> None:
 
 def check_operation(result: operations.GitResult) -> str:
     if not result.ok:
-        raise SmartError(result.err or result.out)
+        raise SmartError(gitcmd.operation_detail(result))
     return result.out
 
 

@@ -35,3 +35,11 @@ describe("Board delivery", () => {
     expect(delivery.deliver(view, "session_start")).toContain("[Workspace:");
   });
 });
+
+it("does not render an unavailable workspace as clean", () => {
+  const item = boardItem("repo.identity", "state", { workspaceRoot: "/repo", repoRoot: "/repo" }, {
+    codeDir: "/repo", branch: "feature", workspaceDirty: null,
+  });
+  expect(renderPrompt([item])).toContain("Workspace: unknown");
+  expect(renderPrompt([item])).not.toContain("Workspace: clean");
+});

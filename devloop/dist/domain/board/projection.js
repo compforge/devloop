@@ -43,7 +43,7 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
     items.push(boardItem("repo.identity", "state", scope, {
         codeDir, repoRoot: repo, language: component?.language ?? "", inspectionProblem, branch,
         linkedWorktree: worktreeMetadata(repo).linked, ahead, behind, baseBranch: base,
-        targetBranch: base, workspaceDirty: status.dirty, modifiedCount: status.modifiedCount,
+        targetBranch: base, workspaceDirty: status.complete ? status.dirty : null, modifiedCount: status.modifiedCount,
         untrackedCount: status.untrackedCount, protected: isProtectedBranch(branch),
         ...(staleBindingHours === undefined ? {} : { staleBindingHours }),
     }));

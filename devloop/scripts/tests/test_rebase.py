@@ -177,5 +177,39 @@ def test_rebase_observation_failure_preserves_lease():
     rebase.abort(repo)
 
 
+def test_rebase_incomplete_status_stops_before_mutation():
+    from unittest.mock import patch
+    repo, remote = _fixture("incomplete_status")
+    before = _git_out(repo, "rev-parse", "HEAD")
+    remote_before = _git_out(remote, "rev-parse", "refs/heads/feat/rebase")
+    incomplete = {"complete": False, "dirty": False, "modified_count": 0, "untracked_count": 0}
+    with patch.object(rebase.git_state, "get_workspace_status", return_value=incomplete), patch.object(rebase.operations, "rebase") as rewrite:
+        try:
+            rebase.start(repo, "main")
+            assert False, "unknown status must not authorize a rebase"
+        except rebase.RebaseError as exc:
+            assert "status incomplete" in str(exc)
+        rewrite.assert_not_called()
+    assert rebase.load_state(repo) is None
+    assert _git_out(repo, "rev-parse", "HEAD") == before
+    assert _git_out(remote, "rev-parse", "refs/heads/feat/rebase") == remote_before
+
+
+def test_rebase_dirty_status_preserves_local_changes():
+    repo, _ = _fixture("dirty_status")
+    before = _git_out(repo, "rev-parse", "HEAD")
+    Path(repo, "shared.txt").write_text("local modification\n")
+    Path(repo, "untracked.txt").write_text("untracked\n")
+    try:
+        rebase.start(repo, "main")
+        assert False, "dirty status must stop the rebase"
+    except rebase.RebaseError as exc:
+        assert "1 modified, 1 untracked" in str(exc)
+    assert rebase.load_state(repo) is None
+    assert _git_out(repo, "rev-parse", "HEAD") == before
+    assert Path(repo, "shared.txt").read_text() == "local modification\n"
+    assert Path(repo, "untracked.txt").read_text() == "untracked\n"
+
+
 if __name__ == "__main__":
     run_main(globals())

@@ -4063,7 +4063,15 @@ function recordToolCall(payload, harness) {
   const timestamp = Date.now() / 1e3;
   const callId = string2(payload.tool_use_id);
   const phase = event === "PreToolUse" ? "started" : "finished";
-  for (const root of new Set(anchors.flatMap((anchor) => findGitRoot(anchor) ?? []))) {
+  const roots = /* @__PURE__ */ new Set();
+  for (const anchor of new Set(anchors)) {
+    try {
+      const root = findGitRoot(anchor);
+      if (root) roots.add(root);
+    } catch {
+    }
+  }
+  for (const root of roots) {
     const record = {
       schema: TOOL_CALL_SCHEMA,
       kind: "tool_call",

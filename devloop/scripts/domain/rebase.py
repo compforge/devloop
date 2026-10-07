@@ -97,12 +97,14 @@ def _require_state(repo: str) -> RebaseState:
 
 
 def _require_clean(repo: str, action: str) -> None:
-    result = gitcmd.git(repo, "status", "--porcelain")
-    if not result.ok:
-        raise RebaseError(f"cannot inspect the working tree before {action}: {gitcmd.operation_detail(result)}")
-    if result.out:
+    status = git_state.get_workspace_status(repo)
+    # An incomplete observation may have dirty=False; it cannot authorize a write.
+    if not status["complete"]:
+        raise RebaseError(f"cannot inspect the working tree before {action}: status incomplete")
+    if status["dirty"]:
         raise RebaseError(
-            f"working tree is dirty; commit/stash the listed changes before {action}:\n{result.out}"
+            f"working tree is dirty; commit/stash changes before {action} "
+            f"({status['modified_count']} modified, {status['untracked_count']} untracked)"
         )
 
 

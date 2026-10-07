@@ -13,7 +13,7 @@ import time
 from domain import repo as repo_model
 from domain.repo_layout import Component, inspect_catalog
 from domain.context.store import branch_segment, save_segment
-from lib import gitcmd, repocli
+from lib import git_state, repocli
 from repocli import snapshot
 
 
@@ -192,7 +192,6 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
 
 
 def persist_plan(repo: str, plan: Plan) -> None:
-    branch = gitcmd.git(repo, "branch", "--show-current").out or None
     payload = {
         "generated_at": time.time(), "base": plan.comparison.base, "head": plan.comparison.head,
         "snapshot": plan.snapshot,
@@ -202,7 +201,14 @@ def persist_plan(repo: str, plan: Plan) -> None:
                     "reason": selection.reason, "files": list(selection.files)}
                    for (component, check), selection in plan.selections.items()],
     }
-    save_segment(repo, branch_segment(branch, "validation_scope"), payload)
+    # A failed identity lookup is not detached HEAD. Keep the previous display
+    # record rather than attribute this plan to the wrong branch; checks still run.
+    try:
+        branch = git_state.get_current_branch(repo)
+    except OSError as exc:
+        print(f"[validate] validation scope not recorded: {exc}", flush=True)
+    else:
+        save_segment(repo, branch_segment(branch, "validation_scope"), payload)
     if plan.identity_problem:
         print(f"[validate] snapshot unavailable — {plan.identity_problem}; checks may run, results cannot be stamped", flush=True)
     for item in payload["checks"]:

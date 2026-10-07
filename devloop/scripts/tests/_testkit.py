@@ -162,19 +162,14 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
         with TemporaryDirectory() as root:
             cli = Path(root) / "repocli"
             cli.write_text(
-                "#!/usr/bin/env python3\nimport json, sys\n"
-                "import hashlib, subprocess\n"
+                f"#!{sys.executable}\nimport json, sys\n"
+                "from repocli import snapshot\n"
                 "from pathlib import Path\n"
                 "repo = sys.argv[sys.argv.index('--repo')+1]\n"
                 "if sys.argv[1]=='inspect': raise SystemExit('inspect must use the toolkit')\n"
                 "if '--impact' in sys.argv: raise SystemExit(2)\n"
                 "if sys.argv[1]=='diff':\n with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
-                "digest=hashlib.sha256()\n"
-                "names=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard','-z'],cwd=repo).decode().split('\\0')\n"
-                "for name in sorted(set(names)-{''}):\n"
-                " p=Path(repo)/name\n"
-                " if p.is_file():\n  data=p.read_bytes(); digest.update(str(len(name.encode())).encode()+b':'+name.encode()+str(len(data)).encode()+b':'+data)\n"
-                "identity='sha256:'+digest.hexdigest()\n"
+                "identity=snapshot(repo).digest\n"
                 "data = " + repr({"schemaVersion": schema, "complete": complete, "scope": scope,
                                   "snapshot": "sha256:" + "a" * 64,
                                   "sourceFiles": list(sources), "testFiles": list(tests),

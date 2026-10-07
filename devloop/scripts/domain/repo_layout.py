@@ -1,7 +1,6 @@
 """repo_dir / repo_code_dir / language / AGENTS.md location helpers.
 
-Routes the git call through `gitcmd`
-(the single git runner) instead of an inline subprocess.
+Repository discovery and organization come from repocli.
 """
 from __future__ import annotations
 
@@ -12,7 +11,8 @@ from pathlib import Path
 
 from repocli import InspectReport
 
-from lib import gitcmd, repocli
+from lib import repocli
+from repocli.git_state import find_checkout
 
 
 @dataclass(frozen=True)
@@ -121,9 +121,8 @@ class Component:
 
 
 def find_git_root(cwd: str | Path) -> str | None:
-    """Find git root by walking up. Returns absolute path or None if not in a git repo."""
-    r = gitcmd.git(cwd, "rev-parse", "--show-toplevel", timeout=3)
-    return r.out if r.ok and r.out else None
+    """No checkout is None; failed discovery remains an error for caller policy."""
+    return find_checkout(cwd)
 
 
 def is_git_repo(path: str | Path) -> bool:

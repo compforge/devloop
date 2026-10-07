@@ -82,3 +82,17 @@ index 的修改时间用于 worktree 活跃度排序，`info/exclude` 中的忽�
 提交前验证与暂存共用文件选择入口，保留字面路径、重命名两端和已暂存的敏感文件删除。normalize
 前冻结验证范围，暂存前重新观察工作区，使用同一套选择规则收集 normalize 的修改。
 Forge 提供平台合并状态；哪些状态应成为 Board 提醒由 devloop 决定，Python 与 TypeScript 保持相同策略。
+
+## Repository 内容与 Component
+
+repocli 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect 描述零个、一个或多个 Component。
+单组件可以位于根或子目录；普通目录可以有组件归属，也可以没有。devloop 不再补隐式根组件，
+明确执行目标仍可由用户选择。Manifest 发现、目录排除与 owner 由工具包提供，Makefile 验证入口选择
+和跨组件执行范围仍属 devloop。Go CLI diff 的协议解码在 lib，采纳部分结果与回退策略在 domain。
+
+原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
+父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
+CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.17.0。
+
+仓库定位委托 find_checkout/findCheckout：无仓库是正常缺失，损坏元数据、权限与 Git 失败不能
+转换为“没有仓库”。必要 hook 事实读取失败继续走 fail_closed，不绕过保护分支规则。

@@ -6,7 +6,7 @@ select canonical full commands; check failures never cause an analysis retry.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 import subprocess
 import time
 
@@ -70,16 +70,6 @@ def content_identity(repo: str) -> ContentIdentity:
 
 
 
-def _paths(value: object) -> list[str]:
-    if not isinstance(value, list):
-        raise ValueError("file list missing")
-    for path in value:
-        if (not isinstance(path, str) or not path or PurePosixPath(path).is_absolute()
-                or ".." in PurePosixPath(path).parts or "\x00" in path):
-            raise ValueError("invalid repository-relative path")
-    return value
-
-
 def _relative(repo: str, component: Component, paths: list[str]) -> list[str]:
     root = Path(repo).resolve()
     result = []
@@ -95,12 +85,6 @@ def _relative(repo: str, component: Component, paths: list[str]) -> list[str]:
         except ValueError:
             continue
     return result
-
-
-def _affected_paths(value: object) -> list[str]:
-    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
-        raise ValueError("affected file list missing or invalid")
-    return _paths([item.get("path") for item in value])
 
 
 def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | None = None,
@@ -137,35 +121,20 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             if comparison.head and repo_model.changed_paths(repo):
                 raise ValueError("working tree differs from committed analysis target")
             data = repocli.read_report(repo, "diff", argv)
-            if not isinstance(data, dict) or data.get("schemaVersion") != 3:
-                raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.11.0)")
-            diagnostics = data.get("diagnostics")
-            if (not isinstance(data.get("complete"), bool)
-                    or data.get("scope") not in ("focused", "partial")
-                    or not isinstance(diagnostics, list)
-                    or any(not isinstance(d, dict) for d in diagnostics)):
-                raise ValueError("invalid analysis status")
+            report = repocli.decode_diff(data, repo, "commit" if comparison.head else "working_tree")
+            diagnostics = report.diagnostics
             # Missing relationships limit coverage, not the usability of returned
             # files. Status and diagnostics explain the selection without widening it.
-            if not data["complete"] or data["scope"] != "focused" or diagnostics:
+            if not report.complete or report.scope != "focused" or diagnostics:
                 codes = sorted({str(d.get("code", "analysis_gap")) for d in diagnostics})
                 detail = ": " + ", ".join(codes) if codes else ""
                 analysis_reason += " (partial analysis" + detail + ")"
-            if Path(data.get("checkout", "")).resolve() != Path(repo).resolve():
-                raise ValueError("analysis target mismatch")
-            snapshot = data.get("snapshot", "")
-            if not isinstance(snapshot, str) or len(snapshot) != 71 or not snapshot.startswith("sha256:"):
-                raise ValueError("missing snapshot identity")
-            if data.get("input") != ("commit" if comparison.head else "working_tree"):
-                raise ValueError("analysis input mismatch")
+            snapshot = report.snapshot
             if not identity or snapshot != identity or identity != content_identity(repo).digest:
                 raise ValueError("execution contents differ from analyzed snapshot")
-            impacts = data.get("components", [])
-            if not isinstance(impacts, list) or any(not isinstance(item, dict) for item in impacts):
-                raise ValueError("invalid ComponentImpact list")
-            component_impacts = tuple(impacts)
-            affected_files = _affected_paths(data.get("affectedFiles"))
-            tests = _paths(data.get("testFiles"))
+            component_impacts = report.components
+            affected_files = list(report.affected_files)
+            tests = list(report.test_files)
             if not explicit:
                 affected = repo_model.select_components(repo, paths=list(dict.fromkeys(affected_files + tests)), catalog=inspection)
                 units = tuple({u.id: u for u in (*workset.components, *affected.components)}.values())

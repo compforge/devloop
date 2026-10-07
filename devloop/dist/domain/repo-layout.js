@@ -1,8 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { inspectRepository, InspectionError } from "../lib/repocli.js";
-import { owner } from "@compforge/repocli";
-import { runGit } from "../lib/process.js";
+import { findCheckout, owner } from "@compforge/repocli";
 const SAFE_SCOPE = /^[A-Za-z0-9_./@+][A-Za-z0-9_./@+:-]*$/;
 /** Independently buildable and validatable directory within a repository. */
 export class Component {
@@ -64,8 +63,7 @@ export class Component {
     }
 }
 export function findGitRoot(path) {
-    const result = runGit(path, ["rev-parse", "--show-toplevel"], 3_000);
-    return result.ok && result.stdout ? result.stdout : undefined;
+    return findCheckout(path);
 }
 export function isGitRepository(path) { return findGitRoot(path) !== undefined; }
 /** One operation's catalog; file ownership is a projection of declared roots. */

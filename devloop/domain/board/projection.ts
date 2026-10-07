@@ -22,9 +22,11 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
   const scope = { workspaceRoot: root, repoRoot: repo };
   let component: Component | undefined, inspectionProblem = "";
   let unavailableLintComponents: string[] = [];
+  let unavailableTestComponents: string[] = [];
   try {
     const catalog = await inspectCatalog(repo);
     unavailableLintComponents = catalog.components.filter((item) => !item.lintTarget()).map((item) => item.id);
+    unavailableTestComponents = catalog.components.filter((item) => !item.testTarget()).map((item) => item.id);
     component = catalog.default();
   }
   catch (error) {
@@ -64,6 +66,7 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
   items.push(boardItem("repo.validation", "state", scope, {
     analysis: loadSegment(repo, branchSegment(branch || undefined, "validation_scope")) ?? {},
     unavailableLintComponents,
+    unavailableTestComponents,
     components: componentIds.map((component) => ({
       component,
       lintAt: typeof lint[component] === "object" && lint[component] !== null && !Array.isArray(lint[component]) ? (lint[component] as Record<string, unknown>).passed_at ?? null : null,

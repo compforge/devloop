@@ -129,7 +129,7 @@ def test_declared_go_component_is_not_reclassified_by_python_manifest():
         component = inspect_catalog(root).components[0]
         assert ecosystem.detect(component.path, component.language).name == "go"
         (root / "Makefile").unlink()
-        assert component.test_command() == ("go", "test", "./...")
+        assert component.test_command() is None
 
 
 def test_missing_component_lint_entry_is_unavailable():
@@ -144,6 +144,26 @@ def test_missing_component_lint_entry_is_unavailable():
         from domain.context import RepoContext
         context = RepoContext.load(str(root))
         assert context is None or not context.validation.component(component.id).last_lint_at
+
+
+def test_missing_test_entry_is_nonblocking_without_running_or_stamping():
+    from domain.context import RepoContext
+    from domain.lifecycle import checks
+    for language in ("python", "go"):
+        with TemporaryDirectory() as tmp:
+            root = make_repo(tmp)
+            (root / "Makefile").unlink()
+            if language == "go":
+                (root / "go.mod").write_text("module example.invalid/service\n")
+            declare(root, [{"root": ".", "name": "service", "language": language}])
+            component = inspect_catalog(root).components[0]
+            with patch.object(checks, "_environment_failure", side_effect=AssertionError("must not prepare a missing command")):
+                result = checks.test(str(root), component=component)
+            assert result.ok and result.status == "unavailable"
+            assert result.guidance
+            assert DispatchResult("pre_commit", [result]).proceed
+            context = RepoContext.load(str(root))
+            assert context is None or not context.validation.component(component.id).last_test_at
 
 
 def test_missing_lint_does_not_hide_another_components_failed_lint():

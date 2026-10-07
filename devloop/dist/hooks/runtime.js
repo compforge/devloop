@@ -1953,7 +1953,7 @@ var Component = class _Component {
   }
   testCommand() {
     const target = this.testTarget();
-    return target ? ["make", target] : this.language === "go" ? ["go", "test", "./..."] : void 0;
+    return target ? ["make", target] : void 0;
   }
   supportsLintFiles() {
     return this.makefileUses("LINT_FILES");
@@ -2784,6 +2784,8 @@ function renderItem(item) {
     const scopes = rows(analysis?.checks).map((row) => `${text(row.component)} ${text(row.check)}=${text(row.scope)} (${text(row.reason)})`);
     const unavailable = Array.isArray(payload.unavailableLintComponents) ? payload.unavailableLintComponents.filter((value) => typeof value === "string") : [];
     const availability = unavailable.length ? [`Lint unavailable: ${unavailable.join(", ")} \u2014 no make lint/lint-ci entry (non-blocking)`] : [];
+    const unavailableTests = Array.isArray(payload.unavailableTestComponents) ? payload.unavailableTestComponents.filter((value) => typeof value === "string") : [];
+    if (unavailableTests.length) availability.push(`Test unavailable: ${unavailableTests.join(", ")} \u2014 no make test/test-ci/test-local entry (non-blocking)`);
     return [history, ...availability, ...scopes.length ? [`Latest validation scope: ${scopes.join(" | ")}`] : []].join("\n");
   }
   if (item.type === "repo.review") return renderReview(payload);
@@ -2968,9 +2970,11 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   const scope = { workspaceRoot: root, repoRoot: repo };
   let component, inspectionProblem = "";
   let unavailableLintComponents = [];
+  let unavailableTestComponents = [];
   try {
     const catalog = await inspectCatalog(repo);
     unavailableLintComponents = catalog.components.filter((item) => !item.lintTarget()).map((item) => item.id);
+    unavailableTestComponents = catalog.components.filter((item) => !item.testTarget()).map((item) => item.id);
     component = catalog.default();
   } catch (error) {
     if (!(error instanceof InspectionError)) throw error;
@@ -3031,6 +3035,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   items.push(boardItem("repo.validation", "state", scope, {
     analysis: loadSegment(repo, branchSegment(branch || void 0, "validation_scope")) ?? {},
     unavailableLintComponents,
+    unavailableTestComponents,
     components: componentIds.map((component2) => ({
       component: component2,
       lintAt: typeof lint[component2] === "object" && lint[component2] !== null && !Array.isArray(lint[component2]) ? lint[component2].passed_at ?? null : null,

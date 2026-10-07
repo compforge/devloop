@@ -285,7 +285,7 @@ def test_components(
 def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
          component: Component | None = None, paths: list[str] | None = None,
          plan: Plan | None = None) -> HookResult:
-    """跑 component 的 canonical test 命令（Make target 或 Go module 的 `go test ./...`）；
+    """跑 component 声明的 Make test target；
     通过则盖 test 戳。无 test 命令 → unavailable。`component` 给出即用它；否则按本次改动
     选 WorkSet 并 fan-out，使 gcampr lifecycle 与 validate skill 的选择逻辑一致。
     `paths` 同 `lint`：相位边界冻结的改动范围，给出即用它，不自己读工作树。
@@ -353,14 +353,14 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     guidance: tuple[str, ...] = ()
     if make_target is None:
         guidance = (
-            f"{code_dir}/Makefile 未提供 test target；请补充非交互、只读的 make test 入口。",
+            f"{code_dir}: test 未执行；项目未提供 make test/test-ci/test-local 入口，不阻断提交。",
         )
     if command is None:
         return HookResult(
             "test",
             ok=True,
             advisory=True,
-            summary=f"no test command in {code_dir} — unavailable",
+            summary=f"no make test/test-ci/test-local target in {code_dir} — unavailable (non-blocking)",
             status="unavailable",
             guidance=guidance,
         ), False

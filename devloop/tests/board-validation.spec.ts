@@ -34,3 +34,15 @@ it("shows missing lint as non-blocking and clears it when the entry is added", a
   const updated = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "with-lint" }));
   expect(updated).not.toContain("Lint unavailable");
 });
+
+it("shows missing test for Go without assuming an ecosystem fallback", async () => {
+  writeFileSync(join(root, "go.mod"), "module example.test/demo\n\ngo 1.24\n");
+  const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "missing-test" }));
+  expect(output).toContain("Test unavailable: .");
+  expect(output).toContain("non-blocking");
+  expect(output).toContain("no recorded runs");
+  writeFileSync(join(root, "Makefile"), "test-local:\n\t@true\n");
+  const updated = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "with-test" }));
+  expect(updated).not.toContain("Test unavailable");
+  expect(updated).toContain("Lint unavailable");
+});

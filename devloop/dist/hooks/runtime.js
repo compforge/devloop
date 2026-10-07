@@ -1628,15 +1628,24 @@ import { existsSync, realpathSync } from "node:fs";
 import { join as join2 } from "node:path";
 function currentBranch(repo) {
   const result = runGit(repo, ["branch", "--show-current"]);
-  return result.ok && result.stdout ? result.stdout : void 0;
+  if (!result.ok)
+    throw new Error(`cannot read current branch: ${result.stderr}`);
+  return result.stdout || void 0;
+}
+function divergence(repo, target) {
+  const head = revParse(repo, "HEAD");
+  const other = revParse(repo, target);
+  if (!head || !other)
+    return void 0;
+  const result = runGit(repo, ["rev-list", "--count", "--left-right", `${head}...${other}`]);
+  const values = result.stdout.split(/\s+/);
+  if (!result.ok || values.length !== 2 || !values.every((v) => /^\d+$/.test(v))) {
+    throw new Error(`cannot count divergence from ${target}: ${result.stderr || result.stdout}`);
+  }
+  return [Number(values[0]), Number(values[1])];
 }
 function aheadBehind(repo, target = "main") {
-  const ahead = runGit(repo, ["rev-list", "--count", `origin/${target}..HEAD`]);
-  const behind = runGit(repo, ["rev-list", "--count", `HEAD..origin/${target}`]);
-  if (!ahead.ok || !behind.ok)
-    return void 0;
-  const values = [Number.parseInt(ahead.stdout, 10), Number.parseInt(behind.stdout, 10)];
-  return values.every(Number.isFinite) ? values : void 0;
+  return divergence(repo, `refs/remotes/origin/${target}`);
 }
 function workspaceStatus(repo) {
   const result = runGit(repo, ["status", "--porcelain"]);
@@ -1651,20 +1660,26 @@ function workspaceStatus(repo) {
   };
 }
 function revParse(repo, ref) {
-  const result = runGit(repo, ["rev-parse", "--verify", "--quiet", ref]);
-  return result.ok ? result.stdout : "";
+  const result = runGit(repo, ["rev-parse", "--verify", "--quiet", "--end-of-options", ref]);
+  if (result.ok && result.stdout)
+    return result.stdout;
+  if (result.code === 1 && !result.stderr)
+    return "";
+  throw new Error(`cannot resolve revision ${ref}: ${result.stderr || result.stdout}`);
 }
 function headSha(repo) {
-  const result = runGit(repo, ["rev-parse", "HEAD"]);
-  return result.ok ? result.stdout : "";
+  return revParse(repo, "HEAD");
 }
 function targetExists(repo, target = "main") {
-  return revParse(repo, `origin/${target}`) !== "";
+  return revParse(repo, `refs/remotes/origin/${target}`) !== "";
 }
 function isAncestor(repo, ancestor, descendant) {
   if (!ancestor || !descendant)
-    return false;
-  return ancestor === descendant || runGit(repo, ["merge-base", "--is-ancestor", ancestor, descendant]).code === 0;
+    throw new Error("ancestry requires two revisions");
+  const result = runGit(repo, ["merge-base", "--is-ancestor", "--", ancestor, descendant]);
+  if (result.code === 0 || result.code === 1)
+    return result.code === 0;
+  throw new Error(`cannot compare ancestry ${ancestor} -> ${descendant}: ${result.stderr}`);
 }
 function listWorktrees(repo) {
   const result = runGit(repo, ["worktree", "list", "--porcelain", "-z"]);
@@ -2009,7 +2024,8 @@ function isProtectedBranch(branch) {
   return branch !== void 0 && PROTECTED_BRANCHES.some((pattern) => pattern.test(branch));
 }
 function localDefaultTarget(repo) {
-  const result = runGit(repo, ["symbolic-ref", "refs/remotes/origin/HEAD"]);
+  const result = runGit(repo, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
+  if (!result.ok && result.code !== 1) throw new Error(`cannot read default branch reference: ${result.stderr}`);
   const prefix = "refs/remotes/origin/";
   if (result.ok && result.stdout.startsWith(prefix)) return result.stdout.slice(prefix.length);
   if (targetExists(repo, "main")) return "main";
@@ -2758,7 +2774,7 @@ function renderItem(item) {
     const dirty = payload.workspaceDirty ? `dirty(${number(payload.modifiedCount)} modified, ${number(payload.untrackedCount)} untracked)` : payload.workspaceDirty === null ? "unknown" : "clean";
     const warnings = [payload.protected ? "PROTECTED" : "", typeof payload.staleBindingHours === "number" ? `repo binding is ${payload.staleBindingHours.toFixed(1)}h old; confirm the repo with cd` : ""].filter(Boolean);
     if (payload.inspectionProblem) warnings.push(text(payload.inspectionProblem));
-    return `[Current repo: ${text(payload.codeDir) || text(payload.repoRoot)} (${text(payload.language) || "?"})] | Branch: ${text(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${number(payload.ahead)}, behind ${number(payload.behind)} vs ${text(payload.baseBranch)}, target=${text(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` \u26A0\uFE0F ${warnings.join("; ")}` : ""}`;
+    return `[Current repo: ${text(payload.codeDir) || text(payload.repoRoot)} (${text(payload.language) || "?"})] | Branch: ${text(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${typeof payload.ahead === "number" ? payload.ahead : "?"}, behind ${typeof payload.behind === "number" ? payload.behind : "?"} vs ${text(payload.baseBranch)}, target=${text(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` \u26A0\uFE0F ${warnings.join("; ")}` : ""}`;
   }
   if (item.type === "repo.validation") {
     const components = rows(payload.components);
@@ -2961,9 +2977,22 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
       references: references.map((item) => ({ title: item.title, path: item.path, description: item.description }))
     }));
   }
-  const branch = currentBranch(repo) ?? "";
-  const base = localDefaultTarget(repo);
-  const [ahead, behind] = aheadBehind(repo, base) ?? [0, 0];
+  let branch;
+  let base = "?";
+  try {
+    branch = currentBranch(repo) ?? "";
+  } catch {
+  }
+  try {
+    base = localDefaultTarget(repo);
+  } catch {
+  }
+  let divergence2;
+  try {
+    if (base !== "?") divergence2 = aheadBehind(repo, base);
+  } catch {
+  }
+  const [ahead, behind] = divergence2 ?? [null, null];
   const status = workspaceStatus(repo);
   const codeDir = component?.path ?? "";
   let linkedWorktree;
@@ -2989,6 +3018,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
     protected: isProtectedBranch(branch),
     ...staleBindingHours === void 0 ? {} : { staleBindingHours }
   }));
+  if (branch === void 0) return new Board(root, items);
   const lint = loadSegment(repo, branchSegment(branch || void 0, "lint")) ?? {};
   const test = loadSegment(repo, branchSegment(branch || void 0, "test")) ?? {};
   const componentIds = [.../* @__PURE__ */ new Set([...Object.keys(lint), ...Object.keys(test)])].sort();
@@ -3446,7 +3476,7 @@ function evaluateGate(repo) {
   const segment = loadSegment(repo, "pr") ?? {};
   const rows2 = Array.isArray(segment.prs) ? segment.prs : [];
   const candidates = rows2.map(pullRequest).filter((pr) => pr !== void 0 && pr.sourceBranch === branch);
-  const activePullRequest = candidates.find(pullRequestOpen) ?? candidates.find((pr) => !pr.sha || isAncestor(repo, pr.sha, head));
+  const activePullRequest = candidates.find(pullRequestOpen) ?? candidates.find((pr) => Boolean(pr.sha && head) && isAncestor(repo, pr.sha, head));
   return {
     ...branch ? { branch } : {},
     head,
@@ -3560,6 +3590,7 @@ function tagOnlyPush(args, repo) {
 }
 var protectBranch = {
   name: "protect-branch",
+  failurePolicy: "fail_closed",
   targetKind: "command",
   applies: (target) => ["commit", "push"].includes(command(target).subcommand ?? ""),
   check: (target) => {
@@ -3574,6 +3605,7 @@ var protectBranch = {
 };
 var checkoutOwner = {
   name: "checkout-owner",
+  failurePolicy: "fail_closed",
   targetKind: "command",
   applies: (target) => command(target).subcommand === "switch" || command(target).subcommand === "checkout" && !command(target).args.includes("--"),
   check: (target, context) => {
@@ -3661,6 +3693,7 @@ var workspaceCwd = {
 };
 var editOwner = {
   name: "edit-owner",
+  failurePolicy: "fail_closed",
   targetKind: "file_change",
   applies: () => true,
   check: (target, context) => {
@@ -3678,6 +3711,7 @@ var editOwner = {
 };
 var branchMerged = {
   name: "branch-merged",
+  failurePolicy: "fail_closed",
   targetKind: "file_change",
   applies: () => true,
   check: (target, context) => {

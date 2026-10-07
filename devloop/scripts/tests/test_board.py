@@ -172,5 +172,20 @@ def test_board_preserves_unknown_workspace_status():
     assert "Workspace: unknown" in prompt and "Workspace: clean" not in prompt
 
 
+def test_board_missing_or_failed_divergence_is_unknown():
+    from unittest.mock import patch
+    from domain.board import BoardRuntime
+
+    root = "/tmp/dlut_board_unknown_divergence"
+    ctx = _repo(root)
+    # This repository has no origin branch, a successful but absent comparison endpoint.
+    prompt = BoardRuntime.from_facts(root, "missing-divergence", repo=ctx).deliver_prompt()
+    assert "ahead ?, behind ?" in prompt
+    with patch("domain.board.projection.git_state.get_ahead_behind", side_effect=OSError("read failed")):
+        prompt = BoardRuntime.from_facts(root, "failed-divergence", repo=ctx).deliver_prompt()
+    assert "ahead ?, behind ?" in prompt
+    assert "ahead 0, behind 0" not in prompt
+
+
 if __name__ == "__main__":
     run_main(globals())

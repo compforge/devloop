@@ -57,7 +57,7 @@ function tagOnlyPush(args, repo) {
     });
 }
 const protectBranch = {
-    name: "protect-branch", targetKind: "command",
+    name: "protect-branch", failurePolicy: "fail_closed", targetKind: "command",
     applies: (target) => ["commit", "push"].includes(command(target).subcommand ?? ""),
     check: (target) => {
         const value = command(target);
@@ -72,7 +72,7 @@ const protectBranch = {
     },
 };
 const checkoutOwner = {
-    name: "checkout-owner", targetKind: "command",
+    name: "checkout-owner", failurePolicy: "fail_closed", targetKind: "command",
     applies: (target) => command(target).subcommand === "switch" || command(target).subcommand === "checkout" && !command(target).args.includes("--"),
     check: (target, context) => {
         if (!context.sessionId)
@@ -166,7 +166,7 @@ const workspaceCwd = {
     },
 };
 const editOwner = {
-    name: "edit-owner", targetKind: "file_change", applies: () => true,
+    name: "edit-owner", failurePolicy: "fail_closed", targetKind: "file_change", applies: () => true,
     check: (target, context) => {
         if (!context.sessionId || !context.gitRoot)
             return [];
@@ -183,7 +183,7 @@ const editOwner = {
     },
 };
 const branchMerged = {
-    name: "branch-merged", targetKind: "file_change", applies: () => true,
+    name: "branch-merged", failurePolicy: "fail_closed", targetKind: "file_change", applies: () => true,
     check: (target, context) => {
         if (!context.gitRoot)
             return [];

@@ -1,3 +1,7 @@
+import { saveSegment, branchSegment } from "../domain/context/store.js";
+import { projectBoard } from "../domain/board/projection.js";
+import { evaluateTool } from "../hooks/core/policy.js";
+import { renderItem } from "../domain/board/render.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -31,6 +35,34 @@ function fixture() {
 }
 
 describe("native repocli organization", () => {
+  it("renders missing and failed divergence as unknown", async () => {
+    const { root } = fixture();
+    let board = await projectBoard(root, undefined, root);
+    let identity = board.items.find(item => item.type === "repo.identity")!;
+    expect(identity.payload).toMatchObject({ ahead: null, behind: null });
+    expect(renderItem(identity)).toContain("ahead ?, behind ?");
+    vi.mocked(toolkit.aheadBehind).mockImplementationOnce(() => { throw new Error("read failed"); });
+    board = await projectBoard(root, undefined, root);
+    identity = board.items.find(item => item.type === "repo.identity")!;
+    expect(renderItem(identity)).toContain("ahead ?, behind ?");
+  });
+
+  it("does not join detached branch history when identity is unavailable", async () => {
+    const { root } = fixture();
+    saveSegment(root, branchSegment(undefined, "review"), { status: "success", reviewed_sha: "old-head" });
+    vi.mocked(toolkit.currentBranch).mockImplementationOnce(() => { throw new Error("read failed"); });
+    const board = await projectBoard(root, undefined, root);
+    expect(board.items.some(item => item.type === "repo.review" || item.type === "repo.validation")).toBe(false);
+    expect(renderItem(board.items.find(item => item.type === "repo.identity")!)).toContain("Branch: ?");
+  });
+
+  it("denies writes when live branch identity cannot be observed", async () => {
+    const { root } = fixture();
+    vi.mocked(toolkit.currentBranch).mockImplementationOnce(() => { throw new Error("read failed"); });
+    const result = await evaluateTool({ harness: "codex", toolName: "exec_command", toolInput: { cmd: "git commit -m example", workdir: root }, cwd: root });
+    expect(result.findings).toContainEqual(expect.objectContaining({ rule: "protect-branch", severity: "deny" }));
+  });
+
   it("uses declared roots and metadata for moved, deleted and fixture paths without a CLI", async () => {
     const { root } = fixture();
     mkdirSync(join(root, "service/testdata/corpus"), { recursive: true });

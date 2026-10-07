@@ -27,7 +27,7 @@ export function evaluateGate(repo) {
     const rows = Array.isArray(segment.prs) ? segment.prs : [];
     const candidates = rows.map(pullRequest).filter((pr) => pr !== undefined && pr.sourceBranch === branch);
     const activePullRequest = candidates.find(pullRequestOpen)
-        ?? candidates.find((pr) => !pr.sha || isAncestor(repo, pr.sha, head));
+        ?? candidates.find((pr) => Boolean(pr.sha && head) && isAncestor(repo, pr.sha, head));
     return {
         ...(branch ? { branch } : {}), head, target,
         ...(typeof segment.provider === "string" ? { provider: segment.provider } : {}),

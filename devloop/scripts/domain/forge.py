@@ -16,6 +16,13 @@ from repocli.forge.model import (
 PRS_CAP = 5
 _VOCAB = {"github": ("PR", "#"), "gitlab": ("MR", "!")}
 
+def blocks_merge(readiness: MergeReadiness) -> bool:
+    """Board reminders cover actionable author work, rather than waiting/unknown states."""
+    return readiness in {
+        MergeReadiness.CONFLICT, MergeReadiness.DISCUSSIONS_UNRESOLVED, MergeReadiness.CI_BLOCKED,
+    }
+
+
 def vocab(provider: str | None) -> tuple[str, str]:
     """(noun, sigil) for a provider, e.g. ('PR', '#') / ('MR', '!'). Unknown → PR/#."""
     return _VOCAB.get(provider or "", ("PR", "#"))

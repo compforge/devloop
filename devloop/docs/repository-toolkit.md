@@ -72,3 +72,11 @@ Git 元数据路径由 repocli 的 `git_path` / `gitPath` 解析，rebase backen
 Python 工具包提供。devloop 选择 `devloop-rebase.json` 的文件名并管理 lease、恢复、验证和推送；
 index 的修改时间用于 worktree 活跃度排序，`info/exclude` 中的忽略项也由 devloop 决定。
 排序与本地忽略是 best-effort；rebase 必要状态读取失败则停止操作，保留已有事务供检查。
+
+携带改动切分支时，repocli 保存并返回具体 stash 对象，恢复保留 index 与工作区的区别。devloop 决定
+是否携带、目标分支和 session 归属；恢复按对象 ID 执行，并在 PLAN 展示保留的 stash 备份，避免
+按共享栈的位置清理时影响其他 worktree。恢复失败或结果未知时停止流程，保留现场供检查。
+
+提交前验证与暂存共用文件选择入口，保留字面路径、重命名两端和已暂存的敏感文件删除。normalize
+前冻结验证范围，暂存前重新观察工作区，使用同一套选择规则收集 normalize 的修改。
+Forge 提供平台合并状态；哪些状态应成为 Board 提醒由 devloop 决定，Python 与 TypeScript 保持相同策略。

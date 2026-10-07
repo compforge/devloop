@@ -237,7 +237,8 @@ def test_branch_create_records_new_identity_when_carry_conflicts():
         )
         assert False, "conflicting carry must report a recoverable error"
     except branch_domain.BranchError as exc:
-        assert "reapplying local changes conflicted" in str(exc)
+        assert "reapplying local changes failed" in str(exc)
+        assert "Recovery stash retained:" in str(exc)
 
     assert _git_out(repo, "branch", "--show-current") == "feat/conflict"
     assert "UU f" in _git_out(repo, "status", "--short")
@@ -643,13 +644,13 @@ def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
                 return gitcmd.GitResult(-1, "", "timeout", uncertain=True)
             return original(repo, *args, **kwargs)
 
-        with patch.object(gitcmd, "git", side_effect=timeout_checkout):
+        with patch("repocli.git.git", side_effect=timeout_checkout):
             try:
                 branch.create(root, "feature", "main", carry_changes=True, identity=session.SessionIdentity("test", ""))
                 assert False, "timeout must be reported"
             except branch.BranchError as exc:
                 assert "outcome unknown" in str(exc)
-        assert ("stash", "pop") not in calls
+        assert not any(args[:2] == ("stash", "apply") for args in calls)
         assert _git_out(root, "stash", "list")
         result = gitcmd.GitResult(-1, "", "timeout", uncertain=True)
         flow = _load_script("commit_flow")

@@ -3,12 +3,12 @@ revision = 3
 requires-python = ">=3.11"
 
 [manifest]
-requirements = [{ name = "compforge-repocli", git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=46cb35b17e1479e3b8c4a32d10dcbd61ef4ee090" }]
+requirements = [{ name = "compforge-repocli", git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=ae420ff3ebc2f67a2c13557ae7cf2b109103b509" }]
 
 [[package]]
 name = "compforge-repocli"
-version = "0.3.0"
-source = { git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=46cb35b17e1479e3b8c4a32d10dcbd61ef4ee090#46cb35b17e1479e3b8c4a32d10dcbd61ef4ee090" }
+version = "0.4.0"
+source = { git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=ae420ff3ebc2f67a2c13557ae7cf2b109103b509#ae420ff3ebc2f67a2c13557ae7cf2b109103b509" }
 dependencies = [
     { name = "harness-common" },
 ]

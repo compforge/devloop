@@ -259,5 +259,65 @@ def test_branch_checkout_failure_restores_partial_staging():
         assert (root / "a.py").read_text() == "working"
 
 
+def add_gitlink(root, name="nested"):
+    nested = root / name
+    nested.mkdir()
+    _git(str(nested), "init", "-q")
+    _git(str(nested), "config", "user.name", "Fixture")
+    _git(str(nested), "config", "user.email", "fixture@example.invalid")
+    (nested / "source").write_text("source")
+    _git(str(nested), "add", "source")
+    _git(str(nested), "commit", "-qm", "nested")
+    _git(str(root), "add", name)
+
+
+def manifest(root):
+    (root / ".gitmodules").write_text('[submodule "nested"]\n path = nested\n url = https://example.invalid/nested.git\n')
+
+
+def test_unstaged_registration_cannot_authorize_candidate_gitlink():
+    with repository() as root:
+        manifest(root)
+        add_gitlink(root)
+        assert_rejected(root, ["nested"], "unregistered gitlink")
+
+
+def test_candidate_registration_ignores_unselected_worktree_manifest():
+    flow = _load_script("commit_flow")
+    with repository() as root:
+        manifest(root)
+        _git(str(root), "add", ".gitmodules")
+        _git(str(root), "commit", "-qm", "registration")
+        (root / ".gitmodules").write_text('[submodule "nested"]\n path = elsewhere\n')
+        add_gitlink(root)
+        flow.stage(str(root), ["nested"], [])
+        assert {c.path for c in staged_changes(root)} == {"nested"}
+
+
+def test_candidate_registration_and_gitlink_can_be_staged_together():
+    flow = _load_script("commit_flow")
+    with repository() as root:
+        manifest(root)
+        add_gitlink(root)
+        flow.stage(str(root), ["nested", ".gitmodules"], [])
+        assert {c.path for c in staged_changes(root)} == {"nested", ".gitmodules"}
+
+
+def test_removing_registration_requires_removing_its_gitlink():
+    flow = _load_script("commit_flow")
+    with repository() as root:
+        manifest(root)
+        add_gitlink(root)
+        _git(str(root), "add", ".gitmodules")
+        _git(str(root), "commit", "-qm", "registered link")
+        _git(str(root), "rm", ".gitmodules")
+        assert_rejected(root, [".gitmodules"], "unregistered gitlink")
+        _git(str(root), "update-index", "--force-remove", "nested")
+        import shutil
+        shutil.rmtree(root / "nested")
+        flow.stage(str(root), [".gitmodules", "nested"], [])
+        assert all(c.new_mode == "000000" for c in staged_changes(root))
+
+
 if __name__ == "__main__":
     run_main(globals())

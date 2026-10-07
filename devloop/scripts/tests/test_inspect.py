@@ -11,7 +11,7 @@ import subprocess
 from _testkit import repocli_report, run_main
 from domain import repo as repo_model
 from domain.repo_layout import inspect_catalog
-from domain.lifecycle.base import dispatch
+from domain.lifecycle.base import DispatchResult, HookResult, dispatch
 from domain.validation import content_identity
 from lib import repocli
 from test_test_scope import make_repo
@@ -138,7 +138,25 @@ def test_missing_component_lint_entry_is_unavailable():
         root = make_repo(tmp)
         component = inspect_catalog(root).components[0]
         result = checks.lint(str(root), component=component)
-        assert not result.ok and result.status == "unavailable"
+        assert result.ok and result.status == "unavailable"
+        assert result.guidance
+        assert DispatchResult("pre_commit", [result]).proceed
+        from domain.context import RepoContext
+        context = RepoContext.load(str(root))
+        assert context is None or not context.validation.component(component.id).last_lint_at
+
+
+def test_missing_lint_does_not_hide_another_components_failed_lint():
+    from domain.lifecycle import checks
+    missing = HookResult("lint", ok=True, status="unavailable", summary="missing entry")
+    passed = HookResult("lint", ok=True, summary="passed")
+    failed = HookResult("lint", ok=False, summary="lint command failed")
+    available = checks._aggregate("lint", "two components", [missing, passed])
+    assert available.status == "unavailable"
+    assert DispatchResult("pre_commit", [available]).proceed
+    blocked = checks._aggregate("lint", "two components", [missing, failed])
+    assert blocked.status == "failed"
+    assert not DispatchResult("pre_commit", [blocked]).proceed
 
 
 if __name__ == "__main__":

@@ -542,6 +542,8 @@ def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecy
         return res
 
     def mark(r: lifecycle.HookResult) -> str:
+        if r.status == "unavailable":
+            return "⚠ unavailable"
         if r.ok:
             return "✓"
         return "⚠" if r.advisory else "✗"   # ⚠ = 软提示失败（不阻断）；✗ = 硬拦截失败

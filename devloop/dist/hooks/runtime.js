@@ -2008,9 +2008,6 @@ async function inspectCatalog(root) {
   const checkout = realpathSync3(root);
   return new ComponentCatalog(checkout, await inspectRepository(checkout));
 }
-async function defaultComponent(root) {
-  return (await inspectCatalog(root)).default();
-}
 function enclosingComponent(target, catalog) {
   return catalog.owner(target) ?? catalog.default();
 }
@@ -2785,7 +2782,9 @@ function renderItem(item) {
     const history = components.length === 0 ? "Validation history: no recorded runs" : `Validation: ${components.map((row) => `${text(row.component)}: lint=${formatTimestamp(typeof row.lintAt === "number" ? row.lintAt : void 0)}, test=${formatTimestamp(typeof row.testAt === "number" ? row.testAt : void 0)}`).join(" | ")}`;
     const analysis = payload.analysis;
     const scopes = rows(analysis?.checks).map((row) => `${text(row.component)} ${text(row.check)}=${text(row.scope)} (${text(row.reason)})`);
-    return [history, ...scopes.length ? [`Latest validation scope: ${scopes.join(" | ")}`] : []].join("\n");
+    const unavailable = Array.isArray(payload.unavailableLintComponents) ? payload.unavailableLintComponents.filter((value) => typeof value === "string") : [];
+    const availability = unavailable.length ? [`Lint unavailable: ${unavailable.join(", ")} \u2014 no make lint/lint-ci entry (non-blocking)`] : [];
+    return [history, ...availability, ...scopes.length ? [`Latest validation scope: ${scopes.join(" | ")}`] : []].join("\n");
   }
   if (item.type === "repo.review") return renderReview(payload);
   return "";
@@ -2968,8 +2967,11 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   if (!repo) return new Board(root, items);
   const scope = { workspaceRoot: root, repoRoot: repo };
   let component, inspectionProblem = "";
+  let unavailableLintComponents = [];
   try {
-    component = await defaultComponent(repo);
+    const catalog = await inspectCatalog(repo);
+    unavailableLintComponents = catalog.components.filter((item) => !item.lintTarget()).map((item) => item.id);
+    component = catalog.default();
   } catch (error) {
     if (!(error instanceof InspectionError)) throw error;
     inspectionProblem = error.message;
@@ -3028,6 +3030,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   const componentIds = [.../* @__PURE__ */ new Set([...Object.keys(lint), ...Object.keys(test)])].sort();
   items.push(boardItem("repo.validation", "state", scope, {
     analysis: loadSegment(repo, branchSegment(branch || void 0, "validation_scope")) ?? {},
+    unavailableLintComponents,
     components: componentIds.map((component2) => ({
       component: component2,
       lintAt: typeof lint[component2] === "object" && lint[component2] !== null && !Array.isArray(lint[component2]) ? lint[component2].passed_at ?? null : null,

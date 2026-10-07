@@ -40,7 +40,9 @@ export function renderItem(item) {
         const history = components.length === 0 ? "Validation history: no recorded runs" : `Validation: ${components.map((row) => `${text(row.component)}: lint=${formatTimestamp(typeof row.lintAt === "number" ? row.lintAt : undefined)}, test=${formatTimestamp(typeof row.testAt === "number" ? row.testAt : undefined)}`).join(" | ")}`;
         const analysis = payload.analysis;
         const scopes = rows(analysis?.checks).map((row) => `${text(row.component)} ${text(row.check)}=${text(row.scope)} (${text(row.reason)})`);
-        return [history, ...(scopes.length ? [`Latest validation scope: ${scopes.join(" | ")}`] : [])].join("\n");
+        const unavailable = Array.isArray(payload.unavailableLintComponents) ? payload.unavailableLintComponents.filter((value) => typeof value === "string") : [];
+        const availability = unavailable.length ? [`Lint unavailable: ${unavailable.join(", ")} — no make lint/lint-ci entry (non-blocking)`] : [];
+        return [history, ...availability, ...(scopes.length ? [`Latest validation scope: ${scopes.join(" | ")}`] : [])].join("\n");
     }
     if (item.type === "repo.review")
         return renderReview(payload);

@@ -1,5 +1,5 @@
 import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, checkoutInfo } from "../../lib/git-state.js";
-import { findAgentsDocument, defaultComponent } from "../repo-layout.js";
+import { findAgentsDocument, inspectCatalog } from "../repo-layout.js";
 import { InspectionError } from "../../lib/repocli.js";
 import { parseReferencesSection } from "../../lib/parsers.js";
 import { branchSegment, loadSegment, segmentFile } from "../context/store.js";
@@ -20,8 +20,11 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
         return new Board(root, items);
     const scope = { workspaceRoot: root, repoRoot: repo };
     let component, inspectionProblem = "";
+    let unavailableLintComponents = [];
     try {
-        component = await defaultComponent(repo);
+        const catalog = await inspectCatalog(repo);
+        unavailableLintComponents = catalog.components.filter((item) => !item.lintTarget()).map((item) => item.id);
+        component = catalog.default();
     }
     catch (error) {
         if (!(error instanceof InspectionError))
@@ -77,6 +80,7 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
     const componentIds = [...new Set([...Object.keys(lint), ...Object.keys(test)])].sort();
     items.push(boardItem("repo.validation", "state", scope, {
         analysis: loadSegment(repo, branchSegment(branch || undefined, "validation_scope")) ?? {},
+        unavailableLintComponents,
         components: componentIds.map((component) => ({
             component,
             lintAt: typeof lint[component] === "object" && lint[component] !== null && !Array.isArray(lint[component]) ? lint[component].passed_at ?? null : null,

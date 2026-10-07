@@ -194,3 +194,6 @@ stamp. Failed or invalid analysis runs full canonical checks. Lint still require
 complete analysis. Scope and reasons are published in branch-owned
 `validation_scope` state for Board.
 See [repocli usage and compatibility](../references/repocli.md).
+
+缺少 `make lint` / `make lint-ci` 入口时，lint 记录为 `unavailable` 并在 Board 提示，
+不阻断提交，也不写通过戳。实际 lint 执行失败仍阻断；多个 Component 中缺少入口不能掩盖其他 Component 的失败。

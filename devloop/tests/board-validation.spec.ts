@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -22,4 +22,15 @@ it("delivers full fallback reason from persisted state to the prompt", async () 
   expect(output).toContain("server test=full");
   expect(output).toContain("repocli fallback: CLI unavailable");
   expect(output).not.toContain("stamped");
+});
+
+it("shows missing lint as non-blocking and clears it when the entry is added", async () => {
+  writeFileSync(join(root, "go.mod"), "module example.test/demo\n\ngo 1.24\n");
+  const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "missing-lint" }));
+  expect(output).toContain("Lint unavailable: .");
+  expect(output).toContain("non-blocking");
+  expect(output).toContain("no recorded runs");
+  writeFileSync(join(root, "Makefile"), "lint:\n\t@true\n");
+  const updated = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "with-lint" }));
+  expect(updated).not.toContain("Lint unavailable");
 });

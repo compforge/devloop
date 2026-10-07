@@ -45,8 +45,8 @@ def _aggregate(name: str, reason: str, results: list[HookResult], *, advisory: b
         name,
         ok=all(r.ok for r in results),
         advisory=advisory,
-        status=("unavailable" if any(r.status == "unavailable" for r in results) else
-                "failed" if any(r.status == "failed" for r in results) else
+        status=("failed" if any(r.status == "failed" for r in results) else
+                "unavailable" if any(r.status == "unavailable" for r in results) else
                 "skipped" if not results or all(r.status == "skipped" for r in results) else "passed"),
         summary=(detail or reason) if name in {"lint", "test"} else (f"{reason}; {detail}" if detail else reason),
         guidance=tuple(note for result in results for note in result.guidance) +
@@ -176,7 +176,7 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     并 fan-out，避免多 component 仓静默回落 server / 仓根。`paths`（相位边界冻结的改动范围）给出即用它，
     不再自己读工作树——commit 后工作树已干净，读出来会是「无改动」→ 退化成跑全仓。
     跑 lint 前清 `.mypy_cache`：热缓存对一棵冷跑会被标红的树报过绿，一个能放行坏 MR 的戳比慢
-    一点更糟。无 lint target → unavailable（硬 gate 不放行）。
+    一点更糟。无 lint target → unavailable（提示但放行，不盖通过戳）。
     """
     if component is None:
         ws = repo_model.select_components(repo, paths=paths)
@@ -194,7 +194,12 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     code_dir = component.path
     target = component.lint_target()
     if target is None:
-        return HookResult("lint", ok=False, status="unavailable", summary=f"no make lint/lint-ci target in {code_dir} — unavailable")
+        # Availability is a validation fact; absence of a project entry point is not a failed run.
+        return HookResult(
+            "lint", ok=True, status="unavailable",
+            summary=f"no make lint/lint-ci target in {code_dir} — unavailable (non-blocking)",
+            guidance=(f"{code_dir}: lint 未执行；项目未提供 make lint/lint-ci 入口，不阻断提交。",),
+        )
     env_failure = _environment_failure("lint", component)
     if env_failure is not None:
         return env_failure

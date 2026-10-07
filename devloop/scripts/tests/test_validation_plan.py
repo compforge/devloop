@@ -352,7 +352,7 @@ def test_schema2_diff_falls_back_with_upgrade_guidance():
         repo = make_repo(root)
         plan = build_plan(str(repo), repo_model.select_components(repo))
         assert "requires 3" in plan.workset.reason
-        assert "repocli >= 0.11.0" in plan.workset.reason
+        assert "repocli >= 0.17.0" in plan.workset.reason
         assert all(selection.scope == "full" for selection in plan.selections.values())
         assert plan.execution_identity and not plan.identity_problem  # Snapshot schema remains 1.
 
@@ -374,6 +374,32 @@ def test_parent_component_does_not_receive_child_owned_files():
         assert plan.selections[(".", "test")].skipped
         assert plan.selections[("child", "lint")].files == ("source.py",)
         assert plan.selections[("child", "test")].files == ("test_a.py",)
+
+
+
+
+
+def test_explicit_zero_components_stays_unowned():
+    from domain.repo_layout import inspect_catalog
+    with TemporaryDirectory() as root:
+        repo = make_repo(root)
+        (repo / ".repocli.json").write_text('{"components":[]}')
+        catalog = inspect_catalog(str(repo))
+        assert not catalog.components
+        assert catalog.owner(repo / "source.py") is None
+
+
+def test_checkout_discovery_failure_is_not_absence():
+    from domain.repo_layout import find_git_root
+    with TemporaryDirectory() as root:
+        repo = make_repo(root)
+        (repo / ".git" / "HEAD").write_text("broken")
+        try:
+            find_git_root(repo)
+        except OSError:
+            pass
+        else:
+            raise AssertionError("corrupt checkout treated as absent")
 
 
 if __name__ == "__main__":

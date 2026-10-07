@@ -1,10 +1,11 @@
-"""Native organization inspection and CLI-based snapshot/diff consumption."""
+"""Native repository facts and the Go CLI diff protocol boundary."""
 from __future__ import annotations
 
 import json
 import os
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from dataclasses import dataclass
 
 import repocli as toolkit
 from repocli import InspectReport, PackageTool as PackageTool, owner as owner
@@ -44,3 +45,52 @@ def inspect(repo: str) -> InspectReport:
         return report
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise InspectionError(f"repository inspection unavailable: {exc}") from exc
+
+
+@dataclass(frozen=True)
+class DiffReport:
+    complete: bool
+    scope: str
+    diagnostics: tuple[dict, ...]
+    snapshot: str
+    components: tuple[dict, ...]
+    affected_files: tuple[str, ...]
+    test_files: tuple[str, ...]
+
+
+def _paths(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValueError("file list missing")
+    for path in value:
+        if (not isinstance(path, str) or not path or PurePosixPath(path).is_absolute()
+                or ".." in PurePosixPath(path).parts or "\x00" in path):
+            raise ValueError("invalid repository-relative path")
+    return tuple(value)
+
+
+def decode_diff(data: dict, repo: str, input_kind: str) -> DiffReport:
+    """Validate the external wire contract without deciding test execution policy."""
+    if not isinstance(data, dict) or data.get("schemaVersion") != 3:
+        raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.17.0)")
+    diagnostics = data.get("diagnostics")
+    if (not isinstance(data.get("complete"), bool)
+            or data.get("scope") not in ("focused", "partial")
+            or not isinstance(diagnostics, list)
+            or any(not isinstance(d, dict) for d in diagnostics)):
+        raise ValueError("invalid analysis status")
+    if Path(data.get("checkout", "")).resolve() != Path(repo).resolve():
+        raise ValueError("analysis target mismatch")
+    snapshot = data.get("snapshot", "")
+    if not isinstance(snapshot, str) or len(snapshot) != 71 or not snapshot.startswith("sha256:"):
+        raise ValueError("missing snapshot identity")
+    if data.get("input") != input_kind:
+        raise ValueError("analysis input mismatch")
+    impacts = data.get("components", [])
+    if not isinstance(impacts, list) or any(not isinstance(item, dict) for item in impacts):
+        raise ValueError("invalid ComponentImpact list")
+    affected = data.get("affectedFiles")
+    if not isinstance(affected, list) or any(not isinstance(item, dict) for item in affected):
+        raise ValueError("affected file list missing or invalid")
+    return DiffReport(data["complete"], data["scope"], tuple(diagnostics), snapshot,
+                      tuple(impacts), _paths([item.get("path") for item in affected]),
+                      _paths(data.get("testFiles")))

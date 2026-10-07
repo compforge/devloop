@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as toolkit from "@compforge/repocli";
-import { inspectCatalog } from "../domain/repo-layout.js";
+import { inspectCatalog, findGitRoot } from "../domain/repo-layout.js";
 import { selectComponents } from "../domain/repo.js";
 import { PolicyContext } from "../hooks/core/context.js";
 import { evaluate } from "../hooks/core/engine.js";
@@ -160,5 +160,25 @@ describe("native repocli organization", () => {
     const rule: Rule = { name: "inspection", targetKind: "file_change", applies: () => true, check: async (_target, ctx) => { await ctx.catalog(root); return []; } };
     expect((await evaluate(change, context, [rule])).action).toBe("warn");
     expect((await evaluate(change, context, [{ ...rule, failurePolicy: "fail_closed" }])).action).toBe("deny");
+  });
+});
+
+
+describe("repository contract consumption", () => {
+  it("does not invent a component for an explicitly unowned repository", async () => {
+    const { root, write } = fixture();
+    write({ components: [] });
+    const catalog = await inspectCatalog(root);
+    expect(catalog.components).toEqual([]);
+    expect(catalog.owner(join(root, "service/go.mod"))).toBeUndefined();
+  });
+
+  it("preserves locator failures for hard guards", async () => {
+    const { root } = fixture();
+    vi.mocked(toolkit.findCheckout).mockImplementationOnce(() => { throw new Error("discovery failed"); });
+    expect(() => findGitRoot(root)).toThrow("discovery failed");
+    vi.mocked(toolkit.findCheckout).mockImplementationOnce(() => { throw new Error("discovery failed"); });
+    const result = await evaluateTool({ harness: "codex", toolName: "exec_command", toolInput: { cmd: "git commit -m example", workdir: root }, cwd: root });
+    expect(result.findings).toContainEqual(expect.objectContaining({ severity: "deny" }));
   });
 });

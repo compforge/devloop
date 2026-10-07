@@ -1,10 +1,6 @@
+export { ForgeError, ForgeAuthError, ForgeNotFound, parsePullRequestNumber } from "@compforge/repocli";
+import { ForgeNotFound } from "@compforge/repocli";
 export const PRS_CAP = 5;
-export class ForgeError extends Error {
-}
-export class ForgeAuthError extends ForgeError {
-}
-export class ForgeNotFound extends ForgeError {
-}
 export function blocksMerge(readiness) {
     return readiness === "conflict" || readiness === "discussions_unresolved" || readiness === "ci_blocked";
 }
@@ -20,10 +16,6 @@ export function vocabulary(provider) {
 export function pullRequestLabel(provider, number) {
     const [noun, sigil] = vocabulary(provider);
     return `${noun} ${sigil}${number}`;
-}
-export function parsePullRequestNumber(value) {
-    const match = value.match(/\/(?:pull|merge_requests)\/(\d+)/) ?? value.trim().match(/^[!#]?(\d+)$/);
-    return match?.[1] === undefined ? undefined : Number.parseInt(match[1], 10);
 }
 /** Keep the current proposal in the bounded recent window. */
 export async function buildWindow(forge, anchor, cap = PRS_CAP) {

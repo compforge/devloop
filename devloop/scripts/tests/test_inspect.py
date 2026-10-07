@@ -102,13 +102,14 @@ def test_execution_containment_rejects_symlinked_component_roots():
         assert inspect_catalog(root).components[0].id == "missing/inside"
 
 
-def test_snapshot_schema_two_is_separate_from_organization():
-    with TemporaryDirectory() as tmp, repocli_report() as cli:
+def test_snapshot_is_native_and_separate_from_organization():
+    with TemporaryDirectory() as tmp:
         root = make_repo(tmp)
-        assert content_identity(str(root)).digest.startswith("sha256:")
-        cli.write_text(cli.read_text().replace("schemaVersion=2)", "schemaVersion=1)"))
-        identity = content_identity(str(root))
-        assert not identity.digest and "requires 2" in identity.problem
+        with patch.object(repocli, "read_report", side_effect=AssertionError("CLI called")):
+            first = content_identity(str(root))
+            assert first.digest.startswith("sha256:")
+            (root / "source.py").write_text("changed")
+            assert content_identity(str(root)).digest != first.digest
 
 
 def test_organization_works_without_repocli_binary():
@@ -116,7 +117,28 @@ def test_organization_works_without_repocli_binary():
         root = make_repo(tmp)
         selected = repo_model.select_components(root)
         assert len(selected.components) == 1 and selected.components[0].language == "python"
-        assert not content_identity(str(root)).digest
+        assert content_identity(str(root)).digest
+
+
+def test_declared_go_component_is_not_reclassified_by_python_manifest():
+    from lib import ecosystem
+    with TemporaryDirectory() as tmp:
+        root = make_repo(tmp)
+        (root / "go.mod").write_text("module example.invalid/service\n")
+        declare(root, [{"root": ".", "name": "service", "language": "go"}])
+        component = inspect_catalog(root).components[0]
+        assert ecosystem.detect(component.path, component.language).name == "go"
+        (root / "Makefile").unlink()
+        assert component.test_command() == ("go", "test", "./...")
+
+
+def test_missing_component_lint_entry_is_unavailable():
+    from domain.lifecycle import checks
+    with TemporaryDirectory() as tmp:
+        root = make_repo(tmp)
+        component = inspect_catalog(root).components[0]
+        result = checks.lint(str(root), component=component)
+        assert not result.ok and result.status == "unavailable"
 
 
 if __name__ == "__main__":

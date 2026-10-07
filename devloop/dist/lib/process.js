@@ -18,8 +18,5 @@ export function runCommand(command, args, options = {}) {
         ok: code === 0,
     };
 }
-/** Run git through the one process seam used by domain and workflow code. */
-export function runGit(repo, args, timeoutMs = 5_000) {
-    return runCommand("git", ["-C", repo, ...args], { timeoutMs });
-}
+export { runGit } from "@compforge/repocli";
 //# sourceMappingURL=process.js.map

@@ -20,11 +20,7 @@ class PythonEcosystem(Ecosystem):
     name = "python"
     # setup.py 是 legacy 项目边界；requirements.txt 刻意不进（依赖清单≠项目边界，
     # 常见形态是仓根放一份给容器构建、真项目在 server/——认它就把仓根误判成 component）。
-    manifests = ("pyproject.toml", "setup.py")
 
-    def matches_language(self, path):
-        # requirements.txt 仍是**语言**线索（这是什么语言 ≠ 这是不是项目）。
-        return super().matches_language(path) or (Path(path) / "requirements.txt").exists()
 
     @staticmethod
     def is_uv_managed(path: str | Path) -> bool:
@@ -60,10 +56,6 @@ class PythonEcosystem(Ecosystem):
         venv = Path(path) / ".venv"
         if self.is_uv_managed(path) and venv.is_dir():
             (venv / ".devloop-envhash").write_text(_env_hash(path), encoding="utf-8")
-
-    def is_test_file(self, path):
-        name = Path(path).name
-        return name.endswith(".py") and (name.startswith("test_") or name.endswith("_test.py"))
 
 
 def _env_hash(path: str | Path) -> str:

@@ -58,7 +58,12 @@ class HookResult:
     summary: str = ""
     relay: BackgroundSpec | None = None   # 非 None = signal hook，由 commit_flow detach 后台下游
     advisory: bool = False                # True = 软提示：ok=False 时通报但不阻断（不进 proceed）
+    status: str = ""  # passed / failed / skipped / unavailable; ok remains gate policy
     guidance: tuple[str, ...] = ()        # 成败之外的可行动接入提示；调用入口必须当轮展示
+
+    def __post_init__(self) -> None:
+        if not self.status:
+            object.__setattr__(self, "status", "passed" if self.ok else "failed")
 
 
 @dataclass(frozen=True)
@@ -207,6 +212,7 @@ def dispatch(
             return HookResult(
                 name=result.name,
                 ok=result.ok,
+                status=result.status,
                 summary=result.summary,
                 relay=result.relay,
                 advisory=result.advisory,

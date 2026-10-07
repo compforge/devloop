@@ -215,3 +215,6 @@ codex plugin add devloop@devloop
 - [`docs/code-review.md`](./docs/code-review.md)：异步 review 与 comment 交付
 - [`docs/board.md`](./docs/board.md)：状态组织和上下文投递
 - [`AGENTS.md`](./AGENTS.md)：架构边界与开发约定
+
+仓库组织、内容身份和 Git/Forge 操作由 repocli 原生工具包提供；devloop 负责验证与 PR/MR 开发流程。
+验证入口在对应 Component 内声明，无可用入口会明确报告，不视为检查通过。

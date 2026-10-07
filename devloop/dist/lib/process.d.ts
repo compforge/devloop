@@ -13,6 +13,5 @@ export interface RunOptions {
 }
 /** Run a command without a shell so arguments cannot be reinterpreted. */
 export declare function runCommand(command: string, args: readonly string[], options?: RunOptions): CommandResult;
-/** Run git through the one process seam used by domain and workflow code. */
-export declare function runGit(repo: string, args: readonly string[], timeoutMs?: number): CommandResult;
+export { runGit } from "@compforge/repocli";
 //# sourceMappingURL=process.d.ts.map

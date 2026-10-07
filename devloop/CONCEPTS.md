@@ -76,7 +76,7 @@ session-scoped 运行状态的统一生命周期约定：**activity 时创建 �
 
 ## 验证状态
 
-branch 域 `branches/<b>/lint.json` + `test.json`：验证戳**按 component 键**——key 是 component 的仓相对身份 `Component.id`（`.` / `server` / `cli`），每个 component 各记自己的 lint / test 通过时间，以及 **lint 通过那一刻的内容指纹**（`repo.component_fingerprint`）。落盘拆两个段、`RepoContext.load()` 合并成一个内存视图（消费方看不到拆分）。
+branch 域 `branches/<b>/lint.json` + `test.json`：验证戳**按 component 键**——key 是 component 的仓相对身份 `Component.id`（`.` / `server` / `cli`），每个 component 各记自己的 lint / test 通过时间，以及 **lint 通过那一刻的完整仓库内容身份**（repocli snapshot）。落盘拆两个段、`RepoContext.load()` 合并成一个内存视图（消费方看不到拆分）。
 
 **三个维度各归各位**：**branch** 是目录（域，切分支即自动隔离）、**check** 是文件（= writer-role）、**component** 是文件内的 JSON key。
 - **check 必须拆到文件**：`lifecycle.dispatch` 用线程池**并发**跑 lint 与 test，而 segment 的纪律是「single-writer whole-file overwrite」。两个 writer 写同一个文件 = load-modify-write 互相覆盖，实测会丢戳——丢 lint 戳只是白跑一遍，丢 **test** 戳则是状态说「没测过」而其实测过，是**记录失真**。拆开后各写各的，这一类结构上不可能，不需要锁、也不需要「写前重读合并」（那只是把「不可能」降级成窗口更窄的 race）。

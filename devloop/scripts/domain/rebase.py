@@ -6,6 +6,7 @@ bare ``git push --force-with-lease`` that derives its expectation after the reba
 silently bless a colleague's intervening push and overwrite it.
 """
 from __future__ import annotations
+from repocli import git as operations
 
 import json
 import os
@@ -212,7 +213,7 @@ def start(repo: str, target: str | None = None) -> list[str]:
         f"fetched origin/{branch} and origin/{selected_target} @ {target_sha[:9]}",
     ]
 
-    result = gitcmd.git(repo, "rebase", f"origin/{selected_target}", timeout=120)
+    result = operations.rebase(repo, f"origin/{selected_target}")
     if result.ok:
         plan.append(f"rebased {branch} onto origin/{selected_target}")
         plan.append("run relevant tests, then `smart_rebase.sh finish` (no --message needed)")
@@ -283,9 +284,7 @@ def finish(repo: str) -> list[str]:
         _refresh(repo)
         return [f"origin/{state.branch} already matches HEAD; cleared the no-op transaction"]
 
-    lease = f"--force-with-lease=refs/heads/{state.branch}:{state.remote_sha}"
-    refspec = f"refs/heads/{state.branch}:refs/heads/{state.branch}"
-    result = gitcmd.git(repo, "push", lease, "-u", "origin", refspec, timeout=60)
+    result = operations.push(repo, state.branch, upstream=True, lease=state.remote_sha)
     if not result.ok:
         raise RebaseError(
             f"lease-protected push failed; transaction retained for inspection: {result.err or result.out}"

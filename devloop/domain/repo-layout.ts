@@ -40,7 +40,7 @@ export class Component {
   testTarget(): string | undefined { return ["test", "test-ci", "test-local"].find((target) => this.hasTarget(target)); }
   testCommand(): readonly string[] | undefined {
     const target = this.testTarget();
-    return target ? ["make", target] : detectEcosystem(this.path)?.fallbackTestCommand(this.path);
+    return target ? ["make", target] : detectEcosystem(this.language)?.fallbackTestCommand(this.path);
   }
   supportsLintFiles(): boolean { return this.makefileUses("LINT_FILES"); }
   supportsTestFiles(): boolean { return this.makefileUses("TEST_FILES"); }

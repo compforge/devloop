@@ -165,9 +165,9 @@ class BranchTopology:
 class ComponentValidation:
     """**一个** component 的验证戳。
 
-    `lint_fingerprint` 是 lint 通过那一刻、该 component 待验证内容的指纹（`repo_model.component_fingerprint`）
+    `lint_fingerprint` 是 lint 通过那一刻、该 Component 验证时的完整仓库内容身份（repocli snapshot）
     ——通行证绑**内容**，不绑「有没有人报告过改动」。gate 拿当前指纹与它比：不等 = 内容变过 = 这张
-    通行证已作废。这样谁改的、用什么工具改的都不重要（见 `component_fingerprint` 的 why）。"""
+    通行证已作废。这样谁改的、用什么工具改的都不重要（内容契约见 docs/repository-toolkit.md）。"""
     last_lint_at: float | None = None
     lint_fingerprint: str = ""
     last_test_at: float | None = None

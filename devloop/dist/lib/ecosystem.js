@@ -1,21 +1,16 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { runCommand } from "./process.js";
 class BaseEcosystem {
-    language(_path) { return this.name; }
-    matchesLanguage(path) { return this.manifests.some((manifest) => existsSync(join(path, manifest))); }
     prepareCommand(_path) { return undefined; }
     environmentProblem(_path) { return undefined; }
     markPrepared(_path) { }
     fallbackTestCommand(_path) { return undefined; }
-    isTestFile(_path) { return false; }
 }
 class GoEcosystem extends BaseEcosystem {
     name = "go";
-    manifests = ["go.mod"];
     fallbackTestCommand() { return ["go", "test", "./..."]; }
-    isTestFile(path) { return basename(path).endsWith("_test.go"); }
 }
 function hashFiles(path, names) {
     const hash = createHash("sha256");
@@ -37,16 +32,6 @@ const NODE_LOCKFILES = [
 ];
 class NodeEcosystem extends BaseEcosystem {
     name = "node";
-    manifests = ["package.json"];
-    language(path) {
-        try {
-            const content = readFileSync(join(path, "package.json"), "utf8").toLowerCase();
-            return content.includes("typescript") || content.includes("@types/") ? "typescript" : "javascript";
-        }
-        catch {
-            return "javascript";
-        }
-    }
     lockfile(path) {
         return NODE_LOCKFILES.find(([name]) => existsSync(join(path, name)));
     }
@@ -78,12 +63,9 @@ class NodeEcosystem extends BaseEcosystem {
         if (lockfile && existsSync(modules))
             writeFileSync(join(modules, ".devloop-envhash"), hashFiles(path, ["package.json", lockfile[0]]));
     }
-    isTestFile(path) { return /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/.test(basename(path)); }
 }
 class PythonEcosystem extends BaseEcosystem {
     name = "python";
-    manifests = ["pyproject.toml", "setup.py"];
-    matchesLanguage(path) { return super.matchesLanguage(path) || existsSync(join(path, "requirements.txt")); }
     isUvManaged(path) { return existsSync(join(path, "pyproject.toml")) && existsSync(join(path, "uv.lock")); }
     prepareCommand(path) { return this.isUvManaged(path) ? ["uv", "sync", "--frozen"] : undefined; }
     environmentProblem(path) {
@@ -108,21 +90,15 @@ class PythonEcosystem extends BaseEcosystem {
         if (this.isUvManaged(path) && existsSync(environment))
             writeFileSync(join(environment, ".devloop-envhash"), hashFiles(path, ["pyproject.toml", "uv.lock"]));
     }
-    isTestFile(path) {
-        const name = basename(path);
-        return name.endsWith(".py") && (name.startsWith("test_") || name.endsWith("_test.py"));
-    }
 }
 export const ECOSYSTEMS = [new PythonEcosystem(), new GoEcosystem(), new NodeEcosystem()];
-export function detectEcosystem(path) {
-    return ECOSYSTEMS.find((ecosystem) => ecosystem.manifests.some((manifest) => existsSync(join(path, manifest))));
-}
-export function detectLanguage(path) {
-    return ECOSYSTEMS.find((ecosystem) => ecosystem.matchesLanguage(path))?.language(path);
+export function detectEcosystem(language) {
+    const name = ["javascript", "typescript", "tsx", "jsx"].includes(language ?? "") ? "node" : language;
+    return ECOSYSTEMS.find(ecosystem => ecosystem.name === name);
 }
 /** Prepare a component with the ecosystem's frozen install command. */
-export function ensureEnvironmentReady(path) {
-    const ecosystem = detectEcosystem(path);
+export function ensureEnvironmentReady(path, language) {
+    const ecosystem = detectEcosystem(language);
     if (!ecosystem)
         return undefined;
     const problem = ecosystem.environmentProblem(path);

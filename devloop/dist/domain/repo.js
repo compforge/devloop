@@ -1,6 +1,6 @@
 import { InspectionError } from "../lib/repocli.js";
-import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { snapshot, changedPaths as toolkitChangedPaths } from "@compforge/repocli";
+import { realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { runGit } from "../lib/process.js";
 import { Component, ComponentCatalog, enclosingComponent } from "./repo-layout.js";
@@ -8,19 +8,12 @@ function paths(result) {
     return result.ok ? result.stdout.split("\n").map((path) => path.trim()).filter(Boolean) : undefined;
 }
 function workingPaths(root) {
-    const tracked = paths(runGit(root, ["diff", "--name-only", "HEAD"]));
-    const untracked = paths(runGit(root, ["ls-files", "--others", "--exclude-standard"]));
-    if (!tracked || !untracked)
+    try {
+        return toolkitChangedPaths(root);
+    }
+    catch {
         return undefined;
-    return [...tracked, ...untracked.filter((path) => {
-            const target = join(root, path);
-            try {
-                return !lstatSync(target).isSymbolicLink() && !(lstatSync(target).isDirectory() && existsSync(join(target, ".git")));
-            }
-            catch {
-                return true;
-            }
-        })];
+    }
 }
 export function changedPaths(root) { return workingPaths(root) ?? []; }
 export function changedPathsInScope(root, scopes) {
@@ -76,28 +69,10 @@ export function selectComponents(rootValue, options) {
     const all = catalog.components;
     return { components: all, reason: `clean tree, all components: ${all.map((item) => basename(item.path)).join(", ")}` };
 }
-export function componentFingerprint(root, component, catalog) {
-    const changed = workingPaths(root);
-    if (!changed)
-        return undefined;
-    const hash = createHash("sha256").update(component.id);
+export async function componentFingerprint(root, _component, _catalog) {
     try {
-        for (const path of [...changed].sort()) {
-            const owner = catalog.owner(join(catalog.root, path));
-            if (owner?.id !== component.id)
-                continue;
-            const target = join(root, path);
-            hash.update("\0path\0").update(path);
-            if (!existsSync(target))
-                hash.update("\0deleted\0");
-            else if (lstatSync(target).isSymbolicLink())
-                hash.update("\0symlink\0").update(readlinkSync(target));
-            else if (lstatSync(target).isFile())
-                hash.update("\0file\0").update(readFileSync(target));
-            else
-                hash.update("\0other\0");
-        }
-        return hash.digest("hex");
+        const observed = await snapshot(root);
+        return observed.complete ? observed.digest : undefined;
     }
     catch {
         return undefined;

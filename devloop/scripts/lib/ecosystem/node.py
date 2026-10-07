@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from pathlib import Path
 
 from .base import Ecosystem
@@ -23,24 +22,19 @@ _LOCKFILES: tuple[tuple[str, list[str]], ...] = (
     ("yarn.lock", ["yarn", "install", "--immutable"]),
 )
 _MARKER = ".devloop-envhash"   # node_modules/ 内的指纹：prepare 时 manifest+lockfile sha256
-_TEST_FILE = re.compile(r"\.(?:test|spec)\.(?:[cm]?[jt]sx?)$")
 
 
 class NodeEcosystem(Ecosystem):
     name = "node"
-    manifests = ("package.json",)   # tsconfig.json 只是编译配置，不定义项目（可有多份）
 
-    def language(self, path):
-        """ts/js 靠 package.json 内容嗅探——生态同一个，语言是展示属性。"""
-        try:
-            content = (Path(path) / "package.json").read_text(encoding="utf-8")
-        except OSError:
-            return "javascript"
-        return "typescript" if ("typescript" in content.lower() or "@types/" in content) else "javascript"
 
-    @staticmethod
-    def _lockfile(path: str | Path) -> tuple[Path, list[str]] | None:
+    def __init__(self, manager: str | None = None):
+        self.manager = manager
+
+    def _lockfile(self, path: str | Path) -> tuple[Path, list[str]] | None:
         for name, cmd in _LOCKFILES:
+            if self.manager and cmd[0] != self.manager:
+                continue
             f = Path(path) / name
             if f.exists():
                 return f, cmd
@@ -79,9 +73,6 @@ class NodeEcosystem(Ecosystem):
         nm = Path(path) / "node_modules"
         if found and nm.is_dir():
             (nm / _MARKER).write_text(_env_hash(path, found[0]), encoding="utf-8")
-
-    def is_test_file(self, path):
-        return bool(_TEST_FILE.search(Path(path).name))
 
 
 def _env_hash(path: str | Path, lockfile: Path) -> str:

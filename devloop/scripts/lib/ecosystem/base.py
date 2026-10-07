@@ -1,10 +1,7 @@
-"""Ecosystem 契约：devloop 认识的一个工具链生态长什么样。
+"""Execution adapters consume repocli Component and package-tool evidence.
 
-键是 **ecosystem（manifest + 包管理器 + 工具链）**，不是 language：js/ts 共享 Node 生态、
-语言只是生态的一个展示属性。生态回答的是 Makefile 回答不了的四类问题——**身份**（manifest）、
-**环境**（prepare / ready，见 docs/worktree-env.md）、**canonical 回落命令**、**纪律谓词**
-（供 guard 用）。lint/test 的执行仍是 make-first（`Component.lint_target/test_target`），
-生态**不接管**"怎么 lint/test"——往这里加 "python 用 ruff" 这类知识就是在破坏那条边界。
+They prepare checkout-local dependencies and provide Make-first fallback commands.
+Repository identity and language inference belong to repocli.
 """
 from __future__ import annotations
 
@@ -22,17 +19,7 @@ class Ecosystem:
     """
 
     name: str = ""
-    #: 项目清单（身份判据）：带其一即是 component。语言"线索"文件（requirements.txt）不进这里。
-    manifests: tuple[str, ...] = ()
 
-    def language(self, path: str | Path) -> str | None:
-        """本生态在 `path` 的展示语言。默认与生态同名单语言；Node 之类多语言生态覆写。"""
-        return self.name or None
-
-    def matches_language(self, path: str | Path) -> bool:
-        """`path` 是否"像"本生态的语言——比身份判据宽（可用依赖清单等线索）。
-        「这是什么语言」和「这是不是一个项目」是两个问题（Component 目录由 repocli inspect 提供）。"""
-        return any((Path(path) / m).exists() for m in self.manifests)
 
     def prepare_command(self, path: str | Path) -> list[str] | None:
         """把 `path` 的依赖环境从 lockfile 恢复出来的确定性命令（frozen 语义）。
@@ -53,7 +40,3 @@ class Ecosystem:
     def fallback_test_command(self, path: str | Path) -> tuple[str, ...] | None:
         """无 Makefile 时本生态的 canonical test 命令（如 `go test ./...`）。默认没有。"""
         return None
-
-    def is_test_file(self, path: str | Path) -> bool:
-        """`path` 是否是可独立交给 test runner 的测试文件。默认不识别。"""
-        return False

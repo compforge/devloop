@@ -1,6 +1,6 @@
 import { InspectionError } from "../lib/repocli.js";
-import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readlinkSync, realpathSync } from "node:fs";
+import { snapshot, changedPaths as toolkitChangedPaths } from "@compforge/repocli";
+import { realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { runGit } from "../lib/process.js";
 import { Component, ComponentCatalog, enclosingComponent } from "./repo-layout.js";
@@ -12,14 +12,7 @@ function paths(result: ReturnType<typeof runGit>): readonly string[] | undefined
 }
 
 function workingPaths(root: string): readonly string[] | undefined {
-  const tracked = paths(runGit(root, ["diff", "--name-only", "HEAD"]));
-  const untracked = paths(runGit(root, ["ls-files", "--others", "--exclude-standard"]));
-  if (!tracked || !untracked) return undefined;
-  return [...tracked, ...untracked.filter((path) => {
-    const target = join(root, path);
-    try { return !lstatSync(target).isSymbolicLink() && !(lstatSync(target).isDirectory() && existsSync(join(target, ".git"))); }
-    catch { return true; }
-  })];
+  try { return toolkitChangedPaths(root); } catch { return undefined; }
 }
 
 export function changedPaths(root: string): readonly string[] { return workingPaths(root) ?? []; }
@@ -73,23 +66,9 @@ export function selectComponents(rootValue: string, options: { readonly explicit
   return { components: all, reason: `clean tree, all components: ${all.map((item) => basename(item.path)).join(", ")}` };
 }
 
-export function componentFingerprint(root: string, component: Component, catalog: ComponentCatalog): string | undefined {
-  const changed = workingPaths(root);
-  if (!changed) return undefined;
-  const hash = createHash("sha256").update(component.id);
-  try {
-    for (const path of [...changed].sort()) {
-      const owner = catalog.owner(join(catalog.root, path));
-      if (owner?.id !== component.id) continue;
-      const target = join(root, path);
-      hash.update("\0path\0").update(path);
-      if (!existsSync(target)) hash.update("\0deleted\0");
-      else if (lstatSync(target).isSymbolicLink()) hash.update("\0symlink\0").update(readlinkSync(target));
-      else if (lstatSync(target).isFile()) hash.update("\0file\0").update(readFileSync(target));
-      else hash.update("\0other\0");
-    }
-    return hash.digest("hex");
-  } catch { return undefined; }
+export async function componentFingerprint(root: string, _component: Component, _catalog: ComponentCatalog): Promise<string | undefined> {
+  try { const observed = await snapshot(root); return observed.complete ? observed.digest : undefined; }
+  catch { return undefined; }
 }
 
 export function fuzzyScore(query: string, name: string): number | undefined {

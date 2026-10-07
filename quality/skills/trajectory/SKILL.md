@@ -87,6 +87,8 @@ Interpret artifacts in this order:
   granularity, execution, or result, read [references/tool.md](references/tool.md) completely.
 - When evidence points to budgets, retries, concurrency, state, termination, orchestration, or
   compact, read [references/loop-mechanism.md](references/loop-mechanism.md) completely.
+- For prompt growth, context retention, or token-related latency, read
+  [references/context-management.md](references/context-management.md) completely.
 
 Do not map an aggregate label or smell directly to a fix. First identify the repeated trajectory
 behavior, then use its evidence and counterexamples to choose the system-prompt, tool-contract,

@@ -45,6 +45,18 @@ describe("shared session state", () => {
     ]);
   });
 
+  it("retains valid tool-call anchors when another observed path is unavailable", () => {
+    const root = temporaryRoot("devloop-tool-anchors-");
+    execFileSync("git", ["init", "-q", root]);
+    recordToolCall({
+      hook_event_name: "PreToolUse", tool_name: "Bash", cwd: root,
+      tool_input: { command: "git status", path: join(root, "missing", "file.ts") },
+      tool_use_id: "mixed-anchors",
+    }, "claude");
+    const rows = readFileSync(join(root, ".devloop", "tool-calls.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    expect(rows).toMatchObject([{ phase: "started", call_id: "mixed-anchors" }]);
+  });
+
   // Codex shell/unified-exec headers and MCP CallToolResult use different wire formats.
   it.each([
     { name: "failed shell", tool: "Bash", response: "Exit code: 2\nWall time: 0.1 seconds\nOutput:\nfailed", outcome: "failed" },

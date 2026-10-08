@@ -18,16 +18,20 @@ describe("standalone process hook", () => {
     writeFileSync(join(root, ".devloop/config.json"), JSON.stringify({ lifecycle: { default: { pre_commit: ["lint"] } } }));
     writeFileSync(join(root, "go.mod"), "module example.com/service\n");
     writeFileSync(join(root, "Makefile"), "lint:\n\t@true\n");
-    const run = () => {
+    const run = (command = "git commit -m test", extraInput: Record<string, string> = {}) => {
       const result = spawnSync(process.execPath, [entry], {
         cwd: root, encoding: "utf8", timeout: 10_000,
         env: { ...process.env, NODE_PATH: "", DEVLOOP_HARNESS: harness, DEVLOOP_CONFIG_DIR: join(root, "config"), DEVLOOP_REPOCLI: join(root, "missing-repocli"), PLUGIN_ROOT: root },
-        input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: harness === "codex" ? "exec_command" : "Bash", cwd: root, session_id: "bundle", tool_input: harness === "codex" ? { cmd: "git commit -m test", workdir: root } : { command: "git commit -m test" } }),
+        input: JSON.stringify({ hook_event_name: "PreToolUse", tool_name: harness === "codex" ? "exec_command" : "Bash", cwd: root, session_id: "bundle", tool_input: harness === "codex" ? { cmd: command, workdir: root, ...extraInput } : { command, ...extraInput } }),
       });
       expect(result.status, result.stderr).toBe(0);
       return JSON.parse(result.stdout);
     };
     expect(run()).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has never run") } });
+    // Observability may probe unusable paths, but must still reach the commit gate.
+    expect(run(undefined, { path: join(root, "missing", "file.ts") })).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has never run") } });
+    // A failed lookup for the actual command target must reach fail-closed rules.
+    expect(run(`git -C "${join(root, "missing")}" commit -m test`)).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("fail-closed") } });
     writeFileSync(join(root, ".repocli.json"), JSON.stringify({ components: [{ name: "bad", root: "../outside" }] }));
     expect(run()).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("inspection unavailable") } });
   });

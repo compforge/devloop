@@ -118,7 +118,14 @@ export function recordToolCall(payload: HookPayload, harness: RuntimeHarness): v
   const timestamp = Date.now() / 1_000;
   const callId = string(payload.tool_use_id);
   const phase = event === "PreToolUse" ? "started" : "finished";
-  for (const root of new Set(anchors.flatMap((anchor) => findGitRoot(anchor) ?? []))) {
+  const roots = new Set<string>();
+  for (const anchor of new Set(anchors)) {
+    // Observed paths can be missing or unreadable. Losing a timing record must not
+    // skip policy evaluation; rules independently resolve their targets fail-closed.
+    try { const root = findGitRoot(anchor); if (root) roots.add(root); }
+    catch { /* Keep recording other known checkouts without inventing a location. */ }
+  }
+  for (const root of roots) {
     const record: Record<string, string | number> = {
       schema: TOOL_CALL_SCHEMA, kind: "tool_call", phase, ts: timestamp, call_id: callId,
       session_id: sessionId(payload), harness, tool: string(payload.tool_name),

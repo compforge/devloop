@@ -402,5 +402,25 @@ def test_checkout_discovery_failure_is_not_absence():
             raise AssertionError("corrupt checkout treated as absent")
 
 
+def test_plan_recording_preserves_identity_on_branch_lookup_failure():
+    from domain import validation
+    with TemporaryDirectory() as root:
+        repo = make_repo(root)
+        old = validation.Plan(repo_model.WorkSet((), "previous"), execution_identity="previous")
+        validation.persist_plan(str(repo), old)
+        previous = load_segment(repo, branch_segment("main", "validation_scope"))
+        _git(repo, "checkout", "--detach", "-q")
+        validation.persist_plan(str(repo), old)
+        detached = load_segment(repo, branch_segment(None, "validation_scope"))
+        assert detached["execution_identity"] == "previous"
+        _git(repo, "checkout", "-q", "main")
+        output = io.StringIO()
+        with patch.object(validation.git_state, "get_current_branch", side_effect=OSError("branch read failed")), redirect_stdout(output):
+            validation.persist_plan(str(repo), validation.Plan(repo_model.WorkSet((), "new"), execution_identity="new"))
+        assert "validation scope not recorded: branch read failed" in output.getvalue()
+        assert load_segment(repo, branch_segment("main", "validation_scope")) == previous
+        assert load_segment(repo, branch_segment(None, "validation_scope")) == detached
+
+
 if __name__ == "__main__":
     run_main(globals())

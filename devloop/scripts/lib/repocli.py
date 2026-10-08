@@ -1,4 +1,4 @@
-"""Native repository facts and the Go CLI diff protocol boundary."""
+"""Native repository facts and the Go CLI impact protocol boundary."""
 from __future__ import annotations
 
 import json
@@ -48,7 +48,7 @@ def inspect(repo: str) -> InspectReport:
 
 
 @dataclass(frozen=True)
-class DiffReport:
+class ImpactReport:
     complete: bool
     scope: str
     diagnostics: tuple[dict, ...]
@@ -68,10 +68,10 @@ def _paths(value: object) -> tuple[str, ...]:
     return tuple(value)
 
 
-def decode_diff(data: dict, repo: str, input_kind: str) -> DiffReport:
+def decode_impact(data: dict, repo: str, input_kind: str) -> ImpactReport:
     """Validate the external wire contract without deciding test execution policy."""
     if not isinstance(data, dict) or data.get("schemaVersion") != 3:
-        raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.17.0)")
+        raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.19.0)")
     diagnostics = data.get("diagnostics")
     if (not isinstance(data.get("complete"), bool)
             or data.get("scope") not in ("focused", "partial")
@@ -91,6 +91,6 @@ def decode_diff(data: dict, repo: str, input_kind: str) -> DiffReport:
     affected = data.get("affectedFiles")
     if not isinstance(affected, list) or any(not isinstance(item, dict) for item in affected):
         raise ValueError("affected file list missing or invalid")
-    return DiffReport(data["complete"], data["scope"], tuple(diagnostics), snapshot,
+    return ImpactReport(data["complete"], data["scope"], tuple(diagnostics), snapshot,
                       tuple(impacts), _paths([item.get("path") for item in affected]),
                       _paths(data.get("testFiles")))

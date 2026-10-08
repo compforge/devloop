@@ -3,7 +3,7 @@
 repocli 提供 Repository 的组织、内容与 Git/Forge 操作。devloop 把这些能力组合成以 PR/MR 为单位的
 开发闭环：确定任务范围、准备环境、执行验证、提交与发布，再处理 review 和生命周期清理。
 TypeScript hook 与 Python workflow 直接调用对应语言的工具包，不通过 repocli CLI 执行仓库操作。
-代码影响分析仍由 Go repocli diff 提供；调用方保留 ComponentImpact 的版本归属与缺口。
+代码影响分析仍由 Go repocli impact 提供；调用方保留 ComponentImpact 的版本归属与缺口。
 
 ## 验证链路
 
@@ -92,7 +92,7 @@ repocli 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect �
 
 原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
 父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
-CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.17.0。
+CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.19.0。
 
 仓库定位委托 find_checkout/findCheckout：无仓库是正常缺失，损坏元数据、权限与 Git 失败不能
 转换为“没有仓库”。必要 hook 事实读取失败继续走 fail_closed，不绕过保护分支规则。

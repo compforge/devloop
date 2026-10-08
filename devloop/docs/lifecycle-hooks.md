@@ -185,7 +185,7 @@ detach 起——pre/post_commit relays 在 commit 后、pre/post_mr relays 在 p
 ## Automatic validation scope
 
 Component organization comes from repocli inspect; unavailable organization stops the gate.
-Lint and test share one repocli diff plan after normalization. The phase caller supplies
+Lint and test share one repocli impact plan after normalization. The phase caller supplies
 the comparison: working input for pre-commit, the actual commit for post-commit,
 and the target merge-base for MR phases. Changed-path filters restrict seeds, not
 dependent test discovery. Successful valid analysis selects its returned tests,

@@ -51,13 +51,13 @@ def test_invalid_and_failed_cli_reports_fall_back():
     for output in outputs:
         with TemporaryDirectory() as root, repocli_report() as cli:
             repo = make_repo(root)
-            cli.write_text(cli.read_text().replace("if sys.argv[1]=='diff':", "if sys.argv[1]=='diff': print("+repr(output)+"); raise SystemExit(0)\nif sys.argv[1]=='diff':"))
+            cli.write_text(cli.read_text().replace("if sys.argv[1]=='impact':", "if sys.argv[1]=='impact': print("+repr(output)+"); raise SystemExit(0)\nif sys.argv[1]=='impact':"))
             plan = build_plan(str(repo), repo_model.select_components(repo))
             assert all(not selection.files for selection in plan.selections.values())
             assert "repocli fallback" in plan.workset.reason
     with TemporaryDirectory() as root, repocli_report() as cli:
         repo = make_repo(root)
-        cli.write_text(cli.read_text().replace("if sys.argv[1]=='diff':", "if sys.argv[1]=='diff': raise SystemExit(7)\nif sys.argv[1]=='diff':"))
+        cli.write_text(cli.read_text().replace("if sys.argv[1]=='impact':", "if sys.argv[1]=='impact': raise SystemExit(7)\nif sys.argv[1]=='impact':"))
         plan = build_plan(str(repo), repo_model.select_components(repo))
         assert "exited 7" in plan.workset.reason
 
@@ -118,7 +118,7 @@ def test_partial_analysis_preserves_project_file_list_contract():
 def test_cli_failure_executes_full_tests():
     with TemporaryDirectory() as root, repocli_report() as cli:
         repo = make_repo(root)
-        cli.write_text(cli.read_text().replace("if sys.argv[1]=='diff':", "if sys.argv[1]=='diff': raise SystemExit(7)\nif sys.argv[1]=='diff':"))
+        cli.write_text(cli.read_text().replace("if sys.argv[1]=='impact':", "if sys.argv[1]=='impact': raise SystemExit(7)\nif sys.argv[1]=='impact':"))
         plan = build_plan(str(repo), repo_model.select_components(repo), checks=("test",))
         assert "exited 7" in plan.workset.reason
         result = checks.test_components(str(repo), plan.workset, plan=plan)
@@ -209,7 +209,7 @@ def test_missing_or_invalid_affected_files_are_not_an_empty_result():
         with TemporaryDirectory() as root, repocli_report() as cli:
             repo = make_repo(root)
             cli.write_text(cli.read_text().replace("print(json.dumps(data))",
-                "if sys.argv[1]=='diff': data['affectedFiles']=" + repr(affected) + "\nprint(json.dumps(data))"))
+                "if sys.argv[1]=='impact': data['affectedFiles']=" + repr(affected) + "\nprint(json.dumps(data))"))
             plan = build_plan(str(repo), repo_model.select_components(repo))
             assert "repocli fallback" in plan.workset.reason
             assert all(s.scope == "full" for s in plan.selections.values())
@@ -243,7 +243,7 @@ def test_timeout_falls_back_and_full_bypasses_cli():
     from domain import validation
     original = subprocess.run
     def run(argv, *args, **kwargs):
-        if len(argv) > 1 and argv[1] == "diff":
+        if len(argv) > 1 and argv[1] == "impact":
             raise subprocess.TimeoutExpired(argv, 35)
         return original(argv, *args, **kwargs)
     with TemporaryDirectory() as root:
@@ -352,7 +352,7 @@ def test_schema2_diff_falls_back_with_upgrade_guidance():
         repo = make_repo(root)
         plan = build_plan(str(repo), repo_model.select_components(repo))
         assert "requires 3" in plan.workset.reason
-        assert "repocli >= 0.17.0" in plan.workset.reason
+        assert "repocli >= 0.19.0" in plan.workset.reason
         assert all(selection.scope == "full" for selection in plan.selections.values())
         assert plan.execution_identity and not plan.identity_problem  # Snapshot schema remains 1.
 

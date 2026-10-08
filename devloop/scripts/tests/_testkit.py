@@ -168,7 +168,7 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 "repo = sys.argv[sys.argv.index('--repo')+1]\n"
                 "if sys.argv[1]=='inspect': raise SystemExit('inspect must use the toolkit')\n"
                 "if '--impact' in sys.argv: raise SystemExit(2)\n"
-                "if sys.argv[1]=='diff':\n with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
+                "if sys.argv[1]=='impact':\n with (Path(repo)/'analysis.observed').open('a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
                 "identity=snapshot(repo).digest\n"
                 "data = " + repr({"schemaVersion": schema, "complete": complete, "scope": scope,
                                   "snapshot": "sha256:" + "a" * 64,

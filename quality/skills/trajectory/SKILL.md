@@ -23,6 +23,36 @@ sufficient for the requested analysis. A missing specialized Detector or Verifie
 make the capability absent: inspect representative and counterexample trajectories for candidate
 problems, clearly recording them as analyst observations rather than fabricated framework results.
 
+## Method: efficiency and effectiveness
+
+Inspect trajectories through two entry points:
+
+- **Efficiency (`cost`)**: excessive time or tokens, repeated work, unnecessary
+  calls, and unproductive exploration. Many signals can be detected with little
+  business knowledge.
+- **Effectiveness (`effect`)**: missed objectives, incorrect conclusions, weak
+  evidence, and incomplete outcomes. Judging these usually requires project-owned
+  goals, contracts, or annotations. Completion and protocol checks can still be
+  generic.
+
+Business dependence is a matter of degree. High cost alone does not establish
+waste; judging whether an action was worthwhile requires its contribution to
+the task. One behavior can harm both efficiency and effectiveness.
+
+Use this analysis loop:
+
+1. Verify source identity, execution health, and comparability.
+2. Find a cost or effect signal worth investigating.
+3. Trace it to concrete actions and observations.
+4. Explain the suspected mechanism and identify counter-evidence.
+5. Test one bounded change, measuring both cost and effect.
+
+For each suspicious step, ask:
+
+- What new evidence or decision did it produce?
+- How did that advance the task's objective?
+- Could it be removed, combined, or moved earlier without harming the outcome?
+
 ## Discover the capability
 
 Read the project's AGENTS.md and README first, then locate:

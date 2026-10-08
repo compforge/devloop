@@ -9,6 +9,29 @@ A **trajectory smell** is a recurring, observable action pattern that suggests a
 fragility, or effect loss. Like a code smell, it identifies where to investigate; it is not itself a
 proven defect, root cause, or required fix.
 
+Separate the detection of a pattern from the judgment of its value:
+
+- Generic analysis can identify high consumption, repeated observations,
+  ineffective tool calls, and stalled progress.
+- Project-specific analysis determines whether the work was necessary, whether
+  the evidence supports the conclusion, and whether the intended outcome was
+  achieved.
+
+For a slow or expensive execution, build a per-turn evidence table before
+recommending changes:
+
+| Turn | New information | Retained context | Input/output tokens | Model/tool time | Action and actual result | Decision advanced |
+|---|---|---|---|---|---|---|
+
+Use the request actually sent to the model. Distinguish duplicate content within
+a request, useful evidence retained across turns, and obsolete exploration.
+A successful tool status does not prove that the requested evidence was
+obtained; inspect the returned content.
+
+Label each proposed optimization as confirmed redundancy, suspected low-value
+work, or an unresolved attribution question. State the expected saving, the
+evidence that must survive, and the effect guardrail for the experiment.
+
 Explicit failures and errors are the strongest smells: failed or malformed model output, invalid
 tool arguments, rejected tool calls, tool/runtime errors, timeouts, cancellations, and incomplete
 delivery. Less direct smells include unnecessary model calls, unnecessary tool calls, repeated

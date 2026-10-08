@@ -9,6 +9,10 @@ owned workflow with raw `git commit/push`, `git worktree add`, force-push, or ha
 
 `<PLUGIN_ROOT>` maps to `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
 
+Run Python workflows through `<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/<name>.py`.
+This launcher supplies the locked dependencies via uv; system Python or the target project's
+environment may not have them.
+
 ## Before mutation
 
 Resolve the task's intent and the live branch/PR state before changing HEAD or files. The current

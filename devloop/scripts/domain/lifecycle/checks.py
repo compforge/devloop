@@ -25,6 +25,7 @@ from domain.context import RepoContext
 from domain.repo_layout import Component
 from domain.lifecycle.base import HookResult
 from domain.validation import Plan, build_plan, content_identity
+from domain.validation_result import CheckRun
 
 _TAIL_LINES = 40   # 失败时回带的输出尾行数（够定位、不淹没 PLAN）
 _MAX_COMPONENT_TEST_WORKERS = 8
@@ -216,6 +217,12 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
         )
     args = command[2:] if command else ("LINT_FILES=",)
     fingerprint = plan.execution_identity if plan else repo_model.component_fingerprint(repo, component)
+    run = CheckRun(repo, component.id, "lint", fingerprint or "", ("make", target, *args),
+                   "focused" if command else "full", tuple(files) if command else ())
+    if cached := run.reuse():
+        if problem := _identity_problem(repo, plan, "before reuse"):
+            return HookResult("lint", ok=False, summary=problem)
+        return cached
     rc, elapsed = _make(component, target, capture=capture, sink=sink, args=args)
     if rc == 0 and (problem := _identity_problem(repo, plan, "during lint")):
         return HookResult("lint", ok=False, summary=problem)
@@ -223,26 +230,26 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
         return HookResult("lint", ok=False, summary="contents changed during lint; validation not stamped")
     if rc == 0 and command:
         # spec: focused lint 只验证当前选择，不能授予整个 Component 的可复用通行证。
-        return HookResult(
+        return run.record(HookResult(
             "lint", ok=True,
             summary=f"make {target} passed in {elapsed:.1f}s — focused {len(files)} selected file(s); "
                     "component lint stamp unchanged",
-        )
+        ))
     if rc == 0:
         if plan and not plan.execution_identity:
             return HookResult("lint", ok=True, summary=f"full lint passed; validation not stamped: {plan.identity_problem or 'input identity unavailable'}")
         ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
         # Bind the stamp to the input fingerprint verified before and after execution.
         ctx.mark_lint_passed(component.id, fingerprint)
-        return HookResult("lint", ok=True, summary=f"make {target} passed in {elapsed:.1f}s — stamped",
-                          guidance=guidance)
+        return run.record(HookResult("lint", ok=True, summary=f"make {target} passed in {elapsed:.1f}s — stamped",
+                          guidance=guidance))
     detail = f"\n{_tail(sink)}" if capture else ""
-    return HookResult(
+    return run.record(HookResult(
         "lint",
         ok=False,
         summary=f"make {target} failed after {elapsed:.1f}s (only `make fix` may edit files){detail}",
         guidance=guidance,
-    )
+    ))
 
 
 def test_components(
@@ -401,6 +408,12 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
         return env_failure, False
     sink: list[str] = []
     fingerprint = plan.execution_identity if plan else repo_model.component_fingerprint(repo, component)
+    run = CheckRun(repo, component.id, "test", fingerprint or "", tuple(argv), scope,
+                   tuple(focused_files))
+    if cached := run.reuse():
+        if problem := _identity_problem(repo, plan, "before reuse"):
+            return HookResult("test", ok=False, advisory=True, summary=problem), False
+        return cached, False
     started_at = monotonic()
     if capture:
         _progress("test", component, "started")
@@ -420,37 +433,37 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
             return HookResult("test", ok=False, advisory=True,
                               summary="contents changed during tests; validation not stamped"), False
         if focused:
-            return HookResult(
+            return run.record(HookResult(
                 "test",
                 ok=True,
                 advisory=True,
                 summary=f"{display} passed in {elapsed:.1f}s — focused {len(focused_files)} affected test file(s); "
                         "component test stamp unchanged",
                 guidance=guidance,
-            ), False
+            )), False
         if unverified_scope:
-            return HookResult(
+            return run.record(HookResult(
                 "test",
                 ok=True,
                 advisory=True,
                 summary=f"{display} passed in {elapsed:.1f}s — explicit test arguments; coverage not inferred; "
                         "component test stamp unchanged",
                 guidance=guidance,
-            ), False
+            )), False
         if plan and not plan.execution_identity:
             return HookResult("test", ok=True, advisory=True, summary=f"full tests passed; validation not stamped: {plan.identity_problem or 'input identity unavailable'}"), False
-        return HookResult(
+        return run.record(HookResult(
             "test",
             ok=True,
             advisory=True,
             summary=f"{display} passed in {elapsed:.1f}s — stamped",
             guidance=guidance,
-        ), True
+        )), True
     detail = f"\n{_tail(sink)}" if capture else ""
-    return HookResult(
+    return run.record(HookResult(
         "test",
         ok=False,
         advisory=True,
         summary=f"{display} failed after {elapsed:.1f}s (advisory — not blocking){detail}",
         guidance=guidance,
-    ), False
+    )), False

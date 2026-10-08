@@ -120,8 +120,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             # inherit its focused scope, even if the dirty files are outside the seeds.
             if comparison.head and repo_model.changed_paths(repo):
                 raise ValueError("working tree differs from committed analysis target")
-            data = repocli.read_report(repo, "diff", argv)
-            report = repocli.decode_diff(data, repo, "commit" if comparison.head else "working_tree")
+            data = repocli.read_report(repo, "impact", argv)
+            report = repocli.decode_impact(data, repo, "commit" if comparison.head else "working_tree")
             diagnostics = report.diagnostics
             # Missing relationships limit coverage, not the usability of returned
             # files. Status and diagnostics explain the selection without widening it.

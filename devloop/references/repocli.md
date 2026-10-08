@@ -8,9 +8,9 @@ There is no separate repocli skill or Python forwarding script.
 repocli --version
 repocli inspect --repo /path/to/repo --json
 repocli snapshot --repo /path/to/repo --json
-repocli diff --help
-repocli diff --repo /path/to/repo --base HEAD --test-dir . --json
-repocli diff --repo /path/to/repo --base HEAD^ --head HEAD --test-dir . --json
+repocli impact --help
+repocli impact --repo /path/to/repo --base HEAD --test-dir . --json
+repocli impact --repo /path/to/repo --base HEAD^ --head HEAD --test-dir . --json
 ```
 
 Use the installed command's help as the flag reference. `--base` is an exact ref;
@@ -100,7 +100,7 @@ outside validation, verify its published SHA-256 checksum, and put its binary on
 Python diff analysis; organization inspection does not use this setting.
 No validation workflow downloads, upgrades or compiles the repocli CLI.
 
-Use repocli CLI 0.17.0 or later for the content-identity contract shared with the
+Use repocli CLI 0.19.0 or later for the content-identity contract shared with the
 native libraries and diff schema 3. The installed CLI is not pinned to a devloop release;
 newer compatible releases are accepted. CLI and library versions are independent.
 
@@ -132,5 +132,8 @@ workset and repository-resolution gaps, while local observations retain extracti
 partial dependency report can select tests only while the input identity still matches.
 
 Repository operations and working-tree content identities use the native toolkit. Python workflows
-consume compforge-repocli; TypeScript hooks consume @compforge/repocli. Only diff analysis uses the
+consume compforge-repocli; TypeScript hooks consume @compforge/repocli. Only impact analysis uses the
 Go CLI. Content identity is shared by validation execution and the commit gate.
+
+`repocli diff` is a standalone captured-change view; validation consumes `repocli impact`.
+Unit formation is a separate repository capability and is not part of devloop test selection.

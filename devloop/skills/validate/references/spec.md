@@ -80,6 +80,18 @@ Diagnostics remain visible on Board. Missing project test targets are reported a
 never stamped. Explicit file-level overrides must preserve language semantics; Go may require package
 or test-name selection instead.
 
+## Reusing successful execution
+
+After normalization and dependency preparation, a check may reuse its latest successful
+execution for the same checkout, Component, verified content fingerprint, command arguments,
+scope and environment. Environment values are hashed, never persisted in the result record.
+The output explicitly reports reuse. Failed, unavailable and skipped checks do not
+qualify; missing or unstable content identity cannot authorize reuse.
+
+Focused results are reusable only for the same selected files and do not create a full
+Component stamp. Full-suite requests cannot reuse a focused result. Reuse preserves the
+original validation stamps instead of reporting a new execution time.
+
 ## Capacity and reporting
 
 - Expose conservative worker limits such as `LINT_JOBS`, `LINT_WORKERS`, or `TEST_WORKERS`; account for

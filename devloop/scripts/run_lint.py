@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""validate skill 的 lint-check 入口：按改动范围 normalize/lint；仅全量通过盖 lint 戳。
+"""validate skill 的 lint-check 入口：按改动范围 normalize，按受影响 Component 完整 lint 并盖戳。
 
 normalize/lint 逻辑见 `domain.lifecycle.checks`（与 lifecycle pre_commit gate 是同一段）。本脚本
 只做 repo 解析、顺序编排、实时输出和退出码。只有 `make fix` 能自动改文件。
@@ -32,7 +32,7 @@ def main(argv: list[str]) -> int:
 
 def _run(argv: list[str]) -> int:
     ap = cli.ArgParser(prog="run_lint.py", description="normalize + lint check; stamp on pass.")
-    ap.add_argument("--full", action="store_true", help="check full Components even when files have changed")
+    ap.add_argument("--full", action="store_true", help="bypass impact selection and lint all requested Components")
     cli.add_repo_arg(ap)
     ns = ap.parse_args(argv)
     resolved, how = cli.resolve_repo_or_exit(ns, "run_lint")

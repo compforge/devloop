@@ -13,14 +13,12 @@ for direct CLI inspection, installation and analysis boundaries. Do not select o
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_lint.py <repo-or-component>
 ```
 
-Normalization runs before one shared repocli analysis. The workflow selects affected files,
-including dependent tests in other Components, and adapts paths to project Make contracts.
-Successful valid repocli reports select the returned tests even with partial analysis or diagnostics.
-An empty test list skips tests without a full stamp. Unavailable or invalid analysis falls back to
-full checks with a Board reason; lint still requires complete analysis.
-An actual check failure stays a failure. Use `--full` when the user or project gate requires
-full validation; do not repeat a full suite solely to replace a focused run's missing stamp.
-Focused results do not authorize a later bare commit.
+Normalization runs before one shared repocli analysis. Repocli identifies affected Components;
+devloop runs full lint/test in each selected Component, including downstream Components without
+discovered tests. Components with incomplete impact analysis are included conservatively, with
+the reason shown on Board. Complete, unaffected Components are skipped. Unavailable or invalid
+analysis falls back to all current Components; an explicit Component request retains its boundary.
+An actual check failure stays a failure. `--full` bypasses automatic Component selection.
 
 Validation consists of multiple checks. Run `make fix` normalization first, then read-only lint
 and test checks may run concurrently against the same stable content. Running one check or a

@@ -44,15 +44,11 @@ checks may need packages or the project graph rather than individual files. Do n
 semantics or suppress diagnostics to simulate file-level support. Fixers must only rewrite the selected
 files; read-only checks may expand their analysis where the language requires it.
 
-Normalization uses the frozen changed paths. After normalization, automatic lint uses repocli's
-returned affected files, including unchanged consumers. Valid partial reports retain that selection;
-an empty list skips lint without a stamp or a Make invocation. `--full` requests full Component checks.
-Unknown scope, deleted files, or
-paths that cannot safely be passed through Make fall back to full checks. Projects without the
-`LINT_FILES` contract retain full checks and receive adoption guidance.
-
-A focused success can satisfy that inline gate, but does not update the full Component lint stamp.
-It must not be presented as complete validation or reused to authorize a later bare commit.
+Normalization uses frozen changed paths, limiting rewrites when the project supports `LINT_FILES`.
+After normalization, repocli identifies affected Components and devloop runs each Component's full
+lint target, clearing inherited `LINT_FILES`. Automatic validation does not narrow lint by file.
+`--full` bypasses Component selection. Explicit file-level checks remain partial feedback and do
+not update the full Component stamp.
 
 Independent formatter checks, static analyzers, and type checkers may run concurrently through a native
 worker pool or bounded Make target graph. Do not run multiple auto-fixers concurrently.
@@ -77,12 +73,12 @@ produce partial feedback and leave the full test stamp unchanged. `--full` rejec
 `--` so the coverage request cannot contradict the runner arguments.
 
 Before execution, devloop prints the Component, scope, selection reason and command (including files).
-Automatic selection uses repocli's automatic impact analysis, including unchanged affected tests.
-Devloop supplies file lists; agents do not normally enumerate them. Successful valid repocli
-reports select the returned files for lint and tests even with analysis gaps; diagnostics remain visible on Board.
-An empty returned list skips tests without a full stamp instead of passing `TEST_FILES=` to Make.
-CLI or report failures fall back to full checks. Required full gates still take precedence.
-Do not implement file-level selection where it changes language semantics; Go should expose package or test-name selection instead.
+Automatic selection consumes repocli's Component impact facts. Known affected and incomplete
+Components run full tests, even when repocli discovers no test files. Complete, unaffected Components
+are omitted. Invalid reports or CLI failure select all current Components (within any explicit boundary).
+Diagnostics remain visible on Board. Missing project test targets are reported as unavailable and
+never stamped. Explicit file-level overrides must preserve language semantics; Go may require package
+or test-name selection instead.
 
 ## Capacity and reporting
 

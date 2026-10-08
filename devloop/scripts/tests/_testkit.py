@@ -151,7 +151,7 @@ def run_main(g: dict) -> None:
 
 
 def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diagnostics=(),
-                   observations=(), schema=3, affected=None):
+                   observations=(), schema=3, affected=None, components=None):
     """Hermetic CLI protocol fixture; executes a real subprocess, never host repocli."""
     from contextlib import contextmanager
     from tempfile import TemporaryDirectory
@@ -163,7 +163,7 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
             cli = Path(root) / "repocli"
             cli.write_text(
                 f"#!{sys.executable}\nimport json, sys\n"
-                "from repocli import snapshot\n"
+                "from repocli import snapshot, inspect, owner\n"
                 "from pathlib import Path\n"
                 "repo = sys.argv[sys.argv.index('--repo')+1]\n"
                 "if sys.argv[1]=='inspect': raise SystemExit('inspect must use the toolkit')\n"
@@ -179,6 +179,13 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 "data.update(snapshot=identity, checkout=repo, input='commit' if '--head' in sys.argv else 'working_tree')\n"
                 "if sys.argv[1]=='snapshot': data.update(complete=True, diagnostics=[])\n"
                 "if sys.argv[1]=='snapshot': data.update(schemaVersion=2)\n"
+                "components = " + repr(components) + "\n"
+                "if components is None:\n"
+                " catalog=inspect(repo)\n"
+                " paths=[item['path'] for item in data['affectedFiles']]\n"
+                " owned={binding.root for path in paths if (binding:=owner(catalog,path)) is not None}\n"
+                " components=[dict(root=b.root, snapshot='after', component={'name': b.name}, affected=b.root in owned, complete=data['complete'], fallbackReasons=[]) for b in catalog.components]\n"
+                "data['components']=components\n"
                 "print(json.dumps(data))\n"
             )
             cli.chmod(0o755)

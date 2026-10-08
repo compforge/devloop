@@ -52,7 +52,7 @@ def run_check(repo: Path, *, paths=None, extra=None):
 
 
 @repocli_report(sources=["source.py"], tests=["test_a.py"])
-def test_auto_scope_is_visible_before_preparation_and_does_not_stamp():
+def test_component_scope_is_visible_before_preparation_and_failure_does_not_stamp():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         (repo / "test_b.py").write_text("BAD\n")
@@ -61,7 +61,7 @@ def test_auto_scope_is_visible_before_preparation_and_does_not_stamp():
 
         def prepare(*args, **kwargs):
             text = output.getvalue()
-            assert "scope=focused" in text and "TEST_FILES=test_a.py" in text
+            assert "scope=full" in text and "TEST_FILES=" in text
             assert "repocli automatic impact" in text
             assert not (repo / "test.observed").exists()
             return original(*args, **kwargs)
@@ -70,8 +70,8 @@ def test_auto_scope_is_visible_before_preparation_and_does_not_stamp():
             unit = Component.at(repo, repo)
             plan = build_plan(str(repo), WorkSet((unit,), "fixture"))
             result = checks.test(str(repo), component=unit, plan=plan)
-        assert result.ok, result.summary
-        assert (repo / "test.observed").read_text() == "test_a.py"
+        assert not result.ok, result.summary
+        assert (repo / "test.observed").read_text() == "test_a.py test_b.py"
         assert not has_full_stamp(repo)
 
 
@@ -139,8 +139,8 @@ def test_manual_full_overrides_changed_tests_and_rejects_conflicting_arguments()
         runner = _load_script("run_tests")
         with redirect_stdout(io.StringIO()):
             assert runner.main([str(repo)]) == 0
-        assert (repo / "test.observed").read_text() == "test_a.py"
-        assert not has_full_stamp(repo)
+        assert (repo / "test.observed").read_text() == "test_a.py test_b.py"
+        assert has_full_stamp(repo)
         with redirect_stdout(io.StringIO()), patch.dict(os.environ, {"TEST_FILES": "test_a.py"}):
             assert runner.main([str(repo), "--full"]) == 0
         assert (repo / "test.observed").read_text() == "test_a.py test_b.py"

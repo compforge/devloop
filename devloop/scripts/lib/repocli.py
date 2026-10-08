@@ -71,7 +71,7 @@ def _paths(value: object) -> tuple[str, ...]:
 def decode_impact(data: dict, repo: str, input_kind: str) -> ImpactReport:
     """Validate the external wire contract without deciding test execution policy."""
     if not isinstance(data, dict) or data.get("schemaVersion") != 3:
-        raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.19.0)")
+        raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.24.0)")
     diagnostics = data.get("diagnostics")
     if (not isinstance(data.get("complete"), bool)
             or data.get("scope") not in ("focused", "partial")
@@ -85,9 +85,26 @@ def decode_impact(data: dict, repo: str, input_kind: str) -> ImpactReport:
         raise ValueError("missing snapshot identity")
     if data.get("input") != input_kind:
         raise ValueError("analysis input mismatch")
-    impacts = data.get("components", [])
+    impacts = data.get("components")
     if not isinstance(impacts, list) or any(not isinstance(item, dict) for item in impacts):
         raise ValueError("invalid ComponentImpact list")
+    seen = set()
+    for item in impacts:
+        _paths([item.get("root")])
+        if not isinstance(item.get("affected"), bool):
+            raise ValueError("Component impact requires repocli >= 0.24.0")
+        if (not isinstance(item.get("complete"), bool)
+                or item.get("snapshot") not in ("before", "after")
+                or not isinstance(item.get("component"), dict)
+                or not isinstance(item["component"].get("name"), str)
+                or not item["component"]["name"]
+                or not isinstance(item.get("fallbackReasons", []), list)
+                or any(not isinstance(reason, str) for reason in item.get("fallbackReasons", []))):
+            raise ValueError("invalid ComponentImpact status or identity")
+        key = (item["root"], item["snapshot"])
+        if key in seen:
+            raise ValueError("duplicate ComponentImpact root and snapshot")
+        seen.add(key)
     affected = data.get("affectedFiles")
     if not isinstance(affected, list) or any(not isinstance(item, dict) for item in affected):
         raise ValueError("affected file list missing or invalid")

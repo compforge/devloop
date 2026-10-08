@@ -27,7 +27,6 @@ from domain.lifecycle.base import HookResult
 from domain.validation import Plan, build_plan, content_identity
 
 _TAIL_LINES = 40   # 失败时回带的输出尾行数（够定位、不淹没 PLAN）
-_SLOW_FULL_TEST_SECONDS = 10.0
 _MAX_COMPONENT_TEST_WORKERS = 8
 
 
@@ -210,7 +209,7 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
              _changed_lint_files(repo, component, paths))
     command = component.focused_lint_command(files)
     guidance = ()
-    if not component.supports_lint_files():
+    if plan is None and paths and not component.supports_lint_files():
         guidance = (
             f"{code_dir}/Makefile 未消费 LINT_FILES；本轮运行全量 lint。"
             "如需按改动文件校验，请让 fix 和 lint targets 同时支持 LINT_FILES，空值保留全量行为。",
@@ -414,11 +413,6 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     elapsed = monotonic() - started_at
     if capture:
         _progress("test", component, "passed" if rc == 0 else "failed", elapsed)
-    if not extra and make_target is not None and not supports_test_files and elapsed > _SLOW_FULL_TEST_SECONDS:
-        guidance += (
-            f"make {make_target} 完整运行耗时 {elapsed:.1f}s，且 Makefile 未消费 TEST_FILES；"
-            "请让 test target 在 TEST_FILES 非空时只运行这些 Component 相对测试文件。",
-        )
     if rc == 0:
         if problem := _identity_problem(repo, plan, "during tests"):
             return HookResult("test", ok=False, advisory=True, summary=problem), False

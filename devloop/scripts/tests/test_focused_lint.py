@@ -47,33 +47,32 @@ def make_repo(root: str, *, contract: bool = True) -> Path:
 
 
 @repocli_report(sources=["a.py"])
-def test_focused_gate_preserves_unrelated_files_and_does_not_stamp():
+def test_component_gate_detects_unmodified_errors_without_rewriting_them():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         result = lifecycle.dispatch("pre_commit", str(repo), paths=["a.py"], names=["lint"])
-        assert result.proceed, result.results
-        assert "focused 1 selected file" in result.results[0].summary
+        assert not result.proceed, result.results
         assert (repo / "fix.observed").read_text() == "a.py"
-        assert (repo / "lint.observed").read_text() == "a.py"
+        assert (repo / "lint.observed").read_text() == "a.py legacy.py"
         assert (repo / "a.py").read_text() == "OK\n"
         assert (repo / "legacy.py").read_text() == "BAD\n"
         context = RepoContext.load(str(repo))
         assert context is None or not context.validation.component(".").last_lint_at
 
-        # Selected-file errors remain a hard gate, even though baseline errors are outside the scope.
+        # Selected-file errors also remain a hard gate.
         (repo / "a.py").write_text("BAD\n")
         failed = lifecycle.dispatch("pre_commit", str(repo), paths=["a.py"], names=["lint"])
         assert not failed.proceed
 
 
 @repocli_report(sources=["a.py"])
-def test_without_contract_runs_full_lint_and_reports_adoption_guidance():
+def test_component_lint_does_not_require_a_file_list_contract():
     with TemporaryDirectory() as root:
         repo = make_repo(root, contract=False)
         result = lifecycle.dispatch("pre_commit", str(repo), paths=["a.py"], names=["lint"])
         assert not result.proceed
         assert (repo / "lint.observed").read_text() == "a.py legacy.py"
-        assert "未消费 LINT_FILES" in result.results[0].guidance[0]
+        assert not any("未消费 LINT_FILES" in note for result in result.results for note in result.guidance)
 
 
 @repocli_report(sources=["a.py"])
@@ -143,7 +142,7 @@ def test_manual_lint_and_commit_freeze_changed_scope_and_full_is_explicit():
         runner = _load_script("run_lint")
         with patch.object(checks, "normalize", wraps=checks.normalize) as normalize, \
                 patch.object(checks, "lint", wraps=checks.lint) as lint:
-            assert runner.main(["--repo", str(repo)]) == 0
+            assert runner.main(["--repo", str(repo)]) == 1
             assert normalize.call_args.kwargs["paths"] == ["a.py"]
             assert lint.call_args.kwargs["paths"] == ["a.py"]
             assert runner.main(["--repo", str(repo), "--full"]) == 1

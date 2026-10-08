@@ -22,7 +22,7 @@ test 是否阻断仍由 lifecycle 策略决定。项目在 Component 中提供 M
 
 ## 操作与策略
 
-Worktree 的命名、任务/session 归属、复用、清理时机和环境准备属于 devloop。repocli 执行明确指定的
+Worktree 的命名、任务/session 归属、复用、清理时机和依赖准备时机属于 devloop。repocli 执行明确指定的
 创建/删除操作，默认保留脏工作区；显式强制回收的决定由 devloop 生命周期作出。
 提交范围、敏感文件规则、提交说明和 PR 正文由 devloop 决定，Git/Forge 库执行动作并返回结果。
 显式 `--file` 限定完整提交的路径范围：已有暂存包含范围外路径时拒绝，交由用户决定其归属。
@@ -34,8 +34,9 @@ gitlink，避免删除注册后留下悬空条目。是否要求注册是 devloo
 只有检查通过才安装 index；之后 commit 失败时，已验证的暂存内容仍保留供检查。
 保护分支规则、rebase 事务进度和 review window 留在 devloop；库的配置和凭据由 devloop 显式装配。
 
-环境适配器消费 inspect 的工具证据；明确声明的 packageManager 优先，多种冲突线索要求澄清配置。
-适配器仍负责 frozen 安装、环境就绪和项目命令回退，避免把开发执行策略塞入解析工具包。
+repocli 消费 inspect 与 manifest 证据，解析共享安装根并提供只读依赖观察和显式锁定安装。
+devloop 决定准备时机；已有但未经一致性验证的本地依赖可以进入项目检查，不能视为安装就绪证明。
+包管理器执行结果与验证 stamp 分开记录，安装成功不能代替 lint/test。
 
 ## 事实缺口与执行结果
 
@@ -51,10 +52,10 @@ checkout 与 common Git directory 的关系由 repocli 提供。普通仓库和 
 共享主 checkout 的 `.devloop`；独立 Git 目录无法反查主 checkout 时，共享 common directory 下的
 `.devloop`。当前 checkout 的 owner 与 commit_msg 仍存放在当前 checkout；子模块独立拥有状态。
 主 checkout 无法确认时，devloop 不推断 `.worktrees` 清理范围。命名、归属、保留期限、终态清理和
-依赖准备都是 devloop 工作流策略，不进入可供 CCR 等应用复用的 repocli lib。
+依赖准备时机都是 devloop 工作流策略，不进入可供 CCR 等应用复用的 repocli lib。
 
 暂存候选、工作区删除路径、index 前后文件模式和 submodule 注册事实来自 repocli 的结构化查询。
-devloop 按原始路径执行范围与敏感文件策略；读取失败阻止提交，不解释成空改动。环境准备由 Python
+devloop 按原始路径执行范围与敏感文件策略；读取失败阻止提交，不解释成空改动。依赖观察和锁定安装由 repocli 提供，准备时机由 Python
 workflow 执行，TypeScript 的 Component 只保留验证命令选择。
 
 PR 生命周期清单消费 checkout 清单，保留主工作区与 linked checkout 的区别。已知分支的 checkout

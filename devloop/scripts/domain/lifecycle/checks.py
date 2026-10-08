@@ -19,7 +19,7 @@ import subprocess
 from pathlib import Path
 from time import monotonic
 
-from lib import ecosystem
+from lib import dependencies
 from domain import repo as repo_model
 from domain.context import RepoContext
 from domain.repo_layout import Component
@@ -89,14 +89,14 @@ def _tail(sink: list[str]) -> str:
 def _environment_failure(name: str, component: Component, *, advisory: bool = False) -> HookResult | None:
     """验证命令的环境前置条件：缺依赖先按生态 frozen 恢复，失败单列为环境错误。
 
-    lint/test 会在 lifecycle 里并发进入；`ecosystem.ensure_ready` 自带 per-component single-flight，
+    lint/test 会在 lifecycle 里并发进入；repocli 按 workspace 安装根做 single-flight，
     所以同一份 node_modules/.venv 只会有一个 writer。
     """
-    problem = ecosystem.ensure_ready(component.path, component.language, component.package_tools or None)
+    problem = dependencies.preparation_problem(component.path)
     if problem is None:
         return None
     return HookResult(name, ok=False, advisory=advisory,
-                      summary=f"environment setup failed in {component.path}: {problem}")
+                      summary=f"dependency preparation blocked before {name} in {component.path}: {problem}")
 
 
 def _changed_lint_files(repo: str, component: Component, paths: list[str] | None) -> list[str]:

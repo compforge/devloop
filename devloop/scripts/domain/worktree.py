@@ -12,7 +12,7 @@ import os
 from enum import Enum
 from pathlib import Path
 
-from lib import config, ecosystem, git_state, gitcmd, repocli
+from lib import config, dependencies, git_state, gitcmd, repocli
 
 from . import repo_layout
 from .context import session
@@ -26,7 +26,7 @@ def prepare_environment(path: str) -> list[str]:
     except repocli.InspectionError as exc:
         return [str(exc)]
     for component in components:
-        if problem := ecosystem.ensure_ready(component.path, component.language, component.package_tools or None):
+        if problem := dependencies.preparation_problem(component.path):
             warnings.append(f"component {component.id}: {problem}")
     return warnings
 

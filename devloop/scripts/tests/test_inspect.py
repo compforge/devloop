@@ -121,13 +121,12 @@ def test_organization_works_without_repocli_binary():
 
 
 def test_declared_go_component_is_not_reclassified_by_python_manifest():
-    from lib import ecosystem
     with TemporaryDirectory() as tmp:
         root = make_repo(tmp)
         (root / "go.mod").write_text("module example.invalid/service\n")
         declare(root, [{"root": ".", "name": "service", "language": "go"}])
         component = inspect_catalog(root).components[0]
-        assert ecosystem.detect(component.path, component.language).name == "go"
+        assert component.language == "go"
         (root / "Makefile").unlink()
         assert component.test_command() is None
 

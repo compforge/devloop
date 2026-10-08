@@ -75,9 +75,10 @@ an advanced override; target one Component and report the scope accurately.
 
 ## Installation and compatibility
 
-Python entrypoints run through `<PLUGIN_ROOT>/scripts/python`. Its PEP 723 script and
-adjacent lockfile pin the toolkit and transitive dependencies. uv owns the cached
-script environment, outside both the plugin installation and the inspected repository;
+Python entrypoints run through `<PLUGIN_ROOT>/scripts/python`. Its PEP 723 script
+declares a compatible toolkit version range; the adjacent lockfile records the resolved
+toolkit and transitive versions used for validation. uv owns the cached script environment,
+outside both the plugin installation and the inspected repository;
 it does not select the target project's virtual environment or uv configuration.
 Python 3.11+ and uv are required. `DEVLOOP_PYTHON` selects a compatible interpreter.
 Warm the environment before offline work:
@@ -86,17 +87,28 @@ Warm the environment before offline work:
 <PLUGIN_ROOT>/scripts/python -c 'import repocli'
 ```
 
-Regenerate the lock with `uv lock --script devloop/scripts/_python.py` when updating
-its dependency declaration. Keep the lockfile in both Git and the npm package.
+Refresh within the declared range with
+`uv lock --script devloop/scripts/_python.py --upgrade-package compforge-repocli`.
+For the TypeScript library, use `npm update @compforge/repocli` in the plugin directory.
+Validate the resulting dependencies before committing either lockfile. Keep the Python
+lockfile in both Git and the npm package.
 
 
-Install a fixed repocli release from [GitHub releases](https://github.com/compforge/repocli/releases)
+Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repocli/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
 `PATH`. `DEVLOOP_REPOCLI=/absolute/path/repocli` selects another installed binary for
-Python snapshot/diff operations; organization inspection does not use this setting.
+Python diff analysis; organization inspection does not use this setting.
 No validation workflow downloads, upgrades or compiles the repocli CLI.
 
-Use repocli CLI 0.11.0 or later: snapshot schema 2 and diff schema 3.
+Use repocli CLI 0.17.0 or later for the content-identity contract shared with the
+native libraries and diff schema 3. The installed CLI is not pinned to a devloop release;
+newer compatible releases are accepted. CLI and library versions are independent.
+
+On CLI versions providing self-upgrade, use `repocli upgrade --check` (or add `--json`)
+to discover updates and `repocli upgrade` to install the latest stable release.
+Older installations can bootstrap from GitHub releases. Package-manager-owned
+installations should use that package manager's upgrade command. Updating the CLI
+does not update the TypeScript/Python libraries or their lockfiles.
 Diff requires valid file lists,
 and a matching snapshot identity. Dependency analysis may be incomplete. An unsupported
 diff schema falls back to full checks and reports the required version.
@@ -105,9 +117,9 @@ proof of test coverage. Repocli diagnostics remain static-analysis estimates.
 
 ## Execution identity and reporting
 
-Validation obtains content identity through `repocli snapshot --json` (snapshot
-schema 2), including captured internal symlinks and initialized submodules with dirty contents.
-The workflow does not reproduce the digest algorithm in Python. Missing, invalid
+Validation obtains content identity through the native toolkit, including captured
+internal symlinks and initialized submodules with dirty contents. The workflow does
+not reproduce the digest algorithm. Missing, invalid
 or incomplete snapshots permit full checks but never grant a validation stamp;
 the reason is shown separately from the check result. An initial complete identity
 must still match before and after execution.

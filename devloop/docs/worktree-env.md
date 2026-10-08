@@ -10,8 +10,10 @@ repocli 解析 Component 对应的包管理器、锁文件及安装根。同一 
 包管理器，不能复用另一个 checkout 的整个 node_modules/.venv。
 
 `scripts/lib/dependencies.py` 只保留消费策略：ready 环境直接进入验证；present 表示用户已准备了本地依赖、
-但没有匹配的准备回执，允许执行项目自己的检查，不宣称锁文件一致性已获验证。missing/stale 调用 repocli
-的 prepare_dependencies；unsupported、安装失败、取消和观察失败保留各自原因，阻断依赖它的验证命令。
+但没有匹配的准备回执，允许执行项目自己的检查，不宣称锁文件一致性已获验证。有锁定安装命令的 missing
+环境以及 stale 环境调用 prepare_dependencies。有些 Component 的 manifest 仅用于发行包装；当 repocli
+报告 missing 且安装命令为空时，跳过自动准备并输出原因，让项目自己的检查决定结果，不创建依赖目录或准备回执。
+unsupported（如依赖目录软链接、异常占位文件）、安装失败、取消和观察失败保留原因并阻断验证命令。
 验证结果与门禁仍由 devloop 持有，不把依赖准备成功当作 lint/test 通过。
 
 ## 生命周期

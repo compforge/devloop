@@ -34,8 +34,11 @@ the task explicitly targets that version.
    while the owning script's live check is authoritative.
 4. Scope staging to the user's files. Never use repo-wide `git add -A`, and never let an ambiguous
    workspace cwd silently select another repo.
-5. Trust and surface each script's `PLAN:` result. Stop on failure instead of improvising a bypass.
-   Merge remains a human action.
+5. Trust and surface each script's `PLAN:` result. A failure stops the current transaction;
+   diagnose it, repair causes within the authorized task, and retry the owning script. Continue
+   routine repairs without asking again; ask only when a remedy needs new authorization or a
+   material scope decision. Preserve the gates and report unresolved blockers; never substitute
+   raw Git/forge mutations or fabricated validation evidence. Merge remains a human action.
 
 Validation scope is automatic; see [repocli](../../references/repocli.md) for direct diff inspection
 and fallback semantics. Do not guess `TEST_FILES` or `LINT_FILES` for lifecycle checks.

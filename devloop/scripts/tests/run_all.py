@@ -28,6 +28,7 @@ MODULES = [
     "test_test_scope",
     "test_validation_plan",
     "test_inspect",
+    "test_dependencies",
     "test_python",
     "test_review",
 ]

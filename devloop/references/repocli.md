@@ -26,7 +26,7 @@ these describe static associations, not runtime probabilities.
 `inspect` supplies the Component catalog, language and package-tool metadata.
 TypeScript uses `@compforge/repocli`; Python uses `compforge-repocli`. Both call native
 `inspect` and `owner`, sharing the toolkit contract rather than the CLI JSON protocol.
-Devloop retains execution containment, command selection, environment preparation,
+Devloop retains execution containment, command selection, dependency preparation timing,
 validation gates and stamps.
 
 Each TypeScript policy operation shares one inspection promise per checkout, including in-flight

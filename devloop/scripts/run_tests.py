@@ -40,7 +40,7 @@ def _run(argv: list[str]) -> int:
     ap = cli.ArgParser(prog="run_tests.py", description="run component tests; stamp on pass.")
     cli.add_repo_arg(ap)
     ap.add_argument("--full", action="store_true",
-                    help="run the full suite in each selected Component")
+                    help="bypass impact selection and test all requested Components")
     ns = ap.parse_args(argv)
     if ns.full and extra:
         ap.error("--full cannot be combined with extra test arguments after --")

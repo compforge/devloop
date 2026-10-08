@@ -6,7 +6,6 @@ select canonical full commands; check failures never cause an analysis retry.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 import subprocess
 import time
 
@@ -70,23 +69,6 @@ def content_identity(repo: str) -> ContentIdentity:
 
 
 
-def _relative(repo: str, component: Component, paths: list[str]) -> list[str]:
-    root = Path(repo).resolve()
-    result = []
-    for path in paths:
-        absolute = root / path
-        # Deleted paths, symlinks and unsupported Make arguments require full checks.
-        if not absolute.is_file() or absolute.is_symlink():
-            raise ValueError("selected input is deleted or not a regular file")
-        if root not in absolute.resolve().parents:
-            raise ValueError("selected input escapes repository")
-        try:
-            result.append(absolute.relative_to(Path(component.path).resolve()).as_posix())
-        except ValueError:
-            continue
-    return result
-
-
 def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | None = None,
                full: bool = False, explicit: bool = False,
                comparison: Comparison | None = None,
@@ -98,8 +80,6 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     catalog = inspection.components
     units = workset.components if explicit else catalog
     reason = "explicit full Component validation" if full else comparison.reason
-    affected_files: list[str] = []
-    tests: list[str] = []
     snapshot = ""
     analysis_reason = "repocli automatic impact"
     component_impacts: tuple[dict, ...] = ()
@@ -110,7 +90,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
         persist_plan(repo, plan)
         return plan
     if not reason:
-        argv = ["--base", comparison.base, "--test-dir", "."]
+        argv = ["--base", comparison.base]
         if comparison.head:
             argv += ["--head", comparison.head]
         for path in paths or []:
@@ -123,8 +103,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             data = repocli.read_report(repo, "impact", argv)
             report = repocli.decode_impact(data, repo, "commit" if comparison.head else "working_tree")
             diagnostics = report.diagnostics
-            # Missing relationships limit coverage, not the usability of returned
-            # files. Status and diagnostics explain the selection without widening it.
+            # Completeness remains separate from observed impact. Selection below
+            # conservatively includes Components whose impact is still unknown.
             if not report.complete or report.scope != "focused" or diagnostics:
                 codes = sorted({str(d.get("code", "analysis_gap")) for d in diagnostics})
                 detail = ": " + ", ".join(codes) if codes else ""
@@ -133,59 +113,45 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             if not identity or snapshot != identity or identity != content_identity(repo).digest:
                 raise ValueError("execution contents differ from analyzed snapshot")
             component_impacts = report.components
-            affected_files = list(report.affected_files)
-            tests = list(report.test_files)
+            current = {item["root"]: item for item in component_impacts if item["snapshot"] == "after"}
+            # Both APIs describe the same snapshot. Missing/current identity mismatches
+            # are unusable reports, never proof that a Component is unaffected.
+            if set(current) != {unit.id for unit in catalog} or any(
+                    current[unit.id]["component"]["name"] != unit.name for unit in catalog):
+                raise ValueError("Component impact catalog differs from current inspection")
             if not explicit:
-                affected = repo_model.select_components(repo, paths=list(dict.fromkeys(affected_files + tests)), catalog=inspection)
-                units = tuple({u.id: u for u in (*workset.components, *affected.components)}.values())
-                if not units and (affected_files or tests):
-                    raise ValueError("no Component owns the selected files")
+                units = tuple(unit for unit in catalog
+                              if current[unit.id]["affected"] or not current[unit.id]["complete"])
         except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as exc:
             reason = f"repocli fallback: {exc}"
             units = workset.components if explicit else catalog
     selections = {}
     for unit in units:
-        impact_gaps = [str(reason) for impact in component_impacts
-                       if impact.get("root") == unit.id
-                       for reason in impact.get("fallbackReasons", [])]
-        unit_analysis_reason = analysis_reason + ("; " + "; ".join(impact_gaps) if impact_gaps else "")
-        for check, files in (("lint", affected_files), ("test", tests)):
-            if check not in checks:
-                continue
-            selection_reason = reason
-            relative = []
-            skipped = False
-            if not selection_reason:
-                try:
-                    owned = [path for path in files
-                             if (owner := inspection.owner(inspection.root / path)) is not None
-                             and owner.id == unit.id]
-                    relative = _relative(repo, unit, owned)
-                    if not relative:
-                        # Empty Make file-list variables request full checks, while
-                        # an empty valid analysis result explicitly selects no files.
-                        skipped = True
-                        selection_reason = unit_analysis_reason + f"; no returned {check} files in Component"
-                    else:
-                        command = (unit.focused_lint_command(relative) if check == "lint"
-                                   else unit.focused_test_command(relative))
-                        if not command:
-                            selection_reason = "no usable selection or project file-list contract; canonical full check"
-                            relative = []
-                except ValueError as exc:
-                    selection_reason = str(exc)
-                    relative = []
+        impact = next((item for item in component_impacts
+                       if item["root"] == unit.id and item["snapshot"] == "after"), None)
+        selection_reason = reason or ("explicit Component validation" if explicit else analysis_reason)
+        if impact and not reason:
+            if impact["affected"]:
+                selection_reason += "; affected Component"
+            elif not impact["complete"]:
+                selection_reason += "; unknown Component impact"
+            if gaps := impact.get("fallbackReasons", []):
+                selection_reason += "; " + "; ".join(gaps)
+        for check in checks:
             if check == "test" and test_extra:
                 explicit_full = unit.supports_test_files() and all(
                     arg.startswith("TEST_FILES=") and not arg.partition("=")[2].strip()
                     for arg in test_extra)
                 selections[(unit.id, check)] = Selection(reason="caller supplied test arguments", explicit=not explicit_full)
             else:
-                selections[(unit.id, check)] = Selection(
-                    tuple(relative), selection_reason or unit_analysis_reason, skipped=skipped)
+                # Component selection is automatic; coverage inside that boundary
+                # belongs to the project's canonical lint/test targets.
+                selections[(unit.id, check)] = Selection(reason=selection_reason)
     if reason:
         observed = content_identity(repo)
-    plan = Plan(repo_model.WorkSet(units, reason or "repocli affected Components"), selections,
+    selection_summary = reason or ("repocli affected or unknown Components" if units else
+                                   "repocli found no affected or unknown Components")
+    plan = Plan(repo_model.WorkSet(units, selection_summary), selections,
                 snapshot, comparison, observed.digest, observed.problem, component_impacts)
     persist_plan(repo, plan)
     return plan

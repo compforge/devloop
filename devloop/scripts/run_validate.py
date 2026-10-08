@@ -28,7 +28,7 @@ def _run(argv: list[str]) -> int:
         description="normalize, then run Component validation checks.",
     )
     cli.add_repo_arg(ap)
-    ap.add_argument("--full", action="store_true", help="run canonical full checks")
+    ap.add_argument("--full", action="store_true", help="bypass impact selection and validate all requested Components")
     ns = ap.parse_args(argv)
     resolved, how = cli.resolve_repo_or_exit(ns, "run_validate")
     repo = resolved.git_root

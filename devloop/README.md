@@ -103,7 +103,10 @@ stable Component content
 make test TEST_FILES="tests/a.py tests/b.py"
 ```
 
-`TEST_FILES` 缺失或为空时必须保持全量测试语义。提交期验证和单独 run-test 在项目显式支持 `TEST_FILES` 且改动包含测试文件时聚焦执行 changed tests；完整 validate 仍运行完整测试套件。缺少 `make test` 时，devloop 会提示项目补充统一入口；完整测试运行超过 10 秒且尚未支持 `TEST_FILES` 时，会在运行结束后给出非阻断的优化提示。
+`TEST_FILES` 缺失或为空时必须保持全量测试语义。自动验证由 repocli 计算受影响的 Component，
+devloop 对已受影响或分析仍不完整的组件运行完整 lint/test，包括没有被识别出测试文件的下游组件。
+`--full` 跳过影响筛选，验证全部指定组件；`TEST_FILES` 保留为显式收窄测试的手动覆盖，不能授予完整组件验证戳。
+缺少 `make test` 时报告 unavailable，不盖通过戳。组件影响分析要求 repocli CLI 0.24.0+，旧版本退回全量验证。
 
 Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 package 或 test-name 选择。完整契约见 [`spec.md`](./skills/validate/references/spec.md)，并发和 Makefile 示例按语言查看 [Python](./skills/validate/references/python.md)、[Go](./skills/validate/references/go.md) 或 [Node.js](./skills/validate/references/node.md)。devloop 不会擅自为项目新增工具、依赖或 Make target。
 

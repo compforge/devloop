@@ -188,11 +188,14 @@ Component organization comes from repocli inspect; unavailable organization stop
 Lint and test share one repocli impact plan after normalization. The phase caller supplies
 the comparison: working input for pre-commit, the actual commit for post-commit,
 and the target merge-base for MR phases. Changed-path filters restrict seeds, not
-dependent test discovery. Successful valid analysis selects its returned tests,
-even with dependency gaps; empty test selections skip execution without a full
-stamp. Failed or invalid analysis runs full canonical checks. Lint still requires
-complete analysis. Scope and reasons are published in branch-owned
-`validation_scope` state for Board.
+dependency discovery. Repocli reports affected Components; devloop runs each selected
+Component's full lint/test targets, including downstream Components without discovered tests.
+Components with incomplete impact are included conservatively; complete unaffected Components
+are omitted. Before-only identities remain evidence and are not execution directories.
+Failed or invalid analysis runs full canonical checks for all current Components, within any
+explicit Component boundary. Scope and reasons are published in branch-owned
+`validation_scope` state for Board. Full successful checks may stamp the verified contents;
+a skipped or unavailable check never grants a stamp.
 See [repocli usage and compatibility](../references/repocli.md).
 
 缺少 `make lint` / `make lint-ci` 入口时，lint 记录为 `unavailable` 并在 Board 提示，

@@ -9,8 +9,8 @@ repocli --version
 repocli inspect --repo /path/to/repo --json
 repocli snapshot --repo /path/to/repo --json
 repocli impact --help
-repocli impact --repo /path/to/repo --base HEAD --test-dir . --json
-repocli impact --repo /path/to/repo --base HEAD^ --head HEAD --test-dir . --json
+repocli impact --repo /path/to/repo --base HEAD --json
+repocli impact --repo /path/to/repo --base HEAD^ --head HEAD --json
 ```
 
 Use the installed command's help as the flag reference. `--base` is an exact ref;
@@ -47,31 +47,32 @@ state is still displayed. Environment preparation reports an inspection warning.
 
 Normally call `run_validate.py`, `run_lint.py`, or `run_tests.py` without file lists.
 Do not have the agent guess `TEST_FILES` or `LINT_FILES`, and do not pass empty file
-arguments as boilerplate. The workflow normalizes first, calls repocli once per
-transaction for dependency analysis, maps repository paths through the inspect catalog to Components, then invokes project targets.
-Cross-Component dependent tests expand repository-level validation; explicitly
-targeting a Component retains that boundary. Full fallback includes all discovered
-Components for a repository request.
+arguments as boilerplate. The workflow normalizes first and calls repocli once per
+transaction. General `impact` analysis, without `--test-dir`, reports affected Components,
+including downstream Components that have no discovered tests. `--test-dir` narrows the
+analysis around test candidates and is not the mode for Component selection.
 
-The pre-commit input is the working tree restricted to the intended changed paths;
+Devloop consumes `components` directly: `affected=true` selects a Component; `complete=false`
+selects it conservatively because its impact is unknown. Complete, unaffected Components are
+omitted. Before-only records retain deleted/previous ownership as evidence, but are not current
+execution directories. Explicitly targeting a Component retains that boundary.
+Each selected Component runs its canonical full lint and test targets, regardless of `testFiles`.
+The inspect catalog supplies execution metadata; devloop does not infer dependencies from paths.
+
+The pre-commit input is the working tree restricted to intended changed paths;
 post-commit uses `HEAD^` versus `HEAD`; MR checks use target merge-base versus `HEAD`.
-If execution contents differ from the committed target, use full checks. Failed diff analysis, timeout, invalid/incompatible diff JSON, deleted/unsafe paths or unsupported project
-file-list contracts also select canonical full checks. A successful valid report
-supplies the files even when its scope is `partial`, `complete` is false, or it
-has diagnostics. Dependency gaps remain visible in the selection reason and do
-not widen lint or test scope. Local extraction `observations` likewise do not downgrade
-checks. Devloop uses `affectedFiles` for lint and `testFiles` for tests, without applying
-a separate confidence or distance cutoff. Board
-shows the latest scope and reason. Check failures remain failures; they never
-trigger a second full run under the label of analysis fallback.
+If execution contents differ from the analyzed snapshot, or the report is unavailable,
+incompatible or inconsistent with the current catalog, validation falls back to all current
+Components (or the explicit Component). Diagnostics and per-Component gaps remain visible on Board.
+Local extraction observations do not independently expand selection. Check failures stay failures
+and never trigger a second run under the label of analysis fallback.
 
-`--full` explicitly requests full checks. Focused or explicit narrow runs never
-grant a full Component stamp. A valid empty file list skips the corresponding
-Component check without updating its stamp, including for partial reports. A missing or
-invalid list is an unusable result and triggers full fallback. Empty selections do not
-prove runtime independence. Explicitly passing `TEST_FILES=` requests full tests.
-Full checks clear inherited file-list variables. Custom arguments after `--` remain
-an advanced override; target one Component and report the scope accurately.
+`--full` bypasses impact selection and validates all requested Components. A valid selection with
+no affected or unknown Components skips checks without stamps. This is a static-analysis result,
+not proof of runtime independence. Full checks clear inherited file-list variables and can stamp
+successful Component checks. Explicit arguments after `--` remain an advanced override: target one
+Component and report the scope accurately. Narrowed runs never grant a full Component stamp;
+passing only `TEST_FILES=` under the project's Make contract requests the full suite.
 
 ## Installation and compatibility
 
@@ -100,8 +101,8 @@ outside validation, verify its published SHA-256 checksum, and put its binary on
 Python diff analysis; organization inspection does not use this setting.
 No validation workflow downloads, upgrades or compiles the repocli CLI.
 
-Use repocli CLI 0.19.0 or later for the content-identity contract shared with the
-native libraries and diff schema 3. The installed CLI is not pinned to a devloop release;
+Use repocli CLI 0.24.0 or later for Component impact flags and the shared
+content-identity contract (impact schema 3). The installed CLI is not pinned to a devloop release;
 newer compatible releases are accepted. CLI and library versions are independent.
 
 On CLI versions providing self-upgrade, use `repocli upgrade --check` (or add `--json`)
@@ -109,7 +110,7 @@ to discover updates and `repocli upgrade` to install the latest stable release.
 Older installations can bootstrap from GitHub releases. Package-manager-owned
 installations should use that package manager's upgrade command. Updating the CLI
 does not update the TypeScript/Python libraries or their lockfiles.
-Diff requires valid file lists,
+Impact requires a complete current Component catalog, valid impact flags and file lists,
 and a matching snapshot identity. Dependency analysis may be incomplete. An unsupported
 diff schema falls back to full checks and reports the required version.
 The content digest identifies observed input, not an atomic filesystem snapshot or
@@ -129,7 +130,7 @@ report command outcomes; selection reasons appear as separate guidance so a full
 check failure is not presented as a repocli execution error. Snapshot completeness
 verifies captured input; dependency-analysis completeness describes blocking input,
 workset and repository-resolution gaps, while local observations retain extraction limits. A
-partial dependency report can select tests only while the input identity still matches.
+partial dependency report can select Components only while the input identity still matches.
 
 Repository operations and working-tree content identities use the native toolkit. Python workflows
 consume compforge-repocli; TypeScript hooks consume @compforge/repocli. Only impact analysis uses the

@@ -7,8 +7,8 @@ TypeScript hook 与 Python workflow 直接调用对应语言的工具包，不�
 
 ## 验证链路
 
-inspect 提供 Component、语言与工具证据。devloop 选择项目验证入口，normalize 后形成一次验证计划，
-执行 lint/test，并用原生 snapshot 在执行前后核对内容。只有完整范围、成功执行且内容身份可用时
+inspect 提供 Component、语言与工具证据。repocli impact 提供受影响 Component；devloop 选择项目验证入口，normalize 后形成一次验证计划，
+对已受影响或影响仍不完整的 Component 执行完整 lint/test，并用原生 snapshot 在执行前后核对内容。只有完整范围、成功执行且内容身份可用时
 才记录 Component stamp；hook 使用同一内容契约判断 stamp 是否仍有效。
 
 stamp 绑定完整仓库内容摘要。共享配置或其他 Component 内容变化同样会使旧 stamp 失效，代价是
@@ -43,8 +43,8 @@ devloop 决定准备时机；已有但未经一致性验证的本地依赖可以
 
 ## 事实缺口与执行结果
 
-Working / commit / range 的改动路径由 repocli 读取，保留原始路径及 rename 两端；devloop 将路径映射
-到本次验证的 Component。范围未知时退回完整验证，不当成空改动。Remote URL 的 host/path 同样来自
+Working / commit / range 的改动路径与受影响 Component 由 repocli 分析，保留 rename 两端的归属；
+devloop 消费当前 Component 的影响事实决定执行范围，旧版本归属只作为分析证据保留。范围未知时退回完整验证，不当成空改动。Remote URL 的 host/path 同样来自
 repocli，provider override、API 地址和 token 装配留在 devloop。
 
 Git status 不完整时，Board 展示 unknown，branch create 拒绝依赖 clean 假设继续操作。
@@ -96,7 +96,7 @@ repocli 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect �
 
 原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
 父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
-CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.19.0。
+CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.24.0，以同时支持 Component 的 `affected` / `complete` 契约。
 
 仓库定位委托 find_checkout/findCheckout：无仓库是正常缺失，损坏元数据、权限与 Git 失败不能
 转换为“没有仓库”。必要 hook 事实读取失败继续走 fail_closed，不绕过保护分支规则。

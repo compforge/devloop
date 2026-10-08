@@ -24,6 +24,9 @@ test 是否阻断仍由 lifecycle 策略决定。项目在 Component 中提供 M
 
 Worktree 的命名、任务/session 归属、复用、清理时机和依赖准备时机属于 devloop。repocli 执行明确指定的
 创建/删除操作，默认保留脏工作区；显式强制回收的决定由 devloop 生命周期作出。
+本地远端 HEAD 缓存查询、`info/exclude` 规则追加和 worktree 失效注册清理由 repocli 提供。
+默认目标缺失时的 main/master 回退、忽略哪些目录、清理时机及 best-effort 处理属于 devloop；
+必要的默认分支读取失败向上传递，不能触发缺失时才允许的回退。
 提交范围、敏感文件规则、提交说明和 PR 正文由 devloop 决定，Git/Forge 库执行动作并返回结果。
 显式 `--file` 限定完整提交的路径范围：已有暂存包含范围外路径时拒绝，交由用户决定其归属。
 目录选择先用逐文件 status 展开，再过滤敏感路径；已有暂存的敏感内容新增和修改同样阻止提交。

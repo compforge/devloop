@@ -8,6 +8,7 @@ from repocli.git_state import (
     get_ahead_behind as get_ahead_behind,
     get_workspace_status as get_workspace_status,
     target_exists as target_exists,
+    local_default_branch,
     refresh_remote_head as refresh_remote_head,
     set_local_default_head as set_local_default_head,
     checkout_info as checkout_info,
@@ -39,39 +40,17 @@ def local_default_target(repo_dir: str | Path) -> str:
     here when it's empty / unavailable. No "release" bias: when origin/HEAD is absent, fall back
     to whichever of main/master exists, else main.
     """
-    r = gitcmd.git(repo_dir, "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD")
-    if not r.ok and r.rc != 1:
-        raise OSError(f"cannot read default branch reference: {r.err}")
-    if r.ok and r.out.startswith("refs/remotes/origin/"):
-        return r.out.split("/", 3)[-1]
+    branch = local_default_branch(repo_dir)
+    if branch is not None:
+        return branch
     for b in ("main", "master"):
         if target_exists(repo_dir, b):
             return b
     return "main"
 
 def ensure_gitignore_excluded(repo_dir: str | Path, pattern: str = "/.devloop/") -> None:
-    """Append `pattern` to git's per-repo `info/exclude` idempotently.
-
-    Local-only (doesn't touch the committed .gitignore). Path resolved via
-    `git rev-parse --git-path info/exclude` so linked worktrees (where `.git`
-    is a gitlink file) work — hard-coding `<repo>/.git/info` silently failed there.
-    """
+    """Best-effort local exclusion; patterns and failure acceptance belong to devloop."""
     try:
-        exclude_path = git_path(repo_dir, "info/exclude")
-        exclude_path.parent.mkdir(parents=True, exist_ok=True)
+        gitcmd.add_exclude(repo_dir, pattern)
     except OSError:
-        return
-    existing = ""
-    if exclude_path.exists():
-        try:
-            existing = exclude_path.read_text(encoding="utf-8")
-        except OSError:
-            existing = ""
-    for line in existing.splitlines():
-        if line.strip() == pattern.strip():
-            return
-    sep = "" if existing.endswith("\n") or not existing else "\n"
-    try:
-        exclude_path.write_text(f"{existing}{sep}{pattern}\n", encoding="utf-8")
-    except OSError:
-        pass  # best-effort
+        pass  # Local bookkeeping should not block the development workflow.

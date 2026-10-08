@@ -161,7 +161,8 @@ def remove_if_safe(
     removed = operations.remove_worktree(repo_dir, target)
     if not removed.ok:
         return RemovalOutcome.UNCERTAIN if removed.uncertain else RemovalOutcome.GIT_ERROR
-    gitcmd.git(repo_dir, "worktree", "prune", timeout=15)
+    # Removal already succeeded; stale-registration cleanup remains best-effort.
+    operations.prune_worktrees(repo_dir)
     return RemovalOutcome.REMOVED
 
 
@@ -187,7 +188,7 @@ def remove_finished(repo_dir: str, path: str) -> RemovalOutcome:
     removed = operations.remove_worktree(control_repo, target, force=True)
     if not removed.ok:
         return RemovalOutcome.UNCERTAIN if removed.uncertain else RemovalOutcome.GIT_ERROR
-    gitcmd.git(control_repo, "worktree", "prune", timeout=15)
+    operations.prune_worktrees(control_repo)
     return RemovalOutcome.REMOVED
 
 

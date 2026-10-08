@@ -148,5 +148,5 @@ def _owner_error(repo: str, identity: session.SessionIdentity) -> BranchError:
     return BranchError(
         f"checkout is owned by another {identity.harness} session "
         f"(branch {branch!r}, session {sid}…); create a managed worktree with "
-        "scripts/checkout.py <repo> --worktree <tag>"
+        "<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <tag>"
     )

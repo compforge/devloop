@@ -14,4 +14,4 @@ The working tree must be clean by default. If existing tracked and untracked cha
 belong to the new branch, pass `--carry-changes`. Use `--base <ref>` only for intentional stacking.
 
 When another session owns the checkout, do not switch it. Follow the returned guidance and create a
-managed worktree with `scripts/checkout.py <repo> --worktree <tag>`.
+managed worktree with `<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <tag>`.

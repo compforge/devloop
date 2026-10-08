@@ -3,7 +3,7 @@
 Use ordinary `cd` to select an existing checkout. When another session needs isolation, run:
 
 ```bash
-python3 <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <short-unique-tag>
+<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <short-unique-tag>
 ```
 
 A new tag creates `worktree-<tag>` from freshly fetched `origin/<target>` and refuses creation when

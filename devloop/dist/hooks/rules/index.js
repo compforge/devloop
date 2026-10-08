@@ -34,7 +34,7 @@ const worktreeAdd = {
                 primary = listCheckouts(repo).find(entry => entry.primary)?.path ?? repo;
         }
         catch { /* Use the known invocation repository in the guidance. */ }
-        return finding("worktree-add", `Direct \`git worktree add\` bypasses devloop lifecycle policy. Use \`python3 "<PLUGIN_ROOT>/scripts/checkout.py" ${basename(primary)} --worktree <tag>\`.`, commandLine(command(target)));
+        return finding("worktree-add", `Direct \`git worktree add\` bypasses devloop lifecycle policy. Use \`"<PLUGIN_ROOT>/scripts/python" "<PLUGIN_ROOT>/scripts/checkout.py" ${basename(primary)} --worktree <tag>\`.`, commandLine(command(target)));
     },
 };
 function tagOnlyPush(args, repo) {

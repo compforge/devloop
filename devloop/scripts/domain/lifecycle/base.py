@@ -70,6 +70,7 @@ class HookResult:
 class DispatchResult:
     phase: str
     results: list[HookResult]
+    execution_identity: str = ""
 
     @property
     def proceed(self) -> bool:
@@ -223,4 +224,5 @@ def dispatch(
 
     with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(names)))) as ex:
         results = list(ex.map(_run, names))   # ex.map 保序，结果与 names 对齐
-    return DispatchResult(phase=phase, results=results)
+    return DispatchResult(phase=phase, results=results,
+                          execution_identity=validation_plan.execution_identity if validation_plan else "")

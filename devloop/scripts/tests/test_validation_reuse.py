@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 import io
+import json
+import os
+from pathlib import Path
 from contextlib import redirect_stdout
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from _testkit import _load_script, repocli_report, run_main
+from _testkit import _git, _load_script, repocli_report, run_main
 from test_test_scope import make_repo, has_full_stamp
 from domain.lifecycle import checks
 from domain.lifecycle.base import HookResult, dispatch
@@ -133,9 +136,93 @@ def test_manual_validation_then_commit_lifecycle_reuses_both_checks():
             result = dispatch("pre_commit", str(repo), paths=["source.py", "Makefile"],
                               names=["lint", "test"])
         assert result.proceed and all(item.ok for item in result.results)
+        assert result.execution_identity == content_identity(str(repo)).digest
         assert all("reused passed" in item.summary for item in result.results)
         assert (repo / "lint.observed").read_text().splitlines() == ["run"]
         assert not (repo / "test.observed").exists()
+
+
+
+@repocli_report()
+def test_unmanaged_dependency_change_runs_real_check_and_records_failure():
+    with TemporaryDirectory() as root:
+        repo = make_repo(root)
+        (repo / "package.json").write_text('{"name":"fixture","packageManager":"bun@1.3.11"}')
+        (repo / "bun.lock").write_text("fixture")
+        (repo / "node_modules").mkdir()
+        (repo / "node_modules/answer").write_text("OK")
+        with (repo / ".gitignore").open("a") as file:
+            file.write("node_modules/\n")
+        (repo / "Makefile").write_text("test:\n\t@test `cat node_modules/answer` = OK\n")
+        unit, plan = plan_for(repo, full=True)
+        assert invoke(repo, unit, plan).ok
+        (repo / "node_modules/answer").write_text("BAD")
+        assert content_identity(str(repo)).digest == plan.execution_identity
+        result = invoke(repo, unit, plan)
+        assert not result.ok and "reused" not in result.summary
+        assert not has_full_stamp(repo)
+
+
+@repocli_report()
+def test_reuse_rebinds_new_branch_to_original_evidence_and_invalidates_old_references():
+    from domain.context.store import branch_segment, load_segment, save_segment
+    from domain.validation_evidence import evidence_segment, full_projection
+    with TemporaryDirectory() as root:
+        repo = make_repo(root)
+        unit, plan = plan_for(repo, full=True)
+        assert invoke(repo, unit, plan).ok
+        original = load_segment(str(repo), branch_segment("main", "test"))["."]
+        _git(repo, "checkout", "-qb", "next")
+        result = invoke(repo, unit, plan)
+        assert result.ok and "reused" in result.summary
+        assert load_segment(str(repo), branch_segment("next", "test"))["."] == original
+        assert full_projection(str(repo), "next", "test")["."]["passed_at"] == original["checked_at"]
+        segment = evidence_segment(str(repo), ".", "test")
+        record = load_segment(str(repo), segment)
+        record["status"] = "failed"
+        save_segment(str(repo), segment, record)
+        assert not full_projection(str(repo), "next", "test")
+        assert not full_projection(str(repo), "main", "test")
+
+
+def test_managed_dependency_witnesses_change_invalidate_reuse_and_midrun_success():
+    from lib import dependencies
+    from repocli import inspect_dependencies
+    with TemporaryDirectory() as root:
+        repo = make_repo(root)
+        (repo / "package.json").write_text('{"name":"fixture","packageManager":"bun@1.3.11"}')
+        (repo / "bun.lock").write_text("fixture")
+        (repo / "node_modules").mkdir()
+        environment, = inspect_dependencies(repo)
+        receipt = repo / "node_modules/.repocli-dependencies.json"
+        receipt.write_text(json.dumps({"manager": environment.manager, "fingerprint": environment.fingerprint}))
+        assert dependencies.reuse_inputs(repo) is not None
+        run = CheckRun(str(repo), ".", "test", "fingerprint", ("make", "test"), "full")
+        assert run.record(HookResult("test", ok=True)).ok
+        assert run.reuse()
+        receipt.unlink()
+        assert run.reuse() is None
+        assert not run.record(HookResult("test", ok=True)).ok
+        assert dependencies.reuse_inputs(repo) is None
+
+
+
+def test_shared_evidence_contract():
+    from domain.context.store import save_segment
+    from domain.validation_evidence import evidence_segment, full_evidence
+    from domain.validation_result import _environment_identity
+    contract = json.loads((Path(__file__).resolve().parents[2] / "tests/fixtures/validation-evidence.json").read_text())
+    with patch.dict(os.environ, contract["environment"], clear=True):
+        assert _environment_identity() == contract["environmentHash"]
+    with TemporaryDirectory() as root:
+        repo = make_repo(root)
+        segment = evidence_segment(str(repo), ".", "lint")
+        for case in contract["cases"]:
+            identity = {"version": 2, "checkout": str(repo), "component": ".", "check": "lint",
+                        "scope": "full", "fingerprint": "source", **case["identity"]}
+            save_segment(str(repo), segment, {"identity": identity, "status": "passed", "checked_at": 100, **case["record"]})
+            reference = {"evidence": segment, "checked_at": 100, **case["reference"]}
+            assert bool(full_evidence(str(repo), ".", "lint", reference)) == case["valid"], case["name"]
 
 
 if __name__ == "__main__":

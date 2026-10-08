@@ -10,7 +10,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from _testkit import _git, _load_script, run_main, repocli_report
-from domain.context import RepoContext
+from domain.validation_evidence import full_projection
+from lib.git_state import get_current_branch
 from domain.lifecycle import checks
 from domain.repo_layout import Component
 from domain.validation import build_plan
@@ -40,8 +41,7 @@ def make_repo(root: str, *, contract: bool = True) -> Path:
 
 
 def has_full_stamp(repo: Path) -> bool:
-    ctx = RepoContext.load(str(repo))
-    return bool(ctx and ctx.validation.component(".").last_test_at)
+    return bool(full_projection(str(repo), get_current_branch(str(repo)), "test").get("."))
 
 
 def run_check(repo: Path, *, paths=None, extra=None):

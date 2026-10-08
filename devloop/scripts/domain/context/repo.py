@@ -163,11 +163,10 @@ class BranchTopology:
 
 @dataclass
 class ComponentValidation:
-    """**一个** component 的验证戳。
+    """One Component's historical full-check projection, resolved from execution evidence.
 
-    `lint_fingerprint` 是 lint 通过那一刻、该 Component 验证时的完整仓库内容身份（repocli snapshot）
-    ——通行证绑**内容**，不绑「有没有人报告过改动」。gate 拿当前指纹与它比：不等 = 内容变过 = 这张
-    通行证已作废。这样谁改的、用什么工具改的都不重要（内容契约见 docs/repository-toolkit.md）。"""
+    Guards read current evidence and inputs directly; this display view grants no permission.
+    """
     last_lint_at: float | None = None
     lint_fingerprint: str = ""
     last_test_at: float | None = None
@@ -184,31 +183,10 @@ class ComponentValidation:
 
 @dataclass
 class Validation:
-    """验证戳，**按 component 键**（key = `Component.id`，仓相对路径 `.` / `server`）。
+    """Full-check projections keyed by Component, assembled from branch references.
 
-    key 的粒度必须与**执行**的粒度一致：lint/test 本就按 component 跑（一个仓可有 `server/` + `cli/`
-    两套工具链、各自的 Makefile），repo 级单戳表达不了「A 过 B 挂」——component A 通过盖下的戳会让
-    `precommit_gate` 读到「已验、无待验编辑」而放行整个仓，于是**一次 partial-fail 的 fan-out
-    恰好把防绕过守卫的锁打开**（gate 挡住了 gcampr，却给裸 `git commit` 发了通行证）。
-    按 component 键之后这类偏差不可表达，而不是靠各消费方记得多问一句。
-
-    旧格式（repo 级扁平 / 单个 validation.json）读进来是空 components——即「都没验过」，gate 要求重跑
-    一次 lint。**刻意不写迁移**：`.devloop` 是 cache 不是事实源，退化方向是 fail-closed。
-
-    **落盘按 check 拆两个段**（`branches/<b>/lint.json` + `test.json`），本类是 `load` 合并出的
-    内存视图。三个维度各归各位：**branch** 是目录（域，切分支即自动隔离）、**check** 是文件
-    （= writer-role）、**component** 是文件内的 JSON key。
-
-    为什么 check 必须拆到文件：`dispatch` 用线程池**并发**跑 lint 与 test，而 segment 的纪律是
-    「single-writer whole-file overwrite」（见 `context/store`）。两个 writer 写同一个文件 =
-    load-modify-write 互相覆盖，实测会丢戳——丢 lint 戳只是白跑一遍，丢 **test** 戳则是状态说
-    「没测过」而其实测过，是记录失真。拆开之后各写各的文件，这一类**结构上不可能**（store 的原话），
-    不需要锁、也不需要「写前重读合并」那种把不可能降级成窗口更窄的 race 的做法。
-
-    为什么 component 不拆成目录：component **不是 writer**。test 的 component fan-out 虽并行执行，
-    worker 只返回结果；父线程 join 后一次批量覆写 test 段，仍是单 writer。拆目录不解决其它 race，且
-    component id 不是安全路径分量（根 component 是 `.`、`eval/reviewbench` 带斜杠），当目录还得枚举目录
-    才能读回全集。当 JSON key 三个问题都没有。
+    Check coordinators own separate branch reference segments; Component workers own
+    separate execution records. This view neither writes evidence nor issues pass stamps.
     """
     components: dict[str, ComponentValidation] = field(default_factory=dict)
 
@@ -225,15 +203,6 @@ class Validation:
             if isinstance(v, dict):
                 out.of(cid).last_test_at = v.get("passed_at")
         return out
-
-    def lint_segment(self) -> dict:
-        """lint 段的落盘形状——只含 lint 拥有的字段，绝不带 test 的（那是另一个 writer 的）。"""
-        return {cid: {"passed_at": u.last_lint_at, "fingerprint": u.lint_fingerprint}
-                for cid, u in self.components.items() if u.last_lint_at is not None}
-
-    def test_segment(self) -> dict:
-        return {cid: {"passed_at": u.last_test_at}
-                for cid, u in self.components.items() if u.last_test_at is not None}
 
     def component(self, cid: str) -> ComponentValidation:
         """`cid` 的戳，只读；从未验过 → 全空默认值（无戳即未验，fail-closed）。"""
@@ -274,6 +243,8 @@ class RepoContext:
         # rev-parse), not by whatever some cached file last observed. This kills the whole
         # "stale branch.json after an unobserved checkout fools the display" class structurally:
         # switching branches switches which segment directory is read.
+        from domain.validation_evidence import full_projection
+
         live = git_state.get_current_branch(repo_dir)
         branch = BranchTopology.from_local_dict(
             store.load_segment(repo_dir, store.branch_segment(live, "branch")) or {})
@@ -295,8 +266,8 @@ class RepoContext:
             agents_md=AgentsMd.from_dict(meta.get("agents_md") or {}),
             branch=branch,
             validation=Validation.from_dict(
-                store.load_segment(repo_dir, store.branch_segment(live, "lint")),
-                store.load_segment(repo_dir, store.branch_segment(live, "test"))),
+                full_projection(str(repo_dir), live, "lint"),
+                full_projection(str(repo_dir), live, "test")),
             prs=[PullRequest.from_dict(p) for p in (pr.get("prs") or []) if p.get("number") is not None],
             provider=pr.get("provider", ""),
             merge_readiness=(pr.get("merge_readiness") if on_branch else None),
@@ -360,16 +331,6 @@ class RepoContext:
             "prs": [asdict(p) for p in self.prs],
         })
 
-    def _save_lint(self) -> None:
-        """只写 lint 段。**绝不**顺手写 test 段——那是另一个 writer 的文件，碰它就把
-        「一段一 writer」的不变量破掉，lost update 立刻回来（见 `Validation`）。"""
-        if self._root():
-            store.save_segment(self._root(), self._branch_seg("lint"), self.validation.lint_segment())
-
-    def _save_test(self) -> None:
-        if self._root():
-            store.save_segment(self._root(), self._branch_seg("test"), self.validation.test_segment())
-
     # ── refresh (re-derive from authoritative sources) ─────────────────────────
     @classmethod
     def refresh_all(cls, repo_dir: str | Path) -> "RepoContext":
@@ -396,6 +357,14 @@ class RepoContext:
             repo_dir_abs, prev.repo.default_branch, prev.repo.default_branch_at)
         target = default_branch
         items = parsers.parse_references_section(agents_md_path) if agents_md_path else []
+        from domain.validation_evidence import full_projection
+
+        branch = _build_topology(repo_dir_abs, target, prev.branch)
+        # A check can produce evidence before repo metadata has ever been refreshed.
+        # Resolve that evidence directly rather than inheriting an empty previous view.
+        validation = Validation.from_dict(
+            full_projection(repo_dir_abs, branch.local.name, "lint"),
+            full_projection(repo_dir_abs, branch.local.name, "test"))
         ctx = cls(
             repo=RepoMeta(repo_dir=repo_dir_in, real_repo_dir=repo_dir_abs,
                           code_dir=code_dir, language=language,
@@ -405,8 +374,8 @@ class RepoContext:
                 references=[Reference(title=r.get("title", ""), path=r.get("path", ""),
                                       hook=r.get("description")) for r in items],
             ),
-            branch=_build_topology(repo_dir_abs, target, prev.branch),
-            validation=prev.validation,
+            branch=branch,
+            validation=validation,
             prs=prev.prs,
             provider=prev.provider,
         )
@@ -435,25 +404,6 @@ class RepoContext:
         return base.is_stale(meta.get("updated_at"), ttl)
 
     # ── mutators (each touches exactly one segment) ─────────────────────────────
-    def mark_lint_passed(self, cid: str, fingerprint: str) -> None:
-        """`fingerprint` 必填、且必须是**刚验过的那份内容**的指纹（lint 跑完后现算，不是跑之前）——
-        normalize 的 `make fix` 会改文件，跑前算的指纹配不上跑后的树。空串 = 算不出，gate 会按未验证
-        处理（fail-closed）。"""
-        u = self.validation.of(cid)
-        u.last_lint_at = base.now()
-        u.lint_fingerprint = fingerprint
-        self._save_lint()
-
-    def mark_test_passed(self, cid: str) -> None:
-        self.mark_tests_passed([cid])
-
-    def mark_tests_passed(self, cids: list[str]) -> None:
-        """同一轮并行 test join 后批量盖戳，只覆写一次 test segment。"""
-        passed_at = base.now()
-        for cid in cids:
-            self.validation.of(cid).last_test_at = passed_at
-        self._save_test()
-
     def set_branch_pr_number(self, number: int | None) -> None:
         """Write surface for the current branch's PR/MR number (monitor + create flow)."""
         self.branch.pr_number = number

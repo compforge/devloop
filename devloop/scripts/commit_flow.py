@@ -177,9 +177,9 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
     return out
 
 
-def stage(repo: str, files: list[str], plan: list[str]) -> None:
+def stage(repo: str, files: list[str], plan: list[str], *, validated_identity: str = "") -> None:
     try:
-        check_operation(staging.stage(repo, files, plan))
+        check_operation(staging.stage(repo, files, plan, validated_identity=validated_identity))
     except staging.StagingError as exc:
         raise SmartError(str(exc)) from exc
 
@@ -345,16 +345,21 @@ def prepare_branch(intent: GitIntent, gv: gate.GateView, plan: list[str]) -> Bra
     return BranchResult(branch=gv.branch or "", cut=False)
 
 
-def stage_and_commit(intent: GitIntent, plan: list[str]) -> StageResult:
+def stage_and_commit(intent: GitIntent, plan: list[str], *, validated_identity: str = "") -> StageResult:
     """Phase 3: stage (sensitive blocklist + gitlink guard), commit when anything is staged.
     `intent.files` 已在 main() 归一过（仓根相对）——这里不再自己归一，否则 gate 与 staging
     会各拿一份、且 PLAN 重复报 rebase。"""
-    stage(intent.repo, intent.files, plan)
+    stage(intent.repo, intent.files, plan, validated_identity=validated_identity)
     warn_mixed_version_bump(intent.repo, plan)
     staged = git_index.staged_changes(intent.repo)
     if not staged:
         plan.append("nothing staged — skipped commit")
         return StageResult(committed=False)
+    if validated_identity:
+        try:
+            staging.require_validated_candidate(intent.repo, git_index.index_view(intent.repo), validated_identity)
+        except staging.StagingError as exc:
+            raise SmartError(str(exc)) from exc
     check_operation(operations.commit(intent.repo, intent.message))
     plan.append("committed")
     return StageResult(committed=True)
@@ -612,7 +617,7 @@ def main(argv: list[str]) -> int:
         # review 的 MR 评论是机会性的——relay 跑时查到分支有开放 MR 就发，没有就只落 review.json。
         branch = prepare_branch(intent, gv, plan)
         pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # 必在 commit 前（normalize 可能改源码）
-        staged = stage_and_commit(intent, plan)
+        staged = stage_and_commit(intent, plan, validated_identity=pre_c.execution_identity)
         if staged.committed:
             post_c = run_lifecycle_gate(intent, "post_commit", plan)
             launch_background_relays(pre_c.to_launch + post_c.to_launch, intent.repo, plan)

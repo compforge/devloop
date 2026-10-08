@@ -86,7 +86,8 @@ def test_full_lint_clears_inherited_selection_and_stamps_only_full_success():
             assert (repo / "lint.observed").read_text() == "a.py legacy.py"
         (repo / "legacy.py").write_text("OK\n")
         assert checks.lint(str(repo), component=Component.at(repo, repo)).ok
-        context = RepoContext.load(str(repo))
+        # Validation evidence is independent of initializing the wider repo view.
+        context = RepoContext.refresh_all(str(repo))
         assert context.validation.component(".").last_lint_at
 
 

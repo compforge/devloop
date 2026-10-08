@@ -21,7 +21,7 @@ from time import monotonic
 
 from lib import dependencies
 from domain import repo as repo_model
-from domain.context import RepoContext
+from domain.validation_evidence import bind_full
 from domain.repo_layout import Component
 from domain.lifecycle.base import HookResult
 from domain.validation import Plan, build_plan, content_identity
@@ -222,6 +222,8 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     if cached := run.reuse():
         if problem := _identity_problem(repo, plan, "before reuse"):
             return HookResult("lint", ok=False, summary=problem)
+        if run.scope == "full":
+            bind_full(repo, [component.id], "lint")
         return cached
     rc, elapsed = _make(component, target, capture=capture, sink=sink, args=args)
     if rc == 0 and (problem := _identity_problem(repo, plan, "during lint")):
@@ -238,11 +240,10 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     if rc == 0:
         if plan and not plan.execution_identity:
             return HookResult("lint", ok=True, summary=f"full lint passed; validation not stamped: {plan.identity_problem or 'input identity unavailable'}")
-        ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
-        # Bind the stamp to the input fingerprint verified before and after execution.
-        ctx.mark_lint_passed(component.id, fingerprint)
-        return run.record(HookResult("lint", ok=True, summary=f"make {target} passed in {elapsed:.1f}s — stamped",
-                          guidance=guidance))
+        result = run.record(HookResult("lint", ok=True, summary=f"make {target} passed in {elapsed:.1f}s — recorded",
+                                       guidance=guidance))
+        bind_full(repo, [component.id], "lint")
+        return result
     detail = f"\n{_tail(sink)}" if capture else ""
     return run.record(HookResult(
         "lint",
@@ -267,8 +268,8 @@ def test_components(
             repo, capture=capture, extra=extra, component=unit, paths=paths, plan=plan,
         )
 
-    # Component 是相互独立的验证单位；worker 只执行命令、不写 validation segment，
-    # join 后由父线程一次落盘，避免多个 component 覆写同一份 test.json。
+    # Workers own separate execution records. Join before updating branch references
+    # so concurrent Components cannot overwrite the shared test reference segment.
     if len(workset.components) > 1:
         with ThreadPoolExecutor(
             max_workers=min(_MAX_COMPONENT_TEST_WORKERS, len(workset.components)),
@@ -283,8 +284,7 @@ def test_components(
         if should_stamp
     ]
     if passed:
-        ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
-        ctx.mark_tests_passed(passed)
+        bind_full(repo, passed, "test")
     return _aggregate("test", workset.reason, results, advisory=True)
 
 
@@ -312,8 +312,7 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
         repo, capture=capture, extra=extra, component=component, paths=paths, plan=plan,
     )
     if should_stamp:
-        ctx = RepoContext.load(repo) or RepoContext.refresh_all(repo)
-        ctx.mark_test_passed(component.id)
+        bind_full(repo, [component.id], "test")
     return result
 
 
@@ -413,7 +412,7 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     if cached := run.reuse():
         if problem := _identity_problem(repo, plan, "before reuse"):
             return HookResult("test", ok=False, advisory=True, summary=problem), False
-        return cached, False
+        return cached, scope == "full"
     started_at = monotonic()
     if capture:
         _progress("test", component, "started")

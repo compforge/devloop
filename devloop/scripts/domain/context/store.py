@@ -40,7 +40,7 @@ STATE_FILENAME = "context.json"   # workspace-level state (single owner: the ref
 #
 # 「一段一 writer-role」是**判据**，不是描述：拆到哪一层看**谁并发写**，不看它描述什么实体。
 # lint 与 test 在一次 `lifecycle.dispatch` 里并发跑，故各占一段（`branches/<b>/lint.json` /
-# `test.json`）；而 component worker 不写文件（test 并行 fan-out 在 join 后由父线程批量落盘），故
+# `test.json`）；component worker 各写执行证据，join 后父线程批量更新分支引用，故
 # component 是段**内**的 JSON key，不是目录——拆成目录既不解决那个 race，component id 又不是安全路径
 # 分量（根 component 是 `.`、可含斜杠），当目录还得枚举目录才能读回全集。
 #

@@ -203,3 +203,32 @@ See [repocli usage and compatibility](../references/repocli.md).
 
 缺少 `make test` / `make test-ci` / `make test-local` 入口时使用同样的 `unavailable` 提示策略：
 不执行测试、不写通过戳、不阻断提交。即使已识别 Go 生态，也不自动回退到 `go test ./...`；测试入口由项目声明。
+
+
+## Candidate and validation evidence
+
+`pre_commit` checks run after normalization. Before installing the staged index, the
+commit workflow requires its paths, file bytes, modes and gitlink OIDs to match the
+checked working tree, and rechecks the content identity before committing. A partial
+selection that omits another changed input is rejected; include that input or validate
+in a separate clean checkout. Rejection during staging preserves the original index,
+including partial hunks. Git clean filters that transform checked bytes are rejected.
+The workflow does not stash, reset, or execute project checks under Git's index lock.
+
+Each checkout/Component/check owns one latest execution record in `validation_results`:
+source identity, command, scope, selected files, hashed process environment, dependency
+witnesses, result and original execution time. Only identical successful inputs can be
+reused. Dependencies observed as `present`, unpreparable `missing`, or otherwise unknown
+may still enter actual project checks under the preparation policy, but cannot authorize
+reuse. Managed installations use repocli's receipt and dependency-input witnesses; this
+is an installation contract, not a byte-integrity scan of all installed dependencies.
+Inputs are observed again after execution; environment changes invalidate the result.
+
+Branch `lint`/`test` segments contain references to these records, not independent pass
+stamps. Full-check reuse binds the current branch to the original execution time.
+Focused/explicit checks cannot grant a full-Component pass; failed or replaced evidence
+invalidates old references. Python context and TypeScript Board resolve the same evidence
+contract. Board reports historical execution; the raw-commit guard additionally requires
+current source, command, process environment, dependency witnesses and a complete index.
+Different Harness and workflow process environments conservatively require the managed
+commit flow. Legacy stamps do not grant permission and are replaced by the next check.

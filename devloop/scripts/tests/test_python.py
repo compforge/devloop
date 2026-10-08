@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tomllib
 from tempfile import TemporaryDirectory
 
 from _testkit import SCRIPTS, run_main
@@ -47,7 +48,9 @@ print(json.dumps(dict(version=version('compforge-repocli'), cwd=os.getcwd(),
             # uv may invoke python on creation and python3 on reuse; the environment is stable.
             assert {k: v for k, v in first.items() if k != 'executable'} == {
                 k: v for k, v in observations[1].items() if k != 'executable'}
-            assert first['version'] == '0.5.0'
+            locked = tomllib.loads((SCRIPTS / '_python.py.lock').read_text())
+            expected = next(p['version'] for p in locked['package'] if p['name'] == 'compforge-repocli')
+            assert first['version'] == expected
             assert Path(first['cwd']).resolve() == target.resolve()
             assert first['args'] == ['space argument', '--flag'] and first['stdin'] == 'payload'
             executable = Path(first['executable'])

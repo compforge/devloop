@@ -1,6 +1,7 @@
 """Development policy over repocli's checkout-local dependency operations."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import subprocess
 from pathlib import Path
@@ -39,3 +40,21 @@ def preparation_problem(path: str | Path) -> str | None:
     except (OSError, ValueError, subprocess.SubprocessError, InterruptedError) as error:
         return f"dependency observation/preparation failed: {error}"
     return None
+
+
+def reuse_inputs(path: str | Path) -> tuple[tuple[str, str], ...] | None:
+    """Only receipt-backed environments authorize reuse; no environment is also known.
+
+    These witnesses describe repocli's installation contract, not an integrity scan of
+    every installed byte. Unmanaged installations still enter real project checks.
+    """
+    try:
+        inputs: dict[str, str] = {}
+        for environment in inspect_dependencies(path):
+            if environment.status != "ready":
+                return None
+            for source in (*environment.inputs, environment.directory / ".repocli-dependencies.json"):
+                inputs[str(source.resolve())] = hashlib.sha256(source.read_bytes()).hexdigest()
+        return tuple(sorted(inputs.items()))
+    except (OSError, ValueError, subprocess.SubprocessError, InterruptedError):
+        return None

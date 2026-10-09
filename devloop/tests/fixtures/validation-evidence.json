@@ -1,0 +1,92 @@
+{
+  "environment": {
+    "LANG": "中文.UTF-8",
+    "PATH": "/bin",
+    "2": "two",
+    "10": "ten",
+    "PWD": "ignored"
+  },
+  "environmentHash": "2033a1171e819964c17a3d87c637b112709fa062e1c85fdd3f6c330403263afc",
+  "cases": [
+    {
+      "name": "full success",
+      "identity": {},
+      "record": {},
+      "reference": {},
+      "valid": true
+    },
+    {
+      "name": "failed run",
+      "identity": {},
+      "record": {
+        "status": "failed"
+      },
+      "reference": {},
+      "valid": false
+    },
+    {
+      "name": "focused run",
+      "identity": {
+        "scope": "focused"
+      },
+      "record": {},
+      "reference": {},
+      "valid": false
+    },
+    {
+      "name": "wrong check",
+      "identity": {
+        "check": "test"
+      },
+      "record": {},
+      "reference": {},
+      "valid": false
+    },
+    {
+      "name": "legacy evidence",
+      "identity": {
+        "version": 1
+      },
+      "record": {},
+      "reference": {},
+      "valid": false
+    },
+    {
+      "name": "unknown contents",
+      "identity": {
+        "fingerprint": ""
+      },
+      "record": {},
+      "reference": {},
+      "valid": false
+    },
+    {
+      "name": "overwritten run",
+      "identity": {},
+      "record": {
+        "checked_at": 200
+      },
+      "reference": {},
+      "valid": false
+    },
+    {
+      "name": "legacy stamp",
+      "identity": {},
+      "record": {},
+      "reference": {
+        "evidence": "",
+        "passed_at": 100
+      },
+      "valid": false
+    },
+    {
+      "name": "unmanaged historical pass",
+      "identity": {
+        "dependencies": null
+      },
+      "record": {},
+      "reference": {},
+      "valid": true
+    }
+  ]
+}

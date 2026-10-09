@@ -1,7 +1,9 @@
 """Commit selection and validation policy; repocli owns the index transaction."""
 from __future__ import annotations
 
+import hashlib
 import os
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,7 +85,7 @@ def select(repo: str, files: list[str], plan: list[str] | None = None) -> Select
     return Selection(tuple(scope), tuple(dict.fromkeys(paths)), tuple(dict.fromkeys(to_add)))
 
 
-def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
+def stage(repo: str, files: list[str], plan: list[str], *, validated_identity: str = "") -> git.GitResult:
     selection = select(repo, files, plan)
     scope, to_add = selection.scope, selection.to_add
 
@@ -111,6 +113,9 @@ def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
             if unregistered:
                 raise StagingError(f"unregistered gitlink: {unregistered!r}; index unchanged")
 
+        if validated_identity:
+            require_validated_candidate(repo, index, validated_identity)
+
     # spec: only a validated full index may replace the user's original staging,
     # including partial hunks. Rejecting any candidate never requires reset/rollback.
     result = git.stage(repo, list(to_add), validate=validate)
@@ -118,3 +123,68 @@ def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
         shown = ", ".join(to_add[:8]) + (" …" if len(to_add) > 8 else "")
         plan.append(f"staged {len(to_add)} file(s): {shown}" if to_add else "validated existing index")
     return result
+
+
+def require_validated_candidate(repo: str, index: git_index.IndexView, identity: str) -> None:
+    """Accept only the exact bytes checked in the working tree, without moving user edits.
+
+    This runs inside repocli's index transaction: observe only, never execute project
+    commands under Git's writer lock. Filters that transform source bytes are rejected
+    conservatively because those committed bytes were not the validation subject.
+    """
+    from domain.validation import content_identity
+
+    def require_identity() -> None:
+        observed = content_identity(repo)
+        if not observed.digest or observed.digest != identity:
+            raise StagingError("contents changed since validation; rerun checks; index unchanged")
+
+    require_identity()
+    root = Path(repo).resolve()
+    listed = git.git(repo, "ls-files", "--cached", "--others", "--exclude-standard", "-z", raw=True)
+    if not listed.ok:
+        raise StagingError("cannot observe validation inputs; index unchanged")
+    original = {entry.path: entry for entry in git_index.index_view(repo).entries}
+    names = {name for name in listed.out.split("\0") if name
+             and (os.path.lexists(root / name) or original.get(name) and original[name].mode == "160000")}
+    candidates = {entry.path: entry for entry in index.entries}
+    different = names.symmetric_difference(candidates)
+    for name in names.intersection(candidates):
+        entry, path = candidates[name], root / name
+        if entry.stage != 0:
+            different.add(name)
+            continue
+        if entry.mode == "160000":
+            # A deinitialized gitlink has no child checkout; its index OID is the input.
+            if (path / ".git").exists():
+                child = git.git(path, "rev-parse", "HEAD")
+                oid = child.out.strip() if child.ok else ""
+            else:
+                oid = original[name].oid if name in original else ""
+            if entry.oid != oid:
+                different.add(name)
+            continue
+        info = path.lstat()
+        algorithm = "sha256" if len(entry.oid) == 64 else "sha1"
+        if stat.S_ISLNK(info.st_mode):
+            data = os.fsencode(os.readlink(path))
+            digest = hashlib.new(algorithm, f"blob {len(data)}\0".encode() + data).hexdigest()
+            mode = "120000"
+        elif stat.S_ISREG(info.st_mode):
+            hasher = hashlib.new(algorithm, f"blob {info.st_size}\0".encode())
+            with path.open("rb") as source:
+                while chunk := source.read(65536):
+                    hasher.update(chunk)
+            digest = hasher.hexdigest()
+            mode = "100755" if info.st_mode & stat.S_IXUSR else "100644"
+        else:
+            different.add(name)
+            continue
+        if (entry.oid, entry.mode) != (digest, mode):
+            different.add(name)
+    require_identity()
+    if different:
+        raise StagingError(
+            f"commit candidate differs from validated working tree: {sorted(different)!r}; "
+            "include these paths or validate a clean candidate checkout; index unchanged"
+        )

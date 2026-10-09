@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // hooks/runtime.ts
-import { readFileSync as readFileSync9 } from "node:fs";
+import { readFileSync as readFileSync10 } from "node:fs";
 
 // adapters/process-hooks.ts
 import { basename as basename9, dirname as dirname12, isAbsolute as isAbsolute5, resolve as resolve12 } from "node:path";
@@ -2936,8 +2936,49 @@ function number2(value) {
   return typeof value === "number" ? value : 0;
 }
 
-// domain/board/model.ts
+// domain/validation-evidence.ts
 import { createHash as createHash2 } from "node:crypto";
+import { readFileSync as readFileSync8, realpathSync as realpathSync5 } from "node:fs";
+function evidenceSegment(repo, component, check) {
+  return "validation_results/" + createHash2("sha256").update(`${realpathSync5(repo)}\0${component}\0${check}`).digest("hex");
+}
+function object3(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function fullEvidence(repo, component, check, reference2) {
+  const ref = object3(reference2);
+  const segment = evidenceSegment(repo, component, check);
+  if (ref.evidence !== segment) return void 0;
+  const record = loadSegment(repo, segment) ?? {};
+  const identity2 = object3(record.identity);
+  if (record.status !== "passed" || identity2.version !== 2 || identity2.checkout !== realpathSync5(repo) || identity2.component !== component || identity2.check !== check || identity2.scope !== "full" || typeof identity2.fingerprint !== "string" || !identity2.fingerprint || typeof record.checked_at !== "number" || record.checked_at !== ref.checked_at) return void 0;
+  return record;
+}
+function fullProjection(repo, branch, check) {
+  const refs = loadSegment(repo, branchSegment(branch, check)) ?? {};
+  return Object.fromEntries(Object.entries(refs).flatMap(([component, reference2]) => {
+    const record = fullEvidence(repo, component, check, reference2);
+    return record ? [[component, { passed_at: record.checked_at ?? null, fingerprint: object3(record.identity).fingerprint ?? null }]] : [];
+  }));
+}
+function reusableFullEvidence(record, fingerprint, command2) {
+  if (!record || !fingerprint) return false;
+  const identity2 = object3(record.identity);
+  const environmentHash = environmentIdentity();
+  if (identity2.environment !== environmentHash || identity2.fingerprint !== fingerprint || JSON.stringify(identity2.command) !== JSON.stringify(command2) || !Array.isArray(identity2.dependencies)) return false;
+  try {
+    return identity2.dependencies.every((input) => Array.isArray(input) && input.length === 2 && typeof input[0] === "string" && typeof input[1] === "string" && createHash2("sha256").update(readFileSync8(input[0])).digest("hex") === input[1]);
+  } catch {
+    return false;
+  }
+}
+function environmentIdentity(values = process.env) {
+  const pairs = Object.entries(values).filter(([key, value]) => value !== void 0 && !["_", "SHLVL", "PWD", "OLDPWD"].includes(key)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
+  return createHash2("sha256").update(JSON.stringify(pairs)).digest("hex");
+}
+
+// domain/board/model.ts
+import { createHash as createHash3 } from "node:crypto";
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (value !== null && typeof value === "object") {
@@ -2954,7 +2995,7 @@ function boardItem(type, kind, scope, payload) {
     kind,
     scope,
     payload,
-    signature: createHash2("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
+    signature: createHash3("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
   };
 }
 var BoardView = class _BoardView {
@@ -3069,8 +3110,8 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
     ...staleBindingHours === void 0 ? {} : { staleBindingHours }
   }));
   if (branch === void 0) return new Board(root, items);
-  const lint = loadSegment(repo, branchSegment(branch || void 0, "lint")) ?? {};
-  const test = loadSegment(repo, branchSegment(branch || void 0, "test")) ?? {};
+  const lint = fullProjection(repo, branch || void 0, "lint");
+  const test = fullProjection(repo, branch || void 0, "test");
   const componentIds = [.../* @__PURE__ */ new Set([...Object.keys(lint), ...Object.keys(test)])].sort();
   items.push(boardItem("repo.validation", "state", scope, {
     analysis: loadSegment(repo, branchSegment(branch || void 0, "validation_scope")) ?? {},
@@ -3487,7 +3528,7 @@ var PolicyContext = class _PolicyContext {
 };
 
 // hooks/rules/index.ts
-import { existsSync as existsSync12, readFileSync as readFileSync8 } from "node:fs";
+import { existsSync as existsSync12, readFileSync as readFileSync9 } from "node:fs";
 import { basename as basename8, dirname as dirname11, extname, join as join13, resolve as resolve11 } from "node:path";
 
 // domain/forge.ts
@@ -3542,7 +3583,7 @@ function evaluateGate(repo) {
 }
 
 // domain/repo.ts
-import { realpathSync as realpathSync5 } from "node:fs";
+import { realpathSync as realpathSync6 } from "node:fs";
 import { basename as basename7, join as join12, resolve as resolve10 } from "node:path";
 function workingPaths(root) {
   try {
@@ -3563,7 +3604,7 @@ function projectComponents(changed, catalog) {
   return [...byId.values()];
 }
 function selectComponents(rootValue, options) {
-  const root = realpathSync5(rootValue);
+  const root = realpathSync6(rootValue);
   const catalog = options.catalog;
   if (catalog.components.length === 0) throw new InspectionError("repocli inspect returned no Components for validation");
   if (options.explicit) {
@@ -3787,6 +3828,20 @@ var requirementsEdit = {
 function stringArray(value) {
   return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }
+function commitsExistingIndex(args) {
+  const values = /* @__PURE__ */ new Set(["-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--cleanup"]);
+  const flags = /* @__PURE__ */ new Set(["--amend", "--no-edit", "--edit", "-e", "--signoff", "-s", "--no-verify", "-n", "--quiet", "-q", "--verbose", "-v", "--allow-empty", "--allow-empty-message", "--no-gpg-sign", "--no-post-rewrite"]);
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (values.has(arg)) {
+      if (++index >= args.length) return false;
+      continue;
+    }
+    if (flags.has(arg) || [...values].some((option) => option.startsWith("--") && arg.startsWith(`${option}=`))) continue;
+    return false;
+  }
+  return true;
+}
 var precommitGate = {
   name: "precommit-gate",
   targetKind: "command",
@@ -3804,11 +3859,15 @@ var precommitGate = {
     const fingerprint = required.length ? await componentFingerprint(repo, required[0], catalog) : void 0;
     const stale2 = required.flatMap((component) => {
       if (!component.lintTarget()) return [`  ${component.id}: lint entrypoint unavailable.`];
-      const raw = lint[component.id];
-      const stamp = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-      if (typeof stamp.passed_at !== "number") return [`  ${component.id}: lint has never run for this branch.`];
-      return !fingerprint || typeof stamp.fingerprint !== "string" || stamp.fingerprint !== fingerprint ? [`  ${component.id}: content changed since its last lint pass.`] : [];
+      const evidence = fullEvidence(repo, component.id, "lint", lint[component.id]);
+      if (!evidence) return [`  ${component.id}: lint has no full-check evidence for this branch.`];
+      return reusableFullEvidence(evidence, fingerprint, ["make", component.lintTarget(), "LINT_FILES="]) ? [] : [`  ${component.id}: contents, command or dependency environment require validation.`];
     });
+    const unstaged = runGit(repo, ["diff", "--quiet", "--ignore-submodules=dirty"]);
+    const untracked = runGit(repo, ["ls-files", "--others", "--exclude-standard"]);
+    if (!commitsExistingIndex(value.args) || !unstaged.ok || !untracked.ok || untracked.stdout) {
+      stale2.push("  index differs from the checked working tree; use the devloop commit flow.");
+    }
     return stale2.length === 0 ? [] : finding("precommit-gate", [
       "Refusing `git commit`: lint is in the pre_commit gate and is stale.",
       ...stale2,
@@ -3824,7 +3883,7 @@ function resultingText(target) {
   if (typeof input.file_text === "string") return input.file_text;
   let current;
   try {
-    current = readFileSync8(target.path, "utf8");
+    current = readFileSync9(target.path, "utf8");
   } catch {
     current = "";
   }
@@ -4124,7 +4183,7 @@ var claudeProcessAdapter = {
 // hooks/runtime.ts
 function readPayload() {
   try {
-    const parsed = JSON.parse(readFileSync9(0, "utf8") || "{}");
+    const parsed = JSON.parse(readFileSync10(0, "utf8") || "{}");
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};

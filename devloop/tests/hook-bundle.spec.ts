@@ -27,9 +27,9 @@ describe("standalone process hook", () => {
       expect(result.status, result.stderr).toBe(0);
       return JSON.parse(result.stdout);
     };
-    expect(run()).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has never run") } });
+    expect(run()).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has no full-check evidence") } });
     // Observability may probe unusable paths, but must still reach the commit gate.
-    expect(run(undefined, { path: join(root, "missing", "file.ts") })).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has never run") } });
+    expect(run(undefined, { path: join(root, "missing", "file.ts") })).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has no full-check evidence") } });
     // A failed lookup for the actual command target must reach fail-closed rules.
     expect(run(`git -C "${join(root, "missing")}" commit -m test`)).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("fail-closed") } });
     writeFileSync(join(root, ".repocli.json"), JSON.stringify({ components: [{ name: "bad", root: "../outside" }] }));

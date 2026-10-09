@@ -1,3 +1,4 @@
+import { fullEvidence, reusableFullEvidence } from "../../domain/validation-evidence.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { evaluateGate } from "../../domain/context/gate.js";
@@ -189,6 +190,20 @@ function stringArray(value: unknown): readonly string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+// Only commands that consume the current index can use its validation evidence.
+// Path operands and unknown options go through the managed candidate transaction.
+function commitsExistingIndex(args: readonly string[]): boolean {
+  const values = new Set(["-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--cleanup"]);
+  const flags = new Set(["--amend", "--no-edit", "--edit", "-e", "--signoff", "-s", "--no-verify", "-n", "--quiet", "-q", "--verbose", "-v", "--allow-empty", "--allow-empty-message", "--no-gpg-sign", "--no-post-rewrite"]);
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+    if (values.has(arg)) { if (++index >= args.length) return false; continue; }
+    if (flags.has(arg) || [...values].some((option) => option.startsWith("--") && arg.startsWith(`${option}=`))) continue;
+    return false;
+  }
+  return true;
+}
+
 const precommitGate: Rule = {
   name: "precommit-gate", targetKind: "command", failurePolicy: "fail_closed",
   applies: (target) => command(target).subcommand === "commit",
@@ -203,12 +218,16 @@ const precommitGate: Rule = {
     const fingerprint = required.length ? await componentFingerprint(repo, required[0]!, catalog) : undefined;
     const stale = required.flatMap((component): string[] => {
       if (!component.lintTarget()) return [`  ${component.id}: lint entrypoint unavailable.`];
-      const raw = lint[component.id];
-      const stamp = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-      if (typeof stamp.passed_at !== "number") return [`  ${component.id}: lint has never run for this branch.`];
-      return !fingerprint || typeof stamp.fingerprint !== "string" || stamp.fingerprint !== fingerprint
-        ? [`  ${component.id}: content changed since its last lint pass.`] : [];
+      const evidence = fullEvidence(repo, component.id, "lint", lint[component.id]);
+      if (!evidence) return [`  ${component.id}: lint has no full-check evidence for this branch.`];
+      return reusableFullEvidence(evidence, fingerprint, ["make", component.lintTarget()!, "LINT_FILES="])
+        ? [] : [`  ${component.id}: contents, command or dependency environment require validation.`];
     });
+    const unstaged = runGit(repo, ["diff", "--quiet", "--ignore-submodules=dirty"]);
+    const untracked = runGit(repo, ["ls-files", "--others", "--exclude-standard"]);
+    if (!commitsExistingIndex(value.args) || !unstaged.ok || !untracked.ok || untracked.stdout) {
+      stale.push("  index differs from the checked working tree; use the devloop commit flow.");
+    }
     return stale.length === 0 ? [] : finding("precommit-gate", [
       "Refusing `git commit`: lint is in the pre_commit gate and is stale.",
       ...stale,

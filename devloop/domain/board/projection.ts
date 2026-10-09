@@ -1,3 +1,4 @@
+import { fullProjection } from "../validation-evidence.js";
 import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, checkoutInfo } from "../../lib/git-state.js";
 import { findAgentsDocument, inspectCatalog, type Component } from "../repo-layout.js";
 import { InspectionError } from "../../lib/repocli.js";
@@ -60,8 +61,8 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
   }));
   // An unavailable identity cannot select detached-HEAD or another branch's persisted state.
   if (branch === undefined) return new Board(root, items);
-  const lint = loadSegment(repo, branchSegment(branch || undefined, "lint")) ?? {};
-  const test = loadSegment(repo, branchSegment(branch || undefined, "test")) ?? {};
+  const lint = fullProjection(repo, branch || undefined, "lint");
+  const test = fullProjection(repo, branch || undefined, "test");
   const componentIds = [...new Set([...Object.keys(lint), ...Object.keys(test)])].sort();
   items.push(boardItem("repo.validation", "state", scope, {
     analysis: loadSegment(repo, branchSegment(branch || undefined, "validation_scope")) ?? {},

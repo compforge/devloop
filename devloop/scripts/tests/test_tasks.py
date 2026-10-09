@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import io
 import json
-import shutil
 from contextlib import redirect_stdout
-from pathlib import Path
 
 from _testkit import _load_script, run_main  # noqa: E402  (bootstrap first)
-from lib import gitcmd  # noqa: E402
-from tasks import opportunistic, pr_lifecycle, registry  # noqa: E402
+from tasks import pr_lifecycle, registry  # noqa: E402
 
 
 def test_task_registry_discovers_pr_lifecycle_once():
@@ -64,40 +61,55 @@ def test_pr_lifecycle_task_fault_isolates_repositories():
     ]
 
 
-def test_codex_opportunistic_reconciliation_is_nonblocking_and_throttled():
-    root = Path("/tmp/dlut_opportunistic_task")
-    shutil.rmtree(root, ignore_errors=True)
-    root.mkdir()
-    calls = []
-    original_primary = opportunistic.worktree.primary
-    original_git = opportunistic.gitcmd.git
-    original_discover = opportunistic.registry.discover
-    original_popen = opportunistic.subprocess.Popen
-    try:
-        opportunistic.worktree.primary = lambda _repo: str(root)
-        opportunistic.gitcmd.git = lambda *_a, **_kw: gitcmd.GitResult(0, "origin", "")
-        opportunistic.registry.discover = lambda: {
-            opportunistic.TASK_NAME: registry.TaskSpec(
-                name=opportunistic.TASK_NAME,
-                module="tasks.pr_lifecycle",
-                description="test",
-                interval_seconds=120,
-            )
-        }
-        opportunistic.subprocess.Popen = lambda args, **kwargs: calls.append((args, kwargs))
 
-        assert opportunistic.maybe_start(str(root), now=1_000)
-        assert not opportunistic.maybe_start(str(root), now=1_119)
-        assert opportunistic.maybe_start(str(root), now=1_120)
-    finally:
-        opportunistic.worktree.primary = original_primary
-        opportunistic.gitcmd.git = original_git
-        opportunistic.registry.discover = original_discover
-        opportunistic.subprocess.Popen = original_popen
+def test_repo_heartbeat_does_not_expand_into_containing_workspace():
+    from unittest.mock import patch
+    with patch.object(pr_lifecycle.repo_layout, "find_git_root", return_value="/repo"), \
+         patch.object(pr_lifecycle, "repos_for_target", side_effect=AssertionError("expanded heartbeat")), \
+         patch.object(pr_lifecycle, "sweep_repo", return_value={"repo": "/repo"}) as sweep:
+        assert pr_lifecycle.run("/repo/subdir", repo_only=True) == [{"repo": "/repo"}]
+        sweep.assert_called_once_with("/repo")
 
-    assert len(calls) == 2
-    assert calls[0][0][-3:] == ["run", opportunistic.TASK_NAME, str(root)]
-    assert calls[0][1]["start_new_session"] is True
+
+def test_task_exit_status_exposes_refresh_and_cleanup_failures():
+    from unittest.mock import patch
+    runner = _load_script("run_task")
+    for row in [
+        {"repo": "/repo", "error": "ForgeError"},
+        {"repo": "/repo", "updated": {"local_pull_requests": False}},
+        {"repo": "/repo", "actions": [{"status": "deferred", "reason": "git_error"}]},
+    ]:
+        with patch.object(runner.registry, "run", return_value=[row]) as run:
+            assert runner.main(["run", "pr-lifecycle-reconcile", "/repo", "--repo-only"]) == 1
+            run.assert_called_once_with("pr-lifecycle-reconcile", "/repo", repo_only=True)
+
+
+def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory():
+    from unittest.mock import patch
+    from pathlib import Path
+    from test_worktree import _fixture, _add_worktree, _add_submodule
+    from _testkit import _FakeForge, _git, _git_out
+    from domain.context import PullRequest, prstate, store
+    from domain.forge import ForgeError
+    repo, _, _ = _fixture("task_submodule")
+    _add_submodule(repo)
+    linked = _add_worktree(repo, "finished")
+    _git(linked, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "-q")
+    fake = _FakeForge([PullRequest(number=1, state="merged", source_branch="worktree-finished", sha=_git_out(linked, "rev-parse", "HEAD"))])
+    with patch.object(prstate, "forge_for_repo", return_value=fake):
+        # Seed an old terminal snapshot, then make the live refresh fail.
+        assert prstate.refresh_local_pull_requests(repo)
+        with patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
+            report = pr_lifecycle.sweep_repo(repo)
+        assert report["updated"]["local_pull_requests"] is False
+        assert report["actions"] == [] and Path(linked).exists()
+        report = pr_lifecycle.sweep_repo(repo)
+        assert report["updated"]["local_pull_requests"] is True
+        assert report["actions"][0]["status"] == "completed"
+        assert not Path(linked).exists()
+        assert _git_out(repo, "branch", "--list", "worktree-finished") == "worktree-finished"
+        assert pr_lifecycle.sweep_repo(repo)["actions"] == []
+        assert store.load_segment(repo, "local_pull_requests")["actions"] == []
 
 
 if __name__ == "__main__":

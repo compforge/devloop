@@ -167,7 +167,7 @@ Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 pack
 
 devloop 只定义一个 `pr-lifecycle-reconcile` task：它枚举本地 branch（包含无 checkout 的 branch），对账 Forge 状态，并强制回收 PR/MR 已 merged / closed 的 linked worktree。Claude native monitor 会循环执行该 task；Codex 可用 Scheduled task 周期调用同一个单次入口。
 
-Codex 本地 plugin 目前没有与 Claude native monitor 对等的声明入口，安装 devloop 不会自动启动周期对账。需要周期执行时，在 ChatGPT desktop 创建能访问本地项目的 Scheduled task；Codex CLI 不提供 Scheduled 管理界面。参见 OpenAI 的 [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) 与 [plugin packaging](https://developers.openai.com/plugins/build/plugins) 文档。
+Codex 会在会话开始和工具执行后，对实际访问的仓库非阻塞触发一次对账；同一主仓库及其 worktree 共用触发频率，上一轮未结束时不会重复启动。这只能覆盖活跃使用期间：空闲时仍需在 ChatGPT desktop 创建能访问本地项目的 Scheduled task；Codex CLI 不提供 Scheduled 管理界面。参见 OpenAI 的 [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) 与 [plugin packaging](https://developers.openai.com/plugins/build/plugins) 文档。
 
 在 ChatGPT desktop 中说“为当前项目安排 `$devloop:monitor`”即可按 task 默认周期创建 Scheduled task，也可在请求中指定周期。单次手动执行时：
 

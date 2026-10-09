@@ -68,10 +68,11 @@ def repos_for_target(target: str) -> list[str]:
     return [root] if root else []
 
 
-def run(target: str) -> list[dict]:
+def run(target: str, *, repo_only: bool = False) -> list[dict]:
     """Run one fault-isolated sweep over every repository in scope."""
     results = []
-    for repo in repos_for_target(target):
+    repos = [repo_layout.find_git_root(target)] if repo_only else repos_for_target(target)
+    for repo in filter(None, repos):
         try:
             results.append(sweep_repo(repo))
         except Exception as exc:

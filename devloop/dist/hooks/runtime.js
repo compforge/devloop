@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
 // hooks/runtime.ts
-import { readFileSync as readFileSync10 } from "node:fs";
+import { readFileSync as readFileSync11 } from "node:fs";
 
-// adapters/process-hooks.ts
-import { basename as basename9, dirname as dirname12, isAbsolute as isAbsolute5, resolve as resolve12 } from "node:path";
-
-// domain/repo-layout.ts
-import { existsSync as existsSync3, readFileSync, realpathSync as realpathSync3 } from "node:fs";
-import { basename as basename2, join as join5, relative, resolve } from "node:path";
+// domain/task-trigger.ts
+import { spawn } from "node:child_process";
+import { closeSync, existsSync as existsSync3, mkdirSync as mkdirSync2, openSync, readFileSync as readFileSync2, statSync as statSync3, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { join as join5 } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // node_modules/@compforge/repocli/dist/inspect.js
 import { realpath as realpath2 } from "node:fs/promises";
@@ -69,6 +68,10 @@ function parseRemoteUrl(value) {
   }
   path = path.replace(/\/$/, "").replace(/\.git$/, "");
   return host && path ? { host: host.toLowerCase(), path } : void 0;
+}
+function remote(repo, name = "origin") {
+  const result = runGit(repo, ["remote", "get-url", "--", name]);
+  return result.ok ? parseRemoteUrl(result.stdout) : void 0;
 }
 
 // node_modules/@compforge/repocli/dist/layout.js
@@ -1224,10 +1227,10 @@ var compare = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 var needsContent = (name) => name === ".repocli.json" || posix2.basename(name) === "package.json";
 var validPath = (name) => name !== "" && name !== "." && name !== ".." && !name.includes("\0") && !name.includes("\\") && !name.startsWith("/") && !name.startsWith("../") && posix2.normalize(name) === name && !name.endsWith("/");
 function fromOrigin(origin) {
-  const remote = parseRemoteUrl(origin);
-  if (!remote)
+  const remote2 = parseRemoteUrl(origin);
+  if (!remote2)
     return null;
-  const { host, path } = remote;
+  const { host, path } = remote2;
   return { forge: { name: host === "github.com" ? "github" : host === "gitlab.com" ? "gitlab" : host }, path };
 }
 var excluded = /* @__PURE__ */ new Set(["node_modules", "vendor", "venv", "env", "dist", "build", "target", "__pycache__", "testdata"]);
@@ -1931,9 +1934,182 @@ async function capture(root, signal) {
   return { checkout: root, digest: `sha256:${digest.digest("hex")}`, fileCount: files.size, complete: issues.length === 0, diagnostics: issues };
 }
 
+// domain/context/store.ts
+import { appendFileSync, existsSync as existsSync2, mkdirSync, readFileSync, renameSync, statSync as statSync2, writeFileSync } from "node:fs";
+import { dirname as dirname4, join as join4, parse, resolve } from "node:path";
+var STATE_DIRECTORY_NAME = ".devloop";
+var WORKSPACE_STATE_FILE = "context.json";
+var stateRoots = /* @__PURE__ */ new Map();
+function sharedStateRoot(root) {
+  const path = join4(root, ".git");
+  if (!existsSync2(path)) return root;
+  const metadata = statSync2(path);
+  const marker = `${metadata.dev}:${metadata.ino}:${metadata.mtimeMs}`;
+  const cached = stateRoots.get(root);
+  if (cached?.marker === marker) return cached.home;
+  const info = checkoutInfo(root);
+  const home = info.mainRoot ?? info.commonDir;
+  if (stateRoots.size >= 64) stateRoots.delete(stateRoots.keys().next().value);
+  stateRoots.set(root, { marker, home });
+  return home;
+}
+function stateDirectory(root) {
+  return join4(sharedStateRoot(resolve(root)), STATE_DIRECTORY_NAME);
+}
+function workingTreeStateDirectory(root) {
+  return join4(resolve(root), STATE_DIRECTORY_NAME);
+}
+function temporaryDirectory(root) {
+  return join4(stateDirectory(root), "tmp");
+}
+function branchSegment(branch, name) {
+  return `branches/${branch ?? "@detached"}/${name}`;
+}
+function workspaceStateFile(root) {
+  return join4(stateDirectory(root), WORKSPACE_STATE_FILE);
+}
+function segmentFile(root, name) {
+  return join4(stateDirectory(root), `${name}.json`);
+}
+function atomicWrite(path, data) {
+  try {
+    mkdirSync(dirname4(path), { recursive: true });
+    const temporary = join4(dirname4(path), `${parse(path).base}.${process.pid}.tmp`);
+    writeFileSync(temporary, JSON.stringify(data, null, 2), "utf8");
+    renameSync(temporary, path);
+  } catch {
+  }
+}
+function readJson(path) {
+  if (!existsSync2(path)) return void 0;
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function loadWorkspace(root) {
+  return readJson(workspaceStateFile(root));
+}
+function saveWorkspace(root, data) {
+  atomicWrite(workspaceStateFile(root), data);
+}
+function loadSegment(root, name) {
+  return readJson(segmentFile(root, name));
+}
+function saveSegment(root, name, data) {
+  atomicWrite(segmentFile(root, name), data);
+}
+function appendLedger(root, name, record) {
+  try {
+    const path = join4(stateDirectory(root), `${name}.jsonl`);
+    mkdirSync(dirname4(path), { recursive: true });
+    appendFileSync(path, `${JSON.stringify(record)}
+`, "utf8");
+  } catch {
+  }
+}
+
+// domain/task-trigger.ts
+var TASK = "pr-lifecycle-reconcile";
+function running(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code !== "ESRCH";
+  }
+}
+function triggerReconciliation(repo) {
+  let control = repo;
+  let claim;
+  let claimed = false;
+  let log;
+  try {
+    const info = checkoutInfo(repo);
+    control = info.mainRoot ?? info.root;
+    if (!remote(control)) return false;
+    const plugin = process.env.PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("../../", import.meta.url));
+    const catalog = JSON.parse(readFileSync2(join5(plugin, "tasks/tasks.json"), "utf8"));
+    const task = catalog.find((entry) => entry.name === TASK);
+    if (!task) throw new Error(`missing task definition: ${TASK}`);
+    const runner = join5(plugin, "scripts/run_task.py");
+    const launcher = join5(plugin, "scripts/python");
+    if (!existsSync3(runner) || !existsSync3(launcher)) throw new Error(`missing task entrypoint: ${runner}`);
+    const home = temporaryDirectory(control);
+    mkdirSync2(home, { recursive: true });
+    const stamp = join5(home, `${TASK}.opportunistic`);
+    if (existsSync3(stamp) && Date.now() - statSync3(stamp).mtimeMs < task.interval_seconds * 1e3) return false;
+    claim = join5(home, `${TASK}.claim`);
+    if (existsSync3(claim)) {
+      try {
+        const pid = Number(readFileSync2(claim, "utf8"));
+        if (Number.isInteger(pid) && pid > 0 && running(pid)) return false;
+        if ((!Number.isInteger(pid) || pid <= 0) && Date.now() - statSync3(claim).mtimeMs < 6e4) return false;
+        unlinkSync(claim);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
+    }
+    let fd;
+    try {
+      fd = openSync(claim, "wx", 384);
+    } catch (error) {
+      if (error.code === "EEXIST") return false;
+      throw error;
+    }
+    claimed = true;
+    try {
+      writeFileSync2(fd, String(process.pid));
+    } finally {
+      closeSync(fd);
+    }
+    if (existsSync3(stamp) && Date.now() - statSync3(stamp).mtimeMs < task.interval_seconds * 1e3) {
+      unlinkSync(claim);
+      claimed = false;
+      return false;
+    }
+    log = openSync(join5(home, `${TASK}.log`), "w", 384);
+    const child = spawn(launcher, [runner, "run", TASK, control, "--repo-only", "--report"], {
+      cwd: control,
+      detached: true,
+      stdio: ["ignore", log, log]
+    });
+    child.on("error", (error) => {
+      appendLedger(control, "tasks", { task: TASK, event: "launch_failed", error: error.message, ts: Date.now() / 1e3 });
+    });
+    if (!child.pid) throw new Error(`could not launch ${TASK}`);
+    writeFileSync2(claim, String(child.pid));
+    writeFileSync2(stamp, "");
+    appendLedger(control, "tasks", { task: TASK, event: "started", pid: child.pid, ts: Date.now() / 1e3 });
+    child.unref();
+    claimed = false;
+    return true;
+  } catch (error) {
+    appendLedger(control, "tasks", { task: TASK, event: "launch_failed", error: error instanceof Error ? error.message : String(error), ts: Date.now() / 1e3 });
+    return false;
+  } finally {
+    if (log !== void 0) closeSync(log);
+    if (claimed && claim) {
+      try {
+        unlinkSync(claim);
+      } catch {
+      }
+    }
+  }
+}
+
+// adapters/process-hooks.ts
+import { basename as basename9, dirname as dirname12, isAbsolute as isAbsolute5, resolve as resolve12 } from "node:path";
+
+// domain/repo-layout.ts
+import { existsSync as existsSync5, readFileSync as readFileSync3, realpathSync as realpathSync3 } from "node:fs";
+import { basename as basename2, join as join7, relative, resolve as resolve2 } from "node:path";
+
 // lib/repocli.ts
-import { realpathSync as realpathSync2, existsSync as existsSync2 } from "node:fs";
-import { dirname as dirname4, join as join4, sep } from "node:path";
+import { realpathSync as realpathSync2, existsSync as existsSync4 } from "node:fs";
+import { dirname as dirname5, join as join6, sep } from "node:path";
 var InspectionError = class extends Error {
 };
 async function inspectRepository(repo) {
@@ -1942,8 +2118,8 @@ async function inspectRepository(repo) {
     if (!report.complete || report.diagnostics.length > 0) throw new Error("repository inspection incomplete");
     const checkout = realpathSync2(repo);
     for (const component of report.components) {
-      let ancestor = join4(checkout, component.root);
-      while (!existsSync2(ancestor)) ancestor = dirname4(ancestor);
+      let ancestor = join6(checkout, component.root);
+      while (!existsSync4(ancestor)) ancestor = dirname5(ancestor);
       const resolved = realpathSync2(ancestor);
       if (resolved !== checkout && !resolved.startsWith(checkout + sep)) throw new Error("component root escapes checkout");
     }
@@ -1975,11 +2151,11 @@ var Component = class _Component {
     return new _Component(pathValue, id.startsWith("../") ? path.replaceAll("\\", "/") : id, void 0);
   }
   static fromInfo(root, info) {
-    return new _Component(join5(root, info.root), info.root, info.language, info.name, info.packageTools ?? []);
+    return new _Component(join7(root, info.root), info.root, info.language, info.name, info.packageTools ?? []);
   }
   hasTarget(name, suffix = false) {
     try {
-      const makefile = readFileSync(join5(this.path, "Makefile"), "utf8");
+      const makefile = readFileSync3(join7(this.path, "Makefile"), "utf8");
       const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return new RegExp(`^${escaped}${suffix ? "(-\\w+)?" : ""}\\s*:`, "m").test(makefile);
     } catch {
@@ -2004,7 +2180,7 @@ var Component = class _Component {
   }
   makefileUses(variable) {
     try {
-      return new RegExp(`\\$\\(${variable}\\)|\\$\\{${variable}\\}`).test(readFileSync(join5(this.path, "Makefile"), "utf8"));
+      return new RegExp(`\\$\\(${variable}\\)|\\$\\{${variable}\\}`).test(readFileSync3(join7(this.path, "Makefile"), "utf8"));
     } catch {
       return false;
     }
@@ -2030,7 +2206,7 @@ var ComponentCatalog = class {
   report;
   components;
   owner(target) {
-    const path = relative(this.root, resolve(target)).replaceAll("\\", "/");
+    const path = relative(this.root, resolve2(target)).replaceAll("\\", "/");
     if (path === ".." || path.startsWith("../")) return void 0;
     const binding = owner(this.report, path || ".");
     return binding ? this.components.find((component) => component.id === binding.root) : void 0;
@@ -2052,16 +2228,16 @@ function enclosingComponent(target, catalog) {
   return catalog.owner(target) ?? catalog.default();
 }
 function findAgentsDocument(repo, component) {
-  return [component ? join5(component, "AGENTS.md") : "", join5(repo, "AGENTS.md")].find((path) => path && existsSync3(path));
+  return [component ? join7(component, "AGENTS.md") : "", join7(repo, "AGENTS.md")].find((path) => path && existsSync5(path));
 }
 
 // domain/context/workspace.ts
-import { existsSync as existsSync7, lstatSync as lstatSync2, readdirSync, realpathSync as realpathSync4 } from "node:fs";
-import { join as join7, resolve as resolve4 } from "node:path";
+import { existsSync as existsSync8, lstatSync as lstatSync2, readdirSync, realpathSync as realpathSync4 } from "node:fs";
+import { join as join8, resolve as resolve4 } from "node:path";
 
 // lib/git-state.ts
-import { appendFileSync, existsSync as existsSync4, mkdirSync, readFileSync as readFileSync2 } from "node:fs";
-import { dirname as dirname5 } from "node:path";
+import { appendFileSync as appendFileSync2, existsSync as existsSync6, mkdirSync as mkdirSync3, readFileSync as readFileSync4 } from "node:fs";
+import { dirname as dirname6 } from "node:path";
 var PROTECTED_BRANCHES = [/^main$/, /^master$/, /^release$/, /^release.*/, /.*release$/];
 function isProtectedBranch(branch) {
   return branch !== void 0 && PROTECTED_BRANCHES.some((pattern) => pattern.test(branch));
@@ -2078,22 +2254,22 @@ function localDefaultTarget(repo) {
 function ensureGitExclude(repo, pattern = "/.devloop/") {
   try {
     const path = gitPath(repo, "info/exclude");
-    mkdirSync(dirname5(path), { recursive: true });
-    const existing = existsSync4(path) ? readFileSync2(path, "utf8") : "";
+    mkdirSync3(dirname6(path), { recursive: true });
+    const existing = existsSync6(path) ? readFileSync4(path, "utf8") : "";
     if (existing.split("\n").some((line) => line.trim() === pattern.trim())) return;
-    appendFileSync(path, `${existing && !existing.endsWith("\n") ? "\n" : ""}${pattern}
+    appendFileSync2(path, `${existing && !existing.endsWith("\n") ? "\n" : ""}${pattern}
 `, "utf8");
   } catch {
   }
 }
 
 // lib/parsers.ts
-import { existsSync as existsSync5, readFileSync as readFileSync3 } from "node:fs";
-import { basename as basename3, dirname as dirname6, isAbsolute, resolve as resolve2 } from "node:path";
+import { existsSync as existsSync7, readFileSync as readFileSync5 } from "node:fs";
+import { basename as basename3, dirname as dirname7, isAbsolute, resolve as resolve3 } from "node:path";
 function read(path) {
-  if (!existsSync5(path)) return void 0;
+  if (!existsSync7(path)) return void 0;
   try {
-    return readFileSync3(path, "utf8");
+    return readFileSync5(path, "utf8");
   } catch {
     return void 0;
   }
@@ -2101,7 +2277,7 @@ function read(path) {
 function concretePath(value, base) {
   if (value.includes("<") || value.includes(">")) return value;
   const expanded = value.startsWith("~") ? `${process.env.HOME ?? ""}${value.slice(1)}` : value;
-  return isAbsolute(expanded) ? expanded : resolve2(base, expanded);
+  return isAbsolute(expanded) ? expanded : resolve3(base, expanded);
 }
 function parseReferencesSection(path) {
   const content = read(path);
@@ -2121,13 +2297,13 @@ function parseReferencesSection(path) {
       const after = value.slice(link.index + link[0].length).replace(/^[:：—-]+/, "").trim();
       const title = before || link[1].trim();
       const description = before ? [link[1] !== link[2] ? link[1] : "", after].filter(Boolean).join(" ") : after || link[1];
-      entries.push({ title, path: concretePath(link[2].trim(), dirname6(path)), description });
+      entries.push({ title, path: concretePath(link[2].trim(), dirname7(path)), description });
       continue;
     }
     const bare = /`([^`]+\.md)`/.exec(value);
     if (bare?.[1]) {
       const description = `${value.slice(0, bare.index)} ${value.slice(bare.index + bare[0].length)}`.replace(/[:：—-]+/g, " ").trim();
-      entries.push({ title: basename3(bare[1]), path: concretePath(bare[1], dirname6(path)), description: description || basename3(bare[1]) });
+      entries.push({ title: basename3(bare[1]), path: concretePath(bare[1], dirname7(path)), description: description || basename3(bare[1]) });
     }
   }
   return entries;
@@ -2191,90 +2367,16 @@ function formatTimestamp(timestamp) {
   return `${year}-${month}-${day} ${hour}:${minute}`;
 }
 
-// domain/context/store.ts
-import { appendFileSync as appendFileSync2, existsSync as existsSync6, mkdirSync as mkdirSync2, readFileSync as readFileSync4, renameSync, statSync as statSync2, writeFileSync } from "node:fs";
-import { dirname as dirname7, join as join6, parse, resolve as resolve3 } from "node:path";
-var STATE_DIRECTORY_NAME = ".devloop";
-var WORKSPACE_STATE_FILE = "context.json";
-var stateRoots = /* @__PURE__ */ new Map();
-function sharedStateRoot(root) {
-  const path = join6(root, ".git");
-  if (!existsSync6(path)) return root;
-  const metadata = statSync2(path);
-  const marker = `${metadata.dev}:${metadata.ino}:${metadata.mtimeMs}`;
-  const cached = stateRoots.get(root);
-  if (cached?.marker === marker) return cached.home;
-  const info = checkoutInfo(root);
-  const home = info.mainRoot ?? info.commonDir;
-  if (stateRoots.size >= 64) stateRoots.delete(stateRoots.keys().next().value);
-  stateRoots.set(root, { marker, home });
-  return home;
-}
-function stateDirectory(root) {
-  return join6(sharedStateRoot(resolve3(root)), STATE_DIRECTORY_NAME);
-}
-function workingTreeStateDirectory(root) {
-  return join6(resolve3(root), STATE_DIRECTORY_NAME);
-}
-function branchSegment(branch, name) {
-  return `branches/${branch ?? "@detached"}/${name}`;
-}
-function workspaceStateFile(root) {
-  return join6(stateDirectory(root), WORKSPACE_STATE_FILE);
-}
-function segmentFile(root, name) {
-  return join6(stateDirectory(root), `${name}.json`);
-}
-function atomicWrite(path, data) {
-  try {
-    mkdirSync2(dirname7(path), { recursive: true });
-    const temporary = join6(dirname7(path), `${parse(path).base}.${process.pid}.tmp`);
-    writeFileSync(temporary, JSON.stringify(data, null, 2), "utf8");
-    renameSync(temporary, path);
-  } catch {
-  }
-}
-function readJson(path) {
-  if (!existsSync6(path)) return void 0;
-  try {
-    const value = JSON.parse(readFileSync4(path, "utf8"));
-    return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
-  } catch {
-    return void 0;
-  }
-}
-function loadWorkspace(root) {
-  return readJson(workspaceStateFile(root));
-}
-function saveWorkspace(root, data) {
-  atomicWrite(workspaceStateFile(root), data);
-}
-function loadSegment(root, name) {
-  return readJson(segmentFile(root, name));
-}
-function saveSegment(root, name, data) {
-  atomicWrite(segmentFile(root, name), data);
-}
-function appendLedger(root, name, record) {
-  try {
-    const path = join6(stateDirectory(root), `${name}.jsonl`);
-    mkdirSync2(dirname7(path), { recursive: true });
-    appendFileSync2(path, `${JSON.stringify(record)}
-`, "utf8");
-  } catch {
-  }
-}
-
 // domain/context/workspace.ts
 var DISCOVERY_SKIP = /* @__PURE__ */ new Set(["docs", "worktrees", "worktree", "node_modules"]);
 function isGitRepository(path) {
-  return existsSync7(join7(path, ".git"));
+  return existsSync8(join8(path, ".git"));
 }
 function discoverSubprojectNames(root) {
   try {
     return readdirSync(root).filter((name) => {
       if (name.startsWith(".") || DISCOVERY_SKIP.has(name)) return false;
-      const path = join7(root, name);
+      const path = join8(root, name);
       try {
         return (lstatSync2(path).isDirectory() || lstatSync2(path).isSymbolicLink()) && isGitRepository(path);
       } catch {
@@ -2289,7 +2391,7 @@ function mergeSubprojects(root, declared) {
   const byName = new Map(declared.map((entry) => [entry.name, entry]));
   return discoverSubprojectNames(root).map((name) => {
     const entry = byName.get(name);
-    const path = join7(root, name);
+    const path = join8(root, name);
     let canonical;
     try {
       const real = realpathSync4(path);
@@ -2341,8 +2443,8 @@ var WorkspaceContext = class _WorkspaceContext {
   }
   static refresh(rootValue) {
     const root = resolve4(rootValue);
-    const agentsPath = join7(root, "AGENTS.md");
-    const hasAgents = existsSync7(agentsPath);
+    const agentsPath = join8(root, "AGENTS.md");
+    const hasAgents = existsSync8(agentsPath);
     const context = new _WorkspaceContext(
       root,
       { ...hasAgents ? { path: agentsPath } : {}, references: hasAgents ? parseReferencesSection(agentsPath).map(referenceFrom) : [] },
@@ -2373,7 +2475,7 @@ var WorkspaceContext = class _WorkspaceContext {
       })),
       parsed_at: this.parsedAt
     });
-    if (existsSync7(join7(this.workspaceRoot, ".git"))) ensureGitExclude(this.workspaceRoot);
+    if (existsSync8(join8(this.workspaceRoot, ".git"))) ensureGitExclude(this.workspaceRoot);
   }
   isStale(ttl = WORKSPACE_STALE_SECONDS) {
     return stale(this.parsedAt || void 0, ttl);
@@ -2381,8 +2483,8 @@ var WorkspaceContext = class _WorkspaceContext {
 };
 
 // domain/context/session.ts
-import { closeSync, existsSync as existsSync8, mkdirSync as mkdirSync3, openSync, readFileSync as readFileSync5, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync3, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { basename as basename4, dirname as dirname8, join as join8, resolve as resolve5 } from "node:path";
+import { closeSync as closeSync2, existsSync as existsSync9, mkdirSync as mkdirSync4, openSync as openSync2, readFileSync as readFileSync6, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync4, unlinkSync as unlinkSync2, writeFileSync as writeFileSync3 } from "node:fs";
+import { basename as basename4, dirname as dirname8, join as join9, resolve as resolve5 } from "node:path";
 var OWNER_TTL_SECONDS = 1800;
 function identityFromEnvironment() {
   const codex = process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID;
@@ -2394,14 +2496,14 @@ function safeHarness(harness) {
   return harness.trim().toLowerCase().replace(/[^A-Za-z0-9._-]/g, "-") || "unknown";
 }
 function lockFile(repo) {
-  return join8(workingTreeStateDirectory(repo), "owner.lock");
+  return join9(workingTreeStateDirectory(repo), "owner.lock");
 }
 function legacyLockFile(repo, harness) {
-  return join8(workingTreeStateDirectory(repo), `${safeHarness(harness)}.owner.lock`);
+  return join9(workingTreeStateDirectory(repo), `${safeHarness(harness)}.owner.lock`);
 }
 function readOwnerFile(path) {
   try {
-    const value = JSON.parse(readFileSync5(path, "utf8"));
+    const value = JSON.parse(readFileSync6(path, "utf8"));
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   } catch {
     return void 0;
@@ -2432,7 +2534,7 @@ function anyActiveOwner(repo, at = now()) {
   try {
     for (const name of readdirSync2(workingTreeStateDirectory(repo))) {
       if (!name.endsWith(".owner.lock")) continue;
-      const owner2 = readOwnerFile(join8(workingTreeStateDirectory(repo), name));
+      const owner2 = readOwnerFile(join9(workingTreeStateDirectory(repo), name));
       if (active(owner2, at)) return owner2;
     }
   } catch {
@@ -2448,10 +2550,10 @@ function acquireOwner(repo, identity2, branch = currentBranch(repo) ?? "", at = 
   if (owner2?.session_id === identity2.sessionId && owner2.harness === harness) {
     try {
       const temporary = `${path}.${process.pid}.tmp`;
-      writeFileSync2(temporary, JSON.stringify(record));
+      writeFileSync3(temporary, JSON.stringify(record));
       renameSync2(temporary, path);
       try {
-        unlinkSync(legacyLockFile(repo, harness));
+        unlinkSync2(legacyLockFile(repo, harness));
       } catch {
       }
     } catch {
@@ -2461,20 +2563,20 @@ function acquireOwner(repo, identity2, branch = currentBranch(repo) ?? "", at = 
   if (owner2) return false;
   try {
     ensureGitExclude(repo);
-    mkdirSync3(workingTreeStateDirectory(repo), { recursive: true });
-    if (existsSync8(path)) unlinkSync(path);
+    mkdirSync4(workingTreeStateDirectory(repo), { recursive: true });
+    if (existsSync9(path)) unlinkSync2(path);
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const descriptor = openSync(path, "wx", 420);
-        writeFileSync2(descriptor, JSON.stringify(record));
-        closeSync(descriptor);
+        const descriptor = openSync2(path, "wx", 420);
+        writeFileSync3(descriptor, JSON.stringify(record));
+        closeSync2(descriptor);
         return true;
       } catch (error) {
         if (error.code !== "EEXIST") throw error;
         const current = readOwner(repo);
         if (current) return current.session_id === identity2.sessionId && current.harness === harness;
         try {
-          unlinkSync(path);
+          unlinkSync2(path);
         } catch {
         }
       }
@@ -2491,7 +2593,7 @@ function releaseOwner(repo, identity2) {
   const current = readOwner(repo);
   if (current?.session_id === identity2.sessionId && current.harness === harness) {
     try {
-      unlinkSync(lockFile(repo));
+      unlinkSync2(lockFile(repo));
       released = true;
     } catch {
     }
@@ -2499,7 +2601,7 @@ function releaseOwner(repo, identity2) {
   const legacy = readOwnerFile(legacyLockFile(repo, harness));
   if (legacy?.session_id === identity2.sessionId) {
     try {
-      unlinkSync(legacyLockFile(repo, harness));
+      unlinkSync2(legacyLockFile(repo, harness));
       released = true;
     } catch {
     }
@@ -2516,15 +2618,15 @@ function sessionName(sessionId2) {
   return (sessionId2 ?? identityFromEnvironment().sessionId).replace(/[^A-Za-z0-9._-]/g, "-") || "anon";
 }
 function activeRepoFile(workspaceRoot2, sessionId2) {
-  return join8(stateDirectory(workspaceRoot2), "active", `${sessionName(sessionId2)}.json`);
+  return join9(stateDirectory(workspaceRoot2), "active", `${sessionName(sessionId2)}.json`);
 }
 function activeBinding(path, enforceTtl) {
   try {
-    const value = JSON.parse(readFileSync5(path, "utf8"));
+    const value = JSON.parse(readFileSync6(path, "utf8"));
     if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
     const row = value;
-    if (typeof row.repo_dir !== "string" || !existsSync8(row.repo_dir)) return void 0;
-    const timestamp = typeof row.ts === "number" ? row.ts : statSync3(path).mtimeMs / 1e3;
+    if (typeof row.repo_dir !== "string" || !existsSync9(row.repo_dir)) return void 0;
+    const timestamp = typeof row.ts === "number" ? row.ts : statSync4(path).mtimeMs / 1e3;
     const age = Math.max(0, now() - timestamp);
     return enforceTtl && age >= ACTIVE_REPO_TTL_SECONDS ? void 0 : { repo: row.repo_dir, age };
   } catch {
@@ -2534,9 +2636,9 @@ function activeBinding(path, enforceTtl) {
 function recordActiveRepo(workspaceRoot2, repo, sessionId2) {
   const path = activeRepoFile(workspaceRoot2, sessionId2);
   try {
-    mkdirSync3(dirname8(path), { recursive: true });
+    mkdirSync4(dirname8(path), { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync2(temporary, JSON.stringify({ repo_dir: resolve5(repo), ts: now() }));
+    writeFileSync3(temporary, JSON.stringify({ repo_dir: resolve5(repo), ts: now() }));
     renameSync2(temporary, path);
   } catch {
   }
@@ -2549,7 +2651,7 @@ function loadActiveRepoLenient(workspaceRoot2, sessionId2) {
 }
 function clearActiveRepo(workspaceRoot2, sessionId2) {
   try {
-    unlinkSync(activeRepoFile(workspaceRoot2, sessionId2));
+    unlinkSync2(activeRepoFile(workspaceRoot2, sessionId2));
   } catch {
   }
 }
@@ -2558,22 +2660,22 @@ function recordSessionEvent(repo, sessionId2, kind, fields = {}) {
 }
 
 // domain/context/tool-calls.ts
-import { existsSync as existsSync9, mkdirSync as mkdirSync4, readFileSync as readFileSync6, renameSync as renameSync3, statSync as statSync4, utimesSync, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join9 } from "node:path";
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync3, statSync as statSync5, utimesSync, writeFileSync as writeFileSync4 } from "node:fs";
+import { join as join10 } from "node:path";
 var TOOL_CALL_SCHEMA = "devloop.tool-call/v1";
 var FILE_NAME = "tool-calls.jsonl";
 var WINDOW_SECONDS = 3600;
 var COMPACT_INTERVAL_SECONDS = 60;
 function appendToolCall(root, record, at = Date.now() / 1e3) {
   const directory = stateDirectory(root);
-  const path = join9(directory, FILE_NAME);
-  const marker = join9(directory, "tool-calls.compact");
+  const path = join10(directory, FILE_NAME);
+  const marker = join10(directory, "tool-calls.compact");
   try {
-    mkdirSync4(directory, { recursive: true });
-    const due = !existsSync9(marker) || at - statSync4(marker).mtimeMs / 1e3 >= COMPACT_INTERVAL_SECONDS;
+    mkdirSync5(directory, { recursive: true });
+    const due = !existsSync10(marker) || at - statSync5(marker).mtimeMs / 1e3 >= COMPACT_INTERVAL_SECONDS;
     if (due) {
       compact(path, at - WINDOW_SECONDS);
-      writeFileSync3(marker, "", { flag: "a" });
+      writeFileSync4(marker, "", { flag: "a" });
       utimesSync(marker, at, at);
     }
     appendLedger(root, "tool-calls", record);
@@ -2583,7 +2685,7 @@ function appendToolCall(root, record, at = Date.now() / 1e3) {
 function toolCallStartedAt(root, callId, at = Date.now() / 1e3) {
   if (!callId) return void 0;
   try {
-    const rows2 = readFileSync6(join9(stateDirectory(root), FILE_NAME), "utf8").trimEnd().split("\n").reverse();
+    const rows2 = readFileSync7(join10(stateDirectory(root), FILE_NAME), "utf8").trimEnd().split("\n").reverse();
     for (const row of rows2) {
       let value;
       try {
@@ -2602,9 +2704,9 @@ function toolCallStartedAt(root, callId, at = Date.now() / 1e3) {
   return void 0;
 }
 function compact(path, cutoff) {
-  if (!existsSync9(path)) return;
+  if (!existsSync10(path)) return;
   try {
-    const retained = readFileSync6(path, "utf8").split("\n").flatMap((line) => {
+    const retained = readFileSync7(path, "utf8").split("\n").flatMap((line) => {
       try {
         const record = JSON.parse(line);
         return record !== null && typeof record === "object" && !Array.isArray(record) && typeof record.ts === "number" && record.ts >= cutoff ? [JSON.stringify(record)] : [];
@@ -2613,7 +2715,7 @@ function compact(path, cutoff) {
       }
     });
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync3(temporary, retained.map((line) => `${line}
+    writeFileSync4(temporary, retained.map((line) => `${line}
 `).join(""), "utf8");
     renameSync3(temporary, path);
   } catch {
@@ -2621,14 +2723,14 @@ function compact(path, cutoff) {
 }
 
 // domain/workspace.ts
-import { existsSync as existsSync11, statSync as statSync5 } from "node:fs";
+import { existsSync as existsSync12, statSync as statSync6 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { join as join11, resolve as resolve7 } from "node:path";
+import { join as join12, resolve as resolve7 } from "node:path";
 
 // lib/config.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync4, writeFileSync as writeFileSync4 } from "node:fs";
+import { existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync8, renameSync as renameSync4, writeFileSync as writeFileSync5 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname as dirname9, isAbsolute as isAbsolute2, join as join10, resolve as resolve6 } from "node:path";
+import { dirname as dirname9, isAbsolute as isAbsolute2, join as join11, resolve as resolve6 } from "node:path";
 var DEFAULTS = {
   workspaces: [],
   forges: {},
@@ -2647,15 +2749,15 @@ function object2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 function expandPath(value) {
-  let expanded = value.startsWith("~") ? join10(homedir(), value.slice(1)) : value;
+  let expanded = value.startsWith("~") ? join11(homedir(), value.slice(1)) : value;
   expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, braced, bare) => process.env[braced || bare] ?? "");
   return expanded;
 }
 function configDirectory() {
-  return process.env.DEVLOOP_CONFIG_DIR ? expandPath(process.env.DEVLOOP_CONFIG_DIR) : join10(homedir(), ".devloop");
+  return process.env.DEVLOOP_CONFIG_DIR ? expandPath(process.env.DEVLOOP_CONFIG_DIR) : join11(homedir(), ".devloop");
 }
 function configFile() {
-  return join10(configDirectory(), "config.json");
+  return join11(configDirectory(), "config.json");
 }
 function deepMerge(base, override) {
   const result = { ...base };
@@ -2666,9 +2768,9 @@ function deepMerge(base, override) {
   return result;
 }
 function readJson2(path) {
-  if (!existsSync10(path)) return void 0;
+  if (!existsSync11(path)) return void 0;
   try {
-    const parsed = JSON.parse(readFileSync7(path, "utf8"));
+    const parsed = JSON.parse(readFileSync8(path, "utf8"));
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
   } catch {
     return void 0;
@@ -2680,8 +2782,8 @@ function ancestorFiles(root) {
   const found = [];
   let current = root;
   while (true) {
-    const candidate = join10(current, ".devloop", "config.json");
-    if (resolve6(candidate) !== global && existsSync10(candidate)) found.push(candidate);
+    const candidate = join11(current, ".devloop", "config.json");
+    if (resolve6(candidate) !== global && existsSync11(candidate)) found.push(candidate);
     if (current === home || current === dirname9(current)) break;
     current = dirname9(current);
   }
@@ -2716,9 +2818,9 @@ function loadConfig(repo) {
 }
 function saveConfig(data) {
   const path = configFile();
-  mkdirSync5(dirname9(path), { recursive: true });
+  mkdirSync6(dirname9(path), { recursive: true });
   const temporary = `${path}.tmp`;
-  writeFileSync4(temporary, `${JSON.stringify(data, null, 2)}
+  writeFileSync5(temporary, `${JSON.stringify(data, null, 2)}
 `, "utf8");
   renameSync4(temporary, path);
 }
@@ -2748,8 +2850,8 @@ function architectureConfig(repo) {
 function reserved(path) {
   const root = resolve7(path);
   return [
-    process.env.CODEX_HOME ?? join11(homedir2(), ".codex"),
-    process.env.CLAUDE_HOME ?? join11(homedir2(), ".claude")
+    process.env.CODEX_HOME ?? join12(homedir2(), ".codex"),
+    process.env.CLAUDE_HOME ?? join12(homedir2(), ".claude")
   ].some((candidate) => resolve7(expandPath(candidate)) === root);
 }
 function registeredWorkspaces() {
@@ -2763,9 +2865,9 @@ function registerWorkspace(path) {
 }
 function maybeRegisterWorkspace(path) {
   const root = resolve7(path);
-  if (reserved(root) || !existsSync11(root) || !statSync5(root).isDirectory() || existsSync11(join11(root, ".git"))) return void 0;
-  const agents = join11(root, "AGENTS.md");
-  if (!existsSync11(agents)) return void 0;
+  if (reserved(root) || !existsSync12(root) || !statSync6(root).isDirectory() || existsSync12(join12(root, ".git"))) return void 0;
+  const agents = join12(root, "AGENTS.md");
+  if (!existsSync12(agents)) return void 0;
   if (discoverSubprojectNames(root).length === 0 && parseSubprojectsSection(agents).length === 0) return void 0;
   registerWorkspace(root);
   return root;
@@ -2776,7 +2878,7 @@ function findContainingWorkspace(path) {
 }
 
 // domain/board/delivery.ts
-import { unlinkSync as unlinkSync2 } from "node:fs";
+import { unlinkSync as unlinkSync3 } from "node:fs";
 
 // domain/board/render.ts
 import { basename as basename5 } from "node:path";
@@ -2924,7 +3026,7 @@ var PromptDelivery = class {
   }
   clear() {
     try {
-      unlinkSync2(segmentFile(this.root, this.segment()));
+      unlinkSync3(segmentFile(this.root, this.segment()));
     } catch {
     }
   }
@@ -2938,7 +3040,7 @@ function number2(value) {
 
 // domain/validation-evidence.ts
 import { createHash as createHash2 } from "node:crypto";
-import { readFileSync as readFileSync8, realpathSync as realpathSync5 } from "node:fs";
+import { readFileSync as readFileSync9, realpathSync as realpathSync5 } from "node:fs";
 function evidenceSegment(repo, component, check) {
   return "validation_results/" + createHash2("sha256").update(`${realpathSync5(repo)}\0${component}\0${check}`).digest("hex");
 }
@@ -2967,7 +3069,7 @@ function reusableFullEvidence(record, fingerprint, command2) {
   const environmentHash = environmentIdentity();
   if (identity2.environment !== environmentHash || identity2.fingerprint !== fingerprint || JSON.stringify(identity2.command) !== JSON.stringify(command2) || !Array.isArray(identity2.dependencies)) return false;
   try {
-    return identity2.dependencies.every((input) => Array.isArray(input) && input.length === 2 && typeof input[0] === "string" && typeof input[1] === "string" && createHash2("sha256").update(readFileSync8(input[0])).digest("hex") === input[1]);
+    return identity2.dependencies.every((input) => Array.isArray(input) && input.length === 2 && typeof input[0] === "string" && typeof input[1] === "string" && createHash2("sha256").update(readFileSync9(input[0])).digest("hex") === input[1]);
   } catch {
     return false;
   }
@@ -3528,8 +3630,8 @@ var PolicyContext = class _PolicyContext {
 };
 
 // hooks/rules/index.ts
-import { existsSync as existsSync12, readFileSync as readFileSync9 } from "node:fs";
-import { basename as basename8, dirname as dirname11, extname, join as join13, resolve as resolve11 } from "node:path";
+import { existsSync as existsSync13, readFileSync as readFileSync10 } from "node:fs";
+import { basename as basename8, dirname as dirname11, extname, join as join14, resolve as resolve11 } from "node:path";
 
 // domain/forge.ts
 function pullRequestInactive(pr) {
@@ -3584,7 +3686,7 @@ function evaluateGate(repo) {
 
 // domain/repo.ts
 import { realpathSync as realpathSync6 } from "node:fs";
-import { basename as basename7, join as join12, resolve as resolve10 } from "node:path";
+import { basename as basename7, join as join13, resolve as resolve10 } from "node:path";
 function workingPaths(root) {
   try {
     return changedPaths(root);
@@ -3598,7 +3700,7 @@ function changedPaths2(root) {
 function projectComponents(changed, catalog) {
   const byId = /* @__PURE__ */ new Map();
   for (const path of changed) {
-    const owner2 = catalog.owner(join12(catalog.root, path));
+    const owner2 = catalog.owner(join13(catalog.root, path));
     if (owner2) byId.set(owner2.id, owner2);
   }
   return [...byId.values()];
@@ -3731,7 +3833,7 @@ var pipInstall = {
     const repo = runDirectory ? findGitRoot(runDirectory) : void 0;
     if (!repo) return [];
     const component = enclosingComponent(runDirectory, await context.catalog(repo)).path;
-    if (!existsSync12(join13(component, "pyproject.toml")) || !existsSync12(join13(component, "uv.lock"))) return [];
+    if (!existsSync13(join14(component, "pyproject.toml")) || !existsSync13(join14(component, "uv.lock"))) return [];
     return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
   }
 };
@@ -3822,7 +3924,7 @@ var requirementsEdit = {
     const path = context.anchorPath || file(target).path;
     if (basename8(path) !== "requirements.txt") return [];
     const parent = dirname11(path);
-    return existsSync12(join13(parent, "pyproject.toml")) || existsSync12(join13(dirname11(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
+    return existsSync13(join14(parent, "pyproject.toml")) || existsSync13(join14(dirname11(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
   }
 };
 function stringArray(value) {
@@ -3883,7 +3985,7 @@ function resultingText(target) {
   if (typeof input.file_text === "string") return input.file_text;
   let current;
   try {
-    current = readFileSync9(target.path, "utf8");
+    current = readFileSync10(target.path, "utf8");
   } catch {
     current = "";
   }
@@ -4052,6 +4154,8 @@ async function initializeBoard(payload) {
   return { runtime, watchPaths: [...watchPaths] };
 }
 async function sessionStartOutput(payload, harness = "claude") {
+  const repo = findGitRoot(cwd(payload));
+  if (repo && harness === "codex") triggerReconciliation(repo);
   const { runtime, watchPaths } = await initializeBoard(payload);
   const content = runtime?.deliverPrompt("session_start");
   const deliveredWatches = harness === "claude" ? watchPaths : [];
@@ -4083,7 +4187,13 @@ function afterTool(payload, harness) {
   const toolInput = input !== null && typeof input === "object" && !Array.isArray(input) ? { ...input } : { input: string2(input) };
   if (sessionId(payload)) toolInput.session_id = sessionId(payload);
   const change = projectTool({ harness, toolName: string2(payload.tool_name), toolInput, cwd: cwd(payload) });
+  const repositories = /* @__PURE__ */ new Set();
+  const direct = findGitRoot(cwd(payload));
+  if (direct) repositories.add(direct);
   for (const target of change.targets) {
+    const directory = target.kind === "file_change" ? dirname12(resolve12(cwd(payload), target.path)) : target.workingDirectory.path;
+    const affected = directory ? findGitRoot(directory) : void 0;
+    if (affected) repositories.add(affected);
     if (target.kind !== "command" || !target.subcommand || !STATE_SUBCOMMANDS.has(target.subcommand) || !target.workingDirectory.path) continue;
     const repo = findGitRoot(target.workingDirectory.path);
     if (!repo) continue;
@@ -4091,6 +4201,7 @@ function afterTool(payload, harness) {
     if (workspace) recordActiveRepo(workspace, repo, sessionId(payload));
     if (target.subcommand !== "fetch") acquireOwner(repo, identity(payload, harness), currentBranch(repo) ?? "");
   }
+  if (harness === "codex") for (const repo of repositories) triggerReconciliation(repo);
 }
 function afterFileChanged(payload) {
   const path = string2(payload.file_path);
@@ -4183,7 +4294,7 @@ var claudeProcessAdapter = {
 // hooks/runtime.ts
 function readPayload() {
   try {
-    const parsed = JSON.parse(readFileSync10(0, "utf8") || "{}");
+    const parsed = JSON.parse(readFileSync11(0, "utf8") || "{}");
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};

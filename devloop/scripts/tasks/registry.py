@@ -22,8 +22,8 @@ def discover() -> dict[str, TaskSpec]:
     return {spec.name: spec for spec in specs}
 
 
-def run(name: str, target: str) -> list[dict]:
+def run(name: str, target: str, *, repo_only: bool = False) -> list[dict]:
     """Run one discovered task exactly once."""
     spec = discover()[name]
     task = importlib.import_module(spec.module)
-    return task.run(target)
+    return task.run(target, repo_only=repo_only) if repo_only else task.run(target)

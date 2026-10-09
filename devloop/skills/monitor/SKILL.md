@@ -27,6 +27,11 @@ SessionStart and PostToolUse hooks therefore provide a throttled, non-blocking, 
 opportunistic trigger for this same one-shot task. Treat it as an active-use fallback, not a
 durable timer: it cannot run while Codex has no lifecycle events.
 
+For missed cleanup, inspect the main checkout's `.devloop/tmp/pr-lifecycle-reconcile.log`
+and `.devloop/tasks.jsonl`. The trigger targets only the repo touched by the event, shares
+a live-process claim across its worktrees, and retains task stdout/stderr. A one-shot task
+returns nonzero for refresh failures or deferred cleanup; inspect the report before retrying.
+
 When the user asks to monitor continuously under Codex, use the native Scheduled-task capability
 instead of a daemon. Create or update a project-scoped task with the requested cadence; when none
 is given, use the discovered task's `interval_seconds` (round only when the scheduler requires a

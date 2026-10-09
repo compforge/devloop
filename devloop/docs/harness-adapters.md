@@ -42,6 +42,17 @@ Claude/Codex 作为已安装 CLI plugin 时，使用官方 manifest 与 command 
 
 Adapter 应 fail-open：协议解析或本地派生状态失败不能卡死 Harness。明确命中的 deny 由共享 Decision 翻译为各端阻断结果；command hook 超时、缺失或 Harness 未覆盖路径仍可能放行，因此这些规则是工作流护栏，不是完整安全边界。DSH 的进程内 Cordis 决策可提供更强的一致性，但也复用同一 fail-open policy core。
 
+## 会话活动触发对账
+
+Codex 的 SessionStart 与 PostToolUse 在实际访问的 repo 上非阻塞启动共享的一次性 task CLI。
+触发器只负责按主 checkout 节流和识别仍在运行的任务；Forge 查询、清理规则与执行结果仍由 task 拥有。
+该进程边界不参与 Board 或 admission 的同步决策，Python 启动失败也不改变 hook 输出。
+多个 worktree 共用主仓触发记录，单仓心跳不扩大到所属 workspace 的其它仓库。
+
+最近一次执行的 stdout/stderr 保存在主仓 `.devloop/tmp/pr-lifecycle-reconcile.log`，
+启动失败记录在 `.devloop/tasks.jsonl`；任务报告中的 refresh failure 与 deferred action 返回非零退出码。
+会话活动触发不保证空闲时运行，持续调度仍由 Claude monitor 或用户配置的 Scheduled task 提供。
+
 ## 构建与验证
 
 ```console

@@ -80,7 +80,7 @@ devloop/
 ## 关键约定
 
 1. **领域归属沿 `PR/MR → Repo → Component`**：PR/MR 与 branch 生命周期归 Repo，验证范围与验证结果归 Component；Workspace 只聚合上下文。不得重新引入“一个 repo 只有一个代码目录”的假设，具体选择与身份语义见 [`CONCEPTS.md`](./CONCEPTS.md)。 Component 目录、语言与包管理工具由 repocli 提供：TypeScript runtime 直接调用 `@compforge/repocli` 的 `inspect` / `owner`，Python workflow 调用 `compforge-repocli` 的对应 API；devloop 拥有执行策略、依赖准备时机与验证门禁，两套 runtime 不维护独立 manifest 扫描器。
-2. **Harness runtime 只走 TypeScript**：`adapters/hooks → domain/lib`；`domain/` 持有共享事实和合法变化，`lib/` 提供 Git、forge、配置等技术能力。`scripts/` 的 Python workflow 是 skill-owned 的独立执行面，不得成为 Harness adapter 的依赖。
+2. **Harness runtime 只走 TypeScript**：`adapters/hooks → domain/lib`；`domain/` 持有共享事实和合法变化，`lib/` 提供 Git、forge、配置等技术能力。`scripts/` 的 Python workflow 是 skill-owned 的独立执行面，不得成为 Harness adapter 同步决策的依赖。adapter 可以非阻塞触发独立 task CLI，task 的失败不得改变 hook 的 Decision。
 3. **状态源提供事实，Board 决定组织和投递，guard 读取 live truth**：AGENTS.md 是文字知识源，`.devloop/` 是结构化运行态；Repo、Branch、WorkingTree 与 Session 状态按归属和写入者隔离，验证戳按 Component 记录。Board 只维护 per-session 投递游标，不复制业务事实，也不参与硬门禁判定。详见 [`docs/board.md`](./docs/board.md) 与 [`CONCEPTS.md`](./CONCEPTS.md)。
 4. **生命周期动作走唯一入口，合法例外才软提示**：新工作在编辑前走 `branch.py create`，branch 创建规则归 `domain.branch`；commit/push/PR 走 `commit_flow`/smart 脚本并复用同一 branch 事务；checkout 选择及 worktree 形态的创建、复用和清理走 `checkout.py` / `domain.worktree`，PR/MR 状态到 checkout 动作的映射归 `pull_request_lifecycle`。保护分支、失活分支、guest session 等无合法编辑路径的情况硬拦截，有合法例外的 in-flight PR/MR 只注入提示。具体流程见 [`docs/loop.md`](./docs/loop.md) 与 [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)。
 5. **devloop 产出开发事实，不拥有长期业务 loop 或会话唤醒**：task 可维护结构化状态，并对 devloop 自有本地资源执行有界、幂等的 desired-state reconciliation；Harness monitor / scheduler 只重复触发它。跨系统持久观察、调度和后续工作仍归 Baton/reqloop；不要在 Plugin 内重建通知 transport、waiter 或 re-arm 流程。

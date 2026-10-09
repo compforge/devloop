@@ -19,13 +19,14 @@ def main(argv: list[str]) -> int:
         print(json.dumps([spec.__dict__ for spec in specs], ensure_ascii=False, sort_keys=True))
         return 0
     if len(argv) < 2 or argv[0] != "run":
-        print("usage: run_task.py list | run <task> [target] [--loop] [--report]", file=sys.stderr)
+        print("usage: run_task.py list | run <task> [target] [--loop] [--report] [--repo-only]", file=sys.stderr)
         return 2
 
     name = argv[1]
     loop = "--loop" in argv
     report = "--report" in argv
-    positional = [arg for arg in argv[2:] if arg not in {"--loop", "--report"}]
+    repo_only = "--repo-only" in argv
+    positional = [arg for arg in argv[2:] if arg not in {"--loop", "--report", "--repo-only"}]
     target = positional[0] if positional else "."
     try:
         spec = registry.discover()[name]
@@ -34,11 +35,14 @@ def main(argv: list[str]) -> int:
         return 2
 
     while True:
-        result = {"task": name, "repositories": registry.run(name, target)}
+        repositories = registry.run(name, target, repo_only=True) if repo_only else registry.run(name, target)
+        result = {"task": name, "repositories": repositories}
         if report:
             print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
         if not loop:
-            return 0
+            return int(any(row.get("error") or any(value is False for value in row.get("updated", {}).values())
+                           or any(action.get("status") == "deferred" for action in row.get("actions", []))
+                           for row in repositories))
         time.sleep(spec.interval_seconds)
 
 

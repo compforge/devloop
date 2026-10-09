@@ -9,6 +9,7 @@ from repocli import git as operations
 from repocli.git_state import checkout_info
 
 import os
+import logging
 from enum import Enum
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from lib import config, dependencies, git_state, gitcmd, repocli
 
 from . import repo_layout
 from .context import session
+
+logger = logging.getLogger(__name__)
 
 
 def prepare_environment(path: str) -> list[str]:
@@ -160,6 +163,7 @@ def remove_if_safe(
         return RemovalOutcome.DIRTY
     removed = operations.remove_worktree(repo_dir, target)
     if not removed.ok:
+        logger.warning("worktree removal failed: path=%s detail=%s", target, gitcmd.operation_detail(removed))
         return RemovalOutcome.UNCERTAIN if removed.uncertain else RemovalOutcome.GIT_ERROR
     # Removal already succeeded; stale-registration cleanup remains best-effort.
     operations.prune_worktrees(repo_dir)
@@ -187,6 +191,7 @@ def remove_finished(repo_dir: str, path: str) -> RemovalOutcome:
 
     removed = operations.remove_worktree(control_repo, target, force=True)
     if not removed.ok:
+        logger.warning("worktree removal failed: path=%s detail=%s", target, gitcmd.operation_detail(removed))
         return RemovalOutcome.UNCERTAIN if removed.uncertain else RemovalOutcome.GIT_ERROR
     operations.prune_worktrees(control_repo)
     return RemovalOutcome.REMOVED
@@ -213,4 +218,6 @@ def _prune_old(repo_dir: str, keep_path: str | None = None) -> None:
     protected = str(Path(keep_path).resolve()) if keep_path else None
     doomed = sorted(managed, key=_activity, reverse=True)[keep:]
     for path in doomed:
-        remove_if_safe(repo_dir, path, protect_path=protected)
+        outcome = remove_if_safe(repo_dir, path, protect_path=protected)
+        if outcome not in {RemovalOutcome.REMOVED, RemovalOutcome.CURRENT_CHECKOUT}:
+            logger.info("worktree retained by recent-checkout pruning: path=%s reason=%s", path, outcome.value)

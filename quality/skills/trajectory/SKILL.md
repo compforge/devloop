@@ -115,8 +115,8 @@ Interpret artifacts in this order:
   [references/system-prompt.md](references/system-prompt.md) completely.
 - When evidence points to capability selection or a tool's name, description, arguments,
   granularity, execution, or result, read [references/tool.md](references/tool.md) completely.
-- When evidence points to budgets, retries, concurrency, state, termination, orchestration, or
-  compact, read [references/loop-mechanism.md](references/loop-mechanism.md) completely.
+- To analyze turn progress, budgets, retries, concurrency, state, termination, task partitioning,
+  cross-loop handoff, or compact, read [references/loop.md](references/loop.md) completely.
 - For prompt growth, context retention, or token-related latency, read
   [references/context-management.md](references/context-management.md) completely.
 

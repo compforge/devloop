@@ -6,6 +6,7 @@ select canonical full commands; check failures never cause an analysis retry.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 import subprocess
 import time
 
@@ -69,12 +70,29 @@ def content_identity(repo: str) -> ContentIdentity:
 
 
 
+def _relative_files(root: Path, component: Component, paths: list[str]) -> tuple[str, ...]:
+    """Selected files must be runnable inside the owning Makefile's checkout boundary."""
+    files = []
+    for path in dict.fromkeys(paths):
+        absolute = root / path
+        if not absolute.is_file() or absolute.is_symlink():
+            raise ValueError("selected input is deleted or not a regular file")
+        if not absolute.resolve().is_relative_to(root.resolve()):
+            raise ValueError("selected input escapes checkout")
+        files.append(absolute.relative_to(component.path).as_posix())
+    return tuple(files)
+
+
 def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | None = None,
                full: bool = False, explicit: bool = False,
                comparison: Comparison | None = None,
                test_extra: list[str] | None = None,
                checks: tuple[str, ...] = ("lint", "test")) -> Plan:
-    """Analyze once after normalization, including dependencies outside dirty owners."""
+    """Analyze once after normalization, including dependencies outside dirty owners.
+
+    +spec=`Component selects the Makefile; affectedFiles/testFiles select check inputs`
+    +why=`An execution boundary is not a request for full coverage; focused passes retain focused evidence`
+    """
     comparison = comparison or Comparison()
     inspection = inspect_catalog(repo)
     catalog = inspection.components
@@ -87,6 +105,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     snapshot = ""
     analysis_reason = "repocli automatic impact"
     component_impacts: tuple[dict, ...] = ()
+    files_by_check: dict[str, tuple[str, ...]] = {}
     observed = content_identity(repo)
     identity = observed.digest
     if paths == [] and not full:
@@ -116,6 +135,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             snapshot = report.snapshot
             if not identity or snapshot != identity or identity != content_identity(repo).digest:
                 raise ValueError("execution contents differ from analyzed snapshot")
+            files_by_check = {"lint": report.affected_files, "test": report.test_files}
             component_impacts = report.components
             current = {item["root"]: item for item in component_impacts if item["snapshot"] == "after"}
             # Both APIs describe the same snapshot. Missing/current identity mismatches
@@ -133,7 +153,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     for unit in units:
         impact = next((item for item in component_impacts
                        if item["root"] == unit.id and item["snapshot"] == "after"), None)
-        selection_reason = reason or ("explicit Component validation" if explicit else analysis_reason)
+        selection_reason = reason or analysis_reason + ("; explicit Component boundary" if explicit else "")
         if impact and not reason:
             if impact["affected"]:
                 selection_reason += "; affected Component"
@@ -148,9 +168,25 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                     for arg in test_extra)
                 selections[(unit.id, check)] = Selection(reason="caller supplied test arguments", explicit=not explicit_full)
             else:
-                # Component selection is automatic; coverage inside that boundary
-                # belongs to the project's canonical lint/test targets.
-                selections[(unit.id, check)] = Selection(reason=selection_reason)
+                files: tuple[str, ...] = ()
+                check_reason = selection_reason
+                if not reason:
+                    try:
+                        owned = [path for path in files_by_check.get(check, ())
+                                 if (owner := inspection.owner(inspection.root / path)) is not None
+                                 and owner.id == unit.id]
+                        files = _relative_files(inspection.root, unit, owned)
+                        command = (unit.focused_lint_command(list(files)) if check == "lint"
+                                   else unit.focused_test_command(list(files)))
+                        if not command:
+                            detail = (f"no returned {check} files in selected Component" if not files
+                                      else "project file-list contract missing or paths not representable")
+                            check_reason += f"; {detail}; canonical full check"
+                            files = ()
+                    except ValueError as exc:
+                        check_reason += f"; {exc}; canonical full check"
+                        files = ()
+                selections[(unit.id, check)] = Selection(files=files, reason=check_reason)
     if reason:
         observed = content_identity(repo)
     selection_summary = reason or ("repocli affected or unknown Components" if units else

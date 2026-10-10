@@ -57,8 +57,13 @@ Devloop consumes `components` directly: `affected=true` selects a Component; `co
 selects it conservatively because its impact is unknown. Complete, unaffected Components are
 omitted. Before-only records retain deleted/previous ownership as evidence, but are not current
 execution directories. Explicitly targeting a Component retains that boundary.
-Each selected Component runs its canonical full lint and test targets, regardless of `testFiles`.
-The inspect catalog supplies execution metadata; devloop does not infer dependencies from paths.
+Component selection chooses the owning Makefile, not full coverage. Inside each selected Component,
+`affectedFiles` supplies `LINT_FILES` and `testFiles` supplies `TEST_FILES`, mapped through the current
+inspect catalog and made Component-relative. A project must consume the corresponding variable;
+unsupported contracts, deleted/unsafe paths, or an empty list for a selected Component run that check
+in full. A valid partial report can still supply focused inputs; diagnostics remain visible and a
+focused pass never claims full coverage. The inspect catalog supplies execution metadata; devloop
+does not infer dependencies from paths.
 
 The pre-commit input is the working tree restricted to intended changed paths;
 post-commit uses `HEAD^` versus `HEAD`; MR checks use target merge-base versus `HEAD`.

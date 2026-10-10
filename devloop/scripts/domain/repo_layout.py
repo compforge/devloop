@@ -122,7 +122,7 @@ class Component:
         target = self.test_target()
         if target is None or not test_files:
             return None
-        if any(not re.fullmatch(r"[A-Za-z0-9_./@+:-]+", path) for path in test_files):
+        if any(not re.fullmatch(r"[A-Za-z0-9_./@+][A-Za-z0-9_./@+:-]*", path) for path in test_files):
             return None
         if not self.supports_test_files():
             return None

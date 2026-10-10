@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { copyFileSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,7 +32,7 @@ describe("standalone process hook", () => {
     expect(run(undefined, { path: join(root, "missing", "file.ts") })).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has no full-check evidence") } });
     // A failed lookup for the actual command target must reach fail-closed rules.
     expect(run(`git -C "${join(root, "missing")}" commit -m test`)).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("fail-closed") } });
-    writeFileSync(join(root, ".repocli.json"), JSON.stringify({ components: [{ name: "bad", root: "../outside" }] }));
+    symlinkSync("go.mod", join(root, "package.json"));
     expect(run()).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("inspection unavailable") } });
   });
 });

@@ -1,4 +1,3 @@
-import { InspectionError } from "../lib/repocli.js";
 import { snapshot, changedPaths as toolkitChangedPaths, committedPaths as toolkitCommittedPaths, rangePaths as toolkitRangePaths } from "@compforge/repocli";
 import { realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -55,7 +54,7 @@ export function selectComponents(rootValue, options) {
     const root = realpathSync(rootValue);
     const catalog = options.catalog;
     if (catalog.components.length === 0)
-        throw new InspectionError("repocli inspect returned no Components for validation");
+        return { components: [], reason: "no recognized Components; validation not run" };
     if (options.explicit) {
         const explicit = resolve(options.explicit);
         if (explicit !== root && explicit.startsWith(`${root}/`)) {

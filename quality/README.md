@@ -86,3 +86,9 @@ load profiles, recordings, labels, or judgment components. When the user asks to
 remain in the project-owned capability and move toward broader coverage incrementally. The skills do
 not deploy environments without authorization, modify agent behavior unless asked, or turn
 unavailable coverage into a pass.
+
+## Development validation
+
+Run `make lint test` in `quality/`. Lint checks plugin metadata, skill headers and local documentation
+links; tests cover the shipped assets and the validator's failure cases. These checks validate the
+plugin's static assets, not model behavior or the quality of reviews on project trajectories.

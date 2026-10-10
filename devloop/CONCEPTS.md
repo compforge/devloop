@@ -7,11 +7,12 @@ devloop 内多个 skill / 脚本共用的术语。架构理念见 [`AGENTS.md`](
 - **subproject**：聚合工作区直接子项中「是 / 指向 git 仓」的那些目录——存在性由**文件系统自发现**判定（`domain/context/workspace.ts::discoverSubprojectNames`，判据：子目录含 `.git`），而非手写表格。workspace `AGENTS.md` 的子项目表是**可选润色**，按目录名 join 补 `aliases` / `role`（`language` 缺省自动探测，表格显式值覆盖）；表格里有、文件系统没有但目录尚存的行仍保留，渐进收敛。
 - **`repo_dir`**：子项目目录入口（可能是软链接）。用前 `realpath` 确认真实路径。
 - **repo**（`domain.repo.Repo`）：PR/MR 的创建、branch 开发与 forge 状态所锚定的 git 仓边界，不是一个裸路径字符串。解析边界一次算清入口路径、canonical git root、所属 workspace 与解析来源；一个 PR/MR 只属于一个 repo，而一个 repo 可以包含多个 component。
-- **`component`**（`repo_layout.Component`）：仓库内一个可独立 build/lint/test 的执行目录。Component 清单、名称、根目录、语言与包管理工具来自 `repocli inspect`；manifest、语料排除和 `.repocli.json` 的解释归 repocli。Python workflow 与 TypeScript runtime 消费同一份协议，不自行扫描项目清单。
-  - **文件归属**：在 inspect 返回的 Component 根目录中，选择包含该路径的最深一层。删除文件也按路径判断；父 Component 不重复拥有显式子 Component 的文件。未落入任何根目录的文件没有 Component 归属。
+- **`component`**（`repo_layout.Component`）：仓库内 build/lint/test 等工程操作的粒度。Component 清单、名称、根目录、语言与包管理工具来自 `repocli inspect`；repocli 优先依据 manifest，其次依据 Makefile 识别，后者 language 未知；两者都没有时 Component 列表为空。Python workflow 与 TypeScript runtime 消费同一份协议，不自行扫描项目清单。
+  - **文件归属**：在 inspect 返回的 Component 根目录中，选择包含该路径的最深一层。删除文件也按路径判断；父 Component 不重复拥有子 Component 的文件。未落入任何根目录的文件没有 Component 归属。
   - **默认执行目标**：无具体目标时，devloop 优先选择 `server` / `backend` / 仓根，其次是唯一 Component；仍有歧义则要求指定目标。这个选择策略只用于执行入口，不改变文件归属。
-  - **本轮工作集**：`select_components` 根据显式目标、改动路径或全仓请求产出 `WorkSet`。一次操作内复用组件目录；新的操作重新 inspect，避免 manifest 或配置变更后沿用过时边界。
+  - **本轮工作集**：`select_components` 根据显式目标、改动路径或全仓请求产出 `WorkSet`。一次操作内复用组件目录；新的操作重新 inspect，避免 manifest 或 Makefile 变更后沿用过时边界。
   - **身份与动作**：`name` 是 repocli 提供的名称，`id` 是仓相对根目录，用于跨 worktree 的验证戳；`path` 是当前 checkout 的执行路径。Component 在这些元数据上提供 devloop 的 Makefile target、环境准备和 canonical test 命令选择。
+  - **零组件**：成功识别到空目录列表是正常 Repository 状态；校验标记 skipped，不运行命令、不新增通过戳，Git/PR 流程照常使用。
   - **失败语义**：inspect 不可用时无法确定验证对象，验证与提交门禁报错。可选上下文展示保留 Git 等独立事实并提示组件信息缺失，不把未知目录伪装成仓根 Component。
 
 

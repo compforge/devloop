@@ -75,1157 +75,10 @@ function remote(repo, name = "origin") {
 }
 
 // node_modules/@compforge/repocli/dist/layout.js
-import { posix as posix2 } from "node:path";
-
-// node_modules/@compforge/repocli/dist/language.js
 import { posix } from "node:path";
-
-// node_modules/@compforge/repocli/dist/languages.json
-var languages_default = {
-  fallback: {
-    ".4dform": "",
-    ".4dproject": "",
-    ".4th": "",
-    "._js": "javascript",
-    ".a51": "",
-    ".ada": "",
-    ".adb": "",
-    ".adml": "",
-    ".admx": "",
-    ".adp": "",
-    ".ads": "",
-    ".agda": "",
-    ".al": "",
-    ".ant": "",
-    ".apex": "apex",
-    ".app": "erlang",
-    ".app.src": "erlang",
-    ".asd": "commonlisp",
-    ".asm": "",
-    ".astro": "",
-    ".auk": "",
-    ".avsc": "",
-    ".aw": "php",
-    ".awk": "",
-    ".axaml": "",
-    ".axml": "",
-    ".bash": "bash",
-    ".bats": "bash",
-    ".bb": "bitbake",
-    ".bbappend": "bitbake",
-    ".bbclass": "bitbake",
-    ".bib": "",
-    ".bibtex": "",
-    ".bicep": "",
-    ".bicepparam": "",
-    ".blade": "",
-    ".blade.php": "",
-    ".bones": "javascript",
-    ".boot": "clojure",
-    ".brs": "",
-    ".builder": "ruby",
-    ".builds": "",
-    ".bzl": "starlark",
-    ".c": "c",
-    ".c++": "cpp",
-    ".caddyfile": "",
-    ".cairo": "cairo",
-    ".cake": "c_sharp",
-    ".capnp": "capnp",
-    ".cats": "c",
-    ".cbl": "",
-    ".cc": "cpp",
-    ".ccp": "",
-    ".ccproj": "",
-    ".ccxml": "",
-    ".cdf": "",
-    ".cfg": "",
-    ".cgi": "bash",
-    ".cginc": "hlsl",
-    ".circom": "circom",
-    ".cjs": "javascript",
-    ".cl": "commonlisp",
-    ".cl2": "clojure",
-    ".clixml": "",
-    ".clj": "clojure",
-    ".cljc": "clojure",
-    ".cljs": "clojure",
-    ".cljs.hl": "clojure",
-    ".cljscm": "clojure",
-    ".cljx": "clojure",
-    ".cls": "apex",
-    ".cmake": "cmake",
-    ".cmake.in": "cmake",
-    ".cnf": "",
-    ".cob": "",
-    ".cobol": "",
-    ".command": "bash",
-    ".containerfile": "",
-    ".cook": "",
-    ".cp": "cpp",
-    ".cpp": "cpp",
-    ".cppm": "cpp",
-    ".cproject": "",
-    ".cpy": "",
-    ".cr": "crystal",
-    ".cs": "c_sharp",
-    ".cs.pp": "c_sharp",
-    ".cscfg": "",
-    ".csdef": "",
-    ".csl": "",
-    ".csproj": "",
-    ".css": "",
-    ".csv": "",
-    ".csx": "c_sharp",
-    ".ct": "",
-    ".ctp": "php",
-    ".cts": "typescript",
-    ".cu": "cuda",
-    ".cue": "",
-    ".cuh": "cuda",
-    ".cxx": "cpp",
-    ".cylc": "",
-    ".d": "d",
-    ".dart": "dart",
-    ".ddl": "sql",
-    ".depproj": "",
-    ".desktop": "",
-    ".desktop.in": "",
-    ".dfm": "",
-    ".dhall": "",
-    ".di": "d",
-    ".diff": "",
-    ".dita": "",
-    ".ditamap": "",
-    ".ditaval": "",
-    ".dll.config": "",
-    ".dockerfile": "",
-    ".dof": "",
-    ".dot": "",
-    ".dotsettings": "",
-    ".dpr": "",
-    ".dsp": "faust",
-    ".ebnf": "",
-    ".editorconfig": "",
-    ".el": "",
-    ".eliom": "ocaml",
-    ".eliomi": "ocaml",
-    ".elm": "",
-    ".emacs": "",
-    ".emacs.desktop": "",
-    ".erb": "",
-    ".erb.deface": "",
-    ".erl": "erlang",
-    ".es": "javascript",
-    ".es6": "javascript",
-    ".escript": "erlang",
-    ".ex": "elixir",
-    ".exs": "elixir",
-    ".eye": "ruby",
-    ".f": "",
-    ".f77": "",
-    ".fcgi": "bash",
-    ".filters": "",
-    ".fir": "",
-    ".fish": "fish",
-    ".fnl": "",
-    ".for": "",
-    ".forth": "",
-    ".fp": "glsl",
-    ".fpp": "",
-    ".fr": "",
-    ".frag": "javascript",
-    ".frg": "glsl",
-    ".frm": "",
-    ".frt": "",
-    ".fs": "glsl",
-    ".fsh": "glsl",
-    ".fshader": "glsl",
-    ".fsi": "fsharp",
-    ".fsproj": "",
-    ".fsx": "fsharp",
-    ".fth": "",
-    ".fx": "hlsl",
-    ".fxh": "hlsl",
-    ".fxml": "",
-    ".gawk": "",
-    ".gd": "gdscript",
-    ".gdnlib": "",
-    ".gdns": "",
-    ".gemspec": "ruby",
-    ".geo": "glsl",
-    ".geojson": "",
-    ".geom": "glsl",
-    ".gitconfig": "",
-    ".glade": "",
-    ".gleam": "gleam",
-    ".glsl": "glsl",
-    ".glslf": "glsl",
-    ".glslv": "glsl",
-    ".gltf": "",
-    ".gml": "",
-    ".gmx": "",
-    ".gn": "",
-    ".gni": "",
-    ".go": "go",
-    ".god": "ruby",
-    ".gpx": "",
-    ".gql": "graphql",
-    ".graphql": "graphql",
-    ".graphqls": "graphql",
-    ".groovy": "groovy",
-    ".grt": "groovy",
-    ".grxml": "",
-    ".gs": "javascript",
-    ".gshader": "glsl",
-    ".gst": "",
-    ".gtpl": "groovy",
-    ".gv": "",
-    ".gvy": "groovy",
-    ".gyp": "python",
-    ".gypi": "python",
-    ".h": "c",
-    ".h++": "cpp",
-    ".h.in": "c",
-    ".ha": "hare",
-    ".hack": "hack",
-    ".har": "",
-    ".hcl": "",
-    ".heex": "",
-    ".hh": "cpp",
-    ".hhi": "hack",
-    ".hic": "clojure",
-    ".hlsl": "hlsl",
-    ".hlsli": "hlsl",
-    ".hpp": "cpp",
-    ".hrl": "erlang",
-    ".hs": "",
-    ".hs-boot": "",
-    ".hsc": "",
-    ".hta": "",
-    ".htm": "",
-    ".html": "",
-    ".html.eex": "",
-    ".html.hl": "",
-    ".http": "",
-    ".hurl": "",
-    ".hx": "haxe",
-    ".hxsl": "haxe",
-    ".hxx": "cpp",
-    ".hzp": "",
-    ".i": "",
-    ".ice": "",
-    ".idc": "c",
-    ".iml": "",
-    ".inc": "cpp",
-    ".ini": "",
-    ".inl": "cpp",
-    ".ino": "cpp",
-    ".ipp": "cpp",
-    ".ivy": "",
-    ".ixx": "cpp",
-    ".j2": "",
-    ".jade": "",
-    ".jake": "javascript",
-    ".janet": "",
-    ".jav": "java",
-    ".java": "java",
-    ".javascript": "javascript",
-    ".jbuilder": "ruby",
-    ".jelly": "",
-    ".jinja": "",
-    ".jinja2": "",
-    ".jl": "julia",
-    ".jq": "jq",
-    ".js": "javascript",
-    ".jsb": "javascript",
-    ".jscad": "javascript",
-    ".jsfl": "javascript",
-    ".jsh": "java",
-    ".jslib": "javascript",
-    ".jsm": "javascript",
-    ".json": "",
-    ".json-tmlanguage": "",
-    ".json.example": "",
-    ".json5": "",
-    ".jsonl": "",
-    ".jsonnet": "",
-    ".jspre": "javascript",
-    ".jsproj": "",
-    ".jss": "javascript",
-    ".jsx": "javascript",
-    ".just": "",
-    ".kdl": "",
-    ".kml": "",
-    ".kojo": "scala",
-    ".ksh": "bash",
-    ".kt": "kotlin",
-    ".ktm": "kotlin",
-    ".kts": "kotlin",
-    ".l": "commonlisp",
-    ".launch": "",
-    ".ld": "",
-    ".lds": "",
-    ".leex": "",
-    ".lektorproject": "",
-    ".less": "",
-    ".libsonnet": "",
-    ".linq": "c_sharp",
-    ".liquid": "",
-    ".lisp": "commonlisp",
-    ".livemd": "",
-    ".ll": "",
-    ".lmi": "python",
-    ".lpr": "",
-    ".lsp": "commonlisp",
-    ".lua": "lua",
-    ".luau": "luau",
-    ".m": "objc",
-    ".ma": "",
-    ".mak": "",
-    ".make": "",
-    ".makefile": "",
-    ".markdown": "",
-    ".mathematica": "",
-    ".matlab": "matlab",
-    ".mawk": "",
-    ".mcmeta": "",
-    ".md": "",
-    ".mdown": "",
-    ".mdpolicy": "",
-    ".mdwn": "",
-    ".mermaid": "",
-    ".mir": "",
-    ".mjml": "",
-    ".mjs": "javascript",
-    ".mk": "",
-    ".mkd": "",
-    ".mkdn": "",
-    ".mkdown": "",
-    ".mkfile": "",
-    ".ml": "ocaml",
-    ".ml4": "ocaml",
-    ".mli": "ocaml",
-    ".mll": "ocaml",
-    ".mly": "ocaml",
-    ".mm": "",
-    ".mmd": "",
-    ".mod": "",
-    ".mojo": "",
-    ".move": "move",
-    ".mspec": "ruby",
-    ".mt": "",
-    ".mts": "typescript",
-    ".mxml": "",
-    ".mysql": "sql",
-    ".nas": "",
-    ".nasm": "",
-    ".natvis": "",
-    ".nawk": "",
-    ".nb": "",
-    ".nbp": "",
-    ".ncl": "",
-    ".ndproj": "",
-    ".nginx": "",
-    ".nginxconf": "",
-    ".nim": "nim",
-    ".nim.cfg": "nim",
-    ".nimble": "nim",
-    ".nimrod": "nim",
-    ".nims": "nim",
-    ".ninja": "",
-    ".nix": "",
-    ".njs": "javascript",
-    ".nomad": "",
-    ".nproj": "",
-    ".nse": "lua",
-    ".nu": "",
-    ".nuspec": "",
-    ".nut": "squirrel",
-    ".ny": "commonlisp",
-    ".odd": "",
-    ".odin": "odin",
-    ".org": "",
-    ".osm": "",
-    ".p8": "lua",
-    ".pac": "javascript",
-    ".pas": "",
-    ".pascal": "",
-    ".patch": "",
-    ".pbt": "",
-    ".pbtxt": "",
-    ".pd_lua": "lua",
-    ".perl": "",
-    ".ph": "",
-    ".php": "php",
-    ".php3": "php",
-    ".php4": "php",
-    ".php5": "php",
-    ".phps": "php",
-    ".phpt": "php",
-    ".pkgproj": "",
-    ".pkl": "",
-    ".pl": "",
-    ".plt": "",
-    ".pluginspec": "ruby",
-    ".plx": "",
-    ".pm": "",
-    ".podsl": "commonlisp",
-    ".podspec": "ruby",
-    ".pp": "",
-    ".prawn": "ruby",
-    ".prc": "sql",
-    ".prefs": "",
-    ".prisma": "prisma",
-    ".pro": "",
-    ".proj": "",
-    ".prolog": "",
-    ".properties": "",
-    ".props": "",
-    ".proto": "proto",
-    ".ps1": "powershell",
-    ".ps1xml": "",
-    ".psc1": "",
-    ".psd1": "powershell",
-    ".psgi": "",
-    ".psm1": "powershell",
-    ".pt": "",
-    ".pubxml": "",
-    ".pug": "",
-    ".purs": "",
-    ".py": "python",
-    ".py3": "python",
-    ".pyde": "python",
-    ".pyi": "python",
-    ".pyp": "python",
-    ".pyt": "python",
-    ".pyw": "python",
-    ".qhelp": "",
-    ".ql": "",
-    ".qll": "",
-    ".r": "r",
-    ".rabl": "ruby",
-    ".rake": "ruby",
-    ".rb": "ruby",
-    ".rbi": "ruby",
-    ".rbuild": "ruby",
-    ".rbw": "ruby",
-    ".rbx": "ruby",
-    ".rbxs": "lua",
-    ".rchit": "glsl",
-    ".rd": "r",
-    ".rdf": "",
-    ".re": "cpp",
-    ".reek": "",
-    ".rego": "",
-    ".res": "",
-    ".resi": "",
-    ".resource": "",
-    ".rest": "",
-    ".rest.txt": "",
-    ".resx": "",
-    ".rhtml": "",
-    ".rkt": "",
-    ".rktd": "",
-    ".rktl": "",
-    ".rmiss": "glsl",
-    ".robot": "",
-    ".rockspec": "lua",
-    ".ron": "",
-    ".ronn": "",
-    ".rpy": "python",
-    ".rq": "",
-    ".rs": "rust",
-    ".rs.in": "rust",
-    ".rss": "",
-    ".rst": "",
-    ".rst.txt": "",
-    ".rsx": "r",
-    ".ru": "ruby",
-    ".ruby": "ruby",
-    ".rviz": "",
-    ".s": "",
-    ".sarif": "",
-    ".sbatch": "bash",
-    ".sbt": "scala",
-    ".sc": "scala",
-    ".scala": "scala",
-    ".scd": "",
-    ".sch": "",
-    ".scm": "scheme",
-    ".scrbl": "",
-    ".scss": "",
-    ".scxml": "",
-    ".sdc": "",
-    ".service": "",
-    ".sexp": "commonlisp",
-    ".sfproj": "",
-    ".sh": "bash",
-    ".sh.in": "bash",
-    ".shader": "glsl",
-    ".shproj": "",
-    ".sjs": "javascript",
-    ".sld": "scheme",
-    ".slnx": "",
-    ".sls": "scheme",
-    ".slurm": "bash",
-    ".smithy": "",
-    ".sol": "solidity",
-    ".sparql": "",
-    ".spec": "python",
-    ".sps": "scheme",
-    ".sql": "sql",
-    ".srdf": "",
-    ".ss": "scheme",
-    ".ssjs": "javascript",
-    ".star": "starlark",
-    ".storyboard": "",
-    ".sublime-snippet": "",
-    ".sublime-syntax": "",
-    ".svelte": "",
-    ".sw": "",
-    ".swift": "swift",
-    ".syntax": "",
-    ".t": "",
-    ".tab": "sql",
-    ".tac": "python",
-    ".tact": "",
-    ".targets": "",
-    ".tcc": "cpp",
-    ".tcl": "",
-    ".tcl.in": "",
-    ".templ": "templ",
-    ".tesc": "glsl",
-    ".tese": "glsl",
-    ".textproto": "",
-    ".tf": "",
-    ".tfstate": "",
-    ".tfstate.backup": "",
-    ".tfvars": "",
-    ".thor": "ruby",
-    ".thrift": "thrift",
-    ".tl": "teal",
-    ".tla": "tlaplus",
-    ".tm": "",
-    ".tml": "",
-    ".tmux": "bash",
-    ".tofu": "",
-    ".toml": "",
-    ".toml.example": "",
-    ".tool": "bash",
-    ".topojson": "",
-    ".tpp": "cpp",
-    ".tres": "",
-    ".trigger": "bash",
-    ".ts": "typescript",
-    ".tscn": "",
-    ".tsx": "tsx",
-    ".ttl": "",
-    ".twig": "",
-    ".txt": "",
-    ".txx": "cpp",
-    ".typ": "",
-    ".udf": "sql",
-    ".ui": "",
-    ".urdf": "",
-    ".url": "",
-    ".ux": "",
-    ".v": "",
-    ".vbproj": "",
-    ".vcxproj": "",
-    ".veo": "",
-    ".vert": "glsl",
-    ".vhd": "vhdl",
-    ".vhdl": "vhdl",
-    ".vhf": "vhdl",
-    ".vhi": "vhdl",
-    ".vho": "vhdl",
-    ".vhost": "",
-    ".vhs": "vhdl",
-    ".vht": "vhdl",
-    ".vhw": "vhdl",
-    ".viw": "sql",
-    ".vrx": "glsl",
-    ".vs": "glsl",
-    ".vsh": "glsl",
-    ".vshader": "glsl",
-    ".vsixmanifest": "",
-    ".vssettings": "",
-    ".vstemplate": "",
-    ".vue": "",
-    ".vxml": "",
-    ".wast": "",
-    ".wat": "",
-    ".watchr": "ruby",
-    ".webapp": "",
-    ".webmanifest": "",
-    ".wgsl": "wgsl",
-    ".wixproj": "",
-    ".wl": "",
-    ".wls": "",
-    ".wlt": "",
-    ".wlua": "lua",
-    ".workbook": "",
-    ".workflow": "",
-    ".wsdl": "",
-    ".wsf": "",
-    ".wsgi": "python",
-    ".wxi": "",
-    ".wxl": "",
-    ".wxs": "",
-    ".x": "",
-    ".x3d": "",
-    ".xacro": "",
-    ".xaml": "",
-    ".xdc": "",
-    ".xht": "",
-    ".xhtml": "",
-    ".xib": "",
-    ".xlf": "",
-    ".xliff": "",
-    ".xmi": "",
-    ".xml": "",
-    ".xml.dist": "",
-    ".xmp": "",
-    ".xproj": "",
-    ".xpy": "python",
-    ".xrl": "erlang",
-    ".xsd": "",
-    ".xsjs": "javascript",
-    ".xsjslib": "javascript",
-    ".xspec": "",
-    ".xul": "",
-    ".yaml": "",
-    ".yaml-tmlanguage": "",
-    ".yaml.sed": "",
-    ".yap": "",
-    ".yml": "",
-    ".yml.mysql": "",
-    ".yrl": "erlang",
-    ".yy": "",
-    ".yyp": "",
-    ".zcml": "",
-    ".zig": "zig",
-    ".zig.zon": "zig",
-    ".zsh": "bash",
-    ".zsh-theme": "bash"
-  },
-  filenames: {
-    ".JUSTFILE": "",
-    ".Justfile": "",
-    ".Rprofile": "r",
-    ".abbrev_defs": "",
-    ".all-contributorsrc": "",
-    ".arcconfig": "",
-    ".auto-changelog": "",
-    ".bash_aliases": "bash",
-    ".bash_functions": "bash",
-    ".bash_history": "bash",
-    ".bash_logout": "bash",
-    ".bash_profile": "bash",
-    ".bashrc": "bash",
-    ".buckconfig": "",
-    ".c8rc": "",
-    ".clang-format": "",
-    ".clang-tidy": "",
-    ".clangd": "",
-    ".classpath": "",
-    ".coveragerc": "",
-    ".cproject": "",
-    ".cshrc": "bash",
-    ".editorconfig": "",
-    ".emacs": "",
-    ".emacs.desktop": "",
-    ".envrc": "bash",
-    ".flake8": "",
-    ".flaskenv": "bash",
-    ".gclient": "python",
-    ".gemrc": "",
-    ".gitconfig": "",
-    ".gitmodules": "",
-    ".gn": "",
-    ".gnus": "",
-    ".htmlhintrc": "",
-    ".imgbotconfig": "",
-    ".irbrc": "ruby",
-    ".justfile": "",
-    ".kshrc": "bash",
-    ".latexmkrc": "",
-    ".login": "bash",
-    ".luacheckrc": "lua",
-    ".nycrc": "",
-    ".php": "php",
-    ".php_cs": "php",
-    ".php_cs.dist": "php",
-    ".profile": "bash",
-    ".project": "",
-    ".pryrc": "ruby",
-    ".pylintrc": "",
-    ".simplecov": "ruby",
-    ".spacemacs": "",
-    ".tern-config": "",
-    ".tern-project": "",
-    ".tmux.conf": "bash",
-    ".viper": "",
-    ".watchmanconfig": "",
-    ".xinitrc": "bash",
-    ".xsession": "bash",
-    ".zlogin": "bash",
-    ".zlogout": "bash",
-    ".zprofile": "bash",
-    ".zshenv": "bash",
-    ".zshrc": "bash",
-    "9fs": "bash",
-    "App.config": "",
-    Appraisals: "ruby",
-    BSDmakefile: "",
-    BUCK: "starlark",
-    BUILD: "starlark",
-    "BUILD.bazel": "starlark",
-    Berksfile: "ruby",
-    Brewfile: "ruby",
-    Buildfile: "ruby",
-    "CITATION.cff": "",
-    "CMakeLists.txt": "cmake",
-    COMMIT_EDITMSG: "",
-    Caddyfile: "",
-    Capfile: "ruby",
-    "Cargo.lock": "",
-    "Cargo.toml.orig": "",
-    Cask: "",
-    Containerfile: "",
-    DEPS: "python",
-    Dangerfile: "ruby",
-    Deliverfile: "ruby",
-    Dockerfile: "",
-    Earthfile: "",
-    Eask: "",
-    Emakefile: "erlang",
-    Fastfile: "ruby",
-    GNUmakefile: "",
-    Gemfile: "ruby",
-    "Gopkg.lock": "",
-    Guardfile: "ruby",
-    HOSTS: "",
-    JUSTFILE: "",
-    Jakefile: "javascript",
-    Jarfile: "ruby",
-    Jenkinsfile: "groovy",
-    Justfile: "",
-    Kbuild: "",
-    "MODULE.bazel": "starlark",
-    "MODULE.bazel.lock": "",
-    Makefile: "",
-    "Makefile.PL": "",
-    "Makefile.am": "",
-    "Makefile.boot": "",
-    "Makefile.frag": "",
-    "Makefile.in": "",
-    "Makefile.inc": "",
-    "Makefile.wat": "",
-    Mavenfile: "ruby",
-    Modulefile: "puppet",
-    "NuGet.config": "",
-    Nukefile: "",
-    PKGBUILD: "bash",
-    "Package.resolved": "",
-    Phakefile: "php",
-    Pipfile: "",
-    "Pipfile.lock": "",
-    Podfile: "ruby",
-    "Project.ede": "",
-    Puppetfile: "ruby",
-    Rakefile: "ruby",
-    Rexfile: "",
-    SConscript: "python",
-    SConstruct: "python",
-    "Settings.StyleCop": "",
-    Snapfile: "ruby",
-    Steepfile: "ruby",
-    Thorfile: "ruby",
-    Tiltfile: "starlark",
-    Vagrantfile: "ruby",
-    WORKSPACE: "starlark",
-    "WORKSPACE.bazel": "starlark",
-    "WORKSPACE.bzlmod": "starlark",
-    "Web.Debug.config": "",
-    "Web.Release.config": "",
-    "Web.config": "",
-    _emacs: "",
-    abbrev_defs: "",
-    ack: "",
-    bash_aliases: "bash",
-    bash_logout: "bash",
-    bash_profile: "bash",
-    bashrc: "bash",
-    buildfile: "ruby",
-    "buildozer.spec": "",
-    "bun.lock": "",
-    "composer.lock": "",
-    "contents.lr": "",
-    cpanfile: "",
-    cshrc: "bash",
-    "deno.lock": "",
-    "dev-requirements.txt": "",
-    "expr-dist": "r",
-    "flake.lock": "",
-    "glide.lock": "",
-    "go.mod": "",
-    gradlew: "bash",
-    hosts: "",
-    justfile: "",
-    kshrc: "bash",
-    latexmkrc: "",
-    "ld.script": "",
-    login: "bash",
-    makefile: "",
-    "makefile.sco": "",
-    man: "bash",
-    "mcmod.info": "",
-    "meson.build": "",
-    "meson_options.txt": "",
-    "mix.lock": "elixir",
-    mkfile: "",
-    mvnw: "bash",
-    "nginx.conf": "",
-    "nim.cfg": "nim",
-    owh: "",
-    "package.json": "",
-    "packages.config": "",
-    "pdm.lock": "",
-    "pixi.lock": "",
-    "poetry.lock": "",
-    profile: "bash",
-    "project.godot": "",
-    pylintrc: "",
-    "pyproject.toml": "",
-    "rebar.config": "erlang",
-    "rebar.config.lock": "erlang",
-    "rebar.lock": "erlang",
-    "requirements-dev.txt": "",
-    "requirements.lock.txt": "",
-    "requirements.txt": "",
-    "riemann.config": "clojure",
-    starfield: "",
-    "suite.rc": "",
-    "tmux.conf": "bash",
-    "uv.lock": "",
-    vlcrc: "",
-    wscript: "python",
-    xinitrc: "bash",
-    xsession: "bash",
-    "yarn.lock": "",
-    zlogin: "bash",
-    zlogout: "bash",
-    zprofile: "bash",
-    zshenv: "bash",
-    zshrc: "bash"
-  },
-  overrides: {
-    ".cjs": "javascript",
-    ".cts": "typescript",
-    ".jsx": "javascript",
-    ".mjs": "javascript",
-    ".mts": "typescript",
-    ".pyi": "python"
-  },
-  registry: {
-    ".4th": "",
-    ".R": "r",
-    ".adb": "",
-    ".ads": "",
-    ".agda": "",
-    ".asm": "",
-    ".astro": "",
-    ".awk": "",
-    ".bass": "",
-    ".bb": "bitbake",
-    ".bbappend": "bitbake",
-    ".bbclass": "bitbake",
-    ".beancount": "",
-    ".bib": "",
-    ".bicep": "",
-    ".blade.php": "",
-    ".brs": "",
-    ".bzl": "starlark",
-    ".c": "c",
-    ".cairo": "cairo",
-    ".capnp": "capnp",
-    ".cbl": "",
-    ".cc": "cpp",
-    ".cfg": "",
-    ".chatito": "",
-    ".circom": "circom",
-    ".cjs": "javascript",
-    ".cl": "commonlisp",
-    ".clj": "clojure",
-    ".cljc": "clojure",
-    ".cljs": "clojure",
-    ".cls": "apex",
-    ".cmake": "cmake",
-    ".cob": "",
-    ".conf": "",
-    ".cook": "",
-    ".corn": "",
-    ".cpon": "",
-    ".cpp": "cpp",
-    ".cpy": "",
-    ".cr": "crystal",
-    ".cs": "c_sharp",
-    ".css": "",
-    ".csv": "",
-    ".cu": "cuda",
-    ".cue": "",
-    ".cuh": "cuda",
-    ".cxx": "cpp",
-    ".cylc": "",
-    ".d": "d",
-    ".dart": "dart",
-    ".desktop": "",
-    ".dhall": "",
-    ".di": "d",
-    ".diff": "",
-    ".dis": "",
-    ".djot": "",
-    ".dot": "",
-    ".dsp": "faust",
-    ".dtd": "",
-    ".dts": "",
-    ".dtsi": "",
-    ".dump": "",
-    ".ebnf": "",
-    ".editorconfig": "",
-    ".edn": "clojure",
-    ".eds": "",
-    ".eex": "",
-    ".ejs": "",
-    ".el": "",
-    ".elm": "",
-    ".elsa": "",
-    ".enf": "",
-    ".erb": "",
-    ".erl": "erlang",
-    ".ex": "elixir",
-    ".exs": "elixir",
-    ".f": "",
-    ".f03": "",
-    ".f08": "",
-    ".f90": "",
-    ".f95": "",
-    ".fac": "",
-    ".fidl": "",
-    ".fir": "",
-    ".fish": "fish",
-    ".fnl": "",
-    ".frag": "glsl",
-    ".fs": "",
-    ".fsi": "fsharp",
-    ".fsx": "fsharp",
-    ".fth": "",
-    ".fx": "hlsl",
-    ".gd": "gdscript",
-    ".gitattributes": "",
-    ".gitconfig": "",
-    ".gitignore": "",
-    ".gleam": "gleam",
-    ".glsl": "glsl",
-    ".gn": "",
-    ".gni": "",
-    ".go": "go",
-    ".gql": "graphql",
-    ".graphql": "graphql",
-    ".groovy": "groovy",
-    ".gv": "",
-    ".gvy": "groovy",
-    ".h": "c",
-    ".ha": "hare",
-    ".hack": "hack",
-    ".hcl": "",
-    ".heex": "",
-    ".hh": "cpp",
-    ".hlsl": "hlsl",
-    ".hpp": "cpp",
-    ".hrl": "erlang",
-    ".hs": "",
-    ".htm": "",
-    ".html": "",
-    ".http": "",
-    ".hurl": "",
-    ".hx": "haxe",
-    ".hxx": "cpp",
-    ".inc": "",
-    ".ini": "",
-    ".ino": "arduino",
-    ".j2": "",
-    ".jade": "",
-    ".janet": "",
-    ".java": "java",
-    ".jinja": "",
-    ".jinja2": "",
-    ".jl": "julia",
-    ".journal": "",
-    ".jq": "jq",
-    ".js": "javascript",
-    ".json": "",
-    ".json5": "",
-    ".jsonnet": "",
-    ".just": "",
-    ".kdl": "",
-    ".kt": "kotlin",
-    ".kts": "kotlin",
-    ".ld": "",
-    ".lds": "",
-    ".ledger": "",
-    ".less": "",
-    ".lhs": "",
-    ".libsonnet": "",
-    ".liquid": "",
-    ".lisp": "commonlisp",
-    ".ll": "",
-    ".lsp": "commonlisp",
-    ".lua": "lua",
-    ".luau": "luau",
-    ".m": "matlab",
-    ".mak": "",
-    ".mat": "matlab",
-    ".md": "",
-    ".mermaid": "",
-    ".mjs": "javascript",
-    ".mk": "",
-    ".ml": "ocaml",
-    ".mli": "ocaml",
-    ".mmd": "",
-    ".mojo": "mojo",
-    ".move": "move",
-    ".nb": "",
-    ".ncl": "",
-    ".nim": "nim",
-    ".nims": "nim",
-    ".ninja": "",
-    ".nix": "",
-    ".norg": "",
-    ".nu": "",
-    ".nut": "squirrel",
-    ".odin": "odin",
-    ".org": "",
-    ".pas": "",
-    ".patch": "",
-    ".pbtxt": "",
-    ".pem": "",
-    ".php": "php",
-    ".pkl": "",
-    ".pl": "",
-    ".pm": "",
-    ".pp": "",
-    ".prisma": "prisma",
-    ".pro": "",
-    ".promql": "",
-    ".properties": "",
-    ".proto": "proto",
-    ".ps1": "powershell",
-    ".psd1": "powershell",
-    ".psm1": "powershell",
-    ".pug": "",
-    ".purs": "",
-    ".py": "python",
-    ".ql": "",
-    ".r": "r",
-    ".rb": "ruby",
-    ".regex": "",
-    ".rego": "",
-    ".res": "",
-    ".resi": "",
-    ".rkt": "",
-    ".robot": "",
-    ".ron": "",
-    ".rq": "",
-    ".rs": "rust",
-    ".rst": "",
-    ".s": "",
-    ".scala": "scala",
-    ".scm": "scheme",
-    ".scss": "",
-    ".sh": "bash",
-    ".smithy": "",
-    ".sol": "solidity",
-    ".sparql": "",
-    ".sql": "sql",
-    ".ss": "scheme",
-    ".star": "starlark",
-    ".sv": "",
-    ".svelte": "",
-    ".svh": "",
-    ".swift": "swift",
-    ".tal": "",
-    ".tcl": "",
-    ".td": "",
-    ".templ": "templ",
-    ".textproto": "",
-    ".tf": "",
-    ".tfvars": "",
-    ".thrift": "thrift",
-    ".tl": "teal",
-    ".tla": "tlaplus",
-    ".toml": "",
-    ".tres": "",
-    ".trigger": "apex",
-    ".ts": "typescript",
-    ".tscn": "",
-    ".tsv": "",
-    ".tsx": "tsx",
-    ".ttl": "",
-    ".twig": "",
-    ".txtpb": "",
-    ".typ": "",
-    ".v": "v",
-    ".vert": "glsl",
-    ".vhd": "vhdl",
-    ".vhdl": "vhdl",
-    ".vsh": "v",
-    ".vue": "",
-    ".wast": "",
-    ".wat": "",
-    ".wgsl": "wgsl",
-    ".wl": "",
-    ".xml": "",
-    ".yaml": "",
-    ".yml": "",
-    ".yuck": "",
-    ".zed": "",
-    ".zig": "zig",
-    ".\u{1F525}": "mojo"
-  }
-};
-
-// node_modules/@compforge/repocli/dist/language.js
-function language(path) {
-  const base = posix.basename(path);
-  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")).toLowerCase() : "";
-  const lookup = (table, key) => Object.hasOwn(table, key) ? table[key] : void 0;
-  const override = lookup(languages_default.overrides, ext);
-  if (override !== void 0)
-    return override;
-  const filename = lookup(languages_default.filenames, base);
-  if (filename !== void 0)
-    return filename;
-  const suffixes = [];
-  for (let i = base.length - 1; i > 0 && suffixes.length < 4; i--) {
-    if (base[i] === ".")
-      suffixes.push(base.slice(i));
-  }
-  for (const suffix of suffixes.reverse()) {
-    const found = lookup(languages_default.registry, suffix);
-    if (found !== void 0)
-      return found;
-  }
-  const goExt = base.includes(".") ? base.slice(base.lastIndexOf(".")).toLowerCase() : "";
-  return lookup(languages_default.fallback, goExt) ?? "";
-}
-
-// node_modules/@compforge/repocli/dist/layout.js
 var compare = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
-var needsContent = (name) => name === ".repocli.json" || posix2.basename(name) === "package.json";
-var validPath = (name) => name !== "" && name !== "." && name !== ".." && !name.includes("\0") && !name.includes("\\") && !name.startsWith("/") && !name.startsWith("../") && posix2.normalize(name) === name && !name.endsWith("/");
+var needsContent = (name) => posix.basename(name) === "package.json";
+var validPath = (name) => name !== "" && name !== "." && name !== ".." && !name.includes("\0") && !name.includes("\\") && !name.startsWith("/") && !name.startsWith("../") && posix.normalize(name) === name && !name.endsWith("/");
 function fromOrigin(origin) {
   const remote2 = parseRemoteUrl(origin);
   if (!remote2)
@@ -1238,40 +91,35 @@ var skip = (name) => name.split("/").slice(0, -1).some((p) => p.startsWith(".") 
 var markers = [["python", "pyproject.toml", "setup.py"], ["go", "go.mod"], ["node", "package.json"], ["rust", "Cargo.toml"]];
 function detectLanguage(files, root) {
   for (const [ecosystem, ...manifests] of markers) {
-    if (ecosystem === "python")
-      manifests.push("requirements.txt");
     for (const manifest of manifests) {
-      const name = posix2.join(root, manifest);
+      const name = posix.join(root, manifest);
       if (!files.has(name))
         continue;
       if (ecosystem !== "node")
         return ecosystem;
       const text3 = files.get(name)?.toString().toLowerCase() ?? "";
-      return text3.includes("typescript") || text3.includes("@types/") || files.has(posix2.join(root, "tsconfig.json")) ? "typescript" : "javascript";
+      return text3.includes("typescript") || text3.includes("@types/") || files.has(posix.join(root, "tsconfig.json")) ? "typescript" : "javascript";
     }
   }
-  const languages = /* @__PURE__ */ new Set();
-  for (const name of files.keys()) {
-    if (skip(name) || root !== "." && !name.startsWith(root + "/"))
-      continue;
-    const value = language(name);
-    if (value)
-      languages.add(value === "tsx" ? "typescript" : value);
-  }
-  return languages.size > 1 ? "mixed" : languages.values().next().value ?? "";
+  return "";
 }
 function discover(files) {
-  const roots = /* @__PURE__ */ new Set();
+  const candidates = /* @__PURE__ */ new Map();
   for (const name of files.keys()) {
-    if (!skip(name) && markers.some(([, ...names]) => names.includes(posix2.basename(name))))
-      roots.add(posix2.dirname(name));
+    if (skip(name))
+      continue;
+    const root = posix.dirname(name);
+    if (manifestEcosystem(name))
+      candidates.set(root, true);
+    else if (posix.basename(name) === "Makefile" && !candidates.has(root))
+      candidates.set(root, false);
   }
   const selected = [];
-  for (const root of [...roots].sort(compare)) {
-    if (!selected.some((parent) => parent !== "." && root.startsWith(parent + "/")))
+  for (const root of [...candidates.keys()].sort(compare)) {
+    if (!selected.some((parent) => candidates.get(parent) && parent !== "." && root.startsWith(parent + "/")))
       selected.push(root);
   }
-  return selected.map((root) => ({ name: root, root }));
+  return selected;
 }
 function packageTools(files, root) {
   const found = /* @__PURE__ */ new Map();
@@ -1282,7 +130,7 @@ function packageTools(files, root) {
     tool.evidence.push(evidence);
     found.set(name, tool);
   };
-  const manifest = posix2.join(root, "package.json");
+  const manifest = posix.join(root, "package.json");
   const data = files.get(manifest);
   if (data) {
     try {
@@ -1307,7 +155,7 @@ function packageTools(files, root) {
     ["bun.lock", "bun"],
     ["bun.lockb", "bun"]
   ]) {
-    const name = posix2.join(root, file2);
+    const name = posix.join(root, file2);
     if (files.has(name))
       add(tool, "", name);
   }
@@ -1330,94 +178,27 @@ function string(value) {
     throw new Error("expected a string");
   return value;
 }
-function array(value) {
-  if (value == null)
-    return [];
-  if (!Array.isArray(value))
-    throw new Error("expected an array");
-  return value;
-}
-function repository(value) {
-  const obj = object(value);
-  return { forge: { name: string(field(object(field(obj, "forge")), "name")) }, path: string(field(obj, "path")) };
-}
 function load(files, origin) {
-  let repo = fromOrigin(origin);
-  let components;
-  const data = files.get(".repocli.json");
-  if (data) {
-    try {
-      const config = object(JSON.parse(data.toString()));
-      const declared = field(config, "repository");
-      if (declared !== void 0) {
-        if (declared === null)
-          repo = null;
-        else {
-          const value = object(declared);
-          const forge = field(value, "forge");
-          repo = {
-            forge: { name: string(field(object(forge), "name") ?? repo?.forge.name) },
-            path: string(field(value, "path") ?? repo?.path)
-          };
-        }
-      }
-      if (repo && (!repo.forge.name || !repo.path))
-        throw new Error("repository requires forge.name and path");
-      const declaredComponents = field(config, "components");
-      components = declaredComponents == null ? void 0 : array(declaredComponents);
-    } catch (error) {
-      throw new Error("read .repocli.json", { cause: error });
-    }
-  }
-  if (components === void 0)
-    components = discover(files);
-  const roots = /* @__PURE__ */ new Set(), names = /* @__PURE__ */ new Set();
-  const bindings = components.map((value) => {
-    const item = object(value);
-    const root = string(field(item, "root")) || ".";
-    const name = string(field(item, "name"));
-    if (!name || names.has(name) || roots.has(root) || root !== "." && !validPath(root))
-      throw new Error("invalid or duplicate component name/root");
-    roots.add(root);
-    names.add(name);
-    const productNames = /* @__PURE__ */ new Set();
-    const products = array(field(item, "products")).map((value2) => {
-      const name2 = string(field(object(value2), "name"));
-      if (!name2 || productNames.has(name2))
-        throw new Error("empty or duplicate product name");
-      productNames.add(name2);
-      return { name: name2 };
-    }).sort((a, b) => compare(a.name, b.name));
-    const description = string(field(item, "description"));
-    const language2 = string(field(item, "language")) || detectLanguage(files, root);
-    for (const value2 of array(field(item, "packageTools"))) {
-      const tool = object(value2);
-      string(field(tool, "name"));
-      string(field(tool, "version"));
-      for (const evidence of array(field(tool, "evidence")))
-        string(evidence);
-    }
-    for (const manifest of array(field(item, "manifests")))
-      string(manifest);
+  const repo = fromOrigin(origin);
+  const bindings = discover(files).map((root) => {
+    const language = detectLanguage(files, root);
     const tools = packageTools(files, root);
-    const manifests = [...files.keys()].filter((name2) => posix2.dirname(name2) === root && manifestEcosystem(name2)).sort(compare);
-    const identity2 = repository(field(item, "repository"));
+    const manifests = [...files.keys()].filter((name) => posix.dirname(name) === root && manifestEcosystem(name)).sort(compare);
     const binding = {
-      repository: repo ?? identity2,
-      name,
+      repository: repo ?? { forge: { name: "" }, path: "" },
+      name: root,
       root,
-      products,
-      ...description ? { description } : {},
-      ...language2 ? { language: language2 } : {},
+      products: [],
+      ...language ? { language } : {},
       ...manifests.length ? { manifests } : {},
       ...tools.length ? { packageTools: tools } : {}
     };
     return binding;
-  }).sort((a, b) => compare(a.root, b.root));
+  });
   return { repository: repo, components: bindings };
 }
 function manifestEcosystem(path) {
-  return markers.find(([, ...names]) => names.includes(posix2.basename(path)))?.[0] ?? "";
+  return markers.find(([, ...names]) => names.includes(posix.basename(path)))?.[0] ?? "";
 }
 
 // node_modules/@compforge/repocli/dist/git.js
@@ -1806,11 +587,11 @@ function findCheckout(directory) {
 import { createHash } from "node:crypto";
 import { constants as constants2 } from "node:fs";
 import { lstat as lstat2, open as open2, readlink, realpath as realpath3 } from "node:fs/promises";
-import { dirname as dirname3, join as join3, posix as posix3 } from "node:path";
-async function snapshot(repository2, options = {}) {
+import { dirname as dirname3, join as join3, posix as posix2 } from "node:path";
+async function snapshot(repository, options = {}) {
   const timeout = AbortSignal.timeout(options.timeoutMs ?? 3e4);
   const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
-  const root = await realpath3((await new Git(repository2, signal).run(["rev-parse", "--show-toplevel"])).toString().replace(/\n$/, ""));
+  const root = await realpath3((await new Git(repository, signal).run(["rev-parse", "--show-toplevel"])).toString().replace(/\n$/, ""));
   const first = await capture(root, signal);
   const second = await capture(root, signal);
   return first.digest === second.digest ? second : { ...second, complete: false, diagnostics: [...second.diagnostics, "snapshot_changed"] };
@@ -1910,12 +691,12 @@ async function capture(root, signal) {
     const seen = /* @__PURE__ */ new Set();
     while (links.has(current)) {
       const target = links.get(current);
-      if (seen.has(current) || posix3.isAbsolute(target)) {
+      if (seen.has(current) || posix2.isAbsolute(target)) {
         current = "";
         break;
       }
       seen.add(current);
-      current = posix3.normalize(posix3.join(posix3.dirname(current), target));
+      current = posix2.normalize(posix2.join(posix2.dirname(current), target));
       if (current === ".." || current.startsWith("../")) {
         current = "";
         break;
@@ -2132,12 +913,12 @@ async function inspectRepository(repo) {
 // domain/repo-layout.ts
 var SAFE_SCOPE = /^[A-Za-z0-9_./@+][A-Za-z0-9_./@+:-]*$/;
 var Component = class _Component {
-  constructor(path, id, language2, name = "", packageTools2 = []) {
+  constructor(path, id, language, name = "", packageTools2 = []) {
     this.name = name;
     this.packageTools = packageTools2;
     this.path = path;
     this.id = id;
-    this.language = language2;
+    this.language = language;
   }
   name;
   packageTools;
@@ -2157,7 +938,14 @@ var Component = class _Component {
     try {
       const makefile = readFileSync3(join7(this.path, "Makefile"), "utf8");
       const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      return new RegExp(`^${escaped}${suffix ? "(-\\w+)?" : ""}\\s*:`, "m").test(makefile);
+      const pattern = new RegExp(`^${escaped}${suffix ? "(-\\w+)?" : ""}$`);
+      return makefile.replaceAll("\\\n", " ").split("\n").some((line) => {
+        if (line.startsWith("	")) return false;
+        const rule = line.split("#", 1)[0];
+        const colon = rule.indexOf(":");
+        if (colon < 0 || rule.slice(0, colon).includes("=") || rule[colon + 1] === "=") return false;
+        return rule.slice(0, colon).trim().split(/\s+/).some((target) => pattern.test(target));
+      });
     } catch {
       return false;
     }
@@ -2217,7 +1005,7 @@ var ComponentCatalog = class {
       if (component) return component;
     }
     if (this.components.length === 1) return this.components[0];
-    throw new InspectionError("no default Component; select a declared component explicitly");
+    throw new InspectionError("no default Component; select a discovered component explicitly");
   }
 };
 async function inspectCatalog(root) {
@@ -3158,7 +1946,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
     const catalog = await inspectCatalog(repo);
     unavailableLintComponents = catalog.components.filter((item) => !item.lintTarget()).map((item) => item.id);
     unavailableTestComponents = catalog.components.filter((item) => !item.testTarget()).map((item) => item.id);
-    component = catalog.default();
+    if (catalog.components.length > 0) component = catalog.default();
   } catch (error) {
     if (!(error instanceof InspectionError)) throw error;
     inspectionProblem = error.message;
@@ -3708,7 +2496,7 @@ function projectComponents(changed, catalog) {
 function selectComponents(rootValue, options) {
   const root = realpathSync6(rootValue);
   const catalog = options.catalog;
-  if (catalog.components.length === 0) throw new InspectionError("repocli inspect returned no Components for validation");
+  if (catalog.components.length === 0) return { components: [], reason: "no recognized Components; validation not run" };
   if (options.explicit) {
     const explicit = resolve10(options.explicit);
     if (explicit !== root && explicit.startsWith(`${root}/`)) {
@@ -3832,7 +2620,9 @@ var pipInstall = {
     const runDirectory = value.workingDirectory.path;
     const repo = runDirectory ? findGitRoot(runDirectory) : void 0;
     if (!repo) return [];
-    const component = enclosingComponent(runDirectory, await context.catalog(repo)).path;
+    const catalog = await context.catalog(repo);
+    if (catalog.components.length === 0) return [];
+    const component = enclosingComponent(runDirectory, catalog).path;
     if (!existsSync13(join14(component, "pyproject.toml")) || !existsSync13(join14(component, "uv.lock"))) return [];
     return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
   }
@@ -3852,7 +2642,9 @@ var pytestNaked = {
     const runDirectory = value.workingDirectory.path;
     const repo = runDirectory ? findGitRoot(runDirectory) : void 0;
     if (!repo) return [];
-    const component = enclosingComponent(runDirectory, await context.catalog(repo));
+    const catalog = await context.catalog(repo);
+    if (catalog.components.length === 0) return [];
+    const component = enclosingComponent(runDirectory, catalog);
     return component.hasTarget("test", true) ? finding("pytest-naked", `Use the project's canonical test target: cd ${component.path} && make test`, commandLine(value)) : [];
   }
 };

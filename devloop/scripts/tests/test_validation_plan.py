@@ -37,7 +37,7 @@ def test_one_analysis_after_fix_shared_by_lint_and_tests():
 def test_invalid_inspect_stops_validation_without_fabricated_component():
     with TemporaryDirectory() as root, patch.dict(os.environ, {"DEVLOOP_REPOCLI": "/missing/repocli"}):
         repo = make_repo(root)
-        (repo / ".repocli.json").write_text("{")
+        (repo / "package.json").symlink_to("source.py")
         runner = _load_script("run_tests")
         assert runner.main([str(repo)]) == 1
         assert not (repo / "test.observed").exists()
@@ -150,8 +150,8 @@ def test_component_facts_select_downstream_and_local_unknown_without_path_remapp
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         names = ("lib", "app", "unknown", "unrelated")
-        (repo / ".repocli.json").write_text(json.dumps({"components": [
-            {"root": name, "name": name} for name in names]}))
+        (repo / "pyproject.toml").unlink()
+        (repo / "Makefile").unlink()
         for name in names:
             unit = repo / name
             unit.mkdir()
@@ -392,8 +392,6 @@ def test_parent_component_does_not_receive_child_owned_files():
     with TemporaryDirectory() as root, repocli_report(
             affected=["child/source.py"], tests=["child/test_a.py"]):
         repo = make_repo(root)
-        (repo / ".repocli.json").write_text(json.dumps({"components": [
-            {"root": ".", "name": "workspace"}, {"root": "child", "name": "api"}]}))
         child = repo / "child"
         child.mkdir()
         (child / "source.py").write_text("VALUE=1\n")
@@ -407,11 +405,12 @@ def test_parent_component_does_not_receive_child_owned_files():
 
 
 
-def test_explicit_zero_components_stays_unowned():
+def test_repository_without_markers_stays_unowned():
     from domain.repo_layout import inspect_catalog
     with TemporaryDirectory() as root:
         repo = make_repo(root)
-        (repo / ".repocli.json").write_text('{"components":[]}')
+        (repo / "pyproject.toml").unlink()
+        (repo / "Makefile").unlink()
         catalog = inspect_catalog(str(repo))
         assert not catalog.components
         assert catalog.owner(repo / "source.py") is None

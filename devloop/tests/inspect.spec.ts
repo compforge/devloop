@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as toolkit from "@compforge/repocli";
-import { inspectCatalog, findGitRoot } from "../domain/repo-layout.js";
+import { Component, inspectCatalog, findGitRoot } from "../domain/repo-layout.js";
 import { selectComponents } from "../domain/repo.js";
 import { PolicyContext } from "../hooks/core/context.js";
 import { evaluate } from "../hooks/core/engine.js";
@@ -26,12 +26,12 @@ function fixture() {
   execFileSync("git", ["init", "-q", root]);
   mkdirSync(join(root, "service"));
   writeFileSync(join(root, "service/go.mod"), "module example.com/service\n");
-  const components = [{ root: ".", name: "workspace" }, { root: "service", name: "api", language: "go" }, { root: "client", name: "web" }];
-  const write = (value: unknown) => writeFileSync(join(root, ".repocli.json"), JSON.stringify(value));
-  write({ components });
+  writeFileSync(join(root, "Makefile"), "lint test:\n\t@true\n");
+  mkdirSync(join(root, "client"));
+  writeFileSync(join(root, "client/Makefile"), "lint test:\n\t@true\n");
   // Native inspection must not depend on a usable repocli executable.
   vi.stubEnv("DEVLOOP_REPOCLI", join(root, "missing-cli"));
-  return { root, components, write };
+  return { root };
 }
 
 describe("native repocli organization", () => {
@@ -63,19 +63,19 @@ describe("native repocli organization", () => {
     expect(result.findings).toContainEqual(expect.objectContaining({ rule: "protect-branch", severity: "deny" }));
   });
 
-  it("uses declared roots and metadata for moved, deleted and fixture paths without a CLI", async () => {
+  it("uses discovered roots and metadata for moved, deleted and fixture paths without a CLI", async () => {
     const { root } = fixture();
     mkdirSync(join(root, "service/testdata/corpus"), { recursive: true });
     writeFileSync(join(root, "service/testdata/corpus/go.mod"), "module corpus");
     const catalog = await inspectCatalog(root);
     expect(selectComponents(root, { paths: ["service/old.go", "client/new.ts", "service/testdata/corpus/go.mod"], catalog }).components.map((c) => c.id)).toEqual(["service", "client"]);
-    expect(catalog.owner(join(root, "service/deleted.go"))).toMatchObject({ id: "service", name: "api", language: "go", packageTools: [{ name: "go", evidence: ["service/go.mod"] }] });
+    expect(catalog.owner(join(root, "service/deleted.go"))).toMatchObject({ id: "service", name: "service", language: "go", packageTools: [{ name: "go", evidence: ["service/go.mod"] }] });
     expect(catalog.owner(join(root, "service2/other.go"))?.id).toBe(".");
     expect(catalog.owner(join(root, "../outside"))).toBeUndefined();
   });
 
   it("shares in-flight work and failures within an operation, then refreshes", async () => {
-    const { root, components, write } = fixture();
+    const { root } = fixture();
     const calls = vi.mocked(toolkit.inspect);
     const identity = { sessionId: "test", harness: "codex" } as const;
     const context = new PolicyContext(root, identity);
@@ -84,31 +84,24 @@ describe("native repocli organization", () => {
     expect(sibling).toBe(first);
     await Promise.all([first, sibling]);
     expect(calls).toHaveBeenCalledTimes(1);
-    write({ components: [{ root: "../escape", name: "bad" }] });
+    symlinkSync("Makefile", join(root, "package.json"));
     expect(context.catalog(root)).toBe(first);
     const failed = new PolicyContext(root, identity);
     const rejection = failed.catalog(root);
     await expect(rejection).rejects.toThrow(InspectionError);
-    write({ components });
+    rmSync(join(root, "package.json"));
     expect(failed.catalog(root)).toBe(rejection);
     await expect(failed.catalog(root)).rejects.toThrow(InspectionError);
     expect((await new PolicyContext(root, identity).catalog(root)).components).toHaveLength(3);
     expect(calls).toHaveBeenCalledTimes(3);
   });
 
-  it.each([
-    [{ root: "../escape", name: "bad" }],
-    [{ root: ".", name: "x" }, { root: ".", name: "y" }],
-  ])("rejects invalid configured organization %j", async (...components) => {
-    const { root, write } = fixture(); write({ components });
-    await expect(inspectCatalog(root)).rejects.toThrow(InspectionError);
-  });
-
   it("retains execution containment for roots below external symlinks", async () => {
-    const { root, write } = fixture();
+    const { root } = fixture();
     const outside = realpathSync(mkdtempSync(join(tmpdir(), "devloop-outside-"))); roots.push(outside);
     symlinkSync(outside, join(root, "linked"));
-    write({ components: [{ root: "linked/missing", name: "external" }] });
+    const report = await toolkit.inspect({ repository: root });
+    vi.mocked(toolkit.inspect).mockResolvedValueOnce({ ...report, components: [{ ...report.components[0]!, root: "linked/missing" }] });
     await expect(inspectCatalog(root)).rejects.toThrow("component root escapes checkout");
   });
 
@@ -154,7 +147,7 @@ describe("native repocli organization", () => {
   });
 
   it("denies a gate with missing organization and warns for optional policies", async () => {
-    const { root, write } = fixture(); write({ components: [{ root: "../escape", name: "bad" }] });
+    const { root } = fixture(); symlinkSync("Makefile", join(root, "package.json"));
     const context = new PolicyContext(root, { sessionId: "test", harness: "codex" });
     const change = { cwd: root, tool: "edit", command: "", targets: [{ kind: "file_change" as const, path: join(root, "a.go"), mode: "edit" as const }] };
     const rule: Rule = { name: "inspection", targetKind: "file_change", applies: () => true, check: async (_target, ctx) => { await ctx.catalog(root); return []; } };
@@ -165,12 +158,39 @@ describe("native repocli organization", () => {
 
 
 describe("repository contract consumption", () => {
-  it("does not invent a component for an explicitly unowned repository", async () => {
-    const { root, write } = fixture();
-    write({ components: [] });
+  it("accepts a repository without markers and skips Component validation", async () => {
+    const { root } = fixture();
+    rmSync(join(root, "Makefile"));
+    rmSync(join(root, "service/go.mod"));
+    rmSync(join(root, "client/Makefile"));
     const catalog = await inspectCatalog(root);
     expect(catalog.components).toEqual([]);
+    expect(selectComponents(root, { catalog })).toMatchObject({ components: [], reason: expect.stringContaining("no recognized Components") });
+    const board = await projectBoard(root, undefined, root);
+    expect(board.items.find(item => item.type === "repo.identity")!.payload).toMatchObject({ inspectionProblem: "" });
     expect(catalog.owner(join(root, "service/go.mod"))).toBeUndefined();
+  });
+
+  it("runs Makefile-only targets without language inference", async () => {
+    const { root } = fixture();
+    const catalog = await inspectCatalog(root);
+    const child = catalog.owner(join(root, "client/task.py"))!;
+    expect(child.language).toBeUndefined();
+    expect(child.lintTarget()).toBe("lint");
+    expect(child.testCommand()).toEqual(["make", "test"]);
+    expect(selectComponents(root, { catalog, paths: ["client/task.py"] }).components.map(c => c.id)).toEqual(["client"]);
+  });
+
+  it("detects literal multiple and continued target headers without executing make", () => {
+    const { root } = fixture();
+    const component = Component.at(root, root);
+    writeFileSync(join(root, "Makefile"), "# lint:\nlint := value\nrecipe:\n\ttest: false\n");
+    expect(component.hasTarget("lint")).toBe(false);
+    expect(component.hasTarget("test")).toBe(false);
+    writeFileSync(join(root, "Makefile"), "$(error must not execute)\nfix lint \\\n test:\n\t@true\nlint-ci::\n\t@true\n");
+    expect(component.hasTarget("fix")).toBe(true);
+    expect(component.testTarget()).toBe("test");
+    expect(component.lintTarget()).toBe("lint-ci");
   });
 
   it("preserves locator failures for hard guards", async () => {

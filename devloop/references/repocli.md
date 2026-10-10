@@ -33,14 +33,15 @@ Each TypeScript policy operation shares one inspection promise per checkout, inc
 work and rejection. Python selection passes one explicit catalog through the operation.
 A new operation observes fresh metadata. Ownership and validation
 selection project that explicit catalog without another inspection; `owner` includes
-deleted paths. Configure repository boundaries
-in `.repocli.json`; fixture manifests such as `testdata/corpus/go.mod` are not independent
-Components unless the repository explicitly declares them. Submodule contents belong to
+deleted paths. Discovery prefers manifests, then Makefiles with unknown language. No
+repocli-specific repository configuration is needed. Fixture manifests such as
+`testdata/corpus/go.mod` are not independent Components. Submodule contents belong to
 their own repository inspection; a parent gitlink remains a parent-repository change.
 
 Inspection is required for validation even with `--full`: failure stops validation and
 reports the dependency problem. It never produces a fabricated root Component or an
-empty successful workset. Optional Board metadata can be unavailable while Git/review
+empty successful workset on failure. A successful inspection with zero Components is a valid
+repository: validation is skipped without execution or passing stamps. Optional Board metadata can be unavailable while Git/review
 state is still displayed. Environment preparation reports an inspection warning.
 
 ## Validation
@@ -101,7 +102,7 @@ outside validation, verify its published SHA-256 checksum, and put its binary on
 Python diff analysis; organization inspection does not use this setting.
 No validation workflow downloads, upgrades or compiles the repocli CLI.
 
-Use repocli CLI 0.24.0 or later for Component impact flags and the shared
+Use repocli CLI 0.28.0 or later for manifest/Makefile Component discovery and the shared
 content-identity contract (impact schema 3). The installed CLI is not pinned to a devloop release;
 newer compatible releases are accepted. CLI and library versions are independent.
 

@@ -17,8 +17,9 @@ stamp 绑定完整仓库内容摘要。共享配置或其他 Component 内容变
 
 passed、failed、skipped、unavailable 描述实际检查结果，与 hard gate/advisory 策略分别记录。
 没有验证入口属于 unavailable；影响分析明确返回空选择属于 skipped。硬 lint gate 要求有可执行入口，
-test 是否阻断仍由 lifecycle 策略决定。项目在 Component 中提供 Makefile，仓库根可以聚合这些入口。
-本项目的 `make fix` 先生成受 Git 跟踪的构建产物，之后 lint/test 可并行读取；验证阶段不能重写这些产物。
+test 是否阻断仍由 lifecycle 策略决定。项目在 Component 中提供 Makefile；根与子 Component 的 lint/test
+各自拥有验证资产，聚合入口使用单独的目标，避免一次 Component 执行计划重复运行子项目。
+`devloop/` 的 `make fix` 先生成受 Git 跟踪的构建产物，之后 lint/test 可并行读取；验证阶段不能重写这些产物。
 
 ## 操作与策略
 
@@ -90,13 +91,14 @@ Forge 提供平台合并状态；哪些状态应成为 Board 提醒由 devloop �
 ## Repository 内容与 Component
 
 repocli 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect 描述零个、一个或多个 Component。
+无 Component 时跳过验证，不运行 impact 或 make，也不写入通过戳；读取失败仍按失败处理。
 单组件可以位于根或子目录；普通目录可以有组件归属，也可以没有。devloop 不再补隐式根组件，
-明确执行目标仍可由用户选择。Manifest 发现、目录排除与 owner 由工具包提供，Makefile 验证入口选择
+明确执行目标仍可由用户选择。manifest 优先、Makefile 次级的发现、目录排除与 owner 由工具包提供，Makefile 验证入口选择
 和跨组件执行范围仍属 devloop。Go CLI diff 的协议解码在 lib，采纳部分结果与回退策略在 domain。
 
 原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
 父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
-CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.24.0，以同时支持 Component 的 `affected` / `complete` 契约。
+CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.28.0，保持 manifest/Makefile 识别与 Component 的 `affected` / `complete` 契约一致。
 
 仓库定位委托 find_checkout/findCheckout：无仓库是正常缺失，损坏元数据、权限与 Git 失败不能
 转换为“没有仓库”。必要 hook 事实读取失败继续走 fail_closed，不绕过保护分支规则。

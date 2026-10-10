@@ -3,6 +3,10 @@ name: validate
 description: Normalize a repo Component, run its lint and test validation checks, and report each result. Use when the user asks to validate changes, lint/format code, run tests, or verify before committing or pushing.
 ---
 
+Validation is required; prioritize precise affected-file selection so lint and test process fewer files
+and finish sooner. Expand scope when impact is uncertain or project contracts require it, while
+preserving the required coverage.
+
 Use automatic scope by default. Read the shared [repocli reference](../../references/repocli.md)
 for direct CLI inspection, installation and analysis boundaries. Do not select or pass
 `TEST_FILES` / `LINT_FILES` yourself unless the user explicitly requests an override.

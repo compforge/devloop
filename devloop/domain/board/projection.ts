@@ -28,7 +28,7 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
     const catalog = await inspectCatalog(repo);
     unavailableLintComponents = catalog.components.filter((item) => !item.lintTarget()).map((item) => item.id);
     unavailableTestComponents = catalog.components.filter((item) => !item.testTarget()).map((item) => item.id);
-    component = catalog.default();
+    if (catalog.components.length > 0) component = catalog.default();
   }
   catch (error) {
     if (!(error instanceof InspectionError)) throw error;

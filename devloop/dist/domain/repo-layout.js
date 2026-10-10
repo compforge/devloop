@@ -3,7 +3,7 @@ import { basename, join, relative, resolve } from "node:path";
 import { inspectRepository, InspectionError } from "../lib/repocli.js";
 import { findCheckout, owner } from "@compforge/repocli";
 const SAFE_SCOPE = /^[A-Za-z0-9_./@+][A-Za-z0-9_./@+:-]*$/;
-/** Independently buildable and validatable directory within a repository. */
+/** Repository directory used as the granularity for engineering operations. */
 export class Component {
     name;
     packageTools;
@@ -30,7 +30,17 @@ export class Component {
         try {
             const makefile = readFileSync(join(this.path, "Makefile"), "utf8");
             const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            return new RegExp(`^${escaped}${suffix ? "(-\\w+)?" : ""}\\s*:`, "m").test(makefile);
+            const pattern = new RegExp(`^${escaped}${suffix ? "(-\\w+)?" : ""}$`);
+            // Read literal rule headers without evaluating make expansions or recipes.
+            return makefile.replaceAll("\\\n", " ").split("\n").some(line => {
+                if (line.startsWith("\t"))
+                    return false;
+                const rule = line.split("#", 1)[0];
+                const colon = rule.indexOf(":");
+                if (colon < 0 || rule.slice(0, colon).includes("=") || rule[colon + 1] === "=")
+                    return false;
+                return rule.slice(0, colon).trim().split(/\s+/).some(target => pattern.test(target));
+            });
         }
         catch {
             return false;
@@ -66,7 +76,7 @@ export function findGitRoot(path) {
     return findCheckout(path);
 }
 export function isGitRepository(path) { return findGitRoot(path) !== undefined; }
-/** One operation's catalog; file ownership is a projection of declared roots. */
+/** One operation's catalog; file ownership is a projection of discovered roots. */
 export class ComponentCatalog {
     root;
     report;
@@ -91,7 +101,7 @@ export class ComponentCatalog {
         }
         if (this.components.length === 1)
             return this.components[0];
-        throw new InspectionError("no default Component; select a declared component explicitly");
+        throw new InspectionError("no default Component; select a discovered component explicitly");
     }
 }
 export async function inspectCatalog(root) {

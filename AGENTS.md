@@ -59,6 +59,8 @@ devloop/                              # ← 仓库根（marketplace）
 ├── quality/                          # plugin: 基于项目真实测试资产的质量评估（skill-only）
 │   ├── .claude-plugin/plugin.json    #     Claude manifest
 │   ├── .codex-plugin/plugin.json     #     Codex manifest
+│   ├── Makefile                      #     skill 资产 lint/test 入口
+│   ├── scripts/ 与 tests/             #     静态资产校验器及回归用例
 │   ├── references/environment.md     #     E2E / Perf 共用的 Target、Runner、连接与准备契约
 │   ├── skills/e2e/                   #     操作项目已有 E2E 能力，并渐进补充项目自有覆盖
 │   ├── skills/perf/                  #     操作项目已有压力/容量能力，并解释或比较运行证据
@@ -71,8 +73,10 @@ devloop/                              # ← 仓库根（marketplace）
 │   └── commands/hello.md
 │
 ├── scripts/                          # 仓库级工具脚本（跨 plugin），如版本号 bump
-│   └── bump_plugin_version.py        #   被 `make bump-version` 调用
-├── Makefile                          # 仓库级入口（`make help` 查看）
+│   ├── bump_plugin_version.py        #   被 `make bump-version` 调用
+│   ├── check_marketplace.py           #   marketplace 索引校验
+│   └── tests/                         #   仓库级校验器回归用例
+├── Makefile                          # marketplace 校验与 check-all 聚合入口
 ├── AGENTS.md                         # 本文档（仓库级）
 ├── README.md                         # 用户向 marketplace 总览（安装方式）
 └── CONTRIBUTING.md                   # 新 plugin 接入规范

@@ -184,7 +184,7 @@ def select_components(git_root: str | Path, *, explicit: str | Path | None = Non
     root = Path(git_root).resolve()
     catalog = catalog or repo_layout.inspect_catalog(root)
     if not catalog.components:
-        raise repocli.InspectionError("repocli inspect returned no Components for validation")
+        return WorkSet((), "no recognized Components; validation not run")
     if explicit is not None:
         ep = Path(explicit).resolve()
         if ep != root and root in ep.parents:

@@ -343,8 +343,10 @@ class RepoContext:
         repo_dir_abs = str(Path(repo_dir).resolve())
         code_dir, language = "", None
         try:
-            component = repo_layout.default_component(repo_dir_abs)
-            code_dir, language = component.path, component.language
+            catalog = repo_layout.inspect_catalog(repo_dir_abs)
+            if catalog.components:
+                component = catalog.default()
+                code_dir, language = component.path, component.language
         except repocli.InspectionError as exc:
             # Optional context metadata must not turn a completed Git action into failure.
             logging.getLogger(__name__).warning("Component context unavailable for %s: %s", repo_dir_abs, exc)

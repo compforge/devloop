@@ -38,8 +38,8 @@ def inspect(repo: str) -> InspectReport:
             raise ValueError("repository inspection incomplete")
         root = Path(repo).resolve()
         for binding in report.components:
-            # Declarations may name absent directories. Resolve existing ancestors
-            # too, so a symlink cannot send future validation outside the checkout.
+            # Recheck containment even if a directory disappears after inspection;
+            # validation must not follow a replaced ancestor outside the checkout.
             if not (root / binding.root).resolve().is_relative_to(root):
                 raise ValueError("component root escapes checkout")
         return report

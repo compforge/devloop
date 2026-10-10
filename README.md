@@ -83,7 +83,9 @@ PR/MR creation and remote state refresh require credentials for the repository h
 
 ## Project validation contract
 
-Each Component exposes stable, non-interactive Make targets:
+Components are discovered from project manifests, then Makefiles. Makefile-only Components have
+unknown language; repositories without either have no Components and skip validation without
+passing stamps. Each Component exposes stable, non-interactive Make targets:
 
 ```text
 make fix                  # optional normalization; may rewrite source
@@ -92,6 +94,10 @@ make test                 # read-only full behavioral suite
 ```
 
 Projects may additionally accept `TEST_FILES` for focused feedback on large suites, while an empty value must retain full-suite behavior. See the [validation contract](./devloop/skills/validate/references/spec.md) and the language-specific guidance for [Python](./devloop/skills/validate/references/python.md), [Go](./devloop/skills/validate/references/go.md), or [Node.js](./devloop/skills/validate/references/node.md). The plugin README explains when focused tests are selected.
+
+For this marketplace, root `make lint test` validates the marketplace indexes, `make -C quality lint test`
+validates quality's skill assets, and `make -C devloop lint test` validates the workflow plugin.
+Use `make check-all` to run all three; Component checks do not recursively run each other.
 
 ## Configuration
 

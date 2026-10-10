@@ -78,6 +78,10 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     comparison = comparison or Comparison()
     inspection = inspect_catalog(repo)
     catalog = inspection.components
+    if not catalog:
+        plan = Plan(repo_model.WorkSet((), "no recognized Components; validation not run"), comparison=comparison)
+        persist_plan(repo, plan)
+        return plan
     units = workset.components if explicit else catalog
     reason = "explicit full Component validation" if full else comparison.reason
     snapshot = ""

@@ -1,6 +1,6 @@
 {
   "name": "@compforge/devloop",
-  "version": "0.4.41",
+  "version": "0.4.42",
   "description": "Shared dev-loop domain runtime with Claude Code, Codex, and DeepSeek Harness adapters.",
   "type": "module",
   "engines": {
@@ -72,7 +72,7 @@
     }
   },
   "dependencies": {
-    "@compforge/repocli": "^0.2.0",
+    "@compforge/repocli": "^0.3.0",
     "@deepseek-ai/schemastery": "^3.18.2"
   },
   "devDependencies": {

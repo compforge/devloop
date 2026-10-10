@@ -1,14 +1,14 @@
 # devloop marketplace — repo-level Makefile.
 # 仓库级工具入口；各 plugin 自身的开发命令在 <plugin>/Makefile（若有）。
 
-PYTHON := devloop/scripts/python
+PYTHON ?= python3
 
 
-.PHONY: help fix lint test build typecheck bump-version
+.PHONY: help fix lint test build check-all typecheck bump-version
 
 help:
 	@echo "Targets:"
-	@echo "  test"
+	@echo "  test (marketplace indexes) / check-all (all Components)"
 	@echo "  fix / lint"
 	@echo "  build"
 	@echo "  typecheck"
@@ -21,8 +21,19 @@ help:
 	@echo "  make bump-version PLUGIN=devloop LEVEL=minor"
 	@echo "  make bump-version PLUGIN=devloop VERSION=0.1.0"
 
-fix lint test build:
-	$(MAKE) -C devloop $@
+# Root validation owns marketplace assets; child checks run in their Components.
+fix:
+	@true
+lint:
+	$(PYTHON) scripts/check_marketplace.py
+test:
+	$(PYTHON) -m unittest discover -s scripts/tests
+check-all:
+	$(MAKE) lint test
+	$(MAKE) -C quality lint test
+	$(MAKE) -C devloop lint test
+build:
+	$(MAKE) -C devloop build
 
 typecheck:
 	npm --prefix devloop run typecheck

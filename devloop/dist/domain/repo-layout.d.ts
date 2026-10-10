@@ -1,5 +1,5 @@
 import { type ComponentBinding, type InspectReport, type PackageTool } from "@compforge/repocli";
-/** Independently buildable and validatable directory within a repository. */
+/** Repository directory used as the granularity for engineering operations. */
 export declare class Component {
     readonly name: string;
     readonly packageTools: readonly PackageTool[];
@@ -21,7 +21,7 @@ export declare class Component {
 }
 export declare function findGitRoot(path: string): string | undefined;
 export declare function isGitRepository(path: string): boolean;
-/** One operation's catalog; file ownership is a projection of declared roots. */
+/** One operation's catalog; file ownership is a projection of discovered roots. */
 export declare class ComponentCatalog {
     readonly root: string;
     private readonly report;

@@ -12,7 +12,7 @@ export async function inspectRepository(repo) {
         const checkout = realpathSync(repo);
         for (const component of report.components) {
             let ancestor = join(checkout, component.root);
-            // A declared root can be absent; its existing parent must still belong to this checkout.
+            // A root may disappear after inspection; existing ancestors must remain in the checkout.
             while (!existsSync(ancestor))
                 ancestor = dirname(ancestor);
             const resolved = realpathSync(ancestor);

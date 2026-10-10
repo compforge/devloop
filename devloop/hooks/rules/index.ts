@@ -98,7 +98,9 @@ const pipInstall: Rule = {
     if (!args || args.includes("-e") && args.includes(".")) return [];
     const runDirectory = value.workingDirectory.path; const repo = runDirectory ? findGitRoot(runDirectory) : undefined;
     if (!repo) return [];
-    const component = enclosingComponent(runDirectory!, await context.catalog(repo)).path;
+    const catalog = await context.catalog(repo);
+    if (catalog.components.length === 0) return [];
+    const component = enclosingComponent(runDirectory!, catalog).path;
     if (!existsSync(join(component, "pyproject.toml")) || !existsSync(join(component, "uv.lock"))) return [];
     return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
   },
@@ -117,7 +119,9 @@ const pytestNaked: Rule = {
   check: async (target, context) => {
     const value = command(target); const runDirectory = value.workingDirectory.path; const repo = runDirectory ? findGitRoot(runDirectory) : undefined;
     if (!repo) return [];
-    const component = enclosingComponent(runDirectory!, await context.catalog(repo));
+    const catalog = await context.catalog(repo);
+    if (catalog.components.length === 0) return [];
+    const component = enclosingComponent(runDirectory!, catalog);
     return component.hasTarget("test", true)
       ? finding("pytest-naked", `Use the project's canonical test target: cd ${component.path} && make test`, commandLine(value)) : [];
   },

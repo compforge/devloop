@@ -49,11 +49,20 @@ class Component:
         mk = Path(self.path) / "Makefile"
         if not mk.exists():
             return False
-        pat = rf"^{re.escape(name)}(-\w+)?\s*:" if suffix else rf"^{re.escape(name)}\s*:"
+        pattern = re.compile(rf"{re.escape(name)}(?:-\w+)?" if suffix else re.escape(name))
         try:
-            return bool(re.search(pat, mk.read_text(encoding="utf-8"), re.MULTILINE))
+            text = mk.read_text(encoding="utf-8").replace("\\\n", " ")
         except OSError:
             return False
+        for line in text.splitlines():
+            if line.startswith("\t"):
+                continue
+            header, separator, rest = line.split("#", 1)[0].partition(":")
+            if not separator or "=" in header or rest.startswith("="):
+                continue
+            if any(pattern.fullmatch(target) for target in header.split()):
+                return True
+        return False
 
     def lint_target(self) -> str | None:
         """要跑的 lint target：`lint-ci` > `lint`。`lint-ci` 通常先 `uv sync` 钉版工具链，
@@ -150,7 +159,7 @@ class Catalog:
                 return component
         if len(self.components) == 1:
             return self.components[0]
-        raise repocli.InspectionError("no default Component; select a declared component explicitly")
+        raise repocli.InspectionError("no default Component; select a discovered component explicitly")
 
 
 def inspect_catalog(git_root: str | Path) -> Catalog:

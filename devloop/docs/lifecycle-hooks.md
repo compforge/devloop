@@ -188,13 +188,17 @@ Component organization comes from repocli inspect; unavailable organization stop
 Lint and test share one repocli impact plan after normalization. The phase caller supplies
 the comparison: working input for pre-commit, the actual commit for post-commit,
 and the target merge-base for MR phases. Changed-path filters restrict seeds, not
-dependency discovery. Repocli reports affected Components; devloop runs each selected
-Component's full lint/test targets, including downstream Components without discovered tests.
-Components with incomplete impact are included conservatively; complete unaffected Components
-are omitted. Before-only identities remain evidence and are not execution directories.
+dependency discovery. Repocli reports affected Components, which select the owning Makefiles.
+Within each selected Component, owned `affectedFiles` and `testFiles` supply Component-relative
+`LINT_FILES` and `TEST_FILES` when the project consumes those variables. Missing contracts,
+unsafe/deleted inputs or no returned files for a selected Component run that check in full.
+Components with incomplete impact are included conservatively; valid partial reports retain
+returned files and diagnostics. Complete unaffected Components are omitted. Before-only identities
+remain evidence and are not execution directories.
 Failed or invalid analysis runs full canonical checks for all current Components, within any
 explicit Component boundary. Scope and reasons are published in branch-owned
 `validation_scope` state for Board. Full successful checks may stamp the verified contents;
+focused checks retain scoped evidence and never grant a full Component stamp;
 a skipped or unavailable check never grants a stamp.
 See [repocli usage and compatibility](../references/repocli.md).
 

@@ -47,13 +47,13 @@ def make_repo(root: str, *, contract: bool = True) -> Path:
 
 
 @repocli_report(sources=["a.py"])
-def test_component_gate_detects_unmodified_errors_without_rewriting_them():
+def test_component_gate_checks_affected_files_without_rewriting_unrelated_files():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         result = lifecycle.dispatch("pre_commit", str(repo), paths=["a.py"], names=["lint"])
-        assert not result.proceed, result.results
+        assert result.proceed, result.results
         assert (repo / "fix.observed").read_text() == "a.py"
-        assert (repo / "lint.observed").read_text() == "a.py legacy.py"
+        assert (repo / "lint.observed").read_text() == "a.py"
         assert (repo / "a.py").read_text() == "OK\n"
         assert (repo / "legacy.py").read_text() == "BAD\n"
         context = RepoContext.load(str(repo))
@@ -143,7 +143,7 @@ def test_manual_lint_and_commit_freeze_changed_scope_and_full_is_explicit():
         runner = _load_script("run_lint")
         with patch.object(checks, "normalize", wraps=checks.normalize) as normalize, \
                 patch.object(checks, "lint", wraps=checks.lint) as lint:
-            assert runner.main(["--repo", str(repo)]) == 1
+            assert runner.main(["--repo", str(repo)]) == 0
             assert normalize.call_args.kwargs["paths"] == ["a.py"]
             assert lint.call_args.kwargs["paths"] == ["a.py"]
             assert runner.main(["--repo", str(repo), "--full"]) == 1

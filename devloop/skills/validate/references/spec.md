@@ -45,10 +45,11 @@ semantics or suppress diagnostics to simulate file-level support. Fixers must on
 files; read-only checks may expand their analysis where the language requires it.
 
 Normalization uses frozen changed paths, limiting rewrites when the project supports `LINT_FILES`.
-After normalization, repocli identifies affected Components and devloop runs each Component's full
-lint target, clearing inherited `LINT_FILES`. Automatic validation does not narrow lint by file.
-`--full` bypasses Component selection. Explicit file-level checks remain partial feedback and do
-not update the full Component stamp.
+After normalization, repocli identifies affected Components; each Component selects its Makefile.
+Within that boundary, owned `affectedFiles` narrow lint through `LINT_FILES` when the project supports
+it. Missing contracts, unsafe/deleted inputs or no returned files for a selected Component fall back
+to full lint, clearing inherited `LINT_FILES`. `--full` bypasses both automatic Component and file
+selection. Focused checks remain partial feedback and do not update the full Component stamp.
 
 Independent formatter checks, static analyzers, and type checkers may run concurrently through a native
 worker pool or bounded Make target graph. Do not run multiple auto-fixers concurrently.
@@ -73,9 +74,12 @@ produce partial feedback and leave the full test stamp unchanged. `--full` rejec
 `--` so the coverage request cannot contradict the runner arguments.
 
 Before execution, devloop prints the Component, scope, selection reason and command (including files).
-Automatic selection consumes repocli's Component impact facts. Known affected and incomplete
-Components run full tests, even when repocli discovers no test files. Complete, unaffected Components
-are omitted. Invalid reports or CLI failure select all current Components (within any explicit boundary).
+Automatic selection consumes repocli's Component impact facts to choose Makefiles. Within selected
+Components, owned `testFiles` narrow execution through the project's `TEST_FILES` contract. Valid
+partial analysis retains returned files and its diagnostics; it does not authorize full-coverage stamps.
+Selected Components without returned test files, usable paths or a file-list contract run full tests.
+Complete, unaffected Components are omitted. Invalid reports or CLI failure select full checks in all
+current Components (within any explicit boundary).
 Diagnostics remain visible on Board. Missing project test targets are reported as unavailable and
 never stamped. Explicit file-level overrides must preserve language semantics; Go may require package
 or test-name selection instead.

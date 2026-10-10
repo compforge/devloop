@@ -14,11 +14,13 @@ for direct CLI inspection, installation and analysis boundaries. Do not select o
 ```
 
 Normalization runs before one shared repocli analysis. Repocli identifies affected Components;
-devloop runs full lint/test in each selected Component, including downstream Components without
-discovered tests. Components with incomplete impact analysis are included conservatively, with
-the reason shown on Board. Complete, unaffected Components are skipped. Unavailable or invalid
+devloop chooses each selected Component's Makefile, then passes its owned `affectedFiles` / `testFiles`
+as `LINT_FILES` / `TEST_FILES` when supported. Partial reports retain usable file selections and diagnostics.
+Missing file-list contracts, unsafe/deleted inputs or no returned files for a selected Component run
+that check in full. Components with incomplete impact are included conservatively, with the reason
+shown on Board. Complete, unaffected Components are skipped. Unavailable or invalid
 analysis falls back to all current Components; an explicit Component request retains its boundary.
-An actual check failure stays a failure. `--full` bypasses automatic Component selection.
+An actual check failure stays a failure. `--full` bypasses automatic Component and file selection.
 
 Validation consists of multiple checks. Run `make fix` normalization first, then read-only lint
 and test checks may run concurrently against the same stable content. Running one check or a

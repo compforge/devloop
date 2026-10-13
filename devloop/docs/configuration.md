@@ -40,5 +40,5 @@
 - Forge token 的非空环境变量优先于配置文件：GitHub 使用 `GITHUB_TOKEN` / `GH_TOKEN`，
   GitLab 使用 `GITLAB_TOKEN`。这属于运行环境对凭据的显式覆盖。
 
-`review.tool`、`worktree.keep_recent`、`forges` 以及其他普通字段都遵循统一继承规则。
+`review.tool`、`forges` 以及其他普通字段都遵循统一继承规则。
 示例结构见 [config.example.json](../config/config.example.json)；包含凭据的本地配置不要提交到仓库。

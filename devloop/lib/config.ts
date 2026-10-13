@@ -19,7 +19,6 @@ const DEFAULTS: JsonObject = {
     },
     repos: {},
   },
-  worktree: { keep_recent: 5 },
 };
 
 function object(value: JsonValue | undefined): JsonObject {
@@ -152,7 +151,6 @@ export function forgeToken(host: string, provider: string, repo?: string): strin
 
 export function lifecycleConfig(repo?: string): JsonObject { return object(object(loadConfig(repo).lifecycle).default); }
 export function architectureConfig(repo?: string): JsonObject { return object(object(loadConfig(repo).arch).default); }
-export function worktreeConfig(repo?: string): JsonObject { return object(loadConfig(repo).worktree); }
 
 export function absoluteConfiguredPath(value: string): string {
   const expanded = expandPath(value);

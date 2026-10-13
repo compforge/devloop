@@ -152,14 +152,13 @@ Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 pack
     },
     "repos": {}
   },
-  "review": { "tool": "ccr" },
-  "worktree": { "keep_recent": 5 }
+  "review": { "tool": "ccr" }
 }
 ```
 
 `review` 是异步 signal hook，不阻塞 commit 或 PR/MR；默认引擎是 [CCR](https://github.com/compforge/case-code-review)，也可以配置为 `ocr`。结果会在后续 session 中浮现；已有开放 PR/MR 时还会尝试发布 review comment。
 
-`worktree.keep_recent` 只控制仍在进行中的 managed worktree 的近期保留数量，这类容量裁剪仍保留 dirty、活跃 owner 和当前 checkout。PR/MR lifecycle 是另一条规则：一旦对应 PR/MR 已 merged / closed，除作为仓库锚点的 primary checkout 外，managed / external linked worktree 都会被强制回收；dirty、owner lock、worktree lock、已初始化 submodule、嵌套 registered worktree 均不阻塞。branch ref 始终保留，需要时可由 agent 重新创建 checkout。
+Worktree 回收只走 `pr-lifecycle-reconcile`：Forge 确认 PR/MR 已 merged / closed 后，除作为仓库锚点的 primary checkout 外，对应 linked worktree 被强制回收，branch ref 保留。gitlink 按父仓的普通版本化条目处理，子模块 checkout 内容不增加保留条件。创建或复用 worktree 只准备当前 checkout；open 或没有 PR/MR 的 worktree 不按数量淘汰。旧 `worktree.keep_recent` 配置不再生效。
 
 完整配置结构和 forge host 配置见 [`config/config.example.json`](./config/config.example.json)。token 建议使用环境变量；如果写入配置文件，不要提交仓库内的 `.devloop/config.json`。
 

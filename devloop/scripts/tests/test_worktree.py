@@ -88,24 +88,6 @@ def _add_submodule(repo: str) -> None:
     _git(repo, "commit", "-qam", "add submodule")
 
 
-def _prune(
-    repo: str,
-    keep: int,
-    activity: dict[str, float],
-    *,
-    keep_path: str | None = None,
-) -> None:
-    original_config = worktree.config.worktree
-    original_activity = worktree._activity
-    try:
-        worktree.config.worktree = lambda _repo: {"keep_recent": keep}
-        worktree._activity = lambda path: activity[Path(path).name]
-        worktree._prune_old(repo, keep_path=keep_path)
-    finally:
-        worktree.config.worktree = original_config
-        worktree._activity = original_activity
-
-
 @repocli_report()
 def test_new_worktree_fetches_latest_target_tip():
     repo, _, actor = _fixture("fresh")
@@ -146,62 +128,19 @@ def test_retained_branch_is_resumed_without_rewriting_it():
     assert message == "reused existing branch"
 
 
-def test_prune_old_removes_surplus_checkout_but_retains_branch():
-    repo, _, _ = _fixture("prune_surplus")
+@repocli_report()
+def test_create_and_reuse_leave_reclamation_to_pr_lifecycle():
+    repo, _, _ = _fixture("create_without_pruning")
     old = _add_worktree(repo, "old")
-    recent = _add_worktree(repo, "recent")
-
-    _prune(repo, 1, {"old": 1, "recent": 2})
-
-    assert not Path(old).exists()
-    assert Path(recent).is_dir()
-    assert _git_out(repo, "branch", "--list", "worktree-old") == "worktree-old"
-    assert old not in _git_out(repo, "worktree", "list", "--porcelain")
-
-
-def test_prune_old_preserves_dirty_and_foreign_owned_worktrees():
-    repo, _, _ = _fixture("prune_protected")
-    dirty = _add_worktree(repo, "dirty")
-    owned = _add_worktree(repo, "owned")
-    recent = _add_worktree(repo, "recent")
-    (Path(dirty) / "base.txt").write_text("dirty\n")
-    assert session.acquire(owned, "other-session", "worktree-owned", pid=os.getpid())
-
-    _prune(
-        repo,
-        1,
-        {"dirty": 1, "owned": 2, "recent": 3},
-    )
-
-    assert Path(dirty).is_dir()
-    assert Path(owned).is_dir()
-    assert Path(recent).is_dir()
-
-
-def test_prune_old_preserves_the_current_worktree_even_when_ranked_oldest():
-    repo, _, _ = _fixture("prune_current")
-    current = _add_worktree(repo, "current")
-    recent = _add_worktree(repo, "recent")
-
-    _prune(repo, 1, {"current": 1, "recent": 2}, keep_path=current)
-
-    assert Path(current).is_dir()
-    assert Path(recent).is_dir()
-
-
-def test_prune_old_respects_zero_and_negative_retention():
-    repo, _, _ = _fixture("prune_retention")
-    first = _add_worktree(repo, "first")
-    second = _add_worktree(repo, "second")
-
-    _prune(repo, 0, {"first": 1, "second": 2})
-
-    assert not Path(first).exists()
-    assert not Path(second).exists()
-
-    disabled = _add_worktree(repo, "disabled")
-    _prune(repo, -1, {"disabled": 1})
-    assert Path(disabled).is_dir()
+    # A leftover legacy setting must not resurrect count-based reclamation.
+    config_file = Path(repo) / ".devloop" / "config.json"
+    config_file.parent.mkdir(exist_ok=True)
+    config_file.write_text('{"worktree":{"keep_recent":0}}')
+    created, _ = worktree.create_or_reuse(repo, "new")
+    assert created is not None and Path(created).is_dir()
+    assert Path(old).is_dir()
+    reused, _ = worktree.create_or_reuse(repo, "new")
+    assert reused == created and Path(old).is_dir()
 
 
 def test_failed_inventory_read_preserves_monitor_snapshot():

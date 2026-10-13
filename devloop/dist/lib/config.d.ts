@@ -24,7 +24,6 @@ export declare function forgeEntry(host: string, repo?: string): JsonObject;
 export declare function forgeToken(host: string, provider: string, repo?: string): string | undefined;
 export declare function lifecycleConfig(repo?: string): JsonObject;
 export declare function architectureConfig(repo?: string): JsonObject;
-export declare function worktreeConfig(repo?: string): JsonObject;
 export declare function absoluteConfiguredPath(value: string): string;
 export {};
 //# sourceMappingURL=config.d.ts.map

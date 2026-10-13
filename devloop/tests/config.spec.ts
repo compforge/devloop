@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { architectureConfig, forgeEntry, forgeToken, lifecycleConfig, loadConfig, saveConfig, workspaces, worktreeConfig } from "../lib/config.js";
+import { architectureConfig, forgeEntry, forgeToken, lifecycleConfig, loadConfig, saveConfig, workspaces } from "../lib/config.js";
 import { runGit } from "../lib/process.js";
 
 let root: string;
@@ -40,22 +40,20 @@ describe("repository policy inheritance", () => {
   it.each(["nested", "external"])("inherits all local configuration in a %s worktree", (location) => {
     const checkout = location === "nested" ? join(repo, ".worktrees", "fix") : join(root, "external");
     git(repo, "worktree", "add", "-qb", "fix", checkout);
-    localConfig(root, { review: { tool: "ancestor", options: { verbose: true } }, worktree: { keep_recent: 9 } });
+    localConfig(root, { review: { tool: "ancestor", options: { verbose: true } } });
     localConfig(repo, {
-      review: { tool: "main" }, worktree: { keep_recent: 2 },
+      review: { tool: "main" },
       forges: { "git.example.com": { type: "gitlab", token: "main-token", api_host: "api.example.com" } },
     });
     expect(loadConfig(checkout).review).toEqual({ tool: "main", options: { verbose: true } });
-    expect(worktreeConfig(checkout).keep_recent).toBe(2);
     expect(forgeEntry("git.example.com", checkout).token).toBe("main-token");
     localConfig(checkout, {
-      review: { options: { verbose: false } }, worktree: { keep_recent: 0 },
+      review: { options: { verbose: false } },
       forges: { "git.example.com": { token: "" } },
     });
     expect(loadConfig(checkout).review).toEqual({ tool: "main", options: { verbose: false } });
-    expect(worktreeConfig(checkout).keep_recent).toBe(0);
+    expect(loadConfig(repo).review).toEqual({ tool: "main", options: { verbose: true } });
     expect(forgeEntry("git.example.com", checkout)).toEqual({ type: "gitlab", token: "", api_host: "api.example.com" });
-    expect(worktreeConfig(repo).keep_recent).toBe(2);
   });
 
   it("lets closer source defaults override global path-keyed policy", () => {

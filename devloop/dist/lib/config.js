@@ -14,7 +14,6 @@ const DEFAULTS = {
         },
         repos: {},
     },
-    worktree: { keep_recent: 5 },
 };
 function object(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -143,7 +142,6 @@ export function forgeToken(host, provider, repo) {
 }
 export function lifecycleConfig(repo) { return object(object(loadConfig(repo).lifecycle).default); }
 export function architectureConfig(repo) { return object(object(loadConfig(repo).arch).default); }
-export function worktreeConfig(repo) { return object(loadConfig(repo).worktree); }
 export function absoluteConfiguredPath(value) {
     const expanded = expandPath(value);
     return isAbsolute(expanded) ? expanded : resolve(expanded);

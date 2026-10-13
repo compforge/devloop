@@ -1530,8 +1530,7 @@ var DEFAULTS = {
       order: ["api", "service", "dao", "model"]
     },
     repos: {}
-  },
-  worktree: { keep_recent: 5 }
+  }
 };
 function object2(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};

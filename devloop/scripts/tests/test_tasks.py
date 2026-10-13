@@ -94,8 +94,15 @@ def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory()
     repo, _, _ = _fixture("task_submodule")
     _add_submodule(repo)
     linked = _add_worktree(repo, "finished")
+    ongoing = _add_worktree(repo, "ongoing")
+    without_pr = _add_worktree(repo, "without-pr")
     _git(linked, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "-q")
-    fake = _FakeForge([PullRequest(number=1, state="merged", source_branch="worktree-finished", sha=_git_out(linked, "rev-parse", "HEAD"))])
+    (Path(linked) / "doctor" / "module.txt").write_text("child edit\n")
+    (Path(linked) / "doctor" / "scratch.txt").write_text("child scratch\n")
+    fake = _FakeForge([
+        PullRequest(number=1, state="merged", source_branch="worktree-finished", sha=_git_out(linked, "rev-parse", "HEAD")),
+        PullRequest(number=2, state="open", source_branch="worktree-ongoing", sha=_git_out(ongoing, "rev-parse", "HEAD")),
+    ])
     with patch.object(prstate, "forge_for_repo", return_value=fake):
         # Seed an old terminal snapshot, then make the live refresh fail.
         assert prstate.refresh_local_pull_requests(repo)
@@ -107,6 +114,7 @@ def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory()
         assert report["updated"]["local_pull_requests"] is True
         assert report["actions"][0]["status"] == "completed"
         assert not Path(linked).exists()
+        assert Path(ongoing).is_dir() and Path(without_pr).is_dir()
         assert _git_out(repo, "branch", "--list", "worktree-finished") == "worktree-finished"
         assert pr_lifecycle.sweep_repo(repo)["actions"] == []
         assert store.load_segment(repo, "local_pull_requests")["actions"] == []

@@ -57,25 +57,22 @@ def test_all_local_configuration_is_inherited_by_worktrees():
         with _repository() as (root, repo):
             checkout = repo / ".worktrees" / "fix" if nested else root / "external"
             _git(repo, "worktree", "add", "-qb", "fix", str(checkout))
-            _local_config(root, {"review": {"tool": "ancestor", "options": {"verbose": True}},
-                                 "worktree": {"keep_recent": 9}})
+            _local_config(root, {"review": {"tool": "ancestor", "options": {"verbose": True}}})
             _local_config(repo, {
-                "review": {"tool": "main"}, "worktree": {"keep_recent": 2},
+                "review": {"tool": "main"},
                 "forges": {"git.example.com": {"type": "gitlab", "token": "main-token", "api_host": "api.example.com"}},
             })
             assert config.load(checkout)["review"] == {"tool": "main", "options": {"verbose": True}}
-            assert config.worktree(checkout)["keep_recent"] == 2
             assert config.forge_entry("git.example.com", checkout)["token"] == "main-token"
             _local_config(checkout, {
-                "review": {"options": {"verbose": False}}, "worktree": {"keep_recent": 0},
+                "review": {"options": {"verbose": False}},
                 "forges": {"git.example.com": {"token": ""}},
             })
             assert config.load(checkout)["review"] == {"tool": "main", "options": {"verbose": False}}
-            assert config.worktree(checkout)["keep_recent"] == 0
+            assert config.load(repo)["review"] == {"tool": "main", "options": {"verbose": True}}
             assert config.forge_entry("git.example.com", checkout) == {
                 "type": "gitlab", "token": "", "api_host": "api.example.com",
             }
-            assert config.worktree(repo)["keep_recent"] == 2
 
 
 def test_closer_source_defaults_override_global_repo_policy():

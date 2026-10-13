@@ -86,6 +86,7 @@ class RemovalOutcome(str, Enum):
     REMOVED = "removed"
     NOT_MANAGED = "not_managed"
     GIT_ERROR = "git_error"
+    IDENTITY_CHANGED = "identity_changed"
     UNCERTAIN = "uncertain"
 
 
@@ -95,7 +96,7 @@ def primary(repo_dir: str) -> str:
     return info.main_root or info.root
 
 
-def remove_finished(repo_dir: str, path: str) -> RemovalOutcome:
+def remove_finished(repo_dir: str, path: str, *, branch: str, head: str) -> RemovalOutcome:
     """Force-reclaim one linked checkout whose PR/MR is already terminal.
 
     Forge terminal state is the lifecycle authority. A linked checkout is reproducible
@@ -105,18 +106,26 @@ def remove_finished(repo_dir: str, path: str) -> RemovalOutcome:
     it. The branch ref remains available if an agent needs to recreate it later. The
     primary checkout is never a valid target because it anchors repository metadata.
 
-    +spec=`PR/MR terminal state is the sole authority for linked-worktree reclamation`
+    +spec=`PR/MR terminal state authorizes reclamation only for the observed checkout branch and HEAD`
+    +why=`Forge reads can outlive a foreground checkout change; path membership alone is not identity`
     +why=`Gitlinks are opaque repository entries; child checkout contents add no retention policy`
     +link=`component://scripts/domain/pull_request_lifecycle.py`
     """
     control_repo = primary(repo_dir)
     target = str(Path(path).resolve())
-    linked = {
-        entry.path for entry in git_state.list_checkouts(control_repo)
-        if not entry.primary and entry.path
-    }
-    if target not in linked:
+    try:
+        current = next((entry for entry in git_state.list_checkouts(control_repo)
+                        if not entry.primary and entry.path == target), None)
+    except OSError as exc:
+        logger.warning("worktree identity read failed: path=%s detail=%s", target, exc)
+        return RemovalOutcome.GIT_ERROR
+    if current is None:
         return RemovalOutcome.NOT_MANAGED
+    if not branch or not head or current.branch != branch or current.head != head:
+        logger.info("worktree removal deferred: path=%s expected_branch=%s expected_head=%s "
+                    "current_branch=%s current_head=%s reason=identity_changed",
+                    target, branch, head, current.branch, current.head)
+        return RemovalOutcome.IDENTITY_CHANGED
 
     removed = operations.remove_worktree(control_repo, target, force=True)
     if not removed.ok:

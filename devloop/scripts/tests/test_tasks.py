@@ -120,5 +120,49 @@ def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory()
         assert store.load_segment(repo, "local_pull_requests")["actions"] == []
 
 
+def test_sweep_defers_when_checkout_changes_during_forge_lookup():
+    # +case=`A terminal PR observation cannot authorize removal of a different checkout identity`
+    from unittest.mock import patch
+    from pathlib import Path
+    from test_worktree import _fixture, _add_worktree
+    from _testkit import _FakeForge, _git, _git_out
+    from domain.context import PullRequest, prstate, store
+
+    for change in ("branch", "head", "detached"):
+        repo, _, _ = _fixture(f"task_identity_{change}")
+        target = _add_worktree(repo, "finished")
+        head = _git_out(target, "rev-parse", "HEAD")
+        fake = _FakeForge([PullRequest(number=1, state="merged", source_branch="worktree-finished", sha=head)])
+        lookup = fake.prs_for_branch
+        changed = False
+
+        def change_during_lookup(branch):
+            nonlocal changed
+            if branch == "worktree-finished" and not changed:
+                if change == "branch":
+                    _git(target, "switch", "-qc", "new-work")
+                elif change == "head":
+                    _git(target, "commit", "--allow-empty", "-qm", "new work")
+                else:
+                    _git(target, "switch", "--detach", "-q")
+                (Path(target) / "unsaved.txt").write_text("new work\n")
+                changed = True
+            return lookup(branch)
+
+        fake.prs_for_branch = change_during_lookup
+        with patch.object(prstate, "forge_for_repo", return_value=fake):
+            report = pr_lifecycle.sweep_repo(repo)
+            assert report["updated"]["local_pull_requests"] is True
+            assert changed and (Path(target) / "unsaved.txt").read_text() == "new work\n", change
+            assert [(a["status"], a["reason"]) for a in report["actions"]] == [("deferred", "identity_changed")]
+            snapshot = store.load_segment(repo, "local_pull_requests")
+            observed = next(row for row in snapshot["branches"] if row["branch"] == "worktree-finished")
+            assert observed["checkout"] is not None
+            if change == "branch":
+                # A fresh sweep observes the new PR-less branch and retains it.
+                assert pr_lifecycle.sweep_repo(repo)["actions"] == []
+                assert (Path(target) / "unsaved.txt").is_file()
+
+
 if __name__ == "__main__":
     run_main(globals())

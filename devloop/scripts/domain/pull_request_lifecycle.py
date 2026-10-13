@@ -55,7 +55,11 @@ def reconcile(repo: str) -> list[ReconcileAction]:
     # action before a terminal parent recursively removes the containing directory.
     candidates.sort(key=lambda item: len(Path(item[2]).parts), reverse=True)
     for local_branch, pr, path in candidates:
-        outcome = worktree.remove_finished(control_repo, path)
+        outcome = worktree.remove_finished(
+            control_repo, path,
+            branch=str(local_branch.get("branch") or ""),
+            head=str(local_branch.get("head_sha") or ""),
+        )
         action = ReconcileAction(
             action="remove_worktree",
             status="completed" if outcome is worktree.RemovalOutcome.REMOVED else "deferred",

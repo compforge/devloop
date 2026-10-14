@@ -39,7 +39,7 @@ import logging
 
 from lib import git_state, parsers, repocli
 from domain.forge import ForgeError
-from lib.forge import forge_for_repo
+from domain.pull_request import forge_for_pull_requests
 
 from .. import repo_layout
 from . import base, store
@@ -64,15 +64,14 @@ def _resolve_default_branch(repo_dir: str, prev_branch: str, prev_at: float) -> 
     """
     if prev_branch and not base.is_stale(prev_at, DEFAULT_BRANCH_TTL_SEC):
         return prev_branch, prev_at                          # fresh cache → no network
-    forge = forge_for_repo(repo_dir)
-    if forge is not None:
-        try:
+    try:
+        forge = forge_for_pull_requests(repo_dir)
+        if forge is not None:
             db = (forge.default_branch() or "").strip()
             if db:
-                git_state.set_local_default_head(repo_dir, db)  # sync git cache so local_default_target agrees
                 return db, base.now()
-        except ForgeError:
-            pass
+    except ForgeError:
+        pass
     refreshed = git_state.refresh_remote_head(repo_dir)      # network set-head (syncs origin/HEAD); True if it succeeded
     db = git_state.local_default_target(repo_dir)
     if refreshed and db:

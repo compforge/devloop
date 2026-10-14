@@ -106,3 +106,19 @@ CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退�
 观测记录与写入前置条件分别处理查询失败。工具耗时记录跳过无法定位的路径，继续记录其他已知仓库，
 不能中断后续规则检查。验证计划无法确定分支时保留旧记录并报告缺口，不写入 detached HEAD 分区；
 实际规则和 rebase 的必要事实读取失败时仍停止操作，工作区状态必须完整且 clean 才允许开始 rebase。
+
+## Fork 与 PR 两侧仓库
+
+PR 的身份归目标 Repository，head 由源 Repository 与 Branch 共同确定。devloop 在本地 origin
+对应的仓库开发和推送；Forge 确认 `forked_from` 时，默认向同一 Forge 实例的直接父仓提 PR，
+否则向自身提 PR。repocli 提供父仓事实与显式仓库作用域，devloop 拥有这项目标选择策略。
+来源查询失败不能解释成普通仓库。
+
+分支创建、worktree、rebase、验证范围和 review 使用目标仓基线。已有匹配目标身份的 Git remote
+优先提供传输，否则直接 fetch 目标仓 URL；无需本机拥有父仓 clone，也不改 origin。
+跨仓基线放入独立的本地 ref，避免覆盖 fork 的 origin tracking refs。Rebase lease 始终约束
+origin 的源分支；PR 的编号、评论、review 身份和终态查询均归目标仓。
+
+创建与复用按完整源仓、源分支及目标分支匹配。Monitor 和写入守卫同样保留源仓身份，不能把其他
+fork 的同名分支认成本地工作。`forked_from` 只表达同 Forge 的直接父仓；跨 Forge 导入或镜像
+来源需要独立契约。

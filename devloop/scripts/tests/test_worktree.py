@@ -155,7 +155,7 @@ def test_failed_inventory_read_preserves_monitor_snapshot():
         if args[0] in {"for-each-ref", "ls-remote"}:
             return git.GitResult(-1, "", "injected read failure")
         return original(path, *args, **kwargs)
-    with patch.object(git, "git", side_effect=fail_branches), patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])):
+    with patch.object(git, "git", side_effect=fail_branches), patch.object(prstate, "forge_for_pull_requests", return_value=_FakeForge([])):
         assert prstate.refresh_local_pull_requests(repo) is False
         assert store.load_segment(repo, "local_pull_requests") == before
         assert prstate.poll_remote_branches(repo) is None
@@ -180,7 +180,7 @@ def test_local_pr_inventory_never_projects_separate_metadata_as_checkout():
     metadata = Path(repo).parent / "metadata"
     _git(repo, "init", "--separate-git-dir", str(metadata))
     linked = _add_external_worktree(repo, "separate-linked")
-    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])):
+    with patch.object(prstate, "forge_for_pull_requests", return_value=_FakeForge([])):
         payload = prstate.poll_local_pull_requests(repo)
         assert payload is not None
         branches = {item["branch"]: item for item in payload["branches"]}
@@ -204,12 +204,12 @@ def test_local_pull_request_inventory_joins_primary_and_linked_checkouts():
         PullRequest(number=3, state="closed", source_branch="external-linked", sha=head),
         PullRequest(number=4, state="merged", source_branch="retained", sha=head),
     ])
-    original_forge = prstate.forge_for_repo
+    original_forge = prstate.forge_for_pull_requests
     try:
-        prstate.forge_for_repo = lambda _repo: fake
+        prstate.forge_for_pull_requests = lambda _repo: fake
         payload = prstate.poll_local_pull_requests(repo)
     finally:
-        prstate.forge_for_repo = original_forge
+        prstate.forge_for_pull_requests = original_forge
 
     assert payload is not None
     by_branch = {item["branch"]: item for item in payload["branches"]}
@@ -246,12 +246,12 @@ def test_local_pull_request_inventory_is_all_or_nothing_on_forge_failure():
         "actions": [],
     }
     prstate.persist_local_pull_requests(repo, previous)
-    original_forge = prstate.forge_for_repo
+    original_forge = prstate.forge_for_pull_requests
     try:
-        prstate.forge_for_repo = lambda _repo: fake
+        prstate.forge_for_pull_requests = lambda _repo: fake
         assert prstate.refresh_local_pull_requests(repo) is False
     finally:
-        prstate.forge_for_repo = original_forge
+        prstate.forge_for_pull_requests = original_forge
 
     assert store.load_segment(repo, "local_pull_requests") == previous
 
@@ -465,9 +465,9 @@ def test_local_pull_request_refresh_records_only_authoritative_state_changes():
     fake = _FakeForge([
         PullRequest(number=1, state="open", source_branch="main", sha=head),
     ])
-    original_forge = prstate.forge_for_repo
+    original_forge = prstate.forge_for_pull_requests
     try:
-        prstate.forge_for_repo = lambda _repo: fake
+        prstate.forge_for_pull_requests = lambda _repo: fake
         assert prstate.refresh_local_pull_requests(repo)
         first = store.load_segment(repo, "local_pull_requests")
         assert first["changes"] == [{
@@ -497,7 +497,7 @@ def test_local_pull_request_refresh_records_only_authoritative_state_changes():
         stable = store.load_segment(repo, "local_pull_requests")
         assert stable["changes"] == []
     finally:
-        prstate.forge_for_repo = original_forge
+        prstate.forge_for_pull_requests = original_forge
 
 
 def test_failed_scalar_queries_preserve_pr_observation_and_block_gate():
@@ -508,7 +508,7 @@ def test_failed_scalar_queries_preserve_pr_observation_and_block_gate():
     previous = {"branch": "main", "pr_number": 31, "prs": [], "fetched_at": 1}
     prstate.persist_pr(repo, previous)
     before = store.load_segment(repo, "pr")
-    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])), \
+    with patch.object(prstate, "forge_for_pull_requests", return_value=_FakeForge([])), \
          patch.object(git_state, "get_current_branch", side_effect=OSError("injected read failure")):
         assert prstate.refresh_pr(repo) is False
         assert store.load_segment(repo, "pr") == before
@@ -519,7 +519,7 @@ def test_failed_scalar_queries_preserve_pr_observation_and_block_gate():
         else:
             raise AssertionError("write gate accepted unavailable identity")
     closed = PullRequest(number=31, state="merged", source_branch="main", sha="missing-object")
-    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([closed])):
+    with patch.object(prstate, "forge_for_pull_requests", return_value=_FakeForge([closed])):
         assert prstate.poll_pr(repo) is None
         assert prstate.poll_local_pull_requests(repo) is None
 

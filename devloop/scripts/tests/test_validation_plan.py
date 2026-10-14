@@ -252,7 +252,7 @@ def test_phase_comparison_reaches_dispatch():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-        intent = SimpleNamespace(repo=str(repo), target="main", files=["source.py"])
+        intent = flow.GitIntent(mode="mr", message="test", title="test", requested_branch=None, target="main", base="origin/main", explicit_base=False, files=["source.py"], repo=str(repo), source="test", invoke_cwd=str(repo))
         for phase, base, head in (("pre_commit", "HEAD", ""), ("post_commit", "HEAD^", "HEAD"),
                                   ("pre_mr", _git_out(repo,"rev-parse","HEAD").strip(), "HEAD")):
             with patch.object(flow.lifecycle, "dispatch", return_value=DispatchResult(phase, [])) as call:

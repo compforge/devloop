@@ -15,6 +15,8 @@ from pathlib import Path
 from lib import dependencies, git_state, gitcmd, repocli
 
 from . import repo_layout
+from .pull_request import target_base
+from .forge import ForgeError
 
 logger = logging.getLogger(__name__)
 
@@ -53,21 +55,17 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
                 msg += "; environment warning: " + " | ".join(warnings)
             return path, msg
 
-    target = git_state.local_default_target(repo_dir)
     branch = f"worktree-{tag}"
     if git_state.rev_parse(repo_dir, f"refs/heads/{branch}"):
         result = operations.add_worktree(repo_dir, str(rel), branch)
         message = "reused existing branch"
     else:
-        remote_ref = f"origin/{target}"
-        refspec = f"+refs/heads/{target}:refs/remotes/origin/{target}"
-        if not git_state.fetch(repo_dir, refspec, timeout=30):
-            return None, (
-                f"could not refresh {remote_ref}; worktree was not created "
-                "because its base may be stale"
-            )
-        if not git_state.rev_parse(repo_dir, remote_ref):
-            return None, f"could not resolve refreshed {remote_ref}"
+        try:
+            baseline = target_base(repo_dir)
+            baseline.refresh(repo_dir)
+        except (ForgeError, OSError) as exc:
+            return None, f"{exc}; worktree was not created because its base may be stale"
+        remote_ref = baseline.ref
         result = operations.add_worktree(repo_dir, str(rel), remote_ref, branch=branch)
         message = f"created worktree from refreshed {remote_ref}"
     if not result.ok:

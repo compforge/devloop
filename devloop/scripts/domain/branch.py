@@ -30,6 +30,7 @@ def create(
     base: str,
     *,
     carry_changes: bool = False,
+    base_branch: str | None = None,
     identity: session.SessionIdentity | None = None,
 ) -> CreateResult:
     """Create ``name`` from ``base`` and make it the current development branch.
@@ -112,7 +113,7 @@ def create(
         # The checkout has already changed even if stash reapplication conflicts below. Refresh
         # branch identity and ownership at that irreversible boundary so the next turn never sees
         # the old branch in devloop state while resolving the conflict on the new one.
-        fork_from = base.split("/", 1)[1] if base.startswith("origin/") else base
+        fork_from = base_branch or (base.split("/", 1)[1] if base.startswith("origin/") else base)
         RepoContext.refresh_branch(repo).set_fork_from(fork_from)
         session.acquire(repo, ident.session_id, name, harness=ident.harness)
 

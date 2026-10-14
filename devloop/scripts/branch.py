@@ -10,7 +10,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from domain import branch as branch_domain, repo as repo_model  # noqa: E402
 from domain.context import record_active_repo  # noqa: E402
-from lib import cli, git_state  # noqa: E402
+from lib import cli, git_state
+from domain.pull_request import target_base
+from domain.forge import ForgeError  # noqa: E402
 
 
 def _build_parser() -> cli.ArgParser:
@@ -42,8 +44,14 @@ def main(argv: list[str]) -> int:
         return 1
     repo = resolved.git_root
     record_active_repo(repo)
-    target = ns.target or git_state.local_default_target(repo)
-    base = ns.base or f"origin/{target}"
+    try:
+        baseline = target_base(repo, ns.target)
+        if not ns.base and baseline.remote != "origin":
+            baseline.refresh(repo)
+        base = ns.base or baseline.ref
+    except (ForgeError, OSError) as exc:
+        print(f"branch: {exc}", file=sys.stderr)
+        return 1
     plan = [
         f"action=branch-create repo={Path(repo).name} ({source}) "
         f"branch={ns.name} base={base}"
@@ -54,6 +62,7 @@ def main(argv: list[str]) -> int:
             ns.name,
             base,
             carry_changes=ns.carry_changes,
+            base_branch=baseline.branch if not ns.base else None,
         )
     except branch_domain.BranchError as exc:
         _banner(plan)

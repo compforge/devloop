@@ -2457,7 +2457,15 @@ function evaluateGate(repo) {
   const target = localDefaultTarget(repo);
   const segment = loadSegment(repo, "pr") ?? {};
   const rows2 = Array.isArray(segment.prs) ? segment.prs : [];
-  const candidates = rows2.map(pullRequest).filter((pr) => pr !== void 0 && pr.sourceBranch === branch);
+  const sourcePath = remote(repo)?.path ?? "";
+  const sameSource = (path) => segment.provider === "github" ? path.toLowerCase() === sourcePath.toLowerCase() : path === sourcePath;
+  const scoped = rows2.filter((value) => {
+    if (value === null || typeof value !== "object") return false;
+    const row = value;
+    if (typeof row.source_repository === "string" && row.source_repository) return sameSource(row.source_repository);
+    return !segment.source_repository || typeof segment.source_repository === "string" && sameSource(segment.source_repository) && segment.branch === branch && row.number === segment.pr_number;
+  });
+  const candidates = scoped.map(pullRequest).filter((pr) => pr !== void 0 && pr.sourceBranch === branch);
   const activePullRequest = candidates.find(pullRequestOpen) ?? candidates.find((pr) => Boolean(pr.sha && head) && isAncestor(repo, pr.sha, head));
   return {
     ...branch ? { branch } : {},

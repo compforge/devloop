@@ -29,7 +29,8 @@ from lib import cli, config, git_state, review_engine  # noqa: E402
 from domain import review_feedback  # noqa: E402
 from domain.context import base, record_active_repo, store  # noqa: E402
 from domain.forge import ForgeError, pr_label  # noqa: E402
-from lib.forge import forge_for_repo, resolve_forge  # noqa: E402
+from lib.forge import resolve_forge
+from domain.pull_request import forge_for_pull_requests, target_base  # noqa: E402
 
 _MAX_COMMENT_FINDINGS = 30   # 评论里最多列几条，避免超长 MR 评论
 
@@ -226,13 +227,13 @@ def _open_mr(repo: str, branch: str):
     """(forge, 该分支的开放 MR)——找一次，给 background 取标题/描述 + 发评论复用。无则补 None。"""
     if not branch:
         return None, None
-    forge = forge_for_repo(repo)
-    if forge is None:
-        return None, None
     try:
+        forge = forge_for_pull_requests(repo)
+        if forge is None:
+            return None, None
         return forge, next((p for p in forge.prs_for_branch(branch) if p.is_open), None)
     except ForgeError:
-        return forge, None
+        return None, None
 
 
 def _pull_request_identity(repo: str, pr) -> dict | None:
@@ -242,7 +243,10 @@ def _pull_request_identity(repo: str, pr) -> dict | None:
     resolution = resolve_forge(repo)
     if resolution is None:
         return None
-    return resolution.pull_request_identity(pr.number).to_dict()
+    identity = resolution.pull_request_identity(pr.number).to_dict()
+    if pr.target_repository:
+        identity["repository"] = pr.target_repository
+    return identity
 
 
 def _biz_id(pull_request: dict | None) -> str | None:
@@ -257,7 +261,7 @@ def _biz_id(pull_request: dict | None) -> str | None:
     return f"{source}:{repository}#{number}"
 
 
-def _build_background(repo: str, target: str, forge, pr, extra: str | None) -> str:
+def _build_background(repo: str, target: str, forge, pr, extra: str | None, *, target_ref: str = "") -> str:
     """拼引擎的 `--background`（业务上下文，喂进每个文件的 review prompt 以提准）：
     本次提交说明（git log）+ MR 标题/描述（forge）+ 显式 `-b`。全是 detach 进程自己能拿到的，
     不依赖会话。每段 `_BG_CAP` 截断——它每文件都注，务必控长。"""
@@ -265,7 +269,7 @@ def _build_background(repo: str, target: str, forge, pr, extra: str | None) -> s
     if extra and extra.strip():
         parts.append(extra.strip()[:_BG_CAP])
     log = subprocess.run(
-        ["git", "-C", repo, "log", f"origin/{target}..HEAD", "--no-merges", "--pretty=format:- %s%n%b"],
+        ["git", "-C", repo, "log", f"{target_ref or 'origin/' + target}..HEAD", "--no-merges", "--pretty=format:- %s%n%b"],
         capture_output=True, text=True,
     )
     if log.stdout.strip():
@@ -371,9 +375,17 @@ def main(argv: list[str]) -> int:
         return skip(f"{engine.name} LLM not configured — run `{engine.name} config set llm.*`")
 
     forge, pr = _open_mr(repo, branch)                              # 冻结的 branch：别把 A 的 findings 发到 B 的 PR
-    target = pr.target_branch if pr is not None and pr.target_branch else git_state.local_default_target(repo)
-    range_label = f"origin/{target}..HEAD"
-    background = _build_background(repo, target, forge, pr, ns.background)
+    target = pr.target_branch if pr is not None and pr.target_branch else None
+    try:
+        baseline = target_base(repo, target)
+        if baseline.remote != "origin":
+            baseline.refresh(repo)
+    except (ForgeError, OSError) as exc:
+        print(f"run_review: cannot resolve target baseline: {exc}", file=sys.stderr)
+        return 1
+    target = baseline.branch
+    range_label = f"{baseline.ref}..HEAD"
+    background = _build_background(repo, target, forge, pr, ns.background, target_ref=baseline.ref)
     pull_request = _pull_request_identity(repo, pr)
     history_path, prior_comments = (
         _build_history_feed(forge, pr) if engine.name == "ccr" else (None, [])
@@ -419,7 +431,7 @@ def main(argv: list[str]) -> int:
     # 传 sha 之后「记录说审了什么」与「实际审了什么」由构造保证一致。
     try:
         result = engine.review(
-            repo, f"origin/{target}", sha, background, history_path,
+            repo, baseline.ref, sha, background, history_path,
             biz_id=_biz_id(pull_request),
             on_finding=accept_finding,
         )

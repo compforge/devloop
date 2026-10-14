@@ -33,7 +33,7 @@ from domain.forge import (  # noqa: E402
     pr_label,
 )
 from lib import cli  # noqa: E402
-from lib.forge import forge_for_repo  # noqa: E402
+from domain.pull_request import forge_for_pull_requests  # noqa: E402
 
 _READINESS_LABEL = {
     MergeReadiness.READY: "✓ ready",
@@ -51,7 +51,11 @@ def _forge_or_exit(ns, prog):
     clean exit(0): the same not-an-error treatment the per-verb scripts had — devloop runs in
     repos with no forge and callers shouldn't see a failure for asking."""
     resolved, _ = cli.resolve_repo_or_exit(ns, prog)
-    forge = forge_for_repo(resolved.git_root)
+    try:
+        forge = forge_for_pull_requests(resolved.git_root)
+    except (ForgeError, OSError) as exc:
+        print(f"{prog}: cannot resolve PR repository: {exc}", file=sys.stderr)
+        raise SystemExit(1)
     if forge is None:
         print(f"{prog}: no token or unsupported remote", file=sys.stderr)
         raise SystemExit(0)

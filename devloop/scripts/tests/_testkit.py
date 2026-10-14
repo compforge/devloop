@@ -37,6 +37,7 @@ class _FakeForge(Forge):
     """In-memory Forge for testing the domain composition (build_window) + orchestration
     (reuse_or_create_pr) without HTTP — the port is small enough that this is trivial."""
     provider = "github"
+    source_repository = ""
 
     def __init__(self, prs, bodies=None):
         self._prs = {p.number: p for p in prs}

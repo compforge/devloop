@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from lib import git_state
+from repocli.remote import remote
 from . import prstate, store
 from .base import PullRequest
 
@@ -69,7 +70,18 @@ def evaluate(git_root: str, *, live_refresh: bool = False) -> GateView:
     # correct in the block direction.
     pr_seg = store.load_segment(git_root, "pr") or {}
     prs = [PullRequest.from_dict(p) for p in (pr_seg.get("prs") or []) if p.get("number") is not None]
-    branch_prs = [p for p in prs if p.source_branch == branch] if branch else []
+    source = remote(git_root)
+    source_path = source.path if source else ""
+    def same_source(path: str) -> bool:
+        return path.casefold() == source_path.casefold() if pr_seg.get("provider") == "github" else path == source_path
+
+    branch_prs = [p for p in prs if p.source_branch == branch and (
+        same_source(p.source_repository) if p.source_repository else
+        not pr_seg.get("source_repository") or (
+            same_source(pr_seg["source_repository"])
+            and pr_seg.get("branch") == branch and p.number == pr_seg.get("pr_number")
+        )
+    )] if branch else []
     active_pr = prstate.pick_branch_pr(branch_prs, git_root, head)
 
     # target is stable (the repo's trunk) → read the cached repo fact (meta.default_branch, the

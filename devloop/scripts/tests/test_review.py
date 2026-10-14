@@ -643,10 +643,13 @@ def test_pull_request_identity_uses_origin_source_and_repository():
     )
     rr.resolve_forge = lambda repo: resolution
     try:
-        assert rr._pull_request_identity("/repo", SimpleNamespace(number=17)) == {
+        assert rr._pull_request_identity("/repo", PullRequest(number=17)) == {
             "source": "github-work-alias",
             "repository": "owner/repo",
             "number": 17,
+        }
+        assert rr._pull_request_identity("/repo", PullRequest(number=17, target_repository="parent/repo")) == {
+            "source": "github-work-alias", "repository": "parent/repo", "number": 17,
         }
         assert rr._pull_request_identity("/repo", None) is None
     finally:

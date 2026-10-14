@@ -7,6 +7,8 @@ silently bless a colleague's intervening push and overwrite it.
 """
 from __future__ import annotations
 from repocli import git as operations
+from domain.pull_request import target_base
+from domain.forge import ForgeError
 
 import json
 import os
@@ -31,6 +33,7 @@ class RebaseState:
     target_sha: str
     started_head: str
     started_at: float
+    target_ref: str = ""
     version: int = 1
 
     @classmethod
@@ -41,6 +44,7 @@ class RebaseState:
         return cls(
             branch=raw["branch"],
             target=raw["target"],
+            target_ref=raw.get("target_ref", "origin/" + raw["target"]),
             remote_sha=raw["remote_sha"],
             target_sha=raw["target_sha"],
             started_head=raw["started_head"],
@@ -142,23 +146,25 @@ def start(repo: str, target: str | None = None) -> list[str]:
         raise RebaseError(f"refusing to rewrite {branch!r}: its PR/MR is merged or closed")
 
     pr_target = view.active_pr.target_branch if view.active_pr else ""
-    selected_target = target or pr_target or view.target
     if target and pr_target and target != pr_target:
         raise RebaseError(
             f"--target {target!r} differs from the open PR/MR target {pr_target!r}; "
             "update the PR/MR target first or omit --target"
         )
-    if selected_target == branch:
+    try:
+        baseline = target_base(repo, target or pr_target or None)
+    except (ForgeError, OSError) as exc:
+        raise RebaseError(str(exc)) from exc
+    selected_target = baseline.branch
+    if selected_target == branch and baseline.remote == "origin":
         raise RebaseError("source and target branch are the same")
     _check_branch_name(repo, branch, "source")
     _check_branch_name(repo, selected_target, "target")
 
-    tips = git_state.ls_remote_tips(repo, branch, selected_target, timeout=15)
+    tips = git_state.ls_remote_tips(repo, branch, timeout=15)
     remote_sha = tips.get(branch, "")
     if not remote_sha:
         raise RebaseError(f"origin/{branch} does not exist or the remote is unavailable")
-    if not tips.get(selected_target):
-        raise RebaseError(f"origin/{selected_target} does not exist or the remote is unavailable")
 
     # Explicit destinations make both tracking refs authoritative even when the configured
     # fetch refspec is narrow. '+' is local-only: a rewritten remote branch must still be
@@ -168,7 +174,6 @@ def start(repo: str, target: str | None = None) -> list[str]:
         "fetch",
         "origin",
         f"+refs/heads/{branch}:refs/remotes/origin/{branch}",
-        f"+refs/heads/{selected_target}:refs/remotes/origin/{selected_target}",
         timeout=60,
     )
     if not fetched.ok:
@@ -186,12 +191,17 @@ def start(repo: str, target: str | None = None) -> list[str]:
             "reconcile the remote update before rebasing"
         )
 
-    target_sha = git_state.rev_parse(repo, f"origin/{selected_target}")
+    try:
+        baseline.refresh(repo)
+    except (ForgeError, OSError) as exc:
+        raise RebaseError(str(exc)) from exc
+    target_sha = git_state.rev_parse(repo, baseline.ref)
     if not target_sha:
-        raise RebaseError(f"could not resolve fetched origin/{selected_target}")
+        raise RebaseError(f"could not resolve fetched {baseline.ref}")
     state = RebaseState(
         branch=branch,
         target=selected_target,
+        target_ref=baseline.ref,
         remote_sha=remote_sha,
         target_sha=target_sha,
         started_head=view.head_sha,
@@ -200,14 +210,14 @@ def start(repo: str, target: str | None = None) -> list[str]:
     _save_state(repo, state)
     plan = [
         f"captured lease origin/{branch} @ {remote_sha[:9]}",
-        f"fetched origin/{branch} and origin/{selected_target} @ {target_sha[:9]}",
+        f"fetched origin/{branch} and {baseline.ref} @ {target_sha[:9]}",
     ]
 
-    result = operations.rebase(repo, f"origin/{selected_target}")
+    result = operations.rebase(repo, baseline.ref)
     if result.uncertain:
         raise RebaseError(gitcmd.operation_detail(result))
     if result.ok:
-        plan.append(f"rebased {branch} onto origin/{selected_target}")
+        plan.append(f"rebased {branch} onto {baseline.ref}")
         plan.append("run relevant tests, then `smart_rebase.sh finish` (no --message needed)")
         _refresh(repo)
         return plan
@@ -236,7 +246,7 @@ def continue_rebase(repo: str) -> list[str]:
     if result.ok:
         _refresh(repo)
         return [
-            f"rebase of {state.branch} onto origin/{state.target} is complete",
+            f"rebase of {state.branch} onto {state.target_ref or state.target} is complete",
             "run relevant tests, then `smart_rebase.sh finish`",
         ]
     if git_state.rebase_in_progress(repo):

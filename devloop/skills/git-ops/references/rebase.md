@@ -18,3 +18,5 @@ PR/MR target, then repository trunk.
 Inspect with `smart_rebase.sh status --repo ...`. While Git is still rebasing, abort with
 `smart_rebase.sh abort --repo ...`; after completion, abort refuses rather than guessing a reset
 target.
+
+For a fork, the target baseline comes from its direct parent repository; the captured push lease always belongs to origin. A parent clone or upstream remote is not required.

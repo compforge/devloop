@@ -1,3 +1,4 @@
+import { remote } from "@compforge/repocli";
 import { currentBranch, headSha, isAncestor, isProtectedBranch, localDefaultTarget } from "../../lib/git-state.js";
 import { pullRequestInactive, pullRequestOpen } from "../forge.js";
 import { loadSegment } from "./store.js";
@@ -25,7 +26,19 @@ export function evaluateGate(repo) {
     const target = localDefaultTarget(repo);
     const segment = loadSegment(repo, "pr") ?? {};
     const rows = Array.isArray(segment.prs) ? segment.prs : [];
-    const candidates = rows.map(pullRequest).filter((pr) => pr !== undefined && pr.sourceBranch === branch);
+    const sourcePath = remote(repo)?.path ?? "";
+    const sameSource = (path) => segment.provider === "github"
+        ? path.toLowerCase() === sourcePath.toLowerCase() : path === sourcePath;
+    const scoped = rows.filter((value) => {
+        if (value === null || typeof value !== "object")
+            return false;
+        const row = value;
+        if (typeof row.source_repository === "string" && row.source_repository)
+            return sameSource(row.source_repository);
+        return !segment.source_repository || (typeof segment.source_repository === "string" && sameSource(segment.source_repository)
+            && segment.branch === branch && row.number === segment.pr_number);
+    });
+    const candidates = scoped.map(pullRequest).filter((pr) => pr !== undefined && pr.sourceBranch === branch);
     const activePullRequest = candidates.find(pullRequestOpen)
         ?? candidates.find((pr) => Boolean(pr.sha && head) && isAncestor(repo, pr.sha, head));
     return {

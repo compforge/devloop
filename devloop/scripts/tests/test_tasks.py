@@ -103,7 +103,7 @@ def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory()
         PullRequest(number=1, state="merged", source_branch="worktree-finished", sha=_git_out(linked, "rev-parse", "HEAD")),
         PullRequest(number=2, state="open", source_branch="worktree-ongoing", sha=_git_out(ongoing, "rev-parse", "HEAD")),
     ])
-    with patch.object(prstate, "forge_for_repo", return_value=fake):
+    with patch.object(prstate, "forge_for_pull_requests", return_value=fake):
         # Seed an old terminal snapshot, then make the live refresh fail.
         assert prstate.refresh_local_pull_requests(repo)
         with patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
@@ -150,7 +150,7 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
             return lookup(branch)
 
         fake.prs_for_branch = change_during_lookup
-        with patch.object(prstate, "forge_for_repo", return_value=fake):
+        with patch.object(prstate, "forge_for_pull_requests", return_value=fake):
             report = pr_lifecycle.sweep_repo(repo)
             assert report["updated"]["local_pull_requests"] is True
             assert changed and (Path(target) / "unsaved.txt").read_text() == "new work\n", change

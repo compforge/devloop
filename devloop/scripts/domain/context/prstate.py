@@ -21,7 +21,7 @@ from pathlib import Path
 
 from lib import git_state
 from domain.forge import ForgeError, build_window
-from lib.forge import forge_for_repo
+from domain.pull_request import forge_for_pull_requests, target_base
 
 from .. import review_feedback
 from . import base, store
@@ -75,7 +75,10 @@ def pick_branch_pr(branch_prs: list, repo: str, head_sha: str):
 def poll_pr(repo: str) -> dict | None:
     """One forge poll → the `pr` segment payload (current branch's PR window), or None when
     the repo has no usable forge / remote. Side-effect-free; `persist_pr` writes it."""
-    forge = forge_for_repo(repo)
+    try:
+        forge = forge_for_pull_requests(repo)
+    except (ForgeError, OSError):
+        return None
     if forge is None:
         return None
     try:
@@ -114,6 +117,7 @@ def poll_pr(repo: str) -> dict | None:
             pending_review_verdicts, pending_review_verdicts_key = None, ""
     return {
         "branch": branch,
+        "source_repository": forge.source_repository,
         "head_sha": head,          # provenance: the HEAD this window was selected against
         "provider": forge.provider,
         "pr_number": anchor,
@@ -163,13 +167,16 @@ def poll_local_pull_requests(repo: str) -> dict | None:
     The snapshot is all-or-nothing. A failed branch lookup returns ``None`` rather than a
     partial inventory, because absence from a partial list must never authorize cleanup.
     """
-    forge = forge_for_repo(repo)
+    try:
+        forge = forge_for_pull_requests(repo)
+    except (ForgeError, OSError):
+        return None
     if forge is None:
         return None
     try:
         branches = git_state.list_local_branches(repo)
         checkouts = git_state.list_checkouts(repo)
-    except OSError:
+    except (ForgeError, OSError):
         return None
     # A located Git directory does not locate its checkout. Keep the whole
     # inventory unknown so reconciliation cannot read that gap as reclaimed.
@@ -266,8 +273,10 @@ def poll_remote_branches(repo: str, branches: tuple[str, ...] = TRUNK_CANDIDATES
     offline. No object fetch (cheap); the SHAs are the TRUE remote tips — a colleague's push is
     visible here before any local fetch, which is the whole point of polling them."""
     try:
-        tips = git_state.ls_remote_tips(repo, *branches)
-    except OSError:
+        baseline = target_base(repo)
+        kwargs = {} if baseline.remote == "origin" else {"remote": baseline.remote}
+        tips = git_state.ls_remote_tips(repo, *branches, **kwargs)
+    except (ForgeError, OSError):
         return None
     if not tips:
         return None

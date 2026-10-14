@@ -6,7 +6,7 @@ Use ordinary `cd` to select an existing checkout. When another session needs iso
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <short-unique-tag>
 ```
 
-A new tag creates `worktree-<tag>` from freshly fetched `origin/<target>` and refuses creation when
+A new tag creates `worktree-<tag>` from freshly fetched the target repository’s branch (the direct parent for a fork, otherwise origin) and refuses creation when
 the baseline cannot be refreshed. An existing worktree path or retained branch is resumed without
 rebase/reset.
 

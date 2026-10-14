@@ -39,7 +39,7 @@ from domain import branch as branch_domain, lifecycle, repo as repo_model, stagi
 from domain.context import RepoContext, gate, prstate, record_active_repo, store
 from domain.forge import Forge, ForgeError, PullRequest, pr_label  # noqa: E402
 from lib import cli, git_state, gitcmd  # noqa: E402
-from lib.forge import forge_for_repo  # noqa: E402
+from domain.pull_request import forge_for_pull_requests, target_base, TargetBase  # noqa: E402
 
 
 class SmartError(Exception):
@@ -76,6 +76,8 @@ class GitIntent:
     # description: title alone is the "cram everything into one line" pressure that
     # produced 150-char MR titles over empty descriptions.
     description: str = ""
+    target_ref: str = ""
+    target_remote: str = "origin"
 
 
 @dataclass(frozen=True)
@@ -234,13 +236,13 @@ def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: l
 
 def reuse_or_create_pr(repo: str, source: str, target: str, title: str, description: str, plan: list[str]):
     """Open a PR/MR for `source`→`target`, reusing the branch's open one if present.
-    Provider-neutral: the forge is resolved from the repo's origin (GitHub or GitLab).
+    The source is origin; the target is its direct fork parent or the same repository.
     `description` becomes the body on create, and is appended on reuse."""
-    forge = forge_for_repo(repo)
+    forge = forge_for_pull_requests(repo)
     if forge is None:
         raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
     try:
-        existing = next((p for p in forge.prs_for_branch(source) if p.is_open), None)
+        existing = next((p for p in forge.prs_for_branch(source) if p.is_open and p.target_branch == target), None)
         if existing:
             plan.append(f"reused open {pr_label(forge.provider, existing.number)}: {existing.web_url}")
             sync_pr_description(forge, existing, description, plan)
@@ -263,7 +265,8 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
     if not resolved:
         raise SmartError(how)
     record_active_repo(resolved.git_root)
-    target = ns.target or git_state.local_default_target(resolved.git_root)
+    baseline = target_base(resolved.git_root, ns.target)
+    target = baseline.branch
     files: list[str] = []
     for path in ns.file or []:
         if path not in files:
@@ -275,7 +278,9 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
         description=(ns.message.split("\n", 1)[1].strip() if ns.message and "\n" in ns.message else ""),
         requested_branch=ns.branch,
         target=target,
-        base=ns.base or f"origin/{target}",
+        base=ns.base or baseline.ref,
+        target_ref=baseline.ref,
+        target_remote=baseline.remote,
         explicit_base=bool(ns.base),
         files=files,
         repo=resolved.git_root,
@@ -327,6 +332,7 @@ def prepare_branch(intent: GitIntent, gv: gate.GateView, plan: list[str]) -> Bra
                 intent.requested_branch,
                 intent.base,
                 carry_changes=True,
+                base_branch=intent.target if not intent.explicit_base else None,
             )
         except branch_domain.BranchError as exc:
             raise SmartError(str(exc)) from exc
@@ -368,19 +374,20 @@ def stage_and_commit(intent: GitIntent, plan: list[str], *, validated_identity: 
 def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: list[str]) -> None:
     """Phase 4: foreign-commit self-check, then push / MR according to mode."""
     repo, target, current = intent.repo, intent.target, branch.branch
+    target_ref = intent.target_ref or f"origin/{target}"
 
     # Foreign-commit guard: a branch cut fresh off origin/<target> (no --base stacking)
     # must carry ONLY this run's commit(s). More means it was cut off the wrong ref — the
     # classic footgun where a prior gcampr left HEAD on an unrelated feature branch — and the
     # MR would smuggle foreign commits into <target>. Catch at creation, not at merge.
     if branch.cut and not intent.explicit_base:
-        ahead = run(repo, "rev-list", "--count", f"origin/{target}..{current}").strip()
+        ahead = run(repo, "rev-list", "--count", f"{target_ref}..{current}").strip()
         expected = 1 if staged.committed else 0
         if ahead.isdigit() and int(ahead) > expected:
-            subjects = run(repo, "log", "--oneline", f"origin/{target}..{current}")
+            subjects = run(repo, "log", "--oneline", f"{target_ref}..{current}")
             raise SmartError(
-                f"'{current}' has {ahead} commit(s) vs origin/{target} but this run added {expected} — "
-                f"it carries foreign commits (cut off a non-{target} base?). Re-cut off origin/{target}:\n{subjects}"
+                f"'{current}' has {ahead} commit(s) vs {target_ref} but this run added {expected} — "
+                f"it carries foreign commits (cut off a non-{target} base?). Re-cut off {target_ref}:\n{subjects}"
             )
 
     if intent.mode in ("push", "mr"):
@@ -390,13 +397,13 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
     if intent.mode == "push" and staged.committed and intent.description and branch.active_pr:
         # gcamp is the natural way to add commits to an in-flight PR — keep its description
         # in step with the new commit's body, same as the mr-mode reuse path does.
-        forge = forge_for_repo(repo)
+        forge = forge_for_pull_requests(repo)
         if forge is not None:
             sync_pr_description(forge, branch.active_pr, intent.description, plan)
 
     if intent.mode == "mr":
-        rng = run(repo, "log", "--oneline", f"origin/{target}..{current}").strip()
-        plan.append(f"PR carries {len(rng.splitlines()) if rng else 0} commit(s) vs origin/{target}")
+        rng = run(repo, "log", "--oneline", f"{target_ref}..{current}").strip()
+        plan.append(f"PR carries {len(rng.splitlines()) if rng else 0} commit(s) vs {target_ref}")
         reuse_or_create_pr(repo, current, target, intent.title, intent.description, plan)
         RepoContext.refresh_branch(repo)
         # Don't write pr_number here — keep the `pr` segment single-owner. Trigger one
@@ -515,7 +522,7 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
     if phase == "post_commit":
         return repo_model.committed_paths(intent.repo)
     if phase in ("pre_mr", "post_mr"):
-        return repo_model.range_paths(intent.repo, f"origin/{intent.target}")
+        return repo_model.range_paths(intent.repo, intent.target_ref or f"origin/{intent.target}")
     # 新相位必须在上面显式选一种取法。**不 fallthrough 到分支范围**：那会让一个未来的相位
     # （如 pre_push）悄悄拿到「整条分支」的语义而看不出问题——而「每个相位的答案不同」正是本
     # 函数存在的全部理由，默认值一填就把这个约定架空了。None = 不知道 → handler 保守全跑。
@@ -538,7 +545,7 @@ def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecy
     if phase == "post_commit":
         comparison = Comparison(base="HEAD^", head="HEAD")
     elif phase in ("pre_mr", "post_mr"):
-        base = gitcmd.git(intent.repo, "merge-base", "HEAD", f"origin/{intent.target}")
+        base = gitcmd.git(intent.repo, "merge-base", "HEAD", intent.target_ref or f"origin/{intent.target}")
         comparison = (Comparison(base=base.out, head="HEAD") if base.ok and base.out
                       else Comparison(reason="branch merge base unavailable"))
     res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase), comparison=comparison)
@@ -592,7 +599,7 @@ def main(argv: list[str]) -> int:
 
     try:
         intent = resolve_intent(ns, os.getcwd())
-    except SmartError as e:
+    except (SmartError, ForgeError, OSError) as e:
         print(f"commit_flow: {e}", file=sys.stderr)  # no PLAN yet — nothing was attempted
         return 1
 
@@ -615,6 +622,8 @@ def main(argv: list[str]) -> int:
         # signal hook（如 review）可配在任意相位（由 config 决定）；每相位的 relay 在它所「裹」的
         # git 动作完成后 detach 起：pre/post_commit 在 commit 后、pre/post_mr 在 publish 后。
         # review 的 MR 评论是机会性的——relay 跑时查到分支有开放 MR 就发，没有就只落 review.json。
+        if intent.target_ref and (intent.mode == "mr" or intent.target_remote != "origin"):
+            TargetBase(intent.target, intent.target_remote, intent.target_ref).refresh(intent.repo)
         branch = prepare_branch(intent, gv, plan)
         pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # 必在 commit 前（normalize 可能改源码）
         staged = stage_and_commit(intent, plan, validated_identity=pre_c.execution_identity)
@@ -627,7 +636,7 @@ def main(argv: list[str]) -> int:
             post_m = run_lifecycle_gate(intent, "post_mr", plan)   # MR 此刻已建好
             launch_background_relays((pre_m.to_launch if pre_m else []) + post_m.to_launch, intent.repo, plan)
         RepoContext.refresh_branch(intent.repo)
-    except (SmartError, OSError) as e:
+    except (SmartError, ForgeError, OSError) as e:
         _banner(plan)
         print(f"\n✗ {e}", file=sys.stderr)
         return 1

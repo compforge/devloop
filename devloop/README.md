@@ -220,3 +220,10 @@ codex plugin add devloop@devloop
 
 仓库组织、内容身份和 Git/Forge 操作由 repocli 原生工具包提供；devloop 负责验证与 PR/MR 开发流程。
 验证入口在对应 Component 内声明，无可用入口会明确报告，不视为检查通过。
+
+### 从 fork 贡献代码
+
+在 fork 的本地仓库中使用 checkout、branch、gcampr 和 rebase。配置可访问该 Forge 的凭据后，
+devloop 从平台查询直接父仓：新分支基于父仓默认分支，提交推送到 origin，PR 创建到父仓。
+`--target` 指定父仓的目标分支。无需再 clone 父仓，也无需手工添加 upstream remote。
+普通仓库继续向自身提 PR；发布操作使用 origin 对应的仓库。

@@ -123,6 +123,10 @@ Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 pack
 | `gcamp` | commit + push，不创建新的 PR/MR |
 | `gcampr` | commit + push + 创建或复用 PR/MR |
 
+创建 PR 时可传 `--target-repo current|parent`，默认当前仓；`parent` 向同 Forge 的直接源仓提 PR，
+`--target` 可指定源仓目标分支。AI 根据上下文选择，意图不明确时询问。该选择仅用于本次创建/复用 PR，
+push 始终发往 origin；branch、worktree、commit、review 和巡检仍以当前仓为边界。
+
 新工作优先在编辑前通过 branch-create 事务建立分支。它默认要求 clean working tree；已有改动确实属于新分支时才显式使用 `--carry-changes`。Git 提交事务默认处理本次相关改动，也可以通过可重复的 `--file <path>` 精确限定提交范围；兼容的 commit-time `--branch` 同样从 `origin/<target>` 建立基线，不从当前 HEAD 偷带提交。
 
 这些操作不依赖 session 当前停在哪个目录：优先解析显式 `--repo`，其次使用 cwd 所在仓库，再使用当前 session 最近绑定的仓库；无法唯一确定时会拒绝猜测。

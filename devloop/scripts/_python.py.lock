@@ -3,12 +3,12 @@ revision = 3
 requires-python = ">=3.11"
 
 [manifest]
-requirements = [{ name = "compforge-repocli", git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=935a1e8959d3ba655f8f4edd3bb94452e1485a1f" }]
+requirements = [{ name = "compforge-repocli", git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=658980fa36626458573ce725e96dd23233f6e2f9" }]
 
 [[package]]
 name = "compforge-repocli"
-version = "0.7.1"
-source = { git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=935a1e8959d3ba655f8f4edd3bb94452e1485a1f#935a1e8959d3ba655f8f4edd3bb94452e1485a1f" }
+version = "0.7.2"
+source = { git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=658980fa36626458573ce725e96dd23233f6e2f9#658980fa36626458573ce725e96dd23233f6e2f9" }
 dependencies = [
     { name = "harness-common" },
     { name = "pyyaml" },
@@ -16,12 +16,8 @@ dependencies = [
 
 [[package]]
 name = "harness-common"
-version = "0.5.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c5/d6/b303f20929feaa73b0c2528e341b382e24838cfed61c30050a77ddf88702/harness_common-0.5.1.tar.gz", hash = "sha256:0fc6aa9cc234b56d684f186fc52cc7eb5fe388aa696baea47275f93845754f34", size = 35840, upload-time = "2026-09-17T14:01:12.109Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/fc/ce5a020c3bebe25a4dcdaa7cb3f5d9e489e2e317f3f69ebe62be7dc79227/harness_common-0.5.1-py3-none-any.whl", hash = "sha256:c7edb834727e79480112da56f1e46557f241d55519b5b46d8bb2c3f64d1a8545", size = 36470, upload-time = "2026-09-17T14:01:11.098Z" },
-]
+version = "0.5.6"
+source = { git = "https://github.com/compforge/quality-harness.git?subdirectory=sdks%2Fpython%2Fcommon&rev=8242691e9deef874bf5df4362da2c10aa9d49004#8242691e9deef874bf5df4362da2c10aa9d49004" }
 
 [[package]]
 name = "pyyaml"

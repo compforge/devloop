@@ -603,7 +603,7 @@ def test_sync_pr_description_append_only():
     # mr-mode reuse path appends through the same helper
     orig = sgo.forge_for_repo
     try:
-        f2 = _FakeForge([PullRequest(number=3, state="open", source_branch="feat/x", web_url="u/3")],
+        f2 = _FakeForge([PullRequest(number=3, state="open", source_branch="feat/x", target_branch="main", web_url="u/3")],
                         bodies={3: "original"})
         sgo.forge_for_repo = lambda repo: f2
         sgo.reuse_or_create_pr("/repo", "feat/x", "main", "t", "follow-up body", [])
@@ -660,6 +660,134 @@ def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
         except flow.SmartError as exc:
             assert "outcome unknown" in str(exc)
 
+
+
+class _ForkForge(_FakeForge):
+    def __init__(self, *, parent="upstream/repo", prs=()):
+        super().__init__([])
+        self.parent = parent
+        self.destination = _FakeForge(prs)
+        self.scoped = None
+
+    def repository(self):
+        from harness_common import Forge, Repository
+        return Repository(Forge("github"), "fork/repo", forked_from=self.parent)
+
+    def for_repository(self, path, *, source_repository=""):
+        self.scoped = (path, source_repository)
+        return self.destination
+
+
+def test_pr_destination_defaults_current_without_provenance_lookup():
+    from unittest.mock import patch
+    flow = _load_script("commit_flow")
+    # Base fake rejects repository metadata/scoping, as an offline endpoint would.
+    forge = _FakeForge([])
+    with patch.object(flow, "forge_for_repo", return_value=forge):
+        pr = flow.reuse_or_create_pr("/repo", "fix", "main", "title", "body", [])
+    assert forge.created == pr and pr.target_branch == "main"
+
+
+def test_parent_pr_uses_parent_default_and_explicit_base():
+    from unittest.mock import patch
+    flow = _load_script("commit_flow")
+    for requested, expected in [(None, "trunk"), ("release", "release")]:
+        forge = _ForkForge()
+        plan = []
+        with patch.object(flow, "forge_for_repo", return_value=forge), \
+             patch.object(forge.destination, "default_branch", return_value="trunk") as default:
+            pr = flow.reuse_or_create_pr("/repo", "fix", requested, "title", "body", plan,
+                                         target_repo="parent")
+        assert forge.scoped == ("upstream/repo", "fork/repo")
+        assert forge.created is None and forge.destination.created == pr
+        assert pr.target_branch == expected and forge.destination.description(pr.number) == "body"
+        assert default.call_count == (0 if requested else 1)
+        assert any("target repository=upstream/repo source=fork/repo" in line for line in plan)
+
+
+def test_parent_pr_reuse_preserves_base_and_honors_explicit_base():
+    from unittest.mock import patch
+    flow = _load_script("commit_flow")
+    for requested in [None, "release", "trunk"]:
+        existing = PullRequest(number=8, state="open", source_branch="fix", target_branch="release")
+        forge = _ForkForge(prs=[existing])
+        with patch.object(flow, "forge_for_repo", return_value=forge), \
+             patch.object(forge.destination, "default_branch", side_effect=AssertionError("unneeded lookup")):
+            pr = flow.reuse_or_create_pr("/repo", "fix", requested, "title", "body", [],
+                                         target_repo="parent")
+        assert (pr.number == 8) == (requested != "trunk")
+        assert pr.target_branch == (requested or "release")
+        assert forge.created is None
+
+
+def test_parent_pr_lookup_failure_never_creates_on_current_repository():
+    from unittest.mock import patch
+    flow = _load_script("commit_flow")
+    for parent, error in [(None, None), ("upstream/repo", ForgeError("metadata unavailable"))]:
+        forge = _ForkForge(parent=parent)
+        with patch.object(flow, "forge_for_repo", return_value=forge), \
+             patch.object(forge, "repository", side_effect=error, wraps=forge.repository):
+            try:
+                flow.reuse_or_create_pr("/repo", "fix", None, "t", "", [], target_repo="parent")
+            except flow.SmartError as exc:
+                assert ("metadata unavailable" if error else "no same-Forge fork parent") in str(exc)
+            else:
+                raise AssertionError("parent selection must fail explicitly")
+        assert forge.created is None and forge.destination.created is None
+
+
+def test_parent_pr_target_does_not_change_local_git_baseline_or_persist_policy():
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+    from lib.gitcmd import GitResult
+    flow = _load_script("commit_flow")
+    with TemporaryDirectory() as repo:
+        _git(repo, "init", "-qb", "main")
+        _git(repo, "config", "user.name", "Fixture")
+        _git(repo, "config", "user.email", "test@example.invalid")
+        _git(repo, "commit", "--allow-empty", "-qm", "base")
+        _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+        _git(repo, "checkout", "-qb", "fix")
+        config_before = _git_out(repo, "config", "--local", "--list")
+        ns = flow._build_parser().parse_args(["mr", "--repo", repo, "-m", "title",
+                                               "--target-repo", "parent", "--target", "release"])
+        with patch.object(flow, "forge_for_repo", side_effect=AssertionError("unneeded API")):
+            intent = flow.resolve_intent(ns, repo)
+        assert intent.target == "main" and intent.base == "origin/main"
+        assert intent.pr_target == "release"
+        forge = _ForkForge()
+        with patch.object(flow, "forge_for_repo", return_value=forge), \
+             patch.object(flow.operations, "push", return_value=GitResult(0, "", "")) as push, \
+             patch.object(flow.RepoContext, "refresh_branch"), patch.object(flow.prstate, "refresh_pr"):
+            flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
+        push.assert_called_once_with(str(Path(repo).resolve()), "fix", upstream=True)
+        assert forge.destination.created.target_branch == "release"
+        assert _git_out(repo, "config", "--local", "--list") == config_before
+
+
+def test_commit_remains_local_and_rejects_pr_destination_option():
+    from contextlib import redirect_stderr
+    from io import StringIO
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+    flow = _load_script("commit_flow")
+    for mode in ["commit", "push"]:
+        with redirect_stderr(StringIO()):
+            try:
+                flow.main([mode, "-m", "title", "--target-repo", "parent"])
+            except SystemExit as exc:
+                assert exc.code == 2
+            else:
+                raise AssertionError("PR destination must be rejected outside mr mode")
+    with TemporaryDirectory() as repo:
+        _git(repo, "init", "-qb", "fix")
+        _git(repo, "config", "user.name", "Fixture")
+        _git(repo, "config", "user.email", "test@example.invalid")
+        _git(repo, "commit", "--allow-empty", "-qm", "base")
+        Path(repo, "f").write_text("local change")
+        with patch.object(flow, "forge_for_repo", side_effect=AssertionError("commit requires no Forge")):
+            assert flow.main(["commit", "--repo", repo, "-m", "local", "--file", "f"]) == 0
+        assert _git_out(repo, "log", "-1", "--format=%s") == "local"
 
 if __name__ == "__main__":
     run_main(globals())

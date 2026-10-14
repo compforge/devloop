@@ -789,5 +789,46 @@ def test_commit_remains_local_and_rejects_pr_destination_option():
             assert flow.main(["commit", "--repo", repo, "-m", "local", "--file", "f"]) == 0
         assert _git_out(repo, "log", "-1", "--format=%s") == "local"
 
+
+def test_current_pr_reuse_filters_only_explicit_target():
+    """An implicit local default must not split a branch's existing release PR."""
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+    from lib.gitcmd import GitResult
+    flow = _load_script("commit_flow")
+    with TemporaryDirectory() as repo:
+        _git(repo, "init", "-qb", "main")
+        _git(repo, "config", "user.name", "Fixture")
+        _git(repo, "config", "user.email", "test@example.invalid")
+        _git(repo, "commit", "--allow-empty", "-qm", "base")
+        for branch in ["main", "release"]:
+            _git(repo, "update-ref", f"refs/remotes/origin/{branch}", "HEAD")
+        _git(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+        _git(repo, "checkout", "-qb", "fix")
+        for requested, has_pr, created_base in [
+            (None, True, None), ("release", True, None), ("main", True, "main"),
+            (None, False, "main"), ("release", False, "release"),
+        ]:
+            existing = PullRequest(number=9, state="open", source_branch="fix", target_branch="release")
+            forge = _FakeForge([existing] if has_pr else [], bodies={9: "original"} if has_pr else {})
+            argv = ["mr", "--repo", repo, "-m", "fix: follow-up\n\nfollow-up body"]
+            if requested:
+                argv += ["--target", requested]
+            intent = flow.resolve_intent(flow._build_parser().parse_args(argv), repo)
+            with patch.object(flow, "forge_for_repo", return_value=forge), \
+                 patch.object(forge, "default_branch", side_effect=AssertionError("use the local default")), \
+                 patch.object(flow.operations, "push", return_value=GitResult(0, "", "")), \
+                 patch.object(flow.RepoContext, "refresh_branch"), patch.object(flow.prstate, "refresh_pr"):
+                flow.publish(intent, flow.BranchResult("fix", False, existing if has_pr else None),
+                             flow.StageResult(False), [])
+            if created_base is None:
+                assert forge.created is None, "omitting --target must reuse the existing release PR"
+                assert forge.description(9) == "original\n\nfollow-up body"
+            else:
+                assert forge.created.target_branch == created_base
+                assert forge.description(forge.created.number) == "follow-up body"
+                if has_pr:
+                    assert forge.description(9) == "original"
+
 if __name__ == "__main__":
     run_main(globals())

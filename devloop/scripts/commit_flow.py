@@ -236,13 +236,14 @@ def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: l
 
 def reuse_or_create_pr(
     repo: str, source: str, target: str | None, title: str, description: str,
-    plan: list[str], *, target_repo: str = "current",
+    plan: list[str], *, target_repo: str = "current", default_target: str | None = None,
 ) -> PullRequest:
     """Create/reuse on the explicitly selected repository; source remains origin.
 
     Parent selection belongs to this operation only. It neither persists branch policy
     nor changes local Git baselines. Reuse is scoped to the full source repository and,
-    when explicit, the requested target branch.
+    when explicit, the requested target branch. The resolved default_target applies
+    only to creation, so an omitted --target preserves an existing PR's base.
     """
     forge = forge_for_repo(repo)
     if forge is None:
@@ -260,7 +261,7 @@ def reuse_or_create_pr(
             plan.append(f"reused open {pr_label(forge.provider, existing.number)}: {existing.web_url}")
             sync_pr_description(forge, existing, description, plan)
             return existing
-        target = target or forge.default_branch()
+        target = target or default_target or forge.default_branch()
         if not target:
             raise ForgeError(f"cannot determine default branch for {target_repo} PR target")
         pr = forge.create(source_branch=source, target_branch=target, title=title, body=description)
@@ -419,8 +420,9 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
         rng = run(repo, "log", "--oneline", f"origin/{target}..{current}").strip()
         plan.append(f"branch carries {len(rng.splitlines()) if rng else 0} commit(s) vs origin/{target}")
         reuse_or_create_pr(
-            repo, current, intent.pr_target if intent.target_repo == "parent" else target,
-            intent.title, intent.description, plan, target_repo=intent.target_repo,
+            repo, current, intent.pr_target, intent.title, intent.description, plan,
+            target_repo=intent.target_repo,
+            default_target=target if intent.target_repo == "current" else None,
         )
         RepoContext.refresh_branch(repo)
         # Don't write pr_number here — keep the `pr` segment single-owner. Trigger one

@@ -3,12 +3,12 @@ revision = 3
 requires-python = ">=3.11"
 
 [manifest]
-requirements = [{ name = "compforge-repocli", git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=658980fa36626458573ce725e96dd23233f6e2f9" }]
+requirements = [{ name = "compforge-repocli", git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=17189ab940021c16123d0cded446120a7bffb0de" }]
 
 [[package]]
 name = "compforge-repocli"
-version = "0.7.2"
-source = { git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=658980fa36626458573ce725e96dd23233f6e2f9#658980fa36626458573ce725e96dd23233f6e2f9" }
+version = "0.7.3"
+source = { git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=17189ab940021c16123d0cded446120a7bffb0de#17189ab940021c16123d0cded446120a7bffb0de" }
 dependencies = [
     { name = "harness-common" },
     { name = "pyyaml" },
@@ -16,8 +16,8 @@ dependencies = [
 
 [[package]]
 name = "harness-common"
-version = "0.5.6"
-source = { git = "https://github.com/compforge/quality-harness.git?subdirectory=sdks%2Fpython%2Fcommon&rev=8242691e9deef874bf5df4362da2c10aa9d49004#8242691e9deef874bf5df4362da2c10aa9d49004" }
+version = "0.5.7"
+source = { git = "https://github.com/compforge/quality-harness.git?subdirectory=sdks%2Fpython%2Fcommon&rev=6cbaf18ef6a675131c56f1b84f3b720cca231669#6cbaf18ef6a675131c56f1b84f3b720cca231669" }
 
 [[package]]
 name = "pyyaml"

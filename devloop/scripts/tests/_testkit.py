@@ -29,6 +29,7 @@ shutil.rmtree(_GCFG, ignore_errors=True)
 os.makedirs(_GCFG, exist_ok=True)
 os.environ["DEVLOOP_CONFIG_DIR"] = _GCFG
 
+from harness_common import Forge as ForgeIdentity, Repository  # noqa: E402
 from domain.context import PullRequest  # noqa: E402
 from domain.forge import Comment, Forge, ForgeError, ForgeNotFound, Release  # noqa: E402
 
@@ -43,10 +44,14 @@ class _FakeForge(Forge):
         self._bodies = dict(bodies or {})   # number → description text
         self.created = None
 
-    def create(self, *, source_branch, target_branch, title, body=""):
+    def repository(self):
+        return Repository(ForgeIdentity("github"), "fork/repo")
+
+    def create(self, *, source_repository, source_branch, target_repository, target_branch, title, body=""):
         n = max(self._prs, default=0) + 1
         pr = PullRequest(number=n, state="open", source_branch=source_branch,
-                         target_branch=target_branch, title=title, web_url=f"u/{n}")
+                         target_branch=target_branch, title=title, web_url=f"u/{n}",
+                         source_repository=source_repository.path, target_repository=target_repository.path)
         self._prs[n] = pr
         self._bodies[n] = body
         self.created = pr
@@ -70,7 +75,8 @@ class _FakeForge(Forge):
         self._prs[number] = replace(pr, state="closed")
         return self._prs[number]
 
-    def prs_for_branch(self, branch):
+    def prs_for_branch(self, branch, *, source_repository=None):
+        self.queried_source = source_repository
         return sorted((p for p in self._prs.values() if p.source_branch == branch),
                       key=lambda p: p.number, reverse=True)
 

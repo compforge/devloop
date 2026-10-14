@@ -33,6 +33,8 @@ import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from harness_common import Repository
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from domain import branch as branch_domain, lifecycle, repo as repo_model, staging  # noqa: E402
@@ -76,7 +78,7 @@ class GitIntent:
     # description: title alone is the "cram everything into one line" pressure that
     # produced 150-char MR titles over empty descriptions.
     description: str = ""
-    target_repo: str = "current"
+    target_repository: str | None = None
     pr_target: str | None = None
 
 
@@ -236,25 +238,31 @@ def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: l
 
 def reuse_or_create_pr(
     repo: str, source: str, target: str | None, title: str, description: str,
-    plan: list[str], *, target_repo: str = "current",
+    plan: list[str], *, target_repository: str | None = None,
 ) -> PullRequest:
-    """Create/reuse on the explicitly selected repository; source remains origin.
+    """Create/reuse for an explicit destination ID; source remains the current repository.
 
-    Parent selection belongs to this operation only. It neither persists branch policy
-    nor changes local Git baselines. Reuse is scoped to the full source repository and,
-    when explicit, the requested target branch.
+    @spec Destination selection affects only PR creation/reuse. Local Git baselines
+    stay current-repository scoped. An omitted target branch preserves an open PR's base.
     """
     forge = forge_for_repo(repo)
     if forge is None:
         raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
     try:
-        if target_repo == "parent":
-            repository = forge.repository()
-            if not repository.forked_from:
-                raise ForgeError(f"{repository.path} has no same-Forge fork parent")
-            forge = forge.for_repository(repository.forked_from, source_repository=repository.path)
-            plan.append(f"PR target repository={repository.forked_from} source={repository.path}")
-        existing = next((p for p in forge.prs_for_branch(source)
+        source_repository = forge.repository()
+        destination = source_repository
+        if target_repository is not None:
+            forge_name, sep, path = target_repository.partition("/")
+            if not sep or not path or forge_name != source_repository.forge.name:
+                raise ValueError(
+                    f"target repository {target_repository!r} must be a Repository ID "
+                    f"within Forge {source_repository.forge.name!r}"
+                )
+            destination = Repository(source_repository.forge, path)
+        if destination.id() != source_repository.id():
+            forge = forge.for_repository(destination.path)
+        plan.append(f"PR source={source_repository.id()}:{source} target={destination.id()}")
+        existing = next((p for p in forge.prs_for_branch(source, source_repository=source_repository)
                          if p.is_open and (target is None or p.target_branch == target)), None)
         if existing:
             plan.append(f"reused open {pr_label(forge.provider, existing.number)}: {existing.web_url}")
@@ -262,11 +270,14 @@ def reuse_or_create_pr(
             return existing
         target = target or forge.default_branch()
         if not target:
-            raise ForgeError(f"cannot determine default branch for {target_repo} PR target")
-        pr = forge.create(source_branch=source, target_branch=target, title=title, body=description)
-        plan.append(f"created {pr_label(forge.provider, pr.number)}: {pr.web_url}")
+            raise ForgeError(f"cannot determine default branch for {destination.id()}")
+        pr = forge.create(source_repository=source_repository, source_branch=source,
+                          target_repository=destination, target_branch=target,
+                          title=title, body=description)
+        plan.append(f"created {pr_label(forge.provider, pr.number)} "
+                    f"{source_repository.id()}:{source} -> {destination.id()}:{target}: {pr.web_url}")
         return pr
-    except ForgeError as e:
+    except (ForgeError, ValueError) as e:
         raise SmartError(f"branch pushed, but PR/MR create/reuse failed: {e}")
 
 
@@ -281,8 +292,8 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
     if not resolved:
         raise SmartError(how)
     record_active_repo(resolved.git_root)
-    # A parent PR's --target names its base branch, not a local branch creation base.
-    target = (ns.target if ns.target_repo != "parent" else None) or git_state.local_default_target(resolved.git_root)
+    # An explicit destination's --target is PR-only; local Git keeps its own baseline.
+    target = (ns.target if ns.target_repository is None else None) or git_state.local_default_target(resolved.git_root)
     files: list[str] = []
     for path in ns.file or []:
         if path not in files:
@@ -293,7 +304,7 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
         title=ns.title or (ns.message.splitlines()[0] if ns.message else ""),
         description=(ns.message.split("\n", 1)[1].strip() if ns.message and "\n" in ns.message else ""),
         requested_branch=ns.branch,
-        target_repo=ns.target_repo or "current",
+        target_repository=ns.target_repository,
         pr_target=ns.target,
         target=target,
         base=ns.base or f"origin/{target}",
@@ -419,8 +430,8 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
         rng = run(repo, "log", "--oneline", f"origin/{target}..{current}").strip()
         plan.append(f"branch carries {len(rng.splitlines()) if rng else 0} commit(s) vs origin/{target}")
         reuse_or_create_pr(
-            repo, current, intent.pr_target if intent.target_repo == "parent" else target,
-            intent.title, intent.description, plan, target_repo=intent.target_repo,
+            repo, current, intent.pr_target,
+            intent.title, intent.description, plan, target_repository=intent.target_repository,
         )
         RepoContext.refresh_branch(repo)
         # Don't write pr_number here — keep the `pr` segment single-owner. Trigger one
@@ -504,8 +515,8 @@ def _build_parser() -> cli.ArgParser:
     )
     ap.add_argument("--branch", "-b", default=None, help="branch name to cut when on a protected/stale branch")
     ap.add_argument("--target", "-t", default=None)
-    ap.add_argument("--target-repo", choices=["current", "parent"], default=None,
-                    help="mr mode only: PR destination (default current; parent is the direct fork source)")
+    ap.add_argument("--target-repository", default=None, metavar="FORGE/PATH",
+                    help="mr mode only: explicit destination Repository ID (default: current repository)")
     ap.add_argument(
         "--base",
         default=None,
@@ -614,8 +625,8 @@ def launch_background_relays(specs: list[lifecycle.BackgroundSpec], repo: str, p
 def main(argv: list[str]) -> int:
     ap = _build_parser()
     ns = ap.parse_args(argv)
-    if ns.target_repo is not None and ns.mode != "mr":
-        ap.error("--target-repo is only supported when creating a PR/MR (mr mode)")
+    if ns.target_repository is not None and ns.mode != "mr":
+        ap.error("--target-repository is only supported when creating a PR/MR (mr mode)")
     ns.message = _resolve_message(ns, ap)   # file/stdin or inline; exits with a hint if neither
 
     try:

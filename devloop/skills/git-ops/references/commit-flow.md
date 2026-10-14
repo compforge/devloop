@@ -40,12 +40,18 @@ For gcampr, surface the returned PR/MR URL.
 
 ## PR destination
 
-Only gcampr accepts `--target-repo current|parent` (default `current`). `parent` reads the
-current repository's direct same-Forge fork source and creates/reuses the PR there; missing
-provenance or a failed lookup is an error. Push remains on origin.
+Only gcampr accepts `--target-repository <forge/path>`, a common Repository ID such as
+`github/odvcencio/gotreesitter`. Omission targets the current repository. The source always
+remains the current repository, and push remains on origin. Both repositories must be on
+the same Forge instance.
 
-With `parent`, `--target` selects the parent PR's base branch; omitted, an existing PR keeps
-its base and a new PR uses the parent's default branch. Local branch creation, validation
-and review keep the current repository's baseline; use `--base` for an explicit branch start.
-The destination is per invocation: repeat `--target-repo parent` when reusing an upstream PR.
-Branch/worktree state and current-repository PR monitoring do not store that choice.
+Resolve the destination from the user's context before invoking the command. Repository
+`forked_from` provides a same-Forge parent path when relevant; combine it with the current
+Forge name to obtain the destination ID. Ask the user when intent is ambiguous. The command
+accepts concrete IDs, with no `current`/`parent` selector or automatic parent fallback.
+
+With an explicit destination, `--target` selects the PR's base branch without changing the
+local Git baseline. Omitted, an existing PR keeps its base and a new PR uses the destination's
+default branch. Use `--base` for an explicit local branch start. Repeat the destination ID
+when reusing an upstream PR; branch/worktree state and current-repository monitoring do not
+store that choice.

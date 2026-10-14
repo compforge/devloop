@@ -29,6 +29,9 @@ Worktree 的命名、任务/session 归属、复用、清理时机和依赖准�
 默认目标缺失时的 main/master 回退、忽略哪些目录、清理时机及 best-effort 处理属于 devloop；
 必要的默认分支读取失败向上传递，不能触发缺失时才允许的回退。
 提交范围、敏感文件规则、提交说明和 PR 正文由 devloop 决定，Git/Forge 库执行动作并返回结果。
+创建 PR 时，devloop 固定源仓为当前 Repository，将明确的目标 Repository ID 与分支解析成
+repocli 所需的四元组。目标选择由用户或 AI 的上下文判断完成，不由 `current`/`parent` 枚举表达；
+该选择只影响本次创建/复用，不进入 branch、worktree、commit 或 review 状态。
 显式 `--file` 限定完整提交的路径范围：已有暂存包含范围外路径时拒绝，交由用户决定其归属。
 目录选择先用逐文件 status 展开，再过滤敏感路径；已有暂存的敏感内容新增和修改同样阻止提交。
 已暂存的敏感文件删除允许提交，以便清理误跟踪内容；`git rm --cached` 留在工作区的文件不会被重新加入。

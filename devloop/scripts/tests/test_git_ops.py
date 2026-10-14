@@ -605,7 +605,7 @@ def test_sync_pr_description_append_only():
     try:
         f2 = _FakeForge([PullRequest(number=3, state="open", source_branch="feat/x", target_branch="main", web_url="u/3")],
                         bodies={3: "original"})
-        sgo.forge_for_pull_requests = lambda repo: f2
+        sgo.forge_for_pull_requests = lambda repo, target_repo=None: f2
         sgo.reuse_or_create_pr("/repo", "feat/x", "main", "t", "follow-up body", [])
         assert f2.description(3) == "original\n\nfollow-up body"
     finally:

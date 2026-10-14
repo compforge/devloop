@@ -52,7 +52,8 @@ def _forge_or_exit(ns, prog):
     repos with no forge and callers shouldn't see a failure for asking."""
     resolved, _ = cli.resolve_repo_or_exit(ns, prog)
     try:
-        forge = forge_for_pull_requests(resolved.git_root)
+        forge = forge_for_pull_requests(resolved.git_root, ns.target_repo,
+                                        branch=ns.branch if ns.verb == "list" else None)
     except (ForgeError, OSError) as exc:
         print(f"{prog}: cannot resolve PR repository: {exc}", file=sys.stderr)
         raise SystemExit(1)
@@ -201,6 +202,7 @@ def main(argv: list[str]) -> int:
     p_show = sub.add_parser("show", help="view a PR/MR")
     p_show.add_argument("number", metavar="number|url")
     cli.add_repo_arg(p_show)
+    p_show.add_argument("--target-repo", choices=["current", "parent"], default=None)
     p_show.set_defaults(fn=cmd_show)
 
     p_comment = sub.add_parser("comment", help="read a full comment and its replies")
@@ -208,12 +210,14 @@ def main(argv: list[str]) -> int:
     p_comment.add_argument("comment_id", metavar="comment-id",
                            help="top-level id from `pr show` or `review findings`")
     cli.add_repo_arg(p_comment)
+    p_comment.add_argument("--target-repo", choices=["current", "parent"], default=None)
     p_comment.set_defaults(fn=cmd_comment)
 
     p_list = sub.add_parser("list", help="recent PRs/MRs, or this branch's")
     p_list.add_argument("--limit", type=int, default=10)
     p_list.add_argument("--branch", default=None, help="only this source branch (else recent)")
     cli.add_repo_arg(p_list)
+    p_list.add_argument("--target-repo", choices=["current", "parent"], default=None)
     p_list.set_defaults(fn=cmd_list)
 
     p_upd = sub.add_parser("update", help="edit title/description/target")
@@ -222,11 +226,13 @@ def main(argv: list[str]) -> int:
     p_upd.add_argument("--description")
     p_upd.add_argument("--target-branch", dest="target_branch")
     cli.add_repo_arg(p_upd)
+    p_upd.add_argument("--target-repo", choices=["current", "parent"], default=None)
     p_upd.set_defaults(fn=cmd_update)
 
     p_close = sub.add_parser("close", help="close without merging")
     p_close.add_argument("number")
     cli.add_repo_arg(p_close)
+    p_close.add_argument("--target-repo", choices=["current", "parent"], default=None)
     p_close.set_defaults(fn=cmd_close)
 
     p_reply = sub.add_parser("reply", help="reply in a comment's thread")
@@ -234,6 +240,7 @@ def main(argv: list[str]) -> int:
     p_reply.add_argument("comment_id", metavar="comment-id", help="from `pr show`")
     p_reply.add_argument("body")
     cli.add_repo_arg(p_reply)
+    p_reply.add_argument("--target-repo", choices=["current", "parent"], default=None)
     p_reply.set_defaults(fn=cmd_reply)
 
     ns = ap.parse_args(argv)

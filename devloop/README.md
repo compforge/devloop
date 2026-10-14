@@ -224,6 +224,9 @@ codex plugin add devloop@devloop
 ### 从 fork 贡献代码
 
 在 fork 的本地仓库中使用 checkout、branch、gcampr 和 rebase。配置可访问该 Forge 的凭据后，
-devloop 从平台查询直接父仓：新分支基于父仓默认分支，提交推送到 origin，PR 创建到父仓。
-`--target` 指定父仓的目标分支。无需再 clone 父仓，也无需手工添加 upstream remote。
+新分支默认向当前仓提 PR。`--target-repo current|parent` 显式选择当前仓或平台记录的直接父仓，
+`--target` 选择该仓的目标分支。AI 根据任务上下文选择；意图不明确时询问用户，不能只因仓库是 fork 就选父仓。
+例如向上游贡献时，使用 `checkout.py <repo> --worktree <tag> --target-repo parent` 开始，
+或在 `smart_gcampr.sh` 上传入 `--target-repo parent`。选择按开发分支保存，后续 push、review、rebase
+沿用该目标；新分支仍默认当前仓。提交始终推送到 origin，无需再 clone 父仓或手工添加 upstream remote。
 普通仓库继续向自身提 PR；发布操作使用 origin 对应的仓库。

@@ -15,7 +15,7 @@ from pathlib import Path
 from lib import dependencies, git_state, gitcmd, repocli
 
 from . import repo_layout
-from .pull_request import target_base
+from .pull_request import target_base, remember_target
 from .forge import ForgeError
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ def prepare_environment(path: str) -> list[str]:
     return warnings
 
 
-def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
+def create_or_reuse(repo_dir: str, tag: str, *, target_repo: str | None = None) -> tuple[str | None, str]:
     """Create or reuse ``.worktrees/<tag>``.
 
     Worktrees live inside the repo, never as siblings. The legacy ``worktrees/`` layout
@@ -44,6 +44,12 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
     A genuinely new branch is cut from a freshly fetched ``origin/<target>``. A retained
     branch is resumed as-is: reusing a tag must never rewrite existing work.
     """
+    branch = f"worktree-{tag}"
+    if target_repo is not None and git_state.rev_parse(repo_dir, f"refs/heads/{branch}"):
+        requested = target_base(repo_dir, target_repo=target_repo, source_branch=branch)
+        existing = target_base(repo_dir, source_branch=branch)
+        if requested.repository != existing.repository:
+            return None, "existing branch has a different PR target; use a new worktree tag"
     base = Path(repo_dir)
     rel = Path(".worktrees") / tag
     for legacy in (rel, Path("worktrees") / tag):
@@ -61,12 +67,14 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
         message = "reused existing branch"
     else:
         try:
-            baseline = target_base(repo_dir)
+            baseline = target_base(repo_dir, target_repo=target_repo, source_branch=branch)
             baseline.refresh(repo_dir)
         except (ForgeError, OSError) as exc:
             return None, f"{exc}; worktree was not created because its base may be stale"
         remote_ref = baseline.ref
         result = operations.add_worktree(repo_dir, str(rel), remote_ref, branch=branch)
+        if result.ok:
+            remember_target(repo_dir, branch, baseline.repository)
         message = f"created worktree from refreshed {remote_ref}"
     if not result.ok:
         return None, f"worktree add failed for {branch}: {gitcmd.operation_detail(result)}"

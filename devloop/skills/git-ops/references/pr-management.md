@@ -1,7 +1,9 @@
 # PR/MR management
 
 Use the provider-neutral `pr.py`; it selects GitHub or GitLab from the repo origin and resolves the
-configured token. Do not hand-write provider API calls.
+configured token. Queries follow the branch's recorded PR target, defaulting to the current repository.
+Pass `--target-repo current|parent` to inspect the other scope without changing the recorded choice.
+Do not hand-write provider API calls.
 
 ```bash
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/pr.py show <number|url>

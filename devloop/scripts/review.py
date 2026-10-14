@@ -24,7 +24,7 @@ from domain.pull_request import forge_for_pull_requests  # noqa: E402
 def _forge_or_exit(ns, prog):
     resolved, _ = cli.resolve_repo_or_exit(ns, prog)
     try:
-        forge = forge_for_pull_requests(resolved.git_root)
+        forge = forge_for_pull_requests(resolved.git_root, ns.target_repo)
     except (ForgeError, OSError) as exc:
         print(f"{prog}: cannot resolve PR repository: {exc}", file=sys.stderr)
         raise SystemExit(1)
@@ -232,6 +232,7 @@ def main(argv: list[str]) -> int:
     findings.add_argument("number", metavar="number|url")
     findings.add_argument("--pending", action="store_true", help="only Findings without a Verdict")
     cli.add_repo_arg(findings)
+    findings.add_argument("--target-repo", choices=["current", "parent"], default=None)
     findings.set_defaults(fn=cmd_findings)
 
     label = sub.add_parser("label", help="record a Finding Verdict without resolving its thread")
@@ -240,6 +241,7 @@ def main(argv: list[str]) -> int:
     label.add_argument("verdict", choices=review_feedback.VERDICTS)
     label.add_argument("--reason", required=True)
     cli.add_repo_arg(label)
+    label.add_argument("--target-repo", choices=["current", "parent"], default=None)
     label.set_defaults(fn=cmd_label)
 
     resolve = sub.add_parser("resolve", help="resolve a handled Finding thread")
@@ -251,6 +253,7 @@ def main(argv: list[str]) -> int:
         help="confirm an important/minor Finding's fix is published",
     )
     cli.add_repo_arg(resolve)
+    resolve.add_argument("--target-repo", choices=["current", "parent"], default=None)
     resolve.set_defaults(fn=cmd_resolve)
 
     missed = sub.add_parser("missed", help="publish a review issue the engine missed")
@@ -259,6 +262,7 @@ def main(argv: list[str]) -> int:
     missed.add_argument("--line", type=int)
     missed.add_argument("--reason", required=True)
     cli.add_repo_arg(missed)
+    missed.add_argument("--target-repo", choices=["current", "parent"], default=None)
     missed.set_defaults(fn=cmd_missed)
 
     ns = parser.parse_args(argv)

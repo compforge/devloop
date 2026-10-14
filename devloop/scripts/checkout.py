@@ -15,6 +15,8 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PLUGIN_ROOT))
 
+from lib import cli  # noqa: E402
+from domain.forge import ForgeError  # noqa: E402
 from domain import repo as repo_model, worktree  # noqa: E402
 
 
@@ -23,19 +25,15 @@ def emit(line: str, code: int) -> int:
     return code
 
 
-def parse_args(argv: list[str]) -> tuple[str | None, str | None]:
-    """Return ``(query, worktree_tag)`` after extracting ``--worktree <tag>``."""
-    tag = None
-    args = argv[1:]
-    query_parts: list[str] = []
-    while args:
-        arg = args.pop(0)
-        if arg == "--worktree":
-            tag = args.pop(0) if args else None
-        else:
-            query_parts.append(arg)
-    query = " ".join(query_parts).strip() or None
-    return query, tag
+def parse_args(argv: list[str]):
+    ap = cli.ArgParser(description="Select a repository or create/resume a managed worktree.")
+    ap.add_argument("query", nargs="*")
+    ap.add_argument("--worktree")
+    ap.add_argument("--target-repo", choices=["current", "parent"], default=None)
+    ns = ap.parse_args(argv[1:])
+    if ns.target_repo is not None and not ns.worktree:
+        ap.error("--target-repo requires --worktree")
+    return " ".join(ns.query).strip() or None, ns.worktree, ns.target_repo
 
 
 def resolve_base(query: str) -> tuple[str | None, int, str]:
@@ -50,14 +48,17 @@ def resolve_base(query: str) -> tuple[str | None, int, str]:
 
 
 def main(argv: list[str]) -> int:
-    query, tag = parse_args(argv)
+    query, tag, target_repo = parse_args(argv)
     if not query:
         return emit("NONE\tno argument given", 1)
     path, code, line = resolve_base(query)
     if path is None:
         return emit(line, code)
     if tag:
-        managed_path, message = worktree.create_or_reuse(path, tag)
+        try:
+            managed_path, message = worktree.create_or_reuse(path, tag, target_repo=target_repo)
+        except (ForgeError, OSError) as exc:
+            return emit(f"NONE\t{exc}", 1)
         if managed_path is None:
             return emit(f"NONE\t{message}", 1)
         print(f"MATCH\t{managed_path}")

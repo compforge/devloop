@@ -206,7 +206,7 @@ def test_local_pull_request_inventory_joins_primary_and_linked_checkouts():
     ])
     original_forge = prstate.forge_for_pull_requests
     try:
-        prstate.forge_for_pull_requests = lambda _repo: fake
+        prstate.forge_for_pull_requests = lambda _repo, target_repo=None: fake
         payload = prstate.poll_local_pull_requests(repo)
     finally:
         prstate.forge_for_pull_requests = original_forge
@@ -248,7 +248,7 @@ def test_local_pull_request_inventory_is_all_or_nothing_on_forge_failure():
     prstate.persist_local_pull_requests(repo, previous)
     original_forge = prstate.forge_for_pull_requests
     try:
-        prstate.forge_for_pull_requests = lambda _repo: fake
+        prstate.forge_for_pull_requests = lambda _repo, target_repo=None: fake
         assert prstate.refresh_local_pull_requests(repo) is False
     finally:
         prstate.forge_for_pull_requests = original_forge
@@ -467,7 +467,7 @@ def test_local_pull_request_refresh_records_only_authoritative_state_changes():
     ])
     original_forge = prstate.forge_for_pull_requests
     try:
-        prstate.forge_for_pull_requests = lambda _repo: fake
+        prstate.forge_for_pull_requests = lambda _repo, target_repo=None: fake
         assert prstate.refresh_local_pull_requests(repo)
         first = store.load_segment(repo, "local_pull_requests")
         assert first["changes"] == [{

@@ -80,7 +80,7 @@ def test_pr_cli_dispatch():
     orig_forge = prcli.forge_for_pull_requests
     orig_resolve = prcli.cli.resolve_repo_or_exit
     try:
-        prcli.forge_for_pull_requests = lambda repo: fake
+        prcli.forge_for_pull_requests = lambda repo, target_repo=None, **kwargs: fake
         prcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
         assert prcli.main(["show", "5"]) == 0
         assert prcli.main(["list"]) == 0
@@ -117,7 +117,7 @@ def test_pr_show_exposes_replyable_comment_ids():
     orig_forge = prcli.forge_for_pull_requests
     orig_resolve = prcli.cli.resolve_repo_or_exit
     try:
-        prcli.forge_for_pull_requests = lambda repo: fake
+        prcli.forge_for_pull_requests = lambda repo, target_repo=None, **kwargs: fake
         prcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
         output = io.StringIO()
         with redirect_stdout(output):
@@ -170,7 +170,7 @@ def test_review_cli_separates_verdict_from_resolution():
     orig_forge = reviewcli.forge_for_pull_requests
     orig_resolve = reviewcli.cli.resolve_repo_or_exit
     try:
-        reviewcli.forge_for_pull_requests = lambda repo: fake
+        reviewcli.forge_for_pull_requests = lambda repo, target_repo=None: fake
         reviewcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
         assert reviewcli.main(["findings", "5"]) == 0
         assert reviewcli.main(["findings", "5", "--pending"]) == 0
@@ -232,7 +232,7 @@ def test_pr_reply_has_no_review_side_effects():
 
     orig_forge, orig_resolve = prcli.forge_for_pull_requests, prcli.cli.resolve_repo_or_exit
     try:
-        prcli.forge_for_pull_requests = lambda repo: fake
+        prcli.forge_for_pull_requests = lambda repo, target_repo=None, **kwargs: fake
         prcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
         assert prcli.main(["reply", "5", "30", "ccr:label=minor — just text"]) == 0
         assert fake.replied == [(5, "30", "ccr:label=minor — just text")]
@@ -291,14 +291,14 @@ def test_reuse_or_create_pr_over_narrowed_port():
     try:
         # reuse: an open PR exists for the branch
         f = _FakeForge([PullRequest(number=3, state="open", source_branch="feat/x", target_branch="main", web_url="u/3")])
-        sgo.forge_for_pull_requests = lambda repo: f
+        sgo.forge_for_pull_requests = lambda repo, target_repo=None: f
         plan = []
         pr = sgo.reuse_or_create_pr("/repo", "feat/x", "main", "t", "", plan)
         assert pr.number == 3 and f.created is None
         assert any("reused open PR #3" in line for line in plan)
         # create: only a finished PR for the branch → open a new one, body = description
         f2 = _FakeForge([PullRequest(number=3, state="merged", source_branch="feat/x")])
-        sgo.forge_for_pull_requests = lambda repo: f2
+        sgo.forge_for_pull_requests = lambda repo, target_repo=None: f2
         plan = []
         pr = sgo.reuse_or_create_pr("/repo", "feat/x", "main", "t", "why & what", plan)
         assert f2.created is not None and pr.number == 4
@@ -387,8 +387,8 @@ def test_resolve_default_branch_ttl():
         calls["forge"] += 1
         return None
 
-    orig = R.forge_for_pull_requests
-    R.forge_for_pull_requests = _no_forge
+    orig = R.forge_for_repo
+    R.forge_for_repo = _no_forge
     try:
         db, at = R._resolve_default_branch("/r", "main", B.now())   # 新鲜
         assert db == "main" and calls["forge"] == 0                 # 命中缓存、未拉
@@ -396,11 +396,11 @@ def test_resolve_default_branch_ttl():
         class _F:
             def default_branch(self): return "release"
 
-        R.forge_for_pull_requests = lambda d: _F()
+        R.forge_for_repo = lambda d: _F()
         db2, at2 = R._resolve_default_branch("/r", "main", 0.0)     # 过期(at=0)
         assert db2 == "release" and at2 > 0                         # forge 权威值 + 新时间戳
     finally:
-        R.forge_for_pull_requests = orig
+        R.forge_for_repo = orig
 
 
 

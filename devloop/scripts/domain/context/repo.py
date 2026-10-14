@@ -39,7 +39,7 @@ import logging
 
 from lib import git_state, parsers, repocli
 from domain.forge import ForgeError
-from domain.pull_request import forge_for_pull_requests
+from lib.forge import forge_for_repo
 
 from .. import repo_layout
 from . import base, store
@@ -65,7 +65,7 @@ def _resolve_default_branch(repo_dir: str, prev_branch: str, prev_at: float) -> 
     if prev_branch and not base.is_stale(prev_at, DEFAULT_BRANCH_TTL_SEC):
         return prev_branch, prev_at                          # fresh cache → no network
     try:
-        forge = forge_for_pull_requests(repo_dir)
+        forge = forge_for_repo(repo_dir)
         if forge is not None:
             db = (forge.default_branch() or "").strip()
             if db:

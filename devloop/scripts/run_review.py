@@ -228,7 +228,7 @@ def _open_mr(repo: str, branch: str):
     if not branch:
         return None, None
     try:
-        forge = forge_for_pull_requests(repo)
+        forge = forge_for_pull_requests(repo, branch=branch)
         if forge is None:
             return None, None
         return forge, next((p for p in forge.prs_for_branch(branch) if p.is_open), None)
@@ -377,7 +377,7 @@ def main(argv: list[str]) -> int:
     forge, pr = _open_mr(repo, branch)                              # 冻结的 branch：别把 A 的 findings 发到 B 的 PR
     target = pr.target_branch if pr is not None and pr.target_branch else None
     try:
-        baseline = target_base(repo, target)
+        baseline = target_base(repo, target, source_branch=branch)
         if baseline.remote != "origin":
             baseline.refresh(repo)
     except (ForgeError, OSError) as exc:

@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from domain import branch as branch_domain, repo as repo_model  # noqa: E402
 from domain.context import record_active_repo  # noqa: E402
 from lib import cli, git_state
-from domain.pull_request import target_base
+from domain.pull_request import target_base, remember_target
 from domain.forge import ForgeError  # noqa: E402
 
 
@@ -20,6 +20,7 @@ def _build_parser() -> cli.ArgParser:
     sub = ap.add_subparsers(dest="command", required=True)
     create = sub.add_parser("create", help="create and switch to a new development branch")
     create.add_argument("name", help="new branch name")
+    create.add_argument("--target-repo", choices=["current", "parent"], default=None)
     create.add_argument("--target", "-t", default=None, help="target branch (default: repository trunk)")
     create.add_argument(
         "--base",
@@ -45,7 +46,7 @@ def main(argv: list[str]) -> int:
     repo = resolved.git_root
     record_active_repo(repo)
     try:
-        baseline = target_base(repo, ns.target)
+        baseline = target_base(repo, ns.target, target_repo=ns.target_repo, source_branch=ns.name)
         if not ns.base and baseline.remote != "origin":
             baseline.refresh(repo)
         base = ns.base or baseline.ref
@@ -64,7 +65,8 @@ def main(argv: list[str]) -> int:
             carry_changes=ns.carry_changes,
             base_branch=baseline.branch if not ns.base else None,
         )
-    except branch_domain.BranchError as exc:
+        remember_target(repo, result.name, baseline.repository)
+    except (branch_domain.BranchError, ForgeError) as exc:
         _banner(plan)
         print(f"\n✗ {exc}", file=sys.stderr)
         return 1

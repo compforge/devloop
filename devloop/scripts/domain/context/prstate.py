@@ -21,7 +21,7 @@ from pathlib import Path
 
 from lib import git_state
 from domain.forge import ForgeError, build_window
-from domain.pull_request import forge_for_pull_requests, target_base
+from domain.pull_request import forge_for_pull_requests, target_base, target_selection
 
 from .. import review_feedback
 from . import base, store
@@ -194,7 +194,11 @@ def poll_local_pull_requests(repo: str) -> dict | None:
 
     def lookup(item: tuple[str, str]) -> tuple[str, object | None]:
         branch, head = item
-        prs = forge.prs_for_branch(branch)
+        selection = target_selection(repo, branch=branch)
+        branch_forge = forge_for_pull_requests(repo, selection)
+        if branch_forge is None:
+            raise ForgeError(f"cannot resolve PR repository for {branch}")
+        prs = branch_forge.prs_for_branch(branch)
         return branch, pick_branch_pr(prs, repo, head)
 
     try:
@@ -234,7 +238,7 @@ def refresh_local_pull_requests(repo: str) -> bool:
     if payload is None:
         return False
     previous_by_number = {
-        int(pr["number"]): (item.get("branch") or "", pr.get("state") or "")
+        (pr.get("target_repository", ""), int(pr["number"])): (item.get("branch") or "", pr.get("state") or "")
         for item in previous.get("branches") or []
         if (pr := item.get("pull_request")) and pr.get("number") is not None
     }
@@ -246,7 +250,7 @@ def refresh_local_pull_requests(repo: str) -> bool:
         number = int(pr["number"])
         branch = item.get("branch") or ""
         state = pr.get("state") or ""
-        prior = previous_by_number.get(number)
+        prior = previous_by_number.get((pr.get("target_repository", ""), number))
         if prior is None:
             changes.append({
                 "change": "discovered",
@@ -275,7 +279,8 @@ def poll_remote_branches(repo: str, branches: tuple[str, ...] = TRUNK_CANDIDATES
     try:
         baseline = target_base(repo)
         kwargs = {} if baseline.remote == "origin" else {"remote": baseline.remote}
-        tips = git_state.ls_remote_tips(repo, *branches, **kwargs)
+        selected = tuple(dict.fromkeys((*branches, baseline.branch)))
+        tips = git_state.ls_remote_tips(repo, *selected, **kwargs)
     except (ForgeError, OSError):
         return None
     if not tips:

@@ -8,8 +8,13 @@ Read the shared branch/mutation rules in [`git-ops`](../git-ops/SKILL.md) and th
 transaction:
 
 ```
-bash <PLUGIN_ROOT>/scripts/smart_gcampr.sh --message-file <repo>/.devloop/commit_msg [--repo <name|path>] [--branch <name>] [--target <branch>] [--file <path>]... [--title "<PR title>"]
+bash <PLUGIN_ROOT>/scripts/smart_gcampr.sh --message-file <repo>/.devloop/commit_msg [--repo <name|path>] [--branch <name>] [--target-repo current|parent] [--target <branch>] [--file <path>]... [--title "<PR title>"]
 ```
+
+Choose the PR repository from the user's contribution intent. A new branch defaults to `current`;
+use `--target-repo parent` for a contribution to the fork's direct upstream. A fork alone is not
+sufficient evidence: use the task context, and ask the user when the destination is unclear.
+Existing branches retain their recorded choice; `--target` selects a branch within that repository.
 
 Trust the `PLAN:` banner and surface the returned PR/MR URL.
 `<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex.

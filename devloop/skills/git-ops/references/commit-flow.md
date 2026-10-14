@@ -27,7 +27,10 @@ overwriting human edits.
 - Prefer the dedicated [[branch|branch flow]] before editing new work. Pass `--branch <name>` here
   only when changes already exist and intentionally belong on a fresh branch, or when one atomic
   commit transaction must create the branch.
-- Pass `--target <branch>` only when the destination differs from the repository default.
+- Choose `--target-repo current|parent` from contribution intent. New branches default to current;
+  continuing branches retain their recorded target. Use parent only when the task indicates an upstream
+  contribution; ask the user when ambiguous. Fork provenance alone does not select a destination.
+- Pass `--target <branch>` only when the destination branch differs from that repository's default.
 - Repeat `--file <path>` when unrelated or untracked files exist; otherwise only tracked modifications
   are staged. Paths are resolved against the repo root. Never use `git add -A`.
   Explicit paths bound the entire commit: existing staged changes outside that scope cause refusal.

@@ -19,4 +19,4 @@ Inspect with `smart_rebase.sh status --repo ...`. While Git is still rebasing, a
 `smart_rebase.sh abort --repo ...`; after completion, abort refuses rather than guessing a reset
 target.
 
-For a fork, the target baseline comes from its direct parent repository; the captured push lease always belongs to origin. A parent clone or upstream remote is not required.
+The target baseline follows the branch’s recorded PR repository choice (current by default, or an explicitly selected parent); the captured push lease always belongs to origin. A parent clone or upstream remote is not required.

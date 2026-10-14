@@ -3,10 +3,10 @@
 Use ordinary `cd` to select an existing checkout. When another session needs isolation, run:
 
 ```bash
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <short-unique-tag>
+<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <short-unique-tag> [--target-repo current|parent]
 ```
 
-A new tag creates `worktree-<tag>` from freshly fetched the target repository’s branch (the direct parent for a fork, otherwise origin) and refuses creation when
+A new tag creates `worktree-<tag>` from the freshly fetched selected repository’s branch (current by default; direct parent when explicitly selected) and refuses creation when
 the baseline cannot be refreshed. An existing worktree path or retained branch is resumed without
 rebase/reset.
 

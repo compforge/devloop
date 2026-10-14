@@ -29,20 +29,120 @@ class RepositoryForge(_FakeForge):
         return "trunk" if self.path == "upstream/repo" else "main"
 
 
-def test_fork_target_scope_and_absent_parent():
-    with patch.object(pull_request, "forge_for_repo", return_value=RepositoryForge()):
-        target = pull_request.forge_for_pull_requests("/repo")
-        assert target.path == "upstream/repo"
-        assert target.source_repository == "fork/repo"
-    with patch.object(pull_request, "forge_for_repo", return_value=RepositoryForge(parent=None)):
-        target = pull_request.forge_for_pull_requests("/repo")
-        assert target.path == target.source_repository == "fork/repo"
-    with patch.object(pull_request, "forge_for_repo", side_effect=ForgeError("denied")):
-        try:
-            pull_request.forge_for_pull_requests("/repo")
-            assert False, "lookup failure cannot be treated as no parent"
-        except ForgeError:
-            pass
+    def create(self, **kwargs):
+        pr = super().create(**kwargs)
+        pr.source_repository = self.source_repository
+        pr.target_repository = self.path
+        return pr
+
+
+def test_fork_target_defaults_current_and_parent_is_explicit():
+    with TemporaryDirectory() as root:
+        _git(root, "init", "-q", "-b", "fix")
+        with patch.object(pull_request, "forge_for_repo", return_value=RepositoryForge()):
+            target = pull_request.forge_for_pull_requests(root)
+            assert target.path == target.source_repository == "fork/repo"
+            target = pull_request.forge_for_pull_requests(root, "parent")
+            assert target.path == "upstream/repo" and target.source_repository == "fork/repo"
+        with patch.object(pull_request, "forge_for_repo", return_value=RepositoryForge(parent=None)):
+            try:
+                pull_request.forge_for_pull_requests(root, "parent")
+                assert False, "parent selection must not silently become a same-repository PR"
+            except ForgeError:
+                pass
+        with patch.object(pull_request, "forge_for_repo", side_effect=ForgeError("denied")):
+            try:
+                pull_request.forge_for_pull_requests(root, "parent")
+                assert False, "lookup failure cannot be treated as no parent"
+            except ForgeError:
+                pass
+
+
+def test_current_baseline_does_not_require_forge_metadata():
+    with TemporaryDirectory() as root:
+        _git(root, "init", "-q", "-b", "main")
+        with patch.object(pull_request, "forge_for_repo", side_effect=AssertionError("unneeded API")):
+            baseline = pull_request.target_base(root)
+        assert baseline.remote == "origin" and baseline.ref == "origin/main"
+
+
+def test_recorded_target_is_branch_local_and_survives_lifecycle_calls():
+    from domain.context import prstate
+    with TemporaryDirectory() as root:
+        _git(root, "init", "-q", "-b", "main")
+        _git(root, "config", "user.name", "Test")
+        _git(root, "config", "user.email", "test@example.com")
+        _git(root, "commit", "--allow-empty", "-qm", "base")
+        _git(root, "branch", "contribute")
+        pull_request.remember_target(root, "contribute", "upstream/repo")
+        assert pull_request.target_selection(root) == "current"
+        assert pull_request.target_selection(root, branch="contribute") == "upstream/repo"
+        assert pull_request.target_selection(root, "current", branch="contribute") == "current"
+        visited = []
+        def for_branch(repo, selection=None):
+            visited.append(selection or pull_request.target_selection(repo))
+            return _FakeForge([])
+        with patch.object(prstate, "forge_for_pull_requests", for_branch):
+            assert prstate.poll_local_pull_requests(root) is not None
+        assert "current" in visited and "upstream/repo" in visited
+        _git(root, "checkout", "-q", "contribute")
+        with patch.object(pull_request, "forge_for_repo", return_value=RepositoryForge()):
+            assert pull_request.forge_for_pull_requests(root).path == "upstream/repo"
+            assert pull_request.forge_for_pull_requests(root, "current").path == "fork/repo"
+        assert pull_request.target_selection(root, branch="fresh-work") == "current"
+
+
+def test_creation_argument_selects_target_before_publication():
+    flow = _load_script("commit_flow")
+    with TemporaryDirectory() as root:
+        _git(root, "init", "-q", "-b", "fix")
+        _git(root, "remote", "add", "origin", "git@github.com:fork/repo.git")
+        resolution = ForgeResolution("github", "github.com", "github.com", "fork/repo", "token")
+        with patch.object(pull_request, "forge_for_repo", return_value=RepositoryForge()), \
+             patch.object(pull_request, "resolve_forge", return_value=resolution):
+            parser = flow._build_parser()
+            args = parser.parse_args(["mr", "--message", "Fix", "--repo", root, "--target-repo", "parent"])
+            intent = flow.resolve_intent(args, root)
+            assert intent.target_repository == "upstream/repo" and intent.target == "trunk"
+            pr = flow.reuse_or_create_pr(root, "fix", intent.target, "Fix", "", [],
+                                         target_repo=intent.target_repository)
+            assert pr.target_branch == "trunk" and pr.target_repository == "upstream/repo"
+            args = parser.parse_args(["mr", "--message", "Fix", "--repo", root])
+            intent = flow.resolve_intent(args, root)
+            assert intent.target_repository == "current" and intent.target_remote == "origin"
+
+
+
+
+def test_remote_poll_includes_selected_parent_default_branch():
+    from domain.context import prstate
+    target = pull_request.TargetBase("trunk", "upstream", "refs/devloop/targets/upstream/trunk", "upstream/repo")
+    with patch.object(prstate, "target_base", return_value=target), \
+         patch.object(prstate.git_state, "ls_remote_tips", return_value={"trunk": "abc"}) as tips:
+        assert prstate.poll_remote_branches("/repo")["remotes"] == [{"name": "trunk", "commit": "abc"}]
+    tips.assert_called_once_with("/repo", "main", "master", "release", "trunk", remote="upstream")
+
+
+def test_gcampr_records_parent_target_and_pushes_to_origin():
+    from domain.context import prstate
+    from test_worktree import _fixture
+    flow = _load_script("commit_flow")
+    repo, origin, _ = _fixture("explicit_pr_target")
+    _git(repo, "checkout", "-qb", "contribution")
+    Path(repo, "feature.txt").write_text("feature")
+    forge = RepositoryForge("upstream/repo", None)
+    forge.source_repository = "fork/repo"
+    baseline = pull_request.TargetBase("main", "origin", "origin/main", "upstream/repo")
+    with patch.object(flow, "target_base", return_value=baseline), \
+         patch.object(flow, "forge_for_pull_requests", return_value=forge) as endpoint, \
+         patch.object(prstate, "forge_for_pull_requests", return_value=forge):
+        assert flow.main(["mr", "--repo", repo, "--message", "Add feature",
+                          "--target-repo", "parent", "--file", "feature.txt"]) == 0
+    endpoint.assert_called_once_with(str(Path(repo).resolve()), "upstream/repo")
+    assert forge.created.target_repository == "upstream/repo"
+    assert pull_request.target_selection(repo) == "upstream/repo"
+    assert _git_out(origin, "rev-parse", "contribution") == _git_out(repo, "rev-parse", "HEAD")
+    assert pull_request.target_selection(repo, branch="unrelated-work") == "current"
 
 
 def test_target_without_parent_clone_uses_own_ref():
@@ -52,7 +152,7 @@ def test_target_without_parent_clone_uses_own_ref():
         resolution = ForgeResolution("github", "github.com", "github.com", "fork/repo", "token")
         with patch.object(pull_request, "forge_for_repo", return_value=RepositoryForge()), \
              patch.object(pull_request, "resolve_forge", return_value=resolution):
-            target = pull_request.target_base(root)
+            target = pull_request.target_base(root, target_repo="parent")
         assert target.branch == "trunk"
         assert target.remote == "https://github.com/upstream/repo.git"
         assert target.ref == "refs/devloop/targets/github.com/upstream/repo/trunk"
@@ -88,7 +188,8 @@ def test_fork_rebase_fetches_parent_and_publishes_only_to_origin():
         _git(str(repo), "push", "-q", str(upstream), "main:trunk")
         upstream_sha = _git_out(str(upstream), "rev-parse", "trunk")
         _git(str(repo), "checkout", "-q", "fix")
-        target = pull_request.TargetBase("trunk", str(upstream), "refs/devloop/targets/upstream/trunk")
+        target = pull_request.TargetBase("trunk", str(upstream), "refs/devloop/targets/upstream/trunk", "upstream/repo")
+        pull_request.remember_target(str(repo), "fix", "upstream/repo")
         with patch.object(rebase, "target_base", return_value=target):
             rebase.start(str(repo), "trunk")
         assert (repo / "parent-only").exists()
@@ -100,9 +201,10 @@ def test_fork_rebase_fetches_parent_and_publishes_only_to_origin():
         assert "refs/heads/fix" not in _git_out(str(upstream), "show-ref")
         with patch.object(worktree, "target_base", return_value=target), \
              patch.object(worktree, "prepare_environment", return_value=[]):
-            path, detail = worktree.create_or_reuse(str(repo), "from-parent")
+            path, detail = worktree.create_or_reuse(str(repo), "from-parent", target_repo="parent")
         assert path, detail
         assert _git_out(path, "rev-parse", "HEAD") == upstream_sha
+        assert pull_request.target_selection(path) == "upstream/repo"
 
 
 def test_reuse_requires_target_branch_and_fork_scope():

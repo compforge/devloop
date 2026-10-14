@@ -31,8 +31,8 @@ the task explicitly targets that version.
 ## Mutation rules
 
 1. Start new work with the branch-create transaction before editing. Commit-time `--branch` remains
-   the compatibility path for intentional edit-then-cut flows. Both cut from freshly fetched
-   `origin/<target>`; stacking requires explicit `--base`.
+   the compatibility path for intentional edit-then-cut flows. Both cut from the freshly fetched selected PR target
+   (current repository by default; parent only when explicitly selected); stacking requires explicit `--base`.
 2. Preserve existing branches and worktrees as-is. Rebase/reset is a separate explicit operation.
 3. Revalidate forge, remote, and lease state at the mutation boundary; injected context is guidance,
    while the owning script's live check is authoritative.

@@ -110,9 +110,15 @@ CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退�
 ## Fork 与 PR 两侧仓库
 
 PR 的身份归目标 Repository，head 由源 Repository 与 Branch 共同确定。devloop 在本地 origin
-对应的仓库开发和推送；Forge 确认 `forked_from` 时，默认向同一 Forge 实例的直接父仓提 PR，
-否则向自身提 PR。repocli 提供父仓事实与显式仓库作用域，devloop 拥有这项目标选择策略。
-来源查询失败不能解释成普通仓库。
+对应的仓库开发和推送。`forked_from` 是来源事实，不代表贡献意图；新开发分支默认向当前仓提 PR。
+`--target-repo current|parent` 显式选择当前仓或同一 Forge 实例的直接父仓；AI 依据任务上下文选择，
+意图不明确时询问用户。`--target` 独立选择目标分支。选择父仓时，缺少父仓或来源查询失败都停止操作，
+不能静默回退到当前仓。本仓基线沿用本地 Git 默认分支，不额外依赖 Forge 元数据查询。
+
+选择保存在 Git 本地配置 `branch.<name>.devloop-target-repo`，值为 `current` 或解析后的父仓路径。
+该配置表达开发意图，不放入可丢弃的观察缓存。后续 commit、push、PR 查询、review 和 rebase 读取
+同一分支选择；全仓生命周期巡检逐分支选取目标，不能把当前 checkout 的目标套给其他分支。
+新分支不会继承上一分支的选择。已有 PR 的分支不能借创建参数静默切换到另一仓库。
 
 分支创建、worktree、rebase、验证范围和 review 使用目标仓基线。已有匹配目标身份的 Git remote
 优先提供传输，否则直接 fetch 目标仓 URL；无需本机拥有父仓 clone，也不改 origin。

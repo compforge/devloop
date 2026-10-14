@@ -39,7 +39,8 @@ from domain import branch as branch_domain, lifecycle, repo as repo_model, stagi
 from domain.context import RepoContext, gate, prstate, record_active_repo, store
 from domain.forge import Forge, ForgeError, PullRequest, pr_label  # noqa: E402
 from lib import cli, git_state, gitcmd  # noqa: E402
-from domain.pull_request import forge_for_pull_requests, target_base, TargetBase  # noqa: E402
+from lib.forge import resolve_forge  # noqa: E402
+from domain.pull_request import forge_for_pull_requests, target_base, TargetBase, remember_target  # noqa: E402
 
 
 class SmartError(Exception):
@@ -78,6 +79,7 @@ class GitIntent:
     description: str = ""
     target_ref: str = ""
     target_remote: str = "origin"
+    target_repository: str = "current"
 
 
 @dataclass(frozen=True)
@@ -234,11 +236,11 @@ def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: l
         plan.append(f"⚠ could not sync {label} description (non-fatal): {e}")
 
 
-def reuse_or_create_pr(repo: str, source: str, target: str, title: str, description: str, plan: list[str]):
+def reuse_or_create_pr(repo: str, source: str, target: str, title: str, description: str, plan: list[str], *, target_repo: str | None = None):
     """Open a PR/MR for `source`→`target`, reusing the branch's open one if present.
-    The source is origin; the target is its direct fork parent or the same repository.
+    The source is origin; the caller explicitly chooses current or parent when needed.
     `description` becomes the body on create, and is appended on reuse."""
-    forge = forge_for_pull_requests(repo)
+    forge = forge_for_pull_requests(repo, target_repo)
     if forge is None:
         raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
     try:
@@ -265,7 +267,8 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
     if not resolved:
         raise SmartError(how)
     record_active_repo(resolved.git_root)
-    baseline = target_base(resolved.git_root, ns.target)
+    baseline = target_base(resolved.git_root, ns.target, target_repo=ns.target_repo,
+                           source_branch=ns.branch)
     target = baseline.branch
     files: list[str] = []
     for path in ns.file or []:
@@ -281,6 +284,7 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
         base=ns.base or baseline.ref,
         target_ref=baseline.ref,
         target_remote=baseline.remote,
+        target_repository=baseline.repository,
         explicit_base=bool(ns.base),
         files=files,
         repo=resolved.git_root,
@@ -404,7 +408,8 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
     if intent.mode == "mr":
         rng = run(repo, "log", "--oneline", f"{target_ref}..{current}").strip()
         plan.append(f"PR carries {len(rng.splitlines()) if rng else 0} commit(s) vs {target_ref}")
-        reuse_or_create_pr(repo, current, target, intent.title, intent.description, plan)
+        reuse_or_create_pr(repo, current, target, intent.title, intent.description, plan,
+                           target_repo=intent.target_repository)
         RepoContext.refresh_branch(repo)
         # Don't write pr_number here — keep the `pr` segment single-owner. Trigger one
         # authoritative poll so it (the sole writer) populates number + window for the new
@@ -487,6 +492,8 @@ def _build_parser() -> cli.ArgParser:
     )
     ap.add_argument("--branch", "-b", default=None, help="branch name to cut when on a protected/stale branch")
     ap.add_argument("--target", "-t", default=None)
+    ap.add_argument("--target-repo", choices=["current", "parent"], default=None,
+                    help="PR repository (new branch: current; existing branch: recorded choice)")
     ap.add_argument(
         "--base",
         default=None,
@@ -610,7 +617,7 @@ def main(argv: list[str]) -> int:
     gv = gate.evaluate(intent.repo, live_refresh=(intent.mode in ("push", "mr")))
     plan: list[str] = [
         f"mode={intent.mode} repo={Path(intent.repo).name} ({intent.source}) "
-        f"branch={gv.branch} target={intent.target}"
+        f"branch={gv.branch} target={intent.target} target_repo={intent.target_repository}"
     ]
     # `--file` 在这里归一**一次**（仓根相对）：pre_commit gate 拿它当验证范围、staging 拿它
     # 当 `git add` 目标——两处必须是同一份，各自归一必然漂。`GitIntent` 的契约本就是
@@ -624,7 +631,15 @@ def main(argv: list[str]) -> int:
         # review 的 MR 评论是机会性的——relay 跑时查到分支有开放 MR 就发，没有就只落 review.json。
         if intent.target_ref and (intent.mode == "mr" or intent.target_remote != "origin"):
             TargetBase(intent.target, intent.target_remote, intent.target_ref).refresh(intent.repo)
+        if not intent.requested_branch and gv.active_pr and ns.target_repo is not None:
+            identity = resolve_forge(intent.repo)
+            path = identity.path if intent.target_repository == "current" and identity else intent.target_repository
+            previous = gv.active_pr.target_repository
+            same = previous.casefold() == path.casefold() if gv.provider == "github" else previous == path
+            if previous and not same:
+                raise SmartError("this branch already has a PR in another repository; use a new branch for a different target")
         branch = prepare_branch(intent, gv, plan)
+        remember_target(intent.repo, branch.branch, intent.target_repository)
         pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # 必在 commit 前（normalize 可能改源码）
         staged = stage_and_commit(intent, plan, validated_identity=pre_c.execution_identity)
         if staged.committed:

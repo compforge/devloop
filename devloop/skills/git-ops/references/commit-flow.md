@@ -37,3 +37,15 @@ overwriting human edits.
 Trust the `PLAN:` banner. On `INACTIVE`, the script performs an authoritative forge refresh and
 reports the matching PR/MR state and SHA; add `--branch` and retry rather than bypassing the script.
 For gcampr, surface the returned PR/MR URL.
+
+## PR destination
+
+Only gcampr accepts `--target-repo current|parent` (default `current`). `parent` reads the
+current repository's direct same-Forge fork source and creates/reuses the PR there; missing
+provenance or a failed lookup is an error. Push remains on origin.
+
+With `parent`, `--target` selects the parent PR's base branch; omitted, an existing PR keeps
+its base and a new PR uses the parent's default branch. Local branch creation, validation
+and review keep the current repository's baseline; use `--base` for an explicit branch start.
+The destination is per invocation: repeat `--target-repo parent` when reusing an upstream PR.
+Branch/worktree state and current-repository PR monitoring do not store that choice.

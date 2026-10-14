@@ -76,6 +76,8 @@ class GitIntent:
     # description: title alone is the "cram everything into one line" pressure that
     # produced 150-char MR titles over empty descriptions.
     description: str = ""
+    target_repo: str = "current"
+    pr_target: str | None = None
 
 
 @dataclass(frozen=True)
@@ -232,19 +234,35 @@ def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: l
         plan.append(f"⚠ could not sync {label} description (non-fatal): {e}")
 
 
-def reuse_or_create_pr(repo: str, source: str, target: str, title: str, description: str, plan: list[str]):
-    """Open a PR/MR for `source`→`target`, reusing the branch's open one if present.
-    Provider-neutral: the forge is resolved from the repo's origin (GitHub or GitLab).
-    `description` becomes the body on create, and is appended on reuse."""
+def reuse_or_create_pr(
+    repo: str, source: str, target: str | None, title: str, description: str,
+    plan: list[str], *, target_repo: str = "current",
+) -> PullRequest:
+    """Create/reuse on the explicitly selected repository; source remains origin.
+
+    Parent selection belongs to this operation only. It neither persists branch policy
+    nor changes local Git baselines. Reuse is scoped to the full source repository and,
+    when explicit, the requested target branch.
+    """
     forge = forge_for_repo(repo)
     if forge is None:
         raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
     try:
-        existing = next((p for p in forge.prs_for_branch(source) if p.is_open), None)
+        if target_repo == "parent":
+            repository = forge.repository()
+            if not repository.forked_from:
+                raise ForgeError(f"{repository.path} has no same-Forge fork parent")
+            forge = forge.for_repository(repository.forked_from, source_repository=repository.path)
+            plan.append(f"PR target repository={repository.forked_from} source={repository.path}")
+        existing = next((p for p in forge.prs_for_branch(source)
+                         if p.is_open and (target is None or p.target_branch == target)), None)
         if existing:
             plan.append(f"reused open {pr_label(forge.provider, existing.number)}: {existing.web_url}")
             sync_pr_description(forge, existing, description, plan)
             return existing
+        target = target or forge.default_branch()
+        if not target:
+            raise ForgeError(f"cannot determine default branch for {target_repo} PR target")
         pr = forge.create(source_branch=source, target_branch=target, title=title, body=description)
         plan.append(f"created {pr_label(forge.provider, pr.number)}: {pr.web_url}")
         return pr
@@ -263,7 +281,8 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
     if not resolved:
         raise SmartError(how)
     record_active_repo(resolved.git_root)
-    target = ns.target or git_state.local_default_target(resolved.git_root)
+    # A parent PR's --target names its base branch, not a local branch creation base.
+    target = (ns.target if ns.target_repo != "parent" else None) or git_state.local_default_target(resolved.git_root)
     files: list[str] = []
     for path in ns.file or []:
         if path not in files:
@@ -274,6 +293,8 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
         title=ns.title or (ns.message.splitlines()[0] if ns.message else ""),
         description=(ns.message.split("\n", 1)[1].strip() if ns.message and "\n" in ns.message else ""),
         requested_branch=ns.branch,
+        target_repo=ns.target_repo or "current",
+        pr_target=ns.target,
         target=target,
         base=ns.base or f"origin/{target}",
         explicit_base=bool(ns.base),
@@ -396,8 +417,11 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
 
     if intent.mode == "mr":
         rng = run(repo, "log", "--oneline", f"origin/{target}..{current}").strip()
-        plan.append(f"PR carries {len(rng.splitlines()) if rng else 0} commit(s) vs origin/{target}")
-        reuse_or_create_pr(repo, current, target, intent.title, intent.description, plan)
+        plan.append(f"branch carries {len(rng.splitlines()) if rng else 0} commit(s) vs origin/{target}")
+        reuse_or_create_pr(
+            repo, current, intent.pr_target if intent.target_repo == "parent" else target,
+            intent.title, intent.description, plan, target_repo=intent.target_repo,
+        )
         RepoContext.refresh_branch(repo)
         # Don't write pr_number here — keep the `pr` segment single-owner. Trigger one
         # authoritative poll so it (the sole writer) populates number + window for the new
@@ -480,6 +504,8 @@ def _build_parser() -> cli.ArgParser:
     )
     ap.add_argument("--branch", "-b", default=None, help="branch name to cut when on a protected/stale branch")
     ap.add_argument("--target", "-t", default=None)
+    ap.add_argument("--target-repo", choices=["current", "parent"], default=None,
+                    help="mr mode only: PR destination (default current; parent is the direct fork source)")
     ap.add_argument(
         "--base",
         default=None,
@@ -588,6 +614,8 @@ def launch_background_relays(specs: list[lifecycle.BackgroundSpec], repo: str, p
 def main(argv: list[str]) -> int:
     ap = _build_parser()
     ns = ap.parse_args(argv)
+    if ns.target_repo is not None and ns.mode != "mr":
+        ap.error("--target-repo is only supported when creating a PR/MR (mr mode)")
     ns.message = _resolve_message(ns, ap)   # file/stdin or inline; exits with a hint if neither
 
     try:

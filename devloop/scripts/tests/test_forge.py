@@ -290,7 +290,7 @@ def test_reuse_or_create_pr_over_narrowed_port():
     orig = sgo.forge_for_repo
     try:
         # reuse: an open PR exists for the branch
-        f = _FakeForge([PullRequest(number=3, state="open", source_branch="feat/x", web_url="u/3")])
+        f = _FakeForge([PullRequest(number=3, state="open", source_branch="feat/x", target_branch="main", web_url="u/3")])
         sgo.forge_for_repo = lambda repo: f
         plan = []
         pr = sgo.reuse_or_create_pr("/repo", "feat/x", "main", "t", "", plan)

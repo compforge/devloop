@@ -12,6 +12,11 @@ from pathlib import Path
 
 from . import worktree
 from .context import prstate, store
+from .forge import Forge, ForgeError, ForgeRateLimited
+from lib.forge import forge_for_repo
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -26,7 +31,7 @@ class ReconcileAction:
     path: str
 
 
-def reconcile(repo: str) -> list[ReconcileAction]:
+def reconcile(repo: str, *, forge: Forge | None = None) -> list[ReconcileAction]:
     """Apply lifecycle reactions for the latest complete local PR/MR snapshot.
 
     A finished PR/MR (merged or closed) makes its linked worktree reclaimable. Forge
@@ -54,7 +59,28 @@ def reconcile(repo: str) -> list[ReconcileAction]:
     # Remove deepest checkouts first so a terminal nested worktree gets its own completed
     # action before a terminal parent recursively removes the containing directory.
     candidates.sort(key=lambda item: len(Path(item[2]).parts), reverse=True)
+    if candidates:
+        forge = forge if forge is not None else forge_for_repo(repo)
     for local_branch, pr, path in candidates:
+        # +spec=`A cached terminal PR never authorizes removal. Revalidate the branch
+        # association and then let remove_finished verify the live local identity.`
+        branch = str(local_branch.get("branch") or "")
+        head = str(local_branch.get("head_sha") or "")
+        try:
+            if forge is None:
+                raise ForgeError("no usable forge for checkout removal")
+            current = prstate.pick_branch_pr(forge.prs_for_branch(branch), repo, head)
+            if current is None or not current.inactive or current.number != int(pr["number"]):
+                raise ForgeError("branch PR association changed; refresh before removal")
+        except (ForgeError, OSError) as exc:
+            if isinstance(exc, ForgeRateLimited):
+                prstate.record_failure(repo, "lifecycle", exc)
+            else:
+                logger.warning("checkout removal deferred repo=%s branch=%s pr=%s error=%s",
+                               repo, branch, pr["number"], exc)
+            actions.append(ReconcileAction("remove_worktree", "deferred", "forge_unverified",
+                                           branch, int(pr["number"]), path))
+            continue
         outcome = worktree.remove_finished(
             control_repo, path,
             branch=str(local_branch.get("branch") or ""),

@@ -15,12 +15,16 @@ Three monitor-owned segments, stamped so a reader can tell how fresh they are:
 """
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+import logging
+import fcntl
+import time
+from contextlib import contextmanager
+from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
 
 from lib import git_state
-from domain.forge import ForgeError, build_window
+from domain.forge import Forge, ForgeError, ForgeRateLimited, PullRequest, PRS_CAP, build_window
 from lib.forge import forge_for_repo
 
 from .. import review_feedback
@@ -32,6 +36,28 @@ from . import base, store
 # (its `target` / recorded `fork_from`, which may be `develop` / `release/x` / `staging`) is
 # unioned in by `_baseline_branches` so the staleness signal isn't limited to these defaults.
 TRUNK_CANDIDATES = ("main", "master", "release")
+HISTORY_INTERVAL = 3600
+HISTORY_BATCH = 20
+DETAILS_INTERVAL = 600
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _pr_write(repo: str) -> Iterator[None]:
+    """Serialize only snapshot publication; no network calls while holding this lock."""
+    home = store.tmp_dir(repo)
+    home.mkdir(parents=True, exist_ok=True)
+    with (home / "pr-view.lock").open("a") as lock:
+        deadline = time.monotonic() + 2
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(f"PR view writer busy: {repo}")
+                time.sleep(0.02)
+        yield
 
 
 def _baseline_branches(repo: str) -> tuple[str, ...]:
@@ -72,70 +98,117 @@ def pick_branch_pr(branch_prs: list, repo: str, head_sha: str):
 
 
 # ── pr.json (the current branch's PR + recent window) ──────────────────────────
-def poll_pr(repo: str) -> dict | None:
+def poll_pr(repo: str, *, forge: Forge | None = None, inventory: dict | None = None,
+            required: bool = False) -> dict | None:
     """One forge poll → the `pr` segment payload (current branch's PR window), or None when
-    the repo has no usable forge / remote. Side-effect-free; `persist_pr` writes it."""
-    forge = forge_for_repo(repo)
+    the repo has no usable forge / remote. Failed attempts are recorded separately."""
+    forge = forge if forge is not None else forge_for_repo(repo)
     if forge is None:
         return None
     try:
         branch = git_state.get_current_branch(repo)
         head = git_state.get_head_sha(repo)
-        branch_pr = pick_branch_pr(forge.prs_for_branch(branch), repo, head) if branch else None
+        if inventory is None:
+            branch_pr = pick_branch_pr(forge.prs_for_branch(branch), repo, head) if branch else None
+            checked_at = base.now()
+        else:
+            row = next((r for r in inventory["branches"] if r["branch"] == branch), {})
+            raw = row.get("pull_request")
+            branch_pr = PullRequest.from_dict(raw) if raw else None
+            checked_at = row.get("checked_at", 0)
         anchor = branch_pr.number if branch_pr else None
-        window = build_window(forge, anchor)
-    except (ForgeError, OSError):
+    except (ForgeError, OSError) as exc:
+        record_failure(repo, "current", exc)
+        if required:
+            raise
         return None
-    # Readiness is a derived verdict over source×target tips (goes stale when either moves), so we
-    # compute it live HERE per poll rather than storing it on each PullRequest — see MergeReadiness.
-    # Only for the current branch's OPEN MR (a finished/absent PR has nothing to nag about); its own
-    # guard so a readiness-fetch failure degrades to "unknown", not a lost window.
-    readiness = None
-    if branch_pr and branch_pr.is_open:
-        try:
-            readiness = forge.merge_readiness(anchor).value
-        except ForgeError:
-            readiness = None
-    # Findings still awaiting a `ccr:label` verdict — a peer of readiness: derived from the
-    # forge, cached here, never authoritative. It's computed at the POLL boundary (not per
-    # turn) because that's where the forge round-trip already is; the turn context reads the
-    # cached number. Safe to cache precisely because review_feedback can always re-derive it
-    # from comment bodies — losing this segment costs a stale count, never the join itself.
-    # Own guard: a comments() failure degrades to "unknown", it must not cost us the window.
-    pending_review_verdicts, pending_review_verdicts_key = None, ""
-    if branch_pr and branch_pr.is_open:
-        try:
-            _pend = review_feedback.pending(forge.comments(anchor))
-            pending_review_verdicts = len(_pend)
-            # Set identity, not just the count — the nudge decays per SITUATION, and a count
-            # can't distinguish "same findings, still unlabeled" from new work.
-            pending_review_verdicts_key = review_feedback.pending_key(_pend)
-        except ForgeError:
-            pending_review_verdicts, pending_review_verdicts_key = None, ""
+    previous = store.load_segment(repo, "pr") or {}
+    # A current-branch decision cannot inherit an old candidate for that branch.
+    window = [p for p in previous.get("prs", []) if p.get("source_branch") != branch]
+    if branch_pr:
+        window = [asdict(branch_pr), *window][:PRS_CAP]
+    window.sort(key=lambda p: p["number"], reverse=True)
+    same = previous.get("pr_number") == anchor and previous.get("branch") == branch
     return {
         "branch": branch,
         "head_sha": head,          # provenance: the HEAD this window was selected against
         "provider": forge.provider,
         "pr_number": anchor,
-        "merge_readiness": readiness,   # current branch's open MR; None when no open MR / unknown
-        "pending_review_verdicts": pending_review_verdicts,
-        "pending_review_verdicts_key": pending_review_verdicts_key,
-        "prs": [asdict(p) for p in window],
+        "checked_at": checked_at,
+        "merge_readiness": previous.get("merge_readiness") if same else None,
+        "pending_review_verdicts": previous.get("pending_review_verdicts") if same else None,
+        "pending_review_verdicts_key": previous.get("pending_review_verdicts_key", "") if same else "",
+        "details_checked_at": previous.get("details_checked_at", 0) if same else 0,
+        "prs": window,
     }
 
 
+def refresh_pr_details(repo: str, forge: Forge, *, force: bool = False) -> bool:
+    """Advisory data has its own freshness, independent of authoritative branch reads."""
+    payload = store.load_segment(repo, "pr")
+    if not payload:
+        return False
+    if not force and not base.is_stale(payload.get("details_checked_at"), DETAILS_INTERVAL):
+        return True
+    anchor = payload.get("pr_number")
+    try:
+        raw = next((p for p in payload["prs"] if p["number"] == anchor), None)
+        window = build_window(forge, anchor, anchor_pr=PullRequest.from_dict(raw) if raw else None)
+        current = next((p for p in window if p.number == anchor and p.is_open), None)
+        readiness, pending, key = None, None, ""
+        if current:
+            readiness = forge.merge_readiness(anchor).value
+            findings = review_feedback.pending(forge.comments(anchor))
+            pending, key = len(findings), review_feedback.pending_key(findings)
+    except ForgeError as exc:
+        record_failure(repo, "details", exc)
+        return False
+    # +spec=`A slow auxiliary read cannot overwrite a newer authoritative observation.`
+    with _pr_write(repo):
+        current_payload = store.load_segment(repo, "pr") or {}
+        if current_payload != payload:
+            logger.info("PR details superseded repo=%s pr=%s", repo, anchor)
+            return True
+        # Preserve the authoritative association; a recent list can include a foreign
+        # fork using the same branch name, or reflect a concurrent state transition.
+        window = [p for p in window if p.source_branch != payload["branch"]]
+        if raw:
+            window = [PullRequest.from_dict(raw), *window][:PRS_CAP]
+        window.sort(key=lambda p: p.number, reverse=True)
+        payload.update(prs=[asdict(p) for p in window], merge_readiness=readiness,
+                       pending_review_verdicts=pending, pending_review_verdicts_key=key,
+                       details_checked_at=base.now())
+        store.save_segment(repo, "pr", payload)
+    return True
+
+
+def record_failure(repo: str, purpose: str, exc: Exception) -> None:
+    attempt = {"attempted_at": base.now(), "purpose": purpose,
+               "error": type(exc).__name__, "message": str(exc)}
+    if isinstance(exc, ForgeRateLimited):
+        attempt.update(retry_at=exc.retry_at, resource=exc.resource)
+    store.save_segment(repo, "pr_observation_attempt", attempt)
+    logger.warning("PR observation failed repo=%s purpose=%s error=%s", repo, purpose, exc)
+
+
 def persist_pr(repo: str, payload: dict) -> None:
-    """Write the monitor-owned `pr` segment (sole writer; no lock, no lost update)."""
+    """Publish core facts without replacing a newer observation of the same branch."""
     git_state.ensure_gitignore_excluded(repo)   # keep /.devloop/ out of git if pr.json is first
-    store.save_segment(repo, "pr", payload)
+    with _pr_write(repo):
+        previous = store.load_segment(repo, "pr") or {}
+        if (previous.get("branch") == payload.get("branch")
+                and previous.get("checked_at", 0) > payload.get("checked_at", 0)):
+            return
+        store.save_segment(repo, "pr", payload)
 
 
-def refresh_pr(repo: str) -> bool:
+def refresh_pr(repo: str, *, forge: Forge | None = None, inventory: dict | None = None,
+               required: bool = False) -> bool:
     """Poll + persist the `pr` segment in one shot — the authoritative refresh a low-frequency
     gate (gcampr) triggers so it decides on LIVE PR state, not a possibly-stale monitor cache.
     (The old `refresh_pr_state` polled and DISCARDED the result — a silent no-op.) Best-effort;
     returns whether anything was written."""
-    payload = poll_pr(repo)
+    payload = poll_pr(repo, forge=forge, inventory=inventory, required=required)
     if payload is None:
         return False
     persist_pr(repo, payload)
@@ -151,29 +224,26 @@ def _checkout_kind(main: Path | None, path: Path) -> str:
     return "external"
 
 
-def poll_local_pull_requests(repo: str) -> dict | None:
-    """Join every local branch to its authoritative PR/MR, or return ``None`` offline.
+def poll_local_pull_requests(repo: str, *, forge: Forge | None = None) -> dict | None:
+    """Join complete local/open inventories with bounded, independently dated history.
 
-    This is deliberately separate from :func:`poll_pr`: gates need one current branch
-    with low latency, while reconciliation needs the complete local lifecycle inventory.
-    A branch may have a primary, managed, or external checkout, or no checkout after an
-    old worktree was reclaimed. Forge reads use an explicit small concurrency bound so a
-    repository with retained branches does not serialize one network timeout per branch.
-
-    The snapshot is all-or-nothing. A failed branch lookup returns ``None`` rather than a
-    partial inventory, because absence from a partial list must never authorize cleanup.
+    +spec=`Failed remote reads preserve the previous snapshot. Historical entries keep
+    their own verification times; unknown history and absent open PRs never prove termination.`
+    +link=component://docs/pr-observation.md
     """
-    forge = forge_for_repo(repo)
+    forge = forge if forge is not None else forge_for_repo(repo)
     if forge is None:
         return None
     try:
         branches = git_state.list_local_branches(repo)
         checkouts = git_state.list_checkouts(repo)
-    except OSError:
+    except OSError as exc:
+        record_failure(repo, "inventory", exc)
         return None
     # A located Git directory does not locate its checkout. Keep the whole
     # inventory unknown so reconciliation cannot read that gap as reclaimed.
     if any(entry.branch and entry.path is None for entry in checkouts):
+        record_failure(repo, "inventory", ForgeError("checkout location is unknown"))
         return None
     main = next((Path(entry.path) for entry in checkouts if entry.primary and entry.path), None)
     checkout_by_branch = {
@@ -185,28 +255,50 @@ def poll_local_pull_requests(repo: str) -> dict | None:
         if entry.branch and entry.path is not None
     }
 
-    def lookup(item: tuple[str, str]) -> tuple[str, object | None]:
-        branch, head = item
-        prs = forge.prs_for_branch(branch)
-        return branch, pick_branch_pr(prs, repo, head)
-
     try:
-        workers = min(base.LOCAL_PR_POLL_CONCURRENCY, len(branches))
-        with ThreadPoolExecutor(max_workers=workers or 1) as executor:
-            pr_by_branch = dict(executor.map(lookup, branches))
-        local_branches = [
-            {
-                "branch": branch,
-                "head_sha": head,
-                "checkout": checkout_by_branch.get(branch),
-                "pull_request": asdict(pr_by_branch[branch]) if pr_by_branch[branch] else None,
-            }
-            for branch, head in branches
-        ]
-    except (ForgeError, OSError):
+        observed_at = base.now()
+        previous = store.load_segment(repo, "local_pull_requests") or {}
+        by_branch = {r["branch"]: r for r in previous.get("branches", [])}
+        open_by_branch: dict[str, list[PullRequest]] = {}
+        for pr in forge.open_pull_requests():
+            open_by_branch.setdefault(pr.source_branch, []).append(pr)
+        # Cold history is bounded, oldest first, so retained refs cannot monopolize polling.
+        due = sorted((branch for branch, _ in branches
+                      if branch not in open_by_branch
+                      and base.is_stale(by_branch.get(branch, {}).get("history_checked_at"), HISTORY_INTERVAL)),
+                     key=lambda b: by_branch.get(b, {}).get("history_checked_at", 0))[:HISTORY_BATCH]
+        local_branches = []
+        for branch, head in branches:
+            old = by_branch.get(branch, {})
+            old_pr = PullRequest.from_dict(old["pull_request"]) if old.get("pull_request") else None
+            checkout = checkout_by_branch.get(branch)
+            history_at = old.get("history_checked_at", 0)
+            checked_at = old.get("checked_at", 0)
+            pr = old_pr
+            if branch in open_by_branch:
+                pr = pick_branch_pr(open_by_branch[branch], repo, head)
+                checked_at = observed_at
+            else:
+                vanished = old_pr is not None and old_pr.is_open
+                if vanished:
+                    # Absence from the open list is not proof of a terminal state.
+                    pr = forge.get(old_pr.number)
+                    checked_at = observed_at
+                changed = bool(old) and (old.get("head_sha") != head or old.get("checkout") != checkout)
+                if branch in due or changed or (checkout and checkout["kind"] != "primary"):
+                    pr = pick_branch_pr(forge.prs_for_branch(branch), repo, head)
+                    history_at = checked_at = observed_at
+            local_branches.append({
+                "branch": branch, "head_sha": head, "checkout": checkout,
+                "pull_request": asdict(pr) if pr else None,
+                "checked_at": checked_at, "history_checked_at": history_at,
+                "observation": "known" if checked_at else "unknown",
+            })
+    except (ForgeError, OSError) as exc:
+        record_failure(repo, "inventory", exc)
         return None
     return {
-        "fetched_at": base.now(),
+        "fetched_at": observed_at,
         "provider": forge.provider,
         "branches": local_branches,
         "changes": [],
@@ -220,10 +312,10 @@ def persist_local_pull_requests(repo: str, payload: dict) -> None:
     store.save_segment(repo, "local_pull_requests", payload)
 
 
-def refresh_local_pull_requests(repo: str) -> bool:
+def refresh_local_pull_requests(repo: str, *, forge: Forge | None = None) -> bool:
     """Poll + persist the complete local branch inventory, best-effort."""
     previous = store.load_segment(repo, "local_pull_requests") or {}
-    payload = poll_local_pull_requests(repo)
+    payload = poll_local_pull_requests(repo, forge=forge)
     if payload is None:
         return False
     previous_by_number = {

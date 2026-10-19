@@ -103,5 +103,7 @@ def forge_for_repo(repo_dir: str | Path, *, timeout: int = 10) -> Forge | None:
         owner, _, name = r.path.partition("/")
         if not owner or not name:
             return None
-        return GitHubForge(r.api_host, owner, name, r.token, timeout=timeout)
-    return GitLabForge(r.api_host, r.path, r.token, timeout=timeout)
+        return GitHubForge(r.api_host, owner, name, r.token, timeout=timeout,
+                           state_dir=config.config_dir() / "forge-http")
+    return GitLabForge(r.api_host, r.path, r.token, timeout=timeout,
+                       state_dir=config.config_dir() / "forge-http")

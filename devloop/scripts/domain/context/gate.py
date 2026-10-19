@@ -57,7 +57,7 @@ def evaluate(git_root: str, *, live_refresh: bool = False) -> GateView:
     so the decision sees server-fresh PR state; the edit-frequency guards omit it and rely on
     the monitor-maintained window (still correct in the BLOCK direction — see `active_pr`)."""
     if live_refresh:
-        prstate.refresh_pr(git_root)   # poll + PERSIST (the old refresh_pr_state discarded this)
+        prstate.refresh_pr(git_root, required=True)
 
     branch = git_state.get_current_branch(git_root)
     head = git_state.get_head_sha(git_root)

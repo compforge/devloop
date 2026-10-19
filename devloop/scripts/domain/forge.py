@@ -3,6 +3,7 @@ from repocli.forge.model import (
     ForgeError as ForgeError,
     ForgeAuthError as ForgeAuthError,
     ForgeNotFound as ForgeNotFound,
+    ForgeRateLimited as ForgeRateLimited,
     PullRequestIdentity as PullRequestIdentity,
     PullRequest as PullRequest,
     CommentResolution as CommentResolution,
@@ -32,7 +33,8 @@ def pr_label(provider: str | None, number: int) -> str:
     noun, sigil = vocab(provider)
     return f"{noun} {sigil}{number}"
 
-def build_window(forge: Forge, anchor: int | None, cap: int = PRS_CAP) -> list[PullRequest]:
+def build_window(forge: Forge, anchor: int | None, cap: int = PRS_CAP,
+                 *, anchor_pr: PullRequest | None = None) -> list[PullRequest]:
     """The recent-PR window: newest `cap` PRs, with the current branch's `anchor` PR always
     present (fetched if it fell off the recent list). Provider-agnostic policy composed over
     the port's `recent` + `get` primitives — one definition for every forge, regardless of
@@ -41,7 +43,7 @@ def build_window(forge: Forge, anchor: int | None, cap: int = PRS_CAP) -> list[P
     by_num = {p.number: p for p in forge.recent(cap)}
     if anchor is not None and anchor not in by_num:
         try:
-            by_num[anchor] = forge.get(anchor)
+            by_num[anchor] = anchor_pr if anchor_pr and anchor_pr.number == anchor else forge.get(anchor)
         except ForgeNotFound:
             pass
     ordered = sorted(by_num.values(), key=lambda p: p.number, reverse=True)

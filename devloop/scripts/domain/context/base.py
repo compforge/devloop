@@ -34,7 +34,6 @@ REPO_STALE_SEC = 300          # repo context older than this → refresh_all on 
 WORKSPACE_STALE_SEC = 600     # workspace context staleness
 TURN_TTL_SEC = 1800           # Board turn-state replay backstop (~30 min)
 SESSION_TTL_SEC = 14400       # Board session-state replay backstop (~4 h)
-LOCAL_PR_POLL_CONCURRENCY = 4 # max parallel forge reads for the local branch inventory
 REMOTE_VIEW_STALE_SEC = 120   # remote_branches snapshot older than this → re-pull trunk tips on enter
 ACTIVE_REPO_TTL_SEC = 21600   # workspace last-active repo validity (~6 h); stale → don't guess
 REVIEW_STALE_SEC = 1800       # review.json stuck at "running" longer than this (~30 min) → run_review

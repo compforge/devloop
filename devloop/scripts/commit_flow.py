@@ -639,7 +639,11 @@ def main(argv: list[str]) -> int:
     # reverse — pass live_refresh so an authoritative forge poll runs first: a PR merged on the
     # server the monitor hasn't caught yet still blocks committing onto the dead branch (the
     # exact lag devloop exists to kill). The cached RepoContext stays for prompt hints only.
-    gv = gate.evaluate(intent.repo, live_refresh=(intent.mode in ("push", "mr")))
+    try:
+        gv = gate.evaluate(intent.repo, live_refresh=(intent.mode in ("push", "mr")))
+    except ForgeError as e:
+        print(f"commit_flow: PR state verification failed for {intent.repo}: {e}", file=sys.stderr)
+        return 1
     plan: list[str] = [
         f"mode={intent.mode} repo={Path(intent.repo).name} ({intent.source}) "
         f"branch={gv.branch} target={intent.target}"

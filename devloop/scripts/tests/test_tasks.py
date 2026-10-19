@@ -107,16 +107,16 @@ def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory()
         # Seed an old terminal snapshot, then make the live refresh fail.
         assert prstate.refresh_local_pull_requests(repo)
         with patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
-            report = pr_lifecycle.sweep_repo(repo)
+            report = pr_lifecycle.sweep_repo(repo, force=True)
         assert report["updated"]["local_pull_requests"] is False
         assert report["actions"] == [] and Path(linked).exists()
-        report = pr_lifecycle.sweep_repo(repo)
+        report = pr_lifecycle.sweep_repo(repo, force=True)
         assert report["updated"]["local_pull_requests"] is True
         assert report["actions"][0]["status"] == "completed"
         assert not Path(linked).exists()
         assert Path(ongoing).is_dir() and Path(without_pr).is_dir()
         assert _git_out(repo, "branch", "--list", "worktree-finished") == "worktree-finished"
-        assert pr_lifecycle.sweep_repo(repo)["actions"] == []
+        assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []
         assert store.load_segment(repo, "local_pull_requests")["actions"] == []
 
 
@@ -151,7 +151,7 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
 
         fake.prs_for_branch = change_during_lookup
         with patch.object(prstate, "forge_for_repo", return_value=fake):
-            report = pr_lifecycle.sweep_repo(repo)
+            report = pr_lifecycle.sweep_repo(repo, force=True)
             assert report["updated"]["local_pull_requests"] is True
             assert changed and (Path(target) / "unsaved.txt").read_text() == "new work\n", change
             assert [(a["status"], a["reason"]) for a in report["actions"]] == [("deferred", "identity_changed")]
@@ -160,7 +160,7 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
             assert observed["checkout"] is not None
             if change == "branch":
                 # A fresh sweep observes the new PR-less branch and retains it.
-                assert pr_lifecycle.sweep_repo(repo)["actions"] == []
+                assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []
                 assert (Path(target) / "unsaved.txt").is_file()
 
 

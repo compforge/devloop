@@ -22,6 +22,7 @@ MODULES = [
     "test_staging",
     "test_worktree",
     "test_tasks",
+    "test_pr_observation",
     "test_rebase",
     "test_session",
     "test_board",

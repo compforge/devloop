@@ -89,6 +89,18 @@ def _add_submodule(repo: str) -> None:
 
 
 @repocli_report()
+def _reconcile_observed(repo):
+    """Supply fresh Forge evidence to tests of local removal mechanics."""
+    rows = store.load_segment(repo, "local_pull_requests")["branches"]
+    prs = []
+    for row in rows:
+        if row.get("pull_request"):
+            raw = dict(row["pull_request"])
+            raw.setdefault("sha", row["head_sha"])
+            prs.append(PullRequest.from_dict(raw))
+    return pull_request_lifecycle.reconcile(repo, forge=_FakeForge(prs))
+
+
 def test_new_worktree_fetches_latest_target_tip():
     repo, _, actor = _fixture("fresh")
     stale_tip = _git_out(repo, "rev-parse", "origin/main")
@@ -278,7 +290,7 @@ def test_finished_reconciliation_can_remove_the_checkout_it_runs_from():
         "actions": [],
     })
 
-    actions = pull_request_lifecycle.reconcile(current)
+    actions = _reconcile_observed(current)
 
     assert not Path(current).exists()
     assert [(action.pr_number, action.status, action.reason) for action in actions] == [
@@ -319,7 +331,7 @@ def test_finished_reconciliation_force_reclaims_dirty_initialized_submodule():
         "actions": [],
     })
 
-    actions = pull_request_lifecycle.reconcile(repo)
+    actions = _reconcile_observed(repo)
 
     assert [(action.pr_number, action.status) for action in actions] == [(1, "completed")]
     assert not Path(target).exists()
@@ -361,7 +373,7 @@ def test_finished_parent_reclaims_nested_open_checkout_and_projection():
         "actions": [],
     })
 
-    actions = pull_request_lifecycle.reconcile(repo)
+    actions = _reconcile_observed(repo)
 
     assert [(action.pr_number, action.status) for action in actions] == [(1, "completed")]
     assert not Path(parent).exists()
@@ -421,7 +433,7 @@ def test_finished_pr_reconciliation_force_reclaims_every_linked_worktree():
     }
     prstate.persist_local_pull_requests(repo, payload)
 
-    actions = pull_request_lifecycle.reconcile(repo)
+    actions = _reconcile_observed(repo)
 
     for removed in (completed, dirty, owned, closed, external):
         assert not Path(removed).exists()

@@ -83,6 +83,9 @@ class _FakeForge(Forge):
     def recent(self, limit):
         return sorted(self._prs.values(), key=lambda p: p.number, reverse=True)[:limit]
 
+    def open_pull_requests(self):
+        return [p for p in self.recent(len(self._prs)) if p.is_open]
+
     def comments(self, number):
         return [Comment(author="x", body="y")]
 

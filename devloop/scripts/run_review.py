@@ -464,6 +464,11 @@ def main(argv: list[str]) -> int:
                     session_id=result.session_id, warning_counts=counts, message=result.message,
                     findings=_findings_for_history(comments, result.warnings),
                     range=range_label, posted=posted)
+    if forge and pr and (inline_posted or posted.startswith("posted to ")):
+        from domain.context import prstate
+        observed = store.load_segment(repo, "pr") or {}
+        if observed.get("pr_number") == pr.number:
+            prstate.refresh_pr_details(repo, forge, force=True)
     print(f"run_review: {result.status} · {len(comments)} comment(s), {result.failed} file(s) failed on {range_label}"
           + (f" · {posted}" if posted else "") + " → .devloop/review.json")
     return 0

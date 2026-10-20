@@ -1,6 +1,6 @@
 ---
 name: trajectory
-description: Discover, run, interpret, and iteratively tune a project's existing agent trajectory evaluation capability. Use when the user asks to evaluate agent trajectories, compare effect and cost across runs, find trajectory smells or the next trajectory problem, or identify optimizations for a known trajectory issue. Operate project-owned trajectory evidence and canonical entrypoints; do not invent missing evidence, verdicts, or a parallel evaluation framework.
+description: Discover, run, interpret, and iteratively tune a project's existing agent trajectory evaluation capability. Use when the user asks to inspect a loop view or agent view (看下 loop view / agent view), evaluate agent trajectories, compare effect and cost across runs, find trajectory smells or the next trajectory problem, or identify optimizations for a known trajectory issue. Operate project-owned trajectory evidence and canonical entrypoints; do not invent missing evidence, verdicts, or a parallel evaluation framework.
 ---
 
 # Trajectory Quality
@@ -22,6 +22,11 @@ Require either a usable project entrypoint that produces trajectory evidence or 
 sufficient for the requested analysis. A missing specialized Detector or Verifier alone does not
 make the capability absent: inspect representative and counterexample trajectories for candidate
 problems, clearly recording them as analyst observations rather than fabricated framework results.
+
+For requests such as “看下 loop view”, “看下 agent view”, or inspecting a framework session's
+agent execution, read [references/loop.md](references/loop.md) first. Resolve the business execution,
+its agent loops, and their session evidence, then present the requested loop view before proposing
+quality improvements.
 
 ## Method: efficiency and effectiveness
 

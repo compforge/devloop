@@ -1,7 +1,7 @@
 {
   "name": "@compforge/devloop",
-  "version": "0.4.47",
-  "description": "Shared dev-loop domain runtime with Claude Code, Codex, and DeepSeek Harness adapters.",
+  "version": "0.4.48",
+  "description": "Shared dev-loop runtime with Claude Code, Codex, DeepSeek Harness, and OpenCode V2 adapters.",
   "type": "module",
   "engines": {
     "node": "^22.19.0 || >=24.0.0"
@@ -17,7 +17,11 @@
       "types": "./dist/adapters/dsh.d.ts",
       "default": "./dist/adapters/dsh.js"
     },
-    "./cordis.patch.yml": "./cordis.patch.yml"
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./server": {
+      "types": "./dist/adapters/opencode.d.ts",
+      "default": "./server.js"
+    }
   },
   "files": [
     "dist/",
@@ -34,7 +38,8 @@
     "references/",
     "skills/",
     ".claude-plugin/",
-    ".codex-plugin/"
+    ".codex-plugin/",
+    "server.js"
   ],
   "dsh": {
     "bundle": {
@@ -52,7 +57,8 @@
     "@deepseek-ai/dsh-agent": "^0.1.6-alpha.1",
     "@deepseek-ai/dsh-llm": "^0.1.6-alpha.1",
     "@deepseek-ai/dsh-skill-filesystem": "^0.1.6-alpha.1",
-    "@deepseek-ai/dsh-tools": "^0.1.6-alpha.1"
+    "@deepseek-ai/dsh-tools": "^0.1.6-alpha.1",
+    "@opencode/plugin": "^2.1.2"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -69,17 +75,22 @@
     },
     "@deepseek-ai/dsh-tools": {
       "optional": true
+    },
+    "@opencode/plugin": {
+      "optional": true
     }
   },
   "dependencies": {
     "@compforge/repocli": "^0.3.0",
-    "@deepseek-ai/schemastery": "^3.18.2"
+    "@deepseek-ai/schemastery": "^3.18.2",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-agent": "^0.1.6-alpha.1",
     "@deepseek-ai/dsh-llm": "^0.1.6-alpha.1",
     "@deepseek-ai/dsh-tools": "^0.1.6-alpha.1",
+    "@opencode/plugin": "^2.1.2",
     "@types/node": "^24.7.0",
     "esbuild": "^0.28.2",
     "typescript": "^6.0.3",

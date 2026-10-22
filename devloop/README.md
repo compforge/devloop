@@ -6,7 +6,7 @@
 enter repo → start branch → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
 ```
 
-它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code、Codex 和 DeepSeek Harness（DSH）。
+它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code、Codex、DeepSeek Harness（DSH）与 OpenCode V2。
 
 ## 为什么需要 devloop
 
@@ -57,7 +57,21 @@ Codex 如果要求审核 hook，可在 `/hooks` 中信任 devloop hooks。
 npx --yes @deepseek-ai/dsh@0.1.6-alpha.1 plugin --profile headless add @compforge/devloop
 ```
 
-包内声明的 DSH bundle layer 会自动暴露 devloop skills，并挂载 `@compforge/devloop/dsh`，直接注册 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；三端只在 adapter 层分化。卸载使用 `npx --yes @deepseek-ai/dsh@0.1.6-alpha.1 plugin --profile headless remove @compforge/devloop`。如果已全局安装对应版本的 DSH，也可以使用较短的 `dsh` 命令。
+包内声明的 DSH bundle layer 会自动暴露 devloop skills，并挂载 `@compforge/devloop/dsh`，直接注册 session、step 与 tool lifecycle event。DSH 接入不经过 Claude/Codex 的 stdin/stdout hook 协议；各端只在 adapter 层分化。卸载使用 `npx --yes @deepseek-ai/dsh@0.1.6-alpha.1 plugin --profile headless remove @compforge/devloop`。如果已全局安装对应版本的 DSH，也可以使用较短的 `dsh` 命令。
+
+### OpenCode V2
+
+适配基线为 OpenCode `2.1.2`，不兼容 V1 Plugin API。在 `opencode.json(c)` 中添加：
+
+```json
+{
+  "plugins": ["@compforge/devloop@0.4.48"]
+}
+```
+
+源码试用：在本仓 `devloop/` 目录执行 `npm ci && npm run build`，再把该目录的绝对路径写入 `plugins`。原生 server adapter 自动注册共享 skills、Board 与工具守卫，支持 CodeMode 内部的工具调用；直接以自然语言或 skill 名触发 `gcampr`、`validate` 等流程。
+
+Board 在同一用户轮次的每次模型请求中保持可见。工具与脚本共用 opencode session 身份；执行终态释放 checkout owner，session 删除或 plugin 卸载清理 session 状态。前台 shell 按结构化退出码记录结果，后台 shell 的初次返回仅表示已启动。活动触发共享的一次性 PR/MR 对账，不保证空闲期间持续运行。
 
 安装后新开一个 session。
 

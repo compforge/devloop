@@ -40,4 +40,4 @@ Trust the output and report each check's pass/fail. Fix genuine source or test p
 lint rules, suppress diagnostics, or loosen test assertions merely to force a green result. Only
 `make fix` may perform automatic source rewrites.
 
-`<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex.
+`<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex and OpenCode V2.

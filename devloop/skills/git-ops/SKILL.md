@@ -7,7 +7,7 @@ Use devloop's scripts as the executable policy. Inspect Git state freely, but do
 owned workflow with raw `git commit/push`, `git worktree add`, force-push, or hand-written
 `curl`/`glab`/`gh` forge calls.
 
-`<PLUGIN_ROOT>` maps to `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
+`<PLUGIN_ROOT>` maps to `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex and OpenCode V2.
 
 Run Python workflows through `<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/<name>.py`.
 This launcher supplies the locked dependencies via uv; system Python or the target project's

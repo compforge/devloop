@@ -1,6 +1,6 @@
 export declare const OWNER_TTL_SECONDS = 1800;
 export interface SessionIdentity {
-    readonly harness: "claude" | "codex" | "dsh" | "unknown";
+    readonly harness: "claude" | "codex" | "dsh" | "opencode" | "unknown";
     readonly sessionId: string;
 }
 export interface OwnerRecord {

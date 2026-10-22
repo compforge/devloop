@@ -48,4 +48,4 @@ standalone task when each check should be an independent run. If the current cli
 Scheduled tasks, give the prompt above and direct the user to Codex in the desktop app or ChatGPT
 web/desktop Scheduled view.
 
-`<PLUGIN_ROOT>` maps to `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
+`<PLUGIN_ROOT>` maps to `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex and OpenCode V2.

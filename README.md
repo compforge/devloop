@@ -70,6 +70,18 @@ npx --yes @deepseek-ai/dsh@0.1.6-alpha.1 plugin --profile headless add @compforg
 
 The package declares its DSH bundle layer, exposes its bundled skills, and mounts `@compforge/devloop/dsh` automatically. It registers directly on DSH lifecycle and tool events; it does not shell out through the Claude/Codex hook protocol. Remove it with `npx --yes @deepseek-ai/dsh@0.1.6-alpha.1 plugin --profile headless remove @compforge/devloop`. If the matching DSH version is installed globally, the shorter `dsh` command is equivalent.
 
+### OpenCode V2
+
+OpenCode `2.1.2+` loads the native plugin through its npm server entrypoint. Add it to `opencode.json(c)`:
+
+```json
+{
+  "plugins": ["@compforge/devloop@0.4.48"]
+}
+```
+
+For a source checkout, run `npm ci && npm run build` in `devloop/`, then use that directory's absolute path in `plugins`. The adapter registers the bundled skills, provides Board context, and applies shared tool guardrails, including CodeMode child calls. V1 is not supported.
+
 Start a new session after installation. Repository state is initialized automatically when the agent first enters a Git repository.
 
 Then use outcome-oriented requests instead of assembling shell commands yourself:
@@ -107,11 +119,11 @@ See [`config/config.example.json`](./devloop/config/config.example.json) for the
 
 ## Scope and compatibility
 
-- **Harnesses:** Claude Code and Codex use thin process-hook adapters; DeepSeek Harness uses the native Cordis adapter. All three share the TypeScript Board, state, tool projection, and policy core. Skill workflow scripts remain Python and are harness-independent.
+- **Harnesses:** Claude Code and Codex use thin process-hook adapters; DeepSeek Harness uses the native Cordis adapter, and OpenCode V2 uses its native plugin API. All four share the TypeScript Board, state, tool projection, and policy core. Skill workflow scripts remain Python and are harness-independent.
 - **Forges:** GitHub and GitLab are peer providers selected per repository.
 - **Ownership:** devloop owns the coding-harness development loop: repo/branch state, validation, commit/push, PR/MR creation, review delivery, and execution guardrails.
 - **Boundary:** requirement identity, cross-repository orchestration, deployment, long-running scheduling, and session wakeups belong to higher-level loops such as Baton and the [ReqLoop Marketplace](https://github.com/compforge/reqloop).
-- **opencode:** the marketplace contains a placeholder plugin, but the devloop plugin is not wired to opencode yet.
+- **OpenCode scheduling:** session activity triggers bounded PR/MR reconciliation. Idle-time scheduling remains external; the adapter does not create a background polling loop.
 
 ## Updating
 

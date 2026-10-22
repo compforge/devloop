@@ -3,7 +3,7 @@
   "owner": {
     "name": "compforge"
   },
-  "description": "Cross-CLI plugin marketplace (opencode side). Placeholder — opencode integration not yet implemented.",
+  "description": "Reserved legacy catalog. OpenCode V2 loads @compforge/devloop through opencode.json plugins and its npm server export; this file is not an OpenCode installer.",
   "_status": "placeholder",
   "plugins": []
 }

@@ -2,7 +2,7 @@
 export interface SessionIdentity {
   readonly id: string;
   readonly cwd: string;
-  readonly harness: "claude" | "codex" | "dsh";
+  readonly harness: "claude" | "codex" | "dsh" | "opencode";
 }
 
 /** A model-facing context item produced by the shared Board. */

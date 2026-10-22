@@ -1,5 +1,5 @@
 PYTHON := scripts/python
-.PHONY: fix lint lint-ci test build
+.PHONY: fix lint lint-ci test test-opencode build
 fix:
 	# Prepare tracked artifacts before lint/test run concurrently.
 	npm run build
@@ -15,3 +15,7 @@ test:
 	$(PYTHON) scripts/tests/run_all.py
 build:
 	npm run build
+
+# Requires an installed OpenCode V2; the fixture uses an isolated local mock model.
+test-opencode: build
+	DEVLOOP_OPENCODE_BIN=$${DEVLOOP_OPENCODE_BIN:-opencode} npx vitest run tests/opencode-host.spec.ts

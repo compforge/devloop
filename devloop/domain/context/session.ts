@@ -7,10 +7,11 @@ import { ACTIVE_REPO_TTL_SECONDS } from "./base.js";
 
 export const OWNER_TTL_SECONDS = 1_800;
 
-export interface SessionIdentity { readonly harness: "claude" | "codex" | "dsh" | "unknown"; readonly sessionId: string }
+export interface SessionIdentity { readonly harness: "claude" | "codex" | "dsh" | "opencode" | "unknown"; readonly sessionId: string }
 export interface OwnerRecord { readonly harness: string; readonly session_id: string; readonly pid: number; readonly branch: string; readonly acquired_at: number }
 
 export function identityFromEnvironment(): SessionIdentity {
+  if (process.env.DEVLOOP_HARNESS === "opencode" && process.env.DEVLOOP_SESSION_ID) return { harness: "opencode", sessionId: process.env.DEVLOOP_SESSION_ID };
   const codex = process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID;
   if (codex) return { harness: "codex", sessionId: codex };
   if (process.env.CLAUDE_CODE_SESSION_ID) return { harness: "claude", sessionId: process.env.CLAUDE_CODE_SESSION_ID };
@@ -59,7 +60,7 @@ export function anyActiveOwner(repo: string, at = now()): OwnerRecord | undefine
 }
 
 /** First active session wins checkout ownership; I/O failure remains fail-open. */
-export function acquireOwner(repo: string, identity: SessionIdentity, branch = currentBranch(repo) ?? "", at = now(), pid = process.ppid): boolean {
+export function acquireOwner(repo: string, identity: SessionIdentity, branch = currentBranch(repo) ?? "", at = now(), pid = identity.harness === "opencode" ? process.pid : process.ppid): boolean {
   if (!identity.sessionId) return true;
   const harness = safeHarness(identity.harness);
   const path = lockFile(repo);

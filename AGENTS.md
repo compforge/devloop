@@ -19,7 +19,7 @@ devloop 托管聚焦开发者效率的 plugin 集合。本仓库**根层**只负
 - 具体 plugin 的设计动机、内部架构、hook 列表、状态文件、配置项 → 见对应 `<plugin>/README.md`
 - 整个工作流落地的方案记录（feature 矩阵、版本规划等）→ 见 plan 文档
 
-当前实施范围：`devloop` 支持 Claude Code、Codex、DeepSeek Harness 与 OpenCode V2。Claude/Codex 通过薄进程 hook adapter 接入；DSH bundle 同时挂载原生 Cordis adapter 并暴露包内 skills。四端共用 TypeScript Board、state、tool projection 与 policy。skill 调用的 Git/release/validation/review 脚本继续使用 Python。OpenCode V2 通过 npm `./server` 入口加载原生 adapter，并注册同一组 skills；不使用仓库的占位 marketplace 文件。
+当前实施范围：`devloop` 支持 Claude Code、Codex、DeepSeek Harness 与 OpenCode V2。Claude/Codex 通过薄进程 hook adapter 接入；DSH bundle 同时挂载原生 Cordis adapter 并暴露包内 skills。四端共用 TypeScript Board、state、tool projection 与 policy。skill 调用的 Git/release/validation/review 脚本继续使用 Python。OpenCode V2 通过 npm `./server` 入口加载原生 adapter，并注册同一组 skills；不依赖 marketplace 索引。
 
 ---
 
@@ -30,7 +30,6 @@ devloop/                              # ← 仓库根（marketplace）
 │
 ├── .claude-plugin/marketplace.json   # Claude marketplace 索引
 ├── .agents/plugins/marketplace.json  # Codex marketplace 索引（Codex 标准路径）
-├── .opencode/marketplace.json        # 历史占位索引（V2 使用 npm server export）
 │
 ├── devloop/                          # plugin: 开发者日常工作流（Claude + Codex + DSH + OpenCode V2）
 │   │                                 #   git / MR / lint / test / cwd-aware context / Board / 执行守卫

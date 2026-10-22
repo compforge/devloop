@@ -16,6 +16,10 @@ const RULES = {
 export function itemsFor(view, channel) {
     return view.items.filter((item) => RULES[item.type].channels.includes(channel));
 }
+/** Uncapped facts must remain visible when a Harness rebuilds request-local context. */
+export function promptFactsFor(view) {
+    return itemsFor(view, "prompt").filter((item) => RULES[item.type].maxDeliveries === undefined);
+}
 export class PromptDelivery {
     root;
     sessionId;
@@ -36,6 +40,11 @@ export class PromptDelivery {
         }));
     }
     deliver(view, trigger = "user_prompt") {
+        const due = this.deliverItems(view, trigger);
+        return due.length ? renderPrompt(due) : undefined;
+    }
+    /** Select and mark items once; request-local adapters retain the selection for their turn. */
+    deliverItems(view, trigger = "user_prompt") {
         const receipt = this.load();
         const at = now();
         const due = view.items.filter((item) => {
@@ -51,14 +60,14 @@ export class PromptDelivery {
             return mark.last_emit_at === undefined || at - mark.last_emit_at >= ttl;
         });
         if (due.length === 0)
-            return undefined;
+            return [];
         for (const item of due) {
             const previous = receipt[item.id];
             const same = previous?.signature === item.signature;
             receipt[item.id] = { item_type: item.type, signature: item.signature, count: same ? previous.count + 1 : 1, last_emit_at: at };
         }
         saveSegment(this.root, this.segment(), { items: receipt });
-        return renderPrompt(due);
+        return due;
     }
     afterCompact() {
         const receipt = this.load();

@@ -13,7 +13,7 @@ ReviewRun → Finding → Verdict → Handling → thread resolution
 generic `pr reply` for adjudication; the review CLI validates the vocabulary and keeps recording a
 Verdict separate from resolving the discussion.
 
-`<PLUGIN_ROOT>` maps to `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
+`<PLUGIN_ROOT>` maps to `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex and OpenCode V2.
 
 ## Routes
 

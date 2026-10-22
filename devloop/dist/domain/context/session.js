@@ -6,6 +6,8 @@ import { appendLedger, stateDirectory, workingTreeStateDirectory } from "./store
 import { ACTIVE_REPO_TTL_SECONDS } from "./base.js";
 export const OWNER_TTL_SECONDS = 1_800;
 export function identityFromEnvironment() {
+    if (process.env.DEVLOOP_HARNESS === "opencode" && process.env.DEVLOOP_SESSION_ID)
+        return { harness: "opencode", sessionId: process.env.DEVLOOP_SESSION_ID };
     const codex = process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID;
     if (codex)
         return { harness: "codex", sessionId: codex };
@@ -61,7 +63,7 @@ export function anyActiveOwner(repo, at = now()) {
     return undefined;
 }
 /** First active session wins checkout ownership; I/O failure remains fail-open. */
-export function acquireOwner(repo, identity, branch = currentBranch(repo) ?? "", at = now(), pid = process.ppid) {
+export function acquireOwner(repo, identity, branch = currentBranch(repo) ?? "", at = now(), pid = identity.harness === "opencode" ? process.pid : process.ppid) {
     if (!identity.sessionId)
         return true;
     const harness = safeHarness(identity.harness);

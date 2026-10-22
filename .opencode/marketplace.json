@@ -1,9 +1,0 @@
-{
-  "name": "devloop",
-  "owner": {
-    "name": "compforge"
-  },
-  "description": "Cross-CLI plugin marketplace (opencode side). Placeholder — opencode integration not yet implemented.",
-  "_status": "placeholder",
-  "plugins": []
-}

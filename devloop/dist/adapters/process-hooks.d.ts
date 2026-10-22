@@ -1,6 +1,6 @@
 import { BoardRuntime } from "../domain/board/runtime.js";
 import type { HookHarness, HookPayload } from "./hook-payload.js";
-export type RuntimeHarness = HookHarness | "dsh";
+export type RuntimeHarness = HookHarness | "dsh" | "opencode";
 /** Refresh discoverable workspace facts and construct the shared Board for session startup. */
 export declare function initializeBoard(payload: HookPayload): Promise<{
     readonly runtime?: BoardRuntime;
@@ -10,7 +10,7 @@ export declare function sessionStartOutput(payload: HookPayload, harness?: HookH
 export declare function userPromptOutput(payload: HookPayload): Promise<Record<string, unknown>>;
 export declare function afterCompact(payload: HookPayload): Promise<void>;
 export declare function afterCwdChanged(payload: HookPayload): void;
-export declare function afterTool(payload: HookPayload, harness: RuntimeHarness): void;
+export declare function afterTool(payload: HookPayload, harness: RuntimeHarness, pluginRoot?: string): void;
 export declare function afterFileChanged(payload: HookPayload): void;
 /** Record tool timing in the same TypeScript process that evaluates hook policy. */
 export declare function recordToolCall(payload: HookPayload, harness: RuntimeHarness): void;

@@ -12,7 +12,7 @@ bash <PLUGIN_ROOT>/scripts/smart_gcampr.sh --message-file <repo>/.devloop/commit
 ```
 
 Trust the `PLAN:` banner and surface the returned PR/MR URL.
-`<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex.
+`<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex and OpenCode V2.
 
 Source is always the current repository. Resolve the target from the user’s context;
 pass its concrete Repository ID via `--target-repository` when contributing elsewhere.

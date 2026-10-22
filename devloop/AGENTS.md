@@ -30,7 +30,7 @@ AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.jso
 **边界**：
 - 聚合 workspace 与单 repo 都是运行形态，workspace 可选；子项目从文件系统发现，手工 init 不是前置。
 - 只管 PR/MR 生命周期内的 repo/branch、开发入口和验证控制；**不做**问题发现与 trace、部署、通用 git 教学。
-- 当前支持 **Claude Code + Codex + DeepSeek Harness**。Claude/Codex 使用进程 hook adapter；DSH bundle 暴露包内 skills，并挂载原生 Cordis adapter。三端共用 TypeScript Board、状态、投影与 policy。周期 PR/MR 对账由 `tasks/tasks.json` 唯一发现，Claude native monitor 循环运行，Codex Scheduled task 单次运行。opencode 仍待协议明确。
+- 当前支持 **Claude Code + Codex + DeepSeek Harness + OpenCode V2**。Claude/Codex 使用进程 hook adapter；DSH bundle 暴露包内 skills，并挂载原生 Cordis adapter。四端共用 TypeScript Board、状态、投影与 policy。周期 PR/MR 对账由 `tasks/tasks.json` 唯一发现，Claude native monitor 循环运行，Codex Scheduled task 单次运行。OpenCode V2 活动触发同一个一次性 task，不提供空闲调度。
 
 ---
 
@@ -43,6 +43,7 @@ devloop/
 ├── cordis.patch.yml               # DSH bundle layer：挂载 adapter + 暴露 skills
 ├── index.ts                        # npm 公共 API
 ├── adapters/                       # Harness 薄适配层
+│   ├── opencode.ts                #   OpenCode V2 hooks、skills 与调用级身份桥接
 │   ├── claude.ts  codex.ts        #   stdin/stdout hook dialect
 │   ├── process-hooks.ts           #   Claude/Codex lifecycle translation
 │   └── dsh.ts                     #   原生 Cordis plugin（ctx.on）
@@ -60,7 +61,7 @@ devloop/
 │   ├── hooks.json                 # Claude 事件注册
 │   ├── hooks.codex.json           # Codex 事件注册（含 SessionEnd + PostToolUse 刷新）
 │   ├── runtime.ts                 # Claude/Codex stdin/stdout executable
-│   ├── core/                      # Change→Target→Rule→Decision + 三端统一投影
+│   ├── core/                      # Change→Target→Rule→Decision + 四端统一投影
 │   ├── rules/index.ts             # 保护分支、owner、validation、layer 等规则
 │   └── friction.ts                # guard deny → friction ledger adapter
 ├── tasks/tasks.json                # 共享 task 发现描述
@@ -71,7 +72,7 @@ devloop/
 │   └── tests/                      #   Python workflow 回归测试
 ├── monitors/monitors.json          # Claude native-monitor adapter：循环调用共享 task
 ├── commands/                       # slash：enter / gcam / gcamp / gcampr（validation 归 skill，gate 自动触发）
-├── skills/                         # 三端共享：git-ops / gcam* / validate / review + Scheduled-task adapter
+├── skills/                         # 四端共享：git-ops / gcam* / validate / review + Scheduled-task adapter
 └── config/                         # config.example.json 模板；全局配置在 ~/.devloop/config.json，repo/workspace 可在 .devloop/config.json 就近覆盖
 ```
 

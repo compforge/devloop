@@ -3,7 +3,7 @@ export interface HarnessToolInput {
     readonly toolName: string;
     readonly toolInput: Record<string, unknown>;
     readonly cwd: string;
-    readonly harness: "claude" | "codex" | "dsh";
+    readonly harness: "claude" | "codex" | "dsh" | "opencode";
 }
 export declare function patchFileChanges(value: unknown): readonly FileChangeTarget[];
 /** Map each harness payload into the same policy Change. */

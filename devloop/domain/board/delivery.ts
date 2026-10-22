@@ -27,6 +27,11 @@ export function itemsFor(view: BoardView, channel: DeliveryChannel): readonly Bo
   return view.items.filter((item) => RULES[item.type].channels.includes(channel));
 }
 
+/** Uncapped facts must remain visible when a Harness rebuilds request-local context. */
+export function promptFactsFor(view: BoardView): readonly BoardItem[] {
+  return itemsFor(view, "prompt").filter((item) => RULES[item.type].maxDeliveries === undefined);
+}
+
 export class PromptDelivery {
   constructor(readonly root: string, readonly sessionId?: string) {}
   private segment(): string { return `board/sessions/${sessionName(this.sessionId)}`; }
@@ -40,6 +45,11 @@ export class PromptDelivery {
     }));
   }
   deliver(view: BoardView, trigger: PromptTrigger = "user_prompt"): string | undefined {
+    const due = this.deliverItems(view, trigger);
+    return due.length ? renderPrompt(due) : undefined;
+  }
+  /** Select and mark items once; request-local adapters retain the selection for their turn. */
+  deliverItems(view: BoardView, trigger: PromptTrigger = "user_prompt"): readonly BoardItem[] {
     const receipt = this.load(); const at = now(); const due = view.items.filter((item) => {
       const rule = RULES[item.type]; if (!rule.channels.includes("prompt") || trigger === "session_start" && rule.promptScope !== "session") return false;
       const mark = receipt[item.id]; if (!mark || mark.signature !== item.signature) return true;
@@ -47,13 +57,13 @@ export class PromptDelivery {
       const ttl = rule.promptScope === "session" ? SESSION_TTL_SECONDS : TURN_TTL_SECONDS;
       return mark.last_emit_at === undefined || at - mark.last_emit_at >= ttl;
     });
-    if (due.length === 0) return undefined;
+    if (due.length === 0) return [];
     for (const item of due) {
       const previous = receipt[item.id]; const same = previous?.signature === item.signature;
       receipt[item.id] = { item_type: item.type, signature: item.signature, count: same ? previous.count + 1 : 1, last_emit_at: at };
     }
     saveSegment(this.root, this.segment(), { items: receipt } as unknown as JsonObject);
-    return renderPrompt(due);
+    return due;
   }
   afterCompact(): void {
     const receipt = this.load(); let changed = false;

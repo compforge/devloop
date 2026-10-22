@@ -15,4 +15,4 @@ bash <PLUGIN_ROOT>/scripts/smart_gcam.sh --message "<commit msg>" [--repo <name|
 Trust the `PLAN:` banner. After committing, ask whether to push (`gcamp`) or open a PR/MR
 (`gcampr`).
 
-`<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex.
+`<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex and OpenCode V2.

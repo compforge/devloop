@@ -7,9 +7,9 @@
 
 | 语言 | 约定 |
 |---|---|
-| Go | [[go]] |
-| Python | [[python]] |
-| TypeScript | [[typescript]] |
+| Go | [go](go.md) |
+| Python | [python](python.md) |
+| TypeScript | [typescript](typescript.md) |
 
 当前保持“一种语言一个文件”。当某个文件超过 reference 单文件预算，或形成多个需要独立演进的
 主题时，再将它升级为同名目录，以 `README.md` 作为该语言入口；本路由只更新目标，不预建空目录。

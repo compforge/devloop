@@ -40,7 +40,7 @@ the development workflow adapter shared by gcam/gcamp/gcampr:
 # --check lint / --check test selects one check; --full bypasses impact selection.
 ```
 
-`<PLUGIN_ROOT>` is `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
+`<PLUGIN_ROOT>` is `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex and OpenCode V2.
 The adapter submits one repocli round, stores the original report and associates it with
 the branch. It does not implement a second validation engine.
 

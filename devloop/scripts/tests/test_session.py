@@ -20,5 +20,15 @@ def test_checkout_owner_is_shared_across_harnesses():
     assert session.release(root, "claude-session", harness="claude")
 
 
+def test_opencode_identity_precedes_inherited_harness_environment():
+    from unittest.mock import patch
+
+    with patch.dict(os.environ, {
+        "DEVLOOP_HARNESS": "opencode", "DEVLOOP_SESSION_ID": "ses_native",
+        "CODEX_THREAD_ID": "inherited-codex", "CLAUDE_CODE_SESSION_ID": "inherited-claude",
+    }):
+        assert session.current_identity() == session.SessionIdentity("opencode", "ses_native")
+
+
 if __name__ == "__main__":
     run_main(globals())

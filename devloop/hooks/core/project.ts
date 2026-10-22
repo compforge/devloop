@@ -5,7 +5,7 @@ export interface HarnessToolInput {
   readonly toolName: string;
   readonly toolInput: Record<string, unknown>;
   readonly cwd: string;
-  readonly harness: "claude" | "codex" | "dsh";
+  readonly harness: "claude" | "codex" | "dsh" | "opencode";
 }
 
 const FILE_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "write", "edit", "str_replace_editor", "apply_patch"]);
@@ -182,8 +182,8 @@ export function projectTool(input: HarnessToolInput): Change {
     const path = configured ? (isAbsolute(configured) ? configured : resolve(cwd, configured)) : input.harness === "codex" && toolName === "Bash" ? undefined : cwd;
     return { targets: commandTargets(command, { ...(path ? { path } : {}), source: configured ? "tool workdir" : "hook cwd" }), cwd, tool: toolName, command };
   }
-  if (toolName === "apply_patch") {
-    const patch = toolInput.patch ?? toolInput.input ?? toolInput.command;
+  if (toolName === "apply_patch" || input.harness === "opencode" && toolName === "patch") {
+    const patch = toolInput.patchText ?? toolInput.patch ?? toolInput.input ?? toolInput.command;
     return { targets: patchFileChanges(patch), cwd, tool: toolName, command: "" };
   }
   if (FILE_TOOLS.has(toolName)) {

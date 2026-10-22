@@ -19,7 +19,7 @@ devloop 托管聚焦开发者效率的 plugin 集合。本仓库**根层**只负
 - 具体 plugin 的设计动机、内部架构、hook 列表、状态文件、配置项 → 见对应 `<plugin>/README.md`
 - 整个工作流落地的方案记录（feature 矩阵、版本规划等）→ 见 plan 文档
 
-当前实施范围：`devloop` 支持 Claude Code、Codex 与 DeepSeek Harness。Claude/Codex 通过薄进程 hook adapter 接入；DSH bundle 同时挂载原生 Cordis adapter 并暴露包内 skills。三端共用 TypeScript Board、state、tool projection 与 policy。skill 调用的 Git/release/validation/review 脚本继续使用 Python。opencode 侧目前只有 `example` 占位 plugin 演示 marketplace 结构。
+当前实施范围：`devloop` 支持 Claude Code、Codex、DeepSeek Harness 与 OpenCode V2。Claude/Codex 通过薄进程 hook adapter 接入；DSH bundle 同时挂载原生 Cordis adapter 并暴露包内 skills。四端共用 TypeScript Board、state、tool projection 与 policy。skill 调用的 Git/release/validation/review 脚本继续使用 Python。OpenCode V2 通过 npm `./server` 入口加载原生 adapter，并注册同一组 skills；不使用仓库的占位 marketplace 文件。
 
 ---
 
@@ -30,9 +30,9 @@ devloop/                              # ← 仓库根（marketplace）
 │
 ├── .claude-plugin/marketplace.json   # Claude marketplace 索引
 ├── .agents/plugins/marketplace.json  # Codex marketplace 索引（Codex 标准路径）
-├── .opencode/marketplace.json        # opencode marketplace 索引（占位，按协议补）
+├── .opencode/marketplace.json        # 历史占位索引（V2 使用 npm server export）
 │
-├── devloop/                          # plugin: 开发者日常工作流（Claude + Codex + DSH）
+├── devloop/                          # plugin: 开发者日常工作流（Claude + Codex + DSH + OpenCode V2）
 │   │                                 #   git / MR / lint / test / cwd-aware context / Board / 执行守卫
 │   │                                 #   Claude 用 CwdChanged / FileChanged / native monitor；Codex 用 SessionEnd + Scheduled tasks
 │   ├── .claude-plugin/plugin.json    #     Claude manifest
@@ -40,7 +40,7 @@ devloop/                              # ← 仓库根（marketplace）
 │   ├── cordis.patch.yml              #     DSH bundle layer（挂载 adapter + 暴露 skills）
 │   ├── skills/                       #     7 个 skill（CLI 共享，含一次性 monitor reconciliation）
 │   ├── commands/                     #     slash commands（Claude 端）
-│   ├── adapters/                     #     Claude/Codex hook dialect + DSH Cordis adapter
+│   ├── adapters/                     #     Claude/Codex hook dialect + DSH/OpenCode 原生 adapter
 │   ├── domain/                       #     TS 共享领域模型与状态
 │   ├── lib/                          #     TS 共享技术 seam
 │   ├── hooks/                        #     TS policy/runtime 与 hook manifests
@@ -82,7 +82,7 @@ devloop/                              # ← 仓库根（marketplace）
 └── CONTRIBUTING.md                   # 新 plugin 接入规范
 ```
 
-**CLI 范围差异**：`devloop` 当前支持 Claude Code、Codex 与 DSH。`skills/` 共享；`commands/` 仍是 Claude slash command 入口，Codex 无同构 slash command，主要由 skill 名 + bundled hooks 作为入口；DSH bundle 暴露同一组 skills，并加载 `@compforge/devloop/dsh`。Claude 的 native monitor 与 Codex Scheduled task 分别驱动同一个一次性 reconciliation 入口。opencode 待协议明确。
+**CLI 范围差异**：`devloop` 当前支持 Claude Code、Codex、DSH 与 OpenCode V2。`skills/` 共享；`commands/` 仍是 Claude slash command 入口，Codex 无同构 slash command，主要由 skill 名 + bundled hooks 作为入口；DSH bundle 暴露同一组 skills，并加载 `@compforge/devloop/dsh`。Claude 的 native monitor 与 Codex Scheduled task 分别驱动同一个一次性 reconciliation 入口。OpenCode V2 通过 npm `./server` 入口和 `plugins` 配置接入，adapter 注册共享 skills。
 
 详细：[`devloop/README.md`](./devloop/README.md)（使用向） · [`devloop/AGENTS.md`](./devloop/AGENTS.md)（开发向）。
 
@@ -118,7 +118,7 @@ devloop/                              # ← 仓库根（marketplace）
 - `<plugin>/hooks/`：TypeScript 事件 adapter，依赖 `domain/lib`
 - `<plugin>/scripts/`：skill-owned workflow；允许保留 Python 及其私有辅助包，但 Harness runtime 不得依赖它
 
-Codex 与 Claude 的 command hook 都使用 stdin/stdout JSON，但支持事件和 payload 细节不能靠猜测合并；manifest 显式设置 Harness 身份，adapter 再映射到共享 TypeScript core。opencode 待协议明确时再决定差异隔离层。
+Codex 与 Claude 的 command hook 都使用 stdin/stdout JSON，但支持事件和 payload 细节不能靠猜测合并；manifest 显式设置 Harness 身份，adapter 再映射到共享 TypeScript core。OpenCode V2 使用 `adapters/opencode.ts` 隔离原生 hooks 与请求级上下文协议。
 
 ### 加新 plugin 的流程
 

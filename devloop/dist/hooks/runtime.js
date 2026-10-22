@@ -4231,7 +4231,7 @@ function running(pid) {
     return error.code !== "ESRCH";
   }
 }
-function triggerReconciliation(repo) {
+function triggerReconciliation(repo, pluginRoot) {
   let control = repo;
   let claim;
   let claimed = false;
@@ -4240,7 +4240,7 @@ function triggerReconciliation(repo) {
     const info = checkoutInfo(repo);
     control = info.mainRoot ?? info.root;
     if (!remote(control)) return false;
-    const plugin = process.env.PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("../../", import.meta.url));
+    const plugin = pluginRoot ?? process.env.PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("../../", import.meta.url));
     const catalog = JSON.parse(readFileSync3(join7(plugin, "tasks/tasks.json"), "utf8"));
     const task = catalog.find((entry) => entry.name === TASK);
     if (!task) throw new Error(`missing task definition: ${TASK}`);
@@ -4648,6 +4648,7 @@ import { closeSync as closeSync2, existsSync as existsSync8, mkdirSync as mkdirS
 import { basename as basename4, dirname as dirname8, join as join11, resolve as resolve6 } from "node:path";
 var OWNER_TTL_SECONDS = 1800;
 function identityFromEnvironment() {
+  if (process.env.DEVLOOP_HARNESS === "opencode" && process.env.DEVLOOP_SESSION_ID) return { harness: "opencode", sessionId: process.env.DEVLOOP_SESSION_ID };
   const codex = process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID;
   if (codex) return { harness: "codex", sessionId: codex };
   if (process.env.CLAUDE_CODE_SESSION_ID) return { harness: "claude", sessionId: process.env.CLAUDE_CODE_SESSION_ID };
@@ -4702,7 +4703,7 @@ function anyActiveOwner(repo, at = now()) {
   }
   return void 0;
 }
-function acquireOwner(repo, identity2, branch = currentBranch(repo) ?? "", at = now(), pid = process.ppid) {
+function acquireOwner(repo, identity2, branch = currentBranch(repo) ?? "", at = now(), pid = identity2.harness === "opencode" ? process.pid : process.ppid) {
   if (!identity2.sessionId) return true;
   const harness = safeHarness(identity2.harness);
   const path = lockFile(repo);
@@ -5182,6 +5183,11 @@ var PromptDelivery = class {
     }));
   }
   deliver(view, trigger = "user_prompt") {
+    const due = this.deliverItems(view, trigger);
+    return due.length ? renderPrompt(due) : void 0;
+  }
+  /** Select and mark items once; request-local adapters retain the selection for their turn. */
+  deliverItems(view, trigger = "user_prompt") {
     const receipt = this.load();
     const at = now();
     const due = view.items.filter((item) => {
@@ -5193,14 +5199,14 @@ var PromptDelivery = class {
       const ttl = rule.promptScope === "session" ? SESSION_TTL_SECONDS : TURN_TTL_SECONDS;
       return mark.last_emit_at === void 0 || at - mark.last_emit_at >= ttl;
     });
-    if (due.length === 0) return void 0;
+    if (due.length === 0) return [];
     for (const item of due) {
       const previous = receipt[item.id];
       const same = previous?.signature === item.signature;
       receipt[item.id] = { item_type: item.type, signature: item.signature, count: same ? previous.count + 1 : 1, last_emit_at: at };
     }
     saveSegment(this.root, this.segment(), { items: receipt });
-    return renderPrompt(due);
+    return due;
   }
   afterCompact() {
     const receipt = this.load();
@@ -5795,8 +5801,8 @@ function projectTool(input) {
     const path = configured ? isAbsolute3(configured) ? configured : resolve9(cwd2, configured) : input.harness === "codex" && toolName === "Bash" ? void 0 : cwd2;
     return { targets: commandTargets(command2, { ...path ? { path } : {}, source: configured ? "tool workdir" : "hook cwd" }), cwd: cwd2, tool: toolName, command: command2 };
   }
-  if (toolName === "apply_patch") {
-    const patch = toolInput.patch ?? toolInput.input ?? toolInput.command;
+  if (toolName === "apply_patch" || input.harness === "opencode" && toolName === "patch") {
+    const patch = toolInput.patchText ?? toolInput.patch ?? toolInput.input ?? toolInput.command;
     return { targets: patchFileChanges(patch), cwd: cwd2, tool: toolName, command: "" };
   }
   if (FILE_TOOLS.has(toolName)) {
@@ -6407,7 +6413,7 @@ function afterCwdChanged(payload) {
   if (repo && workspace) recordActiveRepo(workspace, repo, sessionId(payload));
 }
 var STATE_SUBCOMMANDS = /* @__PURE__ */ new Set(["commit", "push", "checkout", "switch", "reset", "merge", "rebase", "pull", "fetch"]);
-function afterTool(payload, harness) {
+function afterTool(payload, harness, pluginRoot) {
   const input = payload.tool_input;
   const toolInput = input !== null && typeof input === "object" && !Array.isArray(input) ? { ...input } : { input: string2(input) };
   if (sessionId(payload)) toolInput.session_id = sessionId(payload);
@@ -6426,7 +6432,7 @@ function afterTool(payload, harness) {
     if (workspace) recordActiveRepo(workspace, repo, sessionId(payload));
     if (target.subcommand !== "fetch") acquireOwner(repo, identity(payload, harness), currentBranch(repo) ?? "");
   }
-  if (harness === "codex") for (const repo of repositories) triggerReconciliation(repo);
+  if (harness === "codex" || harness === "opencode") for (const repo of repositories) triggerReconciliation(repo, pluginRoot);
 }
 function afterFileChanged(payload) {
   const path = string2(payload.file_path);

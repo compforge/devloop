@@ -7,7 +7,7 @@ ReviewRun → Finding → Verdict → Handling → thread resolution.
 A Verdict records validity/severity; it does not mean the issue is fixed or the thread resolved.
 
 Use `<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/review.py` below; `<PLUGIN_ROOT>` is
-`${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex. The CLI owns Forge encoding
+`${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex and OpenCode V2. The CLI owns Forge encoding
 and durable Verdict replies; do not hand-write `ccr:label=` or edit local ground-truth datasets.
 
 ## Inspect or run

@@ -1,6 +1,6 @@
 # Harness adapter
 
-devloop 的共享运行时使用 TypeScript。Claude Code、Codex 与 DeepSeek Harness 只在事件输入和输出协议上分化，领域模型与规则不随 CLI 复制。
+devloop 的共享运行时使用 TypeScript。Claude Code、Codex、DeepSeek Harness 与 OpenCode V2 只在事件输入和输出协议上分化，领域模型与规则不随 CLI 复制。
 
 ```text
 Claude/Codex hook payload ─┐
@@ -68,3 +68,41 @@ Git marketplace 直接执行这个已提交产物，不要求安装 `node_module
 `owningComponent` / `enclosingComponent` 接受显式 `ComponentCatalog`，只做同步投影。
 PolicyContext 在一次评估内复用识别；新事件创建新上下文。识别失败仍按规则的 fail-open /
 fail-closed 策略产生 warning / deny，Board 保留 Git/review 状态并显示识别缺口。
+
+## OpenCode V2
+
+`adapters/opencode.ts` default-exports the native V2 definition; npm `./server` and the local
+`server.js` entrypoint load it without changing the public library entrypoint. The supported
+baseline is `@opencode/plugin` / OpenCode `2.1.2`; V1 hooks are a different protocol.
+
+- `skill.transform` registers the bundled Markdown assets with namespaced IDs, real file paths,
+  and resolved `<PLUGIN_ROOT>` paths. YAML frontmatter is parsed once during setup.
+- `session.prompt` starts a new Board delivery window. The first primary `context` hook selects
+  due turn items through the shared receipt policy; subsequent requests retain that selection
+  and render current payloads. Uncapped facts (workspace/references, repo identity, and validation)
+  remain visible in every request. This is request-local context, not durable chat history. Compaction resets replayable delivery marks.
+- Tool admission uses the session's current location/subpath, not the plugin's loading location.
+  Native `shell`, `edit`, `write`, and `patch(patchText)` project to shared policy. CodeMode child
+  calls pass through the same hooks. Explicit deny throws a tool error outside the fail-open catch.
+- The native shell executor is wrapped with invocation-local AsyncLocalStorage. `shell.create.before`
+  supplies `DEVLOOP_HARNESS=opencode`, `DEVLOOP_SESSION_ID`, and `PLUGIN_ROOT` to that child only.
+  TypeScript and Python identity readers honor this explicit pair before inherited Harness variables.
+- `execute.after` distinguishes native errors from completed shells with nonzero `output.exit`,
+  timeout or signal. CodeMode `execute` results with `output.error=true` are failures even when
+  the outer native event is completed. Invocation-local ledger IDs distinguish CodeMode children
+  that share the Harness call ID. A background shell's `running` return stays a start record,
+  not success evidence;
+  this adapter does not currently reconcile its later terminal result into the timing ledger.
+- Execution terminal events release touched checkout owners without clearing Board reminder budgets.
+  Session deletion and plugin unload clear session state and ownership. Restored sessions initialize
+  lazily on their first observed request or tool. Activity runs the existing bounded reconciliation;
+  no idle-time scheduler or background polling loop is installed.
+
+Regression cases live in `tests/opencode.spec.ts`; live host checks must additionally cover the
+Promise/Effect bridge, native tool denial, CodeMode child calls, and model-visible context.
+
+Run `make test-opencode` for the opt-in installed-host integration test. Override
+`DEVLOOP_OPENCODE_BIN` when the executable is not on PATH. The fixture uses isolated config/state,
+a local scripted HTTP model (no provider credentials or paid model calls), native CodeMode child
+tools, and the real Python launcher. Its temporary evidence directory contains `summary.json`
+and the native server log; ordinary `make test` does not require an installed OpenCode CLI.

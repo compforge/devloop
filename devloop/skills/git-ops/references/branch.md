@@ -1,17 +1,12 @@
-# Start new work on a branch
-
-Create the development branch before editing:
+# Branch
 
 ```bash
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/branch.py create <name> [--repo <name|path>] [--target <branch>]
 ```
 
-The transaction refreshes `origin/<target>`, creates and switches to the branch, records its exact
-fork point, and claims the checkout for the current session. It is idempotent only when the checkout
-is already on that branch; an existing branch elsewhere is not rewritten or silently resumed.
+Creation starts from freshly fetched `origin/<target>` and claims the checkout for this session.
+Use `--base <ref>` for intentional stacking; the current checkout is not the default baseline.
 
-The working tree must be clean by default. If existing tracked and untracked changes intentionally
-belong to the new branch, pass `--carry-changes`. Use `--base <ref>` only for intentional stacking.
-
-When another session owns the checkout, do not switch it. Follow the returned guidance and create a
-managed worktree with `<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <tag>`.
+A clean tree is required unless existing changes intentionally belong to the new branch
+(`--carry-changes`). An existing branch elsewhere is not silently resumed or rewritten.
+For another session's checkout, use a [managed worktree](worktree.md).

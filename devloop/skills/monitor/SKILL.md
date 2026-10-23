@@ -1,41 +1,33 @@
 ---
 name: monitor
-description: Reconcile local branches and worktrees with GitHub/GitLab PR/MR state, report lifecycle changes, or configure Codex Scheduled tasks for recurring devloop checks. Use when asked to monitor/check PR or MR status, clean finished worktrees, reconcile local PRs, or set up recurring PR/MR monitoring.
+description: Reconcile local branches/worktrees with GitHub/GitLab PR/MR lifecycle, clean finished worktrees, or configure recurring reconciliation. Use for lifecycle sweeps and ongoing PR/MR monitoring. For a one-time PR/MR status query, use git-ops.
 ---
 
-Discover the canonical task first, then run one bounded reconciliation sweep:
+For status only, use [PR show/list](../git-ops/references/pr-management.md).
+Reconciliation applies repository lifecycle policy and can remove finished worktrees; it preserves
+branches and never merges a PR/MR. Use it for lifecycle monitoring or requested cleanup.
 
-```console
+`<PLUGIN_ROOT>` is `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
+Discover the task and run one bounded sweep in the requested repository/workspace:
+
+```bash
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py list
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py run pr-lifecycle-reconcile . --report
 ```
 
-Read the JSON report as follows:
+Report `changes`, completed/deferred `actions`, and refresh failures. `pull_requests` includes local
+branches without a checkout. A false `updated` or repo `error` means freshness is unknown, not that
+no PR exists. Nonzero exit can indicate refresh failure or deferred cleanup; inspect the report.
+For missed cleanup, logs are in the main checkout's `.devloop/tmp/pr-lifecycle-reconcile.log`
+and `.devloop/tasks.jsonl`.
 
-- `pull_requests` is every local branch with a PR/MR, including branches with no checkout;
-- `checkout` is `primary`, `managed`, `external`, or `null`;
-- `changes` records newly discovered PRs/MRs and authoritative state transitions;
-- `actions` records completed or deferred lifecycle reactions and their reason;
-- a false `updated` field or repo-level `error` means that source was not refreshed, so do not
-  infer absence or authorize cleanup from stale data.
+## Recurring monitoring
 
-Never pass `--loop` from a skill or Scheduled task. Looping is only the Claude native-monitor
-adapter; task discovery, one-shot behavior, report shape, and reconciliation policy are shared.
+When requested under Codex, use its native Scheduled-task capability with the user's cadence
+or the discovered task's `interval_seconds`. Each invocation runs one sweep; never pass `--loop`
+from a skill or Scheduled task. Claude's native monitor owns its own repeating adapter.
 
-Codex plugins cannot register a Scheduled task during installation. The plugin's Codex
-SessionStart and PostToolUse hooks therefore provide a throttled, non-blocking, repo-level
-opportunistic trigger for this same one-shot task. Treat it as an active-use fallback, not a
-durable timer: it cannot run while Codex has no lifecycle events.
-
-For missed cleanup, inspect the main checkout's `.devloop/tmp/pr-lifecycle-reconcile.log`
-and `.devloop/tasks.jsonl`. The trigger targets only the repo touched by the event, shares
-a live-process claim across its worktrees, and retains task stdout/stderr. A one-shot task
-returns nonzero for refresh failures or deferred cleanup; inspect the report before retrying.
-
-When the user asks to monitor continuously under Codex, use the native Scheduled-task capability
-instead of a daemon. Create or update a project-scoped task with the requested cadence; when none
-is given, use the discovered task's `interval_seconds` (round only when the scheduler requires a
-coarser unit). Run it in the local project and use this durable prompt:
+Use a project-scoped prompt:
 
 ```text
 Run $devloop:monitor for this project. Report PR/MR state changes, completed or deferred
@@ -43,9 +35,5 @@ reconciliation actions, and refresh failures. If nothing changed and every refre
 report only "no changes". Never merge a PR/MR or delete a branch.
 ```
 
-Prefer a task in the current chat when the user wants the existing context retained; use a
-standalone task when each check should be an independent run. If the current client cannot manage
-Scheduled tasks, give the prompt above and direct the user to Codex in the desktop app or ChatGPT
-web/desktop Scheduled view.
-
-`<PLUGIN_ROOT>` maps to `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
+If scheduling is unavailable in the current client, provide the prompt and cadence without claiming
+a task was installed. Opportunistic lifecycle-hook sweeps are not a durable timer.

@@ -5,12 +5,5 @@ argument-hint: "<commit message> [--repo <name>] [--branch <name>] [--file path]
 allowed-tools: [Bash]
 ---
 
-The user wants to commit current changes (no push). Construct and run:
-
-```
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/smart_gcam.sh" --message "<commit message>" [--repo <name|path>] [--branch <name>] [--file <path>]...
-```
-
-Same staging/branch rules as `/gcampr` (no `cd` prefix needed — `--repo` targets a subproject; preflight `--branch` on PROTECTED/INACTIVE branches; repeatable `--file` or tracked-only; never `git add -A`). Trust the `PLAN:` banner. After committing, ask the user whether to push (`/gcamp`) or open a PR/MR (`/gcampr`).
-
-If `code-review` is enabled for the repo, it runs **automatically** in the background after the commit (commit_flow detaches it — you launch nothing); a `review: launched in background` line appears in the `PLAN:`. Findings surface next turn via the injected `Review:` line; read `.devloop/review.json` for details and report when relevant (advisory — never blocks). See `docs/code-review.md`.
+Read `<PLUGIN_ROOT>/skills/gcam/SKILL.md` and follow it for this request.
+`<PLUGIN_ROOT>` is `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.

@@ -1,14 +1,11 @@
-# Managed worktrees
-
-Use ordinary `cd` to select an existing checkout. When another session needs isolation, run:
+# Worktree
 
 ```bash
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <short-unique-tag>
+<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/checkout.py <repo> --worktree <tag>
 ```
 
-A new tag creates `worktree-<tag>` from freshly fetched `origin/<target>` and refuses creation when
-the baseline cannot be refreshed. An existing worktree path or retained branch is resumed without
-rebase/reset.
+A new tag creates `worktree-<tag>` from freshly fetched `origin/<target>`.
+An existing path or retained branch resumes without rebase/reset: reuse a tag only for the same
+work, and choose a new tag for an independent task. Use `cd` to select an existing checkout.
 
-Reuse a tag only to continue the same work. Choose a new tag for independent work; update an existing
-branch's baseline through a separate explicit Git operation. Do not run raw `git worktree add`.
+Updating an existing branch's baseline uses the separate [rebase workflow](rebase.md).

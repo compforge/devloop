@@ -193,7 +193,7 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 " catalog=inspect(repo)\n"
                 " paths=[item['path'] for item in data['affectedFiles']]\n"
                 " owned={binding.root for path in paths if (binding:=owner(catalog,path)) is not None}\n"
-                " components=[dict(root=b.root, snapshot='after', component={'name': b.name}, affected=b.root in owned, complete=data['complete'], fallbackReasons=[]) for b in catalog.components]\n"
+                " components=[dict(root=b.root, snapshot='after', component={'name': b.name, 'language': b.language}, packageTools=[dict(name=t.name, evidence=list(t.evidence), **({'version': t.version} if t.version else {})) for t in b.package_tools], affected=b.root in owned, complete=data['complete'], fallbackReasons=[]) for b in catalog.components]\n"
                 "data['components']=components\n"
                 "print(json.dumps(data))\n"
             )

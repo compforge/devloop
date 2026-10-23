@@ -17,6 +17,7 @@ from domain.context.store import load_segment, branch_segment
 from domain.lifecycle import checks
 from domain.lifecycle.base import dispatch, DispatchResult
 from domain.validation import Comparison, build_plan
+from lib import repocli
 
 
 def test_one_analysis_after_fix_shared_by_lint_and_tests():
@@ -24,9 +25,10 @@ def test_one_analysis_after_fix_shared_by_lint_and_tests():
         repo = make_repo(root)
         with (repo / "Makefile").open("a") as f:
             f.write("fix:\n\t@echo normalized >> fix.observed\nlint:\n\t@echo '$(LINT_FILES)' > lint.observed\n")
-        with redirect_stdout(io.StringIO()):
+        with redirect_stdout(io.StringIO()), patch.object(repocli, "inspect", wraps=repocli.inspect) as inspect:
             result = dispatch("pre_commit", str(repo), paths=["source.py"], names=["lint", "test"])
         assert result.proceed and all(r.ok for r in result.results)
+        assert inspect.call_count == 1
         assert (repo / "fix.observed").read_text().splitlines() == ["normalized"]
         assert len((repo / "analysis.observed").read_text().splitlines()) == 1
         assert (repo / "lint.observed").read_text().strip() == "source.py test_a.py"
@@ -213,15 +215,16 @@ def test_missing_or_invalid_affected_files_are_not_an_empty_result():
             assert all(s.scope == "full" for s in plan.selections.values())
 
 
-def test_missing_stale_or_invalid_component_reports_fall_back():
+def test_missing_or_invalid_component_reports_fall_back():
     from domain.repo_layout import inspect_catalog
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         name = inspect_catalog(repo).components[0].name
         valid = dict(root=".", snapshot="after", component={"name": name}, affected=False, complete=True)
-        for invalid in (None, [], [{k: v for k, v in valid.items() if k != "affected"}],
+        for invalid in (None, [{k: v for k, v in valid.items() if k != "affected"}],
                         [dict(valid, complete="unknown")], [dict(valid, root="../outside")],
-                        [dict(valid, component={"name": "stale"})], [valid, valid]):
+                        [dict(valid, packageTools="invalid")], [dict(valid, component={"name": name, "language": []})],
+                        [dict(valid, root="missing")], [valid, valid]):
             with repocli_report() as cli:
                 cli.write_text(cli.read_text().replace("print(json.dumps(data))",
                     "data['components']=" + repr(invalid) + "\nprint(json.dumps(data))"))
@@ -476,6 +479,61 @@ def test_makefile_contracts_are_independent_for_lint_and_test():
         assert "contract missing" in plan.selections[(".", "lint")].reason
         assert plan.selections[(".", "test")].files == ("test_a.py",)
         assert "--test-dir" not in (repo / "analysis.observed").read_text()
+
+
+
+def test_impact_metadata_is_used_without_rediscovery_or_catalog_comparison():
+    # +case:id=impact_catalog,desc=`One report owns Component metadata and selected files`
+    from repocli import PackageTool
+    with TemporaryDirectory() as root:
+        repo = make_repo(root)
+        workset = repo_model.select_components(repo)
+        impacts = [dict(root=".", snapshot="after", component={"name": "reported-name", "language": "python"},
+                        packageTools=[dict(name="uv", evidence=["uv.lock"], version="0.9")],
+                        affected=True, complete=True)]
+        with repocli_report(sources=["source.py"], tests=["test_a.py"], components=impacts), \
+                patch.object(repocli, "inspect", side_effect=AssertionError("planning rediscovered Components")):
+            plan = build_plan(str(repo), workset)
+        component, = plan.workset.components
+        assert component.name == "reported-name" and component.language == "python"
+        assert component.package_tools == (PackageTool("uv", ("uv.lock",), "0.9"),)
+        assert plan.selection(component, "test").files == ("test_a.py",)
+        assert "fallback" not in plan.workset.reason
+
+
+def test_fix_created_components_use_post_fix_impact_and_fresh_fallback():
+    # +case:id=post_fix_catalog,desc=`Fix adds a nested Component; execution uses post-fix ownership`
+    for failed_impact in (False, True):
+        with TemporaryDirectory() as root, repocli_report(sources=["child/source.py"], tests=["child/test_a.py"]) as cli:
+            repo = make_repo(root)
+            child = repo / "child"
+            child.mkdir()
+            (child / "source.py").write_text("VALUE=1\n")
+            (child / "test_a.py").write_text("OK\n")
+            (child / "manifest.template").write_text('[project]\nname="child"\nversion="0"\n')
+            (child / "make.template").write_text(
+                "lint:\n\t@echo '$(LINT_FILES)' > lint.observed\ntest:\n\t@echo '$(TEST_FILES)' > test.observed\n")
+            with (repo / "Makefile").open("a") as f:
+                f.write("fix:\n\tcp child/manifest.template child/pyproject.toml\n\tcp child/make.template child/Makefile\n")
+            if failed_impact:
+                cli.write_text(cli.read_text().replace("if sys.argv[1]=='impact':", "if sys.argv[1]=='impact': raise SystemExit(7)\nif sys.argv[1]=='impact':"))
+            with patch.object(repocli, "inspect", wraps=repocli.inspect) as inspect, redirect_stdout(io.StringIO()):
+                result = dispatch("pre_commit", str(repo), paths=["source.py"], names=["lint", "test"])
+            assert result.proceed and all(row.ok for row in result.results), result.results
+            assert inspect.call_count == (2 if failed_impact else 1)
+            assert (child / "test.observed").read_text().strip() == ("" if failed_impact else "test_a.py")
+            assert (child / "lint.observed").read_text().strip() == ("" if failed_impact else "source.py test_a.py")
+
+
+def test_impact_catalog_cannot_execute_an_escaping_component():
+    with TemporaryDirectory() as root, TemporaryDirectory() as outside:
+        repo = make_repo(root)
+        (repo / "escape").symlink_to(outside, target_is_directory=True)
+        impacts = [dict(root="escape", snapshot="after", component={"name": "escape"}, affected=True, complete=True)]
+        with repocli_report(components=impacts):
+            plan = build_plan(str(repo), repo_model.select_components(repo))
+        assert "escapes checkout" in plan.workset.reason
+        assert [unit.id for unit in plan.workset.components] == ["."]
 
 
 if __name__ == "__main__":

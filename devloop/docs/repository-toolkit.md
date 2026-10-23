@@ -7,8 +7,10 @@ TypeScript hook 与 Python workflow 直接调用对应语言的工具包，不�
 
 ## 验证链路
 
-inspect 提供 Component、语言与工具证据。repocli impact 提供受影响 Component；devloop 选择项目验证入口，normalize 后形成一次验证计划，
-对已受影响或影响仍不完整的 Component 执行完整 lint/test，并用原生 snapshot 在执行前后核对内容。只有完整范围、成功执行且内容身份可用时
+准备阶段通过一次 inspect 选择 Component，复用这份目录执行 normalize。normalize 后只调用一次 repocli impact，
+从同一报告取得当前 Component、语言、工具证据和影响范围，形成 lint/test 共享的验证计划；不再独立 inspect 后对比两份目录。
+完整或回退验证才在 normalize 后重新 inspect，避免复用修改前的目录。对已受影响或影响仍不完整的 Component，
+按项目文件列表契约执行 lint/test，并用原生 snapshot 在执行前后核对内容。只有完整范围、成功执行且内容身份可用时
 才记录 Component stamp；hook 使用同一内容契约判断 stamp 是否仍有效。
 
 stamp 绑定完整仓库内容摘要。共享配置或其他 Component 内容变化同样会使旧 stamp 失效，代价是

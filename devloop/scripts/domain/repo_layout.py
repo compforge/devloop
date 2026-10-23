@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from repocli import InspectReport
+from repocli import Layout
 
 from lib import repocli
 from repocli.git_state import find_checkout
@@ -140,10 +140,17 @@ def is_git_repo(path: str | Path) -> bool:
 
 @dataclass(frozen=True)
 class Catalog:
-    """One inspection, reused for every path in a selection or fingerprint."""
+    """One observed layout, reused for every ownership query in a selection."""
     root: Path
     components: tuple[Component, ...]
-    report: InspectReport
+    report: Layout
+
+    @classmethod
+    def from_layout(cls, root: str | Path, report: Layout) -> "Catalog":
+        root = Path(root).resolve()
+        components = tuple(Component(str(root / item.root), item.root, item.language, item.name, item.package_tools)
+                           for item in report.components)
+        return cls(root, components, report)
 
     def owner(self, target: str | Path) -> Component | None:
         path = Path(os.path.abspath(target))
@@ -165,9 +172,7 @@ class Catalog:
 def inspect_catalog(git_root: str | Path) -> Catalog:
     root = Path(git_root).resolve()
     report = repocli.inspect(str(root))
-    components = tuple(Component(str(root / item.root), item.root, item.language, item.name, item.package_tools)
-                       for item in report.components)
-    return Catalog(root, components, report)
+    return Catalog.from_layout(root, report)
 
 
 def find_repo_code_dir(repo_dir: str | Path) -> str:

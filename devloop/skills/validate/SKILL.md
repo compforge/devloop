@@ -1,15 +1,10 @@
 ---
 name: validate
-description: Normalize a repo Component, run its lint and test validation checks, and report each result. Use when the user asks to validate changes, lint/format code, run tests, or verify before committing or pushing.
+description: Run a repository or Component's managed lint/test validation and explain its scope and results. Use to validate changes, lint/format code, run tests, or verify before committing or pushing.
 ---
 
-Prioritize precise affected-file selection so lint and test process fewer files
-and finish sooner. Expand scope when impact is uncertain or project contracts require it, while
-preserving the required coverage.
-
-Use automatic scope by default. Read the shared [repocli reference](../../references/repocli.md)
-for direct CLI inspection, installation and analysis boundaries. Do not select or pass
-`TEST_FILES` / `LINT_FILES` yourself unless the user explicitly requests an override.
+Use the entrypoint matching the requested checks. The scripts prepare dependencies, normalize with
+`make fix` when available, and manage check execution and reuse.
 
 ```bash
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_validate.py <repo-or-component>
@@ -17,27 +12,21 @@ for direct CLI inspection, installation and analysis boundaries. Do not select o
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_lint.py <repo-or-component>
 ```
 
-Normalization runs before one shared repocli analysis. Repocli identifies affected Components;
-devloop chooses each selected Component's Makefile, then passes its owned `affectedFiles` / `testFiles`
-as `LINT_FILES` / `TEST_FILES` when supported. Partial reports retain usable file selections and diagnostics.
-Missing file-list contracts, unsafe/deleted inputs or no returned files for a selected Component run
-that check in full. Components with incomplete impact are included conservatively, with the reason
-shown on Board. Complete, unaffected Components are skipped. Unavailable or invalid
-analysis falls back to all current Components; an explicit Component request retains its boundary.
-An actual check failure stays a failure. `--full` bypasses automatic Component and file selection.
+`run_validate` runs lint and tests; the other entrypoints run only their named check.
+`<PLUGIN_ROOT>` is `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
 
-Validation consists of multiple checks. Run `make fix` normalization first, then read-only lint
-and test checks may run concurrently against the same stable content. Running one check or a
-focused selection is partial validation and must not be presented as complete Component validation.
+Repocli supplies impact facts; devloop owns Component/file selection, full-check fallback and reuse
+under the project's validation contract. Use automatic scope by default; `--full` requests all
+Components and full checks within the requested repo/Component boundary. Do not supply `TEST_FILES`
+or `LINT_FILES` unless the user requests an override. A partial analysis can still supply usable
+file selections; let the workflow decide rather than treating `partial` as a request for full tests.
 
-The scripts resolve the repo and affected Components, prepare dependencies, run canonical project
-targets, and update each check's `.devloop` validation stamp. Project targets must follow the
-[validation contract](references/spec.md). Read only the matching implementation guidance:
-[Python](references/python.md), [Go](references/go.md), or [Node](references/node.md). Do not add tools,
-dependencies, or Makefile targets unless requested.
+Report the checked Components, focused/full scope, executed/reused results, and failures or skips.
+Explain full-check or unavailable results from the reported reasons; do not infer unreported reuse
+misses. A focused pass or a single check does not establish complete Component validation.
 
-Trust the output and report each check's pass/fail. Fix genuine source or test problems; never weaken
-lint rules, suppress diagnostics, or loosen test assertions merely to force a green result. Only
-`make fix` may perform automatic source rewrites.
-
-`<PLUGIN_ROOT>` → `${CLAUDE_PLUGIN_ROOT}` on Claude Code; `${PLUGIN_ROOT}` on Codex.
+Read [the validation contract](references/spec.md) when diagnosing scope, reuse or project-target
+behavior, and [repocli](../../references/repocli.md) when inspecting its analysis or compatibility.
+When asked to add or change a project's validation targets, also read the relevant
+[Python](references/python.md), [Go](references/go.md) or [Node](references/node.md) guidance.
+Running validation alone does not authorize adding tools, dependencies or Makefile targets.

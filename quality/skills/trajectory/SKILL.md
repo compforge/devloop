@@ -5,9 +5,10 @@ description: Discover, run, interpret, and iteratively tune a project's existing
 
 # Trajectory Quality
 
-Turn an agent's recorded decisions and actions into an evidence-backed next improvement. Operate the
-project's existing trajectory capability; do not replace its framework, business data, labels, or
-judgment criteria.
+Analyze an agent's recorded decisions and actions to explain failures, identify avoidable
+overhead, and connect each conclusion to execution evidence. Every analysis should produce
+a useful diagnosis, whether or not optimization follows. Operate the project's existing
+trajectory capability; do not replace its framework, business data, labels, or judgment criteria.
 
 Read [Quality concepts](../../CONCEPTS.md) before discovery or interpretation. It defines ownership,
 subject identity, execution facts, evaluation, comparison, and result states shared by the skills.
@@ -44,13 +45,21 @@ Business dependence is a matter of degree. High cost alone does not establish
 waste; judging whether an action was worthwhile requires its contribution to
 the task. One behavior can harm both efficiency and effectiveness.
 
-Use this analysis loop:
+Use this analysis workflow:
 
-1. Verify source identity, execution health, and comparability.
-2. Find a cost or effect signal worth investigating.
-3. Trace it to concrete actions and observations.
-4. Explain the suspected mechanism and identify counter-evidence.
-5. Test one bounded change, measuring both cost and effect.
+1. Establish the requested scope, source identity, execution health, and evidence coverage.
+   Check comparability when comparing runs.
+2. Identify failed objectives, incomplete outcomes, and action errors, including failures
+   followed by successful retries or recovery.
+3. Inspect costly or repeated work for avoidable overhead, including in successful trajectories.
+   Assess what evidence, decision, or task progress the work contributed.
+4. Connect each material issue to its execution records, observed impact, and supported causal
+   explanation. Distinguish confirmed causes from hypotheses and note counter-evidence.
+5. Summarize failure causes, redundant overhead, and unresolved questions within the analyzed
+   scope. Quantify occurrence and impact where the evidence supports it.
+
+Optimization planning and experiments are follow-up activities when requested; they are not
+required to complete an analysis.
 
 For each suspicious step, ask:
 
@@ -114,8 +123,9 @@ Interpret artifacts in this order:
 
 ## Find and tune
 
-- To find trajectory smells and select the next evidence-backed problem, read
+- To diagnose failures, investigate redundant overhead, or find trajectory smells, read
   [references/problem-discovery.md](references/problem-discovery.md) completely.
+  Use its prioritization guidance when the user asks what to optimize next.
 - When evidence points to objectives, policy, evidence standards, or instructions, read
   [references/system-prompt.md](references/system-prompt.md) completely.
 - When evidence points to capability selection or a tool's name, description, arguments,
@@ -134,6 +144,12 @@ an existing Finding when it captures the behavior. When no Detector covers a rep
 record a candidate smell with representative and counterexample trajectories; do not manufacture a
 `DetectionResult` or Verdict. Suggest a reusable project Detector only after the pattern can be
 reproduced and stated independently of its assumed cause.
+
+### Follow-up tuning
+
+Apply the experiment guidance below when optimization is requested. Preserve the diagnosis
+as a separate result: selecting one problem for an experiment must not discard other material
+issues found during analysis.
 
 For an agent change, freeze the same Case/input workload and evaluation semantics, then let each
 generation configuration produce its own Trajectories. Align the resulting cohorts by stable Case or
@@ -156,12 +172,38 @@ evaluation assets; implement them only when the user asks for that mutation.
 
 ## Report and retain learning
 
-Report the evaluated project and revision, Dataset identity, current and comparison generation
-provenance and runs, data health, the available and actually selected Detectors, Verifiers, and
-Measurers with their execution coverage, quantified effect and cost, the exact evidence location,
-selected Findings and Verifier judgments, the next prioritized problem and change surface,
-supporting Worksheet examples, unknowns, and artifact paths. Lead with the decision-relevant
-summary; keep per-trajectory evidence in drill-down artifacts.
+Lead with the diagnostic conclusions. Every trajectory analysis must explicitly address:
+
+- **Failures and causes:** unmet objectives, incomplete delivery, and action errors, including
+  failures hidden by later recovery. Explain supported causes and distinguish observed failures
+  from causal hypotheses.
+- **Redundant overhead:** repeated or low-value work whose contribution does not justify its
+  cost. Report occurrence counts, affected scope, and attributable calls, tokens, time, or
+  monetary cost where available. High consumption alone is not evidence of waste.
+- **Execution evidence:** link each material conclusion to native run/trajectory identities
+  and relevant turns, calls, events, or source ranges. Include the key inputs, actual outputs,
+  and subsequent actions needed to understand the conclusion.
+
+For each issue, state the observed behavior, outcome or cost impact, causal explanation,
+evidence location, and uncertainty. Group repeated instances into patterns while retaining
+representative examples and relevant counterexamples. Label analyst observations separately
+from framework-produced Findings and Verifier judgments.
+
+Distinguish confirmed redundancy, suspected low-value work, and unresolved cost attribution.
+Do not attribute an entire trajectory's cost to one redundant step or present estimated
+avoidable cost as measured savings.
+
+Explicitly distinguish "none found within the inspected scope" from "insufficient evidence."
+A successful final outcome does not establish an error-free or efficient execution.
+
+Include the project and revision, source/Dataset identity, generation provenance, relevant
+runs, data health, selected evaluation components and their execution coverage, measurement
+coverage, and artifact paths as applicable. State the inspected scope and denominators;
+keep detailed execution records in linked drill-down artifacts.
+
+When optimization is requested, add the next prioritized problem, proposed change surface,
+and experiment separately. For view-only requests, lead with the requested loop view and
+keep accompanying diagnostic observations proportional to the inspected evidence.
 
 Persist evidence and reusable operating knowledge beside the project's evaluation assets under the
 shared provenance and privacy rules. Promote a problem pattern or optimization tactic into this

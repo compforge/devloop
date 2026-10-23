@@ -30,15 +30,16 @@ Devloop retains execution containment, command selection, dependency preparation
 validation gates and stamps.
 
 Each TypeScript policy operation shares one inspection promise per checkout, including in-flight
-work and rejection. Python selection passes one explicit catalog through the operation.
-A new operation observes fresh metadata. Ownership and validation
-selection project that explicit catalog without another inspection; `owner` includes
+work and rejection. Python preparation passes one explicit catalog through the operation.
+After normalization, validation consumes the Component metadata returned by `impact` and
+shares that plan with lint/test, without another inspection or a cross-catalog comparison.
+A new operation observes fresh metadata; `owner` includes
 deleted paths. Discovery prefers manifests, then Makefiles with unknown language. No
 repocli-specific repository configuration is needed. Fixture manifests such as
 `testdata/corpus/go.mod` are not independent Components. Submodule contents belong to
 their own repository inspection; a parent gitlink remains a parent-repository change.
 
-Inspection is required for validation even with `--full`: failure stops validation and
+Inspection is required for preparation and full/fallback validation: failure stops validation and
 reports the dependency problem. It never produces a fabricated root Component or an
 empty successful workset on failure. A successful inspection with zero Components is a valid
 repository: validation is skipped without execution or passing stamps. Optional Board metadata can be unavailable while Git/review
@@ -58,18 +59,18 @@ selects it conservatively because its impact is unknown. Complete, unaffected Co
 omitted. Before-only records retain deleted/previous ownership as evidence, but are not current
 execution directories. Explicitly targeting a Component retains that boundary.
 Component selection chooses the owning Makefile, not full coverage. Inside each selected Component,
-`affectedFiles` supplies `LINT_FILES` and `testFiles` supplies `TEST_FILES`, mapped through the current
-inspect catalog and made Component-relative. A project must consume the corresponding variable;
+`affectedFiles` supplies `LINT_FILES` and `testFiles` supplies `TEST_FILES`, mapped through the same report's current
+Component catalog and made Component-relative. A project must consume the corresponding variable;
 unsupported contracts, deleted/unsafe paths, or an empty list for a selected Component run that check
 in full. A valid partial report can still supply focused inputs; diagnostics remain visible and a
-focused pass never claims full coverage. The inspect catalog supplies execution metadata; devloop
-does not infer dependencies from paths.
+focused pass never claims full coverage. The impact report supplies execution metadata and ownership; devloop
+does not infer dependencies from paths or independently rediscover Components to cross-check it.
 
 The pre-commit input is the working tree restricted to intended changed paths;
 post-commit uses `HEAD^` versus `HEAD`; MR checks use target merge-base versus `HEAD`.
 If execution contents differ from the analyzed snapshot, or the report is unavailable,
-incompatible or inconsistent with the current catalog, validation falls back to all current
-Components (or the explicit Component). Diagnostics and per-Component gaps remain visible on Board.
+incompatible or invalid, validation performs a fresh inspection after normalization and falls back
+to all current Components (or the explicit Component). Diagnostics and per-Component gaps remain visible on Board.
 Local extraction observations do not independently expand selection. Check failures stay failures
 and never trigger a second run under the label of analysis fallback.
 
@@ -116,8 +117,8 @@ to discover updates and `repocli upgrade` to install the latest stable release.
 Older installations can bootstrap from GitHub releases. Package-manager-owned
 installations should use that package manager's upgrade command. Updating the CLI
 does not update the TypeScript/Python libraries or their lockfiles.
-Impact requires a complete current Component catalog, valid impact flags and file lists,
-and a matching snapshot identity. Dependency analysis may be incomplete. An unsupported
+Impact supplies the complete current Component catalog alongside valid impact flags and file lists;
+validation requires a matching snapshot identity and verifies execution-path containment. Dependency analysis may be incomplete. An unsupported
 diff schema falls back to full checks and reports the required version.
 The content digest identifies observed input, not an atomic filesystem snapshot or
 proof of test coverage. Repocli diagnostics remain static-analysis estimates.

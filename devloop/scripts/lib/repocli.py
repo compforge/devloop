@@ -56,6 +56,7 @@ class ImpactReport:
     components: tuple[dict, ...]
     affected_files: tuple[str, ...]
     test_files: tuple[str, ...]
+    layout: toolkit.Layout
 
 
 def _paths(value: object) -> tuple[str, ...]:
@@ -66,6 +67,45 @@ def _paths(value: object) -> tuple[str, ...]:
                 or ".." in PurePosixPath(path).parts or "\x00" in path):
             raise ValueError("invalid repository-relative path")
     return tuple(value)
+
+
+def _impact_layout(impacts: list[dict], repo: str) -> toolkit.Layout:
+    """Decode current Component metadata from the same report as impact facts."""
+    bindings = []
+    root = Path(repo).resolve()
+    for item in impacts:
+        if item["snapshot"] != "after":
+            continue
+        path = item["root"]
+        if str(PurePosixPath(path)) != path or not path:
+            raise ValueError("invalid Component root")
+        directory = root / path
+        if not directory.resolve().is_relative_to(root) or not directory.is_dir():
+            raise ValueError(f"Component root is unavailable or escapes checkout: {path}")
+        component = item["component"]
+        language = component.get("language")
+        if language is not None and not isinstance(language, str):
+            raise ValueError("invalid Component language")
+        tools = item.get("packageTools", [])
+        if not isinstance(tools, list):
+            raise ValueError("invalid Component package tools")
+        package_tools = []
+        for tool in tools:
+            if (not isinstance(tool, dict) or not isinstance(tool.get("name"), str)
+                    or not tool["name"] or not isinstance(tool.get("evidence", []), list)
+                    or any(not isinstance(e, str) for e in tool.get("evidence", []))
+                    or not isinstance(tool.get("version", ""), str)):
+                raise ValueError("invalid Component package tool")
+            package_tools.append(PackageTool(tool["name"], tuple(tool.get("evidence", [])), tool.get("version")))
+        identity = component.get("repository", {"forge": {"name": ""}, "path": ""})
+        if (not isinstance(identity, dict) or not isinstance(identity.get("forge"), dict)
+                or not isinstance(identity["forge"].get("name"), str)
+                or not isinstance(identity.get("path"), str)):
+            raise ValueError("invalid Component repository")
+        bindings.append(toolkit.ComponentBinding(
+            repository=toolkit.Repository(toolkit.Forge(identity["forge"]["name"]), identity["path"]),
+            name=component["name"], root=path, language=language, package_tools=tuple(package_tools)))
+    return toolkit.Layout(repository=None, components=tuple(bindings))
 
 
 def decode_impact(data: dict, repo: str, input_kind: str) -> ImpactReport:
@@ -110,4 +150,4 @@ def decode_impact(data: dict, repo: str, input_kind: str) -> ImpactReport:
         raise ValueError("affected file list missing or invalid")
     return ImpactReport(data["complete"], data["scope"], tuple(diagnostics), snapshot,
                       tuple(impacts), _paths([item.get("path") for item in affected]),
-                      _paths(data.get("testFiles")))
+                      _paths(data.get("testFiles")), _impact_layout(impacts, repo))

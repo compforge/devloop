@@ -118,14 +118,14 @@ def _changed_lint_files(repo: str, component: Component, paths: list[str] | None
 
 
 def normalize(repo: str, *, capture: bool = True, component: Component | None = None,
-              paths: list[str] | None = None) -> HookResult:
+              paths: list[str] | None = None, workset: repo_model.WorkSet | None = None) -> HookResult:
     """在 checks 前执行 Component 的可选 `make fix`；它是准备步骤，不是验证结果。
 
     lifecycle 与手动 validate 都必须先完成 normalize，再让 lint/test 并发观察同一份稳定代码。
     fixer 的退出码不直接判定验证：部分 fixer 会用非零表示改过文件，后续只读 lint 才是权威结果。
     """
     if component is None:
-        ws = repo_model.select_components(repo, paths=paths)
+        ws = workset if workset is not None else repo_model.select_components(repo, paths=paths)
         results = [normalize(repo, capture=capture, component=u, paths=paths) for u in ws.components]
         return _aggregate("normalize", ws.reason, results)
     if not component.has_target("fix"):
@@ -179,8 +179,8 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
     一点更糟。无 lint target → unavailable（提示但放行，不盖通过戳）。
     """
     if component is None:
-        ws = repo_model.select_components(repo, paths=paths)
-        plan = plan or build_plan(repo, ws, paths=paths, checks=("lint",))
+        if plan is None:
+            plan = build_plan(repo, repo_model.select_components(repo, paths=paths), paths=paths, checks=("lint",))
         return lint_components(repo, plan.workset, capture=capture, paths=paths, plan=plan)
     if problem := _identity_problem(repo, plan, "after planning"):
         return HookResult("lint", ok=False, summary=problem)
@@ -300,11 +300,12 @@ def test(repo: str, *, capture: bool = True, extra: list[str] | None = None,
     diff 未必有关；要不要拦该看「diff 是否与挂掉的测试相关」，那需 baseline-aware 分析（TODO），
     现阶段先不硬拦，把判断交给 CI / 人。lint 仍是硬拦截。"""
     if component is None:
-        ws = repo_model.select_components(repo, paths=paths)
         # lifecycle 传入的 paths 是相位边界冻结的 scope；pre_commit 未显式 --file 时才现读工作树。
         # 把同一份列表继续传到 component，避免 test 再引入第二套 diff 查询。
         effective_paths = paths if paths is not None else repo_model.changed_paths(repo)
-        plan = plan or build_plan(repo, ws, paths=effective_paths, checks=("test",), test_extra=extra)
+        if plan is None:
+            plan = build_plan(repo, repo_model.select_components(repo, paths=effective_paths),
+                              paths=effective_paths, checks=("test",), test_extra=extra)
         return test_components(
             repo, plan.workset, capture=capture, extra=extra, paths=effective_paths, plan=plan,
         )

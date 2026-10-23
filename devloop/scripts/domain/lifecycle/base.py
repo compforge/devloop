@@ -155,16 +155,28 @@ def dispatch(
 
     preparation_failures: dict[str, HookResult] = {}
     preparation_guidance: dict[str, tuple[str, ...]] = {}
+    workset = None
+    if registry is None and any(name in ("lint", "test") for name in names):
+        from domain import repo as repo_model
+        from lib.repocli import InspectionError
+        try:
+            workset = repo_model.select_components(repo, paths=paths)
+        except InspectionError as exc:
+            for name in names:
+                if name in ("lint", "test"):
+                    preparation_failures[name] = HookResult(name, ok=False, summary=str(exc))
     if registry is None:
         # 真实内置 checks 先完成各自声明的 preparation，再进入并发区；测试注入 registry 不触盘。
         prepared_handlers = {}
         for name in names:
+            if name in preparation_failures:
+                continue
             preparer = resolve_preparer(name)
             if preparer is None:
                 continue
             try:
                 if preparer not in prepared_handlers:
-                    prepared_handlers[preparer] = preparer(repo, paths=paths)
+                    prepared_handlers[preparer] = preparer(repo, paths=paths, workset=workset)
                 prepared = prepared_handlers[preparer]
                 if not prepared.ok:
                     preparation_failures[name] = HookResult(
@@ -179,12 +191,11 @@ def dispatch(
                 preparation_failures[name] = HookResult(name, ok=False, summary=f"preparation errored: {e}")
 
     validation_plan = None
-    if registry is None and any(name in ("lint", "test") for name in names):
-        from domain import repo as repo_model
+    if workset is not None and any(name in ("lint", "test") and name not in preparation_failures for name in names):
         from domain.validation import build_plan
         from lib.repocli import InspectionError
         try:
-            validation_plan = build_plan(repo, repo_model.select_components(repo, paths=paths),
+            validation_plan = build_plan(repo, workset,
                                          paths=paths, comparison=comparison,
                                          checks=tuple(name for name in names if name in ("lint", "test")))
         except InspectionError as exc:

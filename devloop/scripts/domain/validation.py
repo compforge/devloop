@@ -11,7 +11,7 @@ import subprocess
 import time
 
 from domain import repo as repo_model
-from domain.repo_layout import Component, inspect_catalog
+from domain.repo_layout import Catalog, Component, inspect_catalog
 from domain.context.store import branch_segment, save_segment
 from lib import git_state, repocli
 from repocli import snapshot
@@ -92,15 +92,15 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
 
     +spec=`Component selects the Makefile; affectedFiles/testFiles select check inputs`
     +why=`An execution boundary is not a request for full coverage; focused passes retain focused evidence`
+    +spec=`Post-normalization Component metadata and impact come from one report; checks share that plan`
+    +link=component://docs/repository-toolkit.md
     """
     comparison = comparison or Comparison()
-    inspection = inspect_catalog(repo)
-    catalog = inspection.components
-    if not catalog:
+    if workset.catalog is not None and not workset.catalog.components:
         plan = Plan(repo_model.WorkSet((), "no recognized Components; validation not run"), comparison=comparison)
         persist_plan(repo, plan)
         return plan
-    units = workset.components if explicit else catalog
+    requested = {unit.id for unit in workset.components} if explicit else None
     reason = "explicit full Component validation" if full else comparison.reason
     snapshot = ""
     analysis_reason = "repocli automatic impact"
@@ -137,18 +137,18 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                 raise ValueError("execution contents differ from analyzed snapshot")
             files_by_check = {"lint": report.affected_files, "test": report.test_files}
             component_impacts = report.components
+            inspection = Catalog.from_layout(repo, report.layout)
             current = {item["root"]: item for item in component_impacts if item["snapshot"] == "after"}
-            # Both APIs describe the same snapshot. Missing/current identity mismatches
-            # are unusable reports, never proof that a Component is unaffected.
-            if set(current) != {unit.id for unit in catalog} or any(
-                    current[unit.id]["component"]["name"] != unit.name for unit in catalog):
-                raise ValueError("Component impact catalog differs from current inspection")
-            if not explicit:
-                units = tuple(unit for unit in catalog
-                              if current[unit.id]["affected"] or not current[unit.id]["complete"])
+            units = tuple(unit for unit in inspection.components
+                          if (unit.id in requested if requested is not None else
+                              current[unit.id]["affected"] or not current[unit.id]["complete"]))
         except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as exc:
             reason = f"repocli fallback: {exc}"
-            units = workset.components if explicit else catalog
+    if reason:
+        # Fix may change manifests. Full/fallback checks observe the current catalog,
+        # never reuse the pre-normalization view as execution metadata.
+        inspection = inspect_catalog(repo)
+        units = tuple(unit for unit in inspection.components if requested is None or unit.id in requested)
     selections = {}
     for unit in units:
         impact = next((item for item in component_impacts

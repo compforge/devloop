@@ -26,7 +26,7 @@ from repocli.git import changed_paths as toolkit_changed_paths, committed_paths 
 
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from lib import repocli
@@ -87,6 +87,8 @@ class WorkSet:
     """
     components: tuple[repo_layout.Component, ...]
     reason: str
+    # Preparation shares one observation; post-fix planning gets fresh facts from impact.
+    catalog: repo_layout.Catalog | None = field(default=None, compare=False, repr=False)
 
 
 def _working_paths_or_unknown(git_root: str | Path) -> list[str] | None:
@@ -184,26 +186,26 @@ def select_components(git_root: str | Path, *, explicit: str | Path | None = Non
     root = Path(git_root).resolve()
     catalog = catalog or repo_layout.inspect_catalog(root)
     if not catalog.components:
-        return WorkSet((), "no recognized Components; validation not run")
+        return WorkSet((), "no recognized Components; validation not run", catalog)
     if explicit is not None:
         ep = Path(explicit).resolve()
         if ep != root and root in ep.parents:
             u = repo_layout.enclosing_component(ep, git_root, catalog=catalog)
-            return WorkSet((u,), f"explicit target {ep.name} → component {Path(u.path).name}")
+            return WorkSet((u,), f"explicit target {ep.name} → component {Path(u.path).name}", catalog)
         # ep == 仓根：没有具体目标，落到改动投影（不走 enclosing → default → server）
     if paths is not None:
         components = _project_components(git_root, paths, catalog)
         if not components:
-            return WorkSet((), "no changed files in scope")
+            return WorkSet((), "no changed files in scope", catalog)
         names = ", ".join(Path(u.path).name for u in components)
-        return WorkSet(tuple(components), f"changed files under: {names}")
+        return WorkSet(tuple(components), f"changed files under: {names}", catalog)
     dirty = _project_components(git_root, changed_paths(git_root), catalog)
     if dirty:
         names = ", ".join(Path(u.path).name for u in dirty)
-        return WorkSet(tuple(dirty), f"changed files under: {names}")
+        return WorkSet(tuple(dirty), f"changed files under: {names}", catalog)
     allu = catalog.components
     names = ", ".join(Path(u.path).name for u in allu)
-    return WorkSet(tuple(allu), f"clean tree, all components: {names}")
+    return WorkSet(tuple(allu), f"clean tree, all components: {names}", catalog)
 
 
 def _resolved(git_root: str, source: str, target_path: str | Path | None = None) -> tuple[Repo, str]:

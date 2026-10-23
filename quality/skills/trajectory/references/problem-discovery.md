@@ -1,7 +1,11 @@
-# Finding the next trajectory problem
+# Diagnosing trajectory problems
 
-Use this method when the user asks what to optimize next. The output is one bounded problem with a
-measurable signal and enough evidence to justify an experiment, not a backlog of every unusual row.
+Use this method to diagnose failures, investigate redundant overhead, and connect conclusions
+to execution evidence. Cover the material issues within the requested analysis scope.
+
+When the user asks what to optimize next, additionally use "Choose one next problem" to select
+one bounded issue with a measurable signal and enough evidence to justify an experiment.
+That selection does not replace the diagnostic summary.
 
 ## Treat trajectory smells as diagnostic findings
 

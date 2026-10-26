@@ -1,4 +1,4 @@
 interface:
   display_name: "Trajectory Quality"
-  short_description: "Evaluate and tune agent trajectories from project evidence"
-  default_prompt: "Use $trajectory to evaluate this project's agent trajectories and identify the next evidence-backed optimization."
+  short_description: "Assess agent Sessions and Jobs from execution evidence"
+  default_prompt: "Use $trajectory to assess this project's Session and Job observations, explaining failures, redundant work and their execution evidence."

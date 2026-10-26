@@ -10,8 +10,8 @@ The bundled skills currently cover three independent quality views:
   coverage when requested;
 - `perf` operates and compares project-owned load, capacity, stress, and soak experiments, and can
   incrementally add bounded performance coverage when requested;
-- `trajectory` evaluates agent decisions and actions, compares effect and cost, finds the next
-  evidence-backed problem, and organizes controlled tuning experiments.
+- `trajectory` follows Agent Sessions and business Jobs, connects outcomes to decisions and actions,
+  compares effect and cost, and organizes evidence-backed optimization experiments.
 
 The project owns the tests, profiles, recordings, adapters, and judgment criteria. A framework
 such as quality-harness supplies execution and analysis mechanisms; these skills discover and
@@ -43,6 +43,19 @@ Execution facts and judgment remain separate. A passed assertion or SLO covers o
 conditions; missing observations, skipped checks, and execution errors remain visible. Skills
 can propose the next experiment or improve project-owned assets when requested. They neither
 invent a missing suite nor supply cross-skill execution orchestration.
+
+## Agent trajectory analysis
+
+SessionView follows one Agent Session; JobView follows a business goal across the Sessions and
+operations that contribute to it. The trajectory skill connects the two using recorded identities:
+a task result can be traced to the context behind a decision, and repeated agent work can be checked
+against the goals it served. Both views support effect and cost analysis.
+
+Provide a project entrypoint, saved observation or existing evaluation artifact. The skill establishes
+scope and available goals, annotations and generation configuration before diagnosing failures and
+avoidable work. Shared calls retain their identity across views so task associations do not duplicate
+measured cost. See [Observation](skills/trajectory/references/observation.md),
+[Evidence](skills/trajectory/references/evidence.md) and [Evaluation](skills/trajectory/references/evaluation.md).
 
 ## Install
 

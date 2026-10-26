@@ -1,4 +1,4 @@
-# Context management and token cost
+# Context
 
 Use this reference when recorded prompts grow across turns or context policy may contribute to
 cost, slow model calls, or lost evidence. Inspect the installed generator and its pinned harness

@@ -21,10 +21,11 @@ Separate the detection of a pattern from the judgment of its value:
   the evidence supports the conclusion, and whether the intended outcome was
   achieved.
 
-For a slow or expensive execution, build a per-turn evidence table before
-recommending changes:
+For a slow or expensive execution, build an evidence table before recommending changes. Use
+source-recorded Turns where available, otherwise scoped call or Operation references. Apply the
+shared [cost attribution rules](evaluation.md#cost-attribution) when work spans Jobs or Sessions:
 
-| Turn | New information | Retained context | Input/output tokens | Model/tool time | Action and actual result | Decision advanced |
+| Turn / Node reference | New information | Retained context | Input/output tokens | Model/tool time | Action and actual result | Decision advanced |
 |---|---|---|---|---|---|---|
 
 Use the request actually sent to the model. Distinguish duplicate content within
@@ -47,43 +48,17 @@ Measurements, but `Trajectory Smell` is diagnostic language for this skill rathe
 framework entity. Even an obvious error is an observed failure, not automatic proof of which
 component caused it.
 
-## Establish trustworthy comparison
+## Establish the diagnostic scope
 
-Before ranking agent problems, verify:
+Apply [evidence requirements](evidence.md#fix-the-evidence-boundary) and
+[evaluation rules](evaluation.md#interpret-results) before ranking problems. If missing provenance,
+coverage or comparable inputs materially changes the conclusion, treat evidence quality or experiment
+design as the immediate problem rather than optimizing against an unreliable signal.
 
-- source and Dataset versions are known and the intended time or case window is complete;
-- every comparison cohort has generation provenance sufficient to distinguish behavior-producing
-  versions: agent/application revision, instruction and skill versions, tool set and contract,
-  loop/compact configuration, model, and orchestration as applicable;
-- build failures, unmatched annotations, and unknown execution outcomes are visible;
-- label coverage and the exact denominator accompany every quality rate;
-- model-usage and duration coverage are sufficient for cost claims;
-- judgment-component comparisons reuse the same TrajectoryDataset, while generator comparisons use aligned
-  Case/input cohorts and explicitly control their differences;
-- target, model, tool version, feature flags, and other material dimensions are available.
-
-If one of these conditions materially changes the conclusion, the next problem is data quality or
-experiment design. Do not optimize an agent against an untrustworthy comparison.
-
-Do not substitute a Dataset version or an instrumentation-library version for generation
-provenance. A generic Trajectory may carry generation provenance in metadata and step attributes,
-but the project Loader or Dataset builder must populate it from the actual producer. If that
-provenance is missing, report a provenance gap: effect can still be described for the cohort, but
-it cannot be attributed to a generating version.
-
-## Treat version effect regression as a leading smell
-
-An effect decline between generator versions is a stronger signal than a local efficiency pattern.
-Hold the same Case/input workload and evaluation semantics fixed, let each version generate its own
-Trajectories, and align the resulting cohorts by stable Case or input identity. Because the
-observations changed, they are not literally the same TrajectoryDataset. When a controlled replay
-is unavailable, require comparable cohorts and disclose differences in cases, labels, targets,
-environment, and coverage.
-
-A week-over-week decline is an operational alert, not automatically a version regression: workload
-mix and annotation coverage may have changed. Group by generation provenance within or across the time
-windows. Escalate the smell when the same effect metric declines under the same Verifier and policy,
-especially when completion or cost also regresses.
+Effect regression is a leading diagnostic signal when comparable workloads deteriorate under the
+same criterion. Investigate the decisions and actions behind the change; use the
+[experiment controls](evaluation.md#controlled-experiments) to distinguish a generating-version
+regression from a change in workload or annotation coverage.
 
 ## Search in priority order
 
@@ -162,7 +137,7 @@ Scope: Dataset/run, generation provenance, target, cohort, and denominator
 Signal: current value, baseline value, and direction
 Evidence: representative trajectory/Worksheet identities
 Likely causes: ordered hypotheses, each with a disconfirming check
-Change surface: system prompt, tool contract, loop mechanism, compact, model, or orchestration
+Change surface: instructions, tools, context, loop mechanism, model, or orchestration
 Next experiment: one principal lever
 Primary metric: the signal expected to improve
 Guardrails: effect, completion, and data-health metrics that must not regress

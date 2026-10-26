@@ -1,4 +1,4 @@
 interface:
   display_name: "Trajectory Quality"
-  short_description: "Evaluate and tune agent trajectories from project evidence"
-  default_prompt: "Use $trajectory to evaluate this project's agent trajectories and identify the next evidence-backed optimization."
+  short_description: "Inspect Session context and Job outcomes from evidence"
+  default_prompt: "Use $trajectory to present this SessionView as text, showing actual model requests, responses and tool calls so we can inspect context and prompts."

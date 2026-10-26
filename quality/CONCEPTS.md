@@ -89,6 +89,10 @@ Keep one grain and stable key per analysis table. Request, window, and run aggre
 different questions. Use native artifacts when available rather than inventing Dataset,
 EvaluationRun, or Worksheet files that the project does not produce.
 
+Trajectory analysis uses [Session and Job observations](skills/trajectory/references/observation.md)
+as two perspectives on execution. A continuing subject can have several evidence snapshots; record
+which snapshot and scope were evaluated separately from the subject's stable identity.
+
 ## Reuse and comparison
 
 Record subject or generator revision, evidence identity/version, and evaluation configuration

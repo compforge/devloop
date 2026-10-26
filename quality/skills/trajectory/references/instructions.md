@@ -1,4 +1,4 @@
-# System-prompt optimization
+# Instructions
 
 Use this reference when a trajectory smell suggests that the agent has sufficient capabilities and
 observations but repeatedly applies the wrong objective, policy, or decision rule.

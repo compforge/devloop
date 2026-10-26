@@ -1,8 +1,18 @@
-# Context management and token cost
+# Context
 
 Use this reference when recorded prompts grow across turns or context policy may contribute to
 cost, slow model calls, or lost evidence. Inspect the installed generator and its pinned harness
 version before proposing a policy; a different checkout may already behave differently.
+
+## Inspect request composition
+
+Start with [SessionView text rendering](observation.md#sessionview-text-rendering) so the reader can
+see the actual message structure before the diagnosis. Follow relevant ModelCalls across input,
+tool-result and compact boundaries. Compare their recorded requests to locate repeated background,
+changed instructions, stale evidence, misplaced messages and information that disappeared.
+Distinguish source-proven changes from hypotheses about why they occurred; show counterexamples
+where retention or repetition serves the current goal. Content labels aid explanation without
+reordering the original request. Attribute token and latency claims using the measurements below.
 
 ## Measure what the model receives
 

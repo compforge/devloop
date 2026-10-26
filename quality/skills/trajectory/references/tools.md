@@ -1,4 +1,4 @@
-# Tool optimization
+# Tools
 
 Use this reference when a trajectory smell suggests friction in the capabilities exposed to the
 agent or in a tool contract.

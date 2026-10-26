@@ -1,4 +1,4 @@
 interface:
   display_name: "Trajectory Quality"
-  short_description: "Assess agent Sessions and Jobs from execution evidence"
-  default_prompt: "Use $trajectory to assess this project's Session and Job observations, explaining failures, redundant work and their execution evidence."
+  short_description: "Inspect Session context and Job outcomes from evidence"
+  default_prompt: "Use $trajectory to present this SessionView as text, showing actual model requests, responses and tool calls so we can inspect context and prompts."

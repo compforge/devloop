@@ -1,6 +1,6 @@
 ---
 name: trajectory
-description: Inspect SessionView or JobView observations (including loop view / agent view requests), diagnose agent failures and avoidable work, compare effect and cost, and design evidence-backed optimization experiments. Use project-owned recordings and evaluation entrypoints; do not invent missing evidence or judgments.
+description: Present SessionView as text in conversation or TUI (including loop view / agent view requests), inspect JobView observations, diagnose agent failures and avoidable work, compare effect and cost, and design evidence-backed optimization experiments. Use project-owned recordings and evaluation entrypoints; do not invent missing evidence or judgments.
 ---
 
 # Trajectory Quality
@@ -20,10 +20,15 @@ and explains their evidence.
 
 | Request | Action and reading |
 |---|---|
-| Show a Session, Job, loop view or agent view | Inspect the requested snapshot using [Observation](references/observation.md); lead with the view and its identity. |
+| Show a SessionView, loop view or agent view | Present the SessionView as text in conversation/TUI using [SessionView text rendering](references/observation.md#sessionview-text-rendering). |
+| Show a JobView | Inspect the task snapshot using [Observation](references/observation.md); lead with its goal, work and result. |
 | Find why a task failed or an agent repeated work | Read [Evidence](references/evidence.md), [Evaluation](references/evaluation.md) and [Diagnosis](references/diagnosis.md). |
 | Compare results or versions | Read [Evidence](references/evidence.md) and the comparison rules in [Evaluation](references/evaluation.md). |
 | Optimize an evidenced problem | Preserve the diagnosis, then select a mechanism reference below and define a controlled experiment. |
+
+“Loop view” and “agent view” are request phrases for viewing a SessionView. Choose text for
+conversation/TUI; use HTML or another artifact format when requested. Present the actual request
+structure before interpreting context or prompt problems.
 
 A Job question starts from goals, progress and outcomes, then follows relevant calls into their
 Sessions. A Session question starts from continuity, context and actions, then checks their

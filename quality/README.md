@@ -51,6 +51,11 @@ operations that contribute to it. The trajectory skill connects the two using re
 a task result can be traced to the context behind a decision, and repeated agent work can be checked
 against the goals it served. Both views support effect and cost analysis.
 
+In conversation or TUI, asking to see a SessionView produces a text presentation of actual model
+requests, responses and tool calls, making context organization and prompt issues inspectable.
+“Loop view” and “agent view” are accepted request phrases for that presentation; HTML is another
+rendering of the same observation.
+
 Provide a project entrypoint, saved observation or existing evaluation artifact. The skill establishes
 scope and available goals, annotations and generation configuration before diagnosing failures and
 avoidable work. Shared calls retain their identity across views so task associations do not duplicate

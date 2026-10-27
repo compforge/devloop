@@ -193,12 +193,12 @@ def dispatch(
     validation_plan = None
     if workset is not None and any(name in ("lint", "test") and name not in preparation_failures for name in names):
         from domain.validation import build_plan
-        from lib.repocli import InspectionError
+        from lib.repocli import ImpactProtocolError, InspectionError
         try:
             validation_plan = build_plan(repo, workset,
                                          paths=paths, comparison=comparison,
                                          checks=tuple(name for name in names if name in ("lint", "test")))
-        except InspectionError as exc:
+        except (InspectionError, ImpactProtocolError) as exc:
             for name in names:
                 if name in ("lint", "test"):
                     preparation_failures[name] = HookResult(name, ok=False, summary=str(exc))

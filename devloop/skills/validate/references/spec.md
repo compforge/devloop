@@ -78,8 +78,13 @@ Automatic selection consumes repocli's Component impact facts to choose Makefile
 Components, owned `testFiles` narrow execution through the project's `TEST_FILES` contract. Valid
 partial analysis retains returned files and its diagnostics; it does not authorize full-coverage stamps.
 Selected Components without returned test files, usable paths or a file-list contract run full tests.
-Complete, unaffected Components are omitted. Invalid reports or CLI failure select full checks in all
-current Components (within any explicit boundary).
+Automatic checks require a positive `source`, `test`, `config`, `manifest`, or `lockfile` count in
+`tagCounts`. All other tags skip checks; multiple tags execute if any matches. Analysis gaps remain
+visible but do not independently trigger checks. Skips prepare no check dependencies and write no
+passing stamps. Explicit Component targets, `--full`, and explicit test arguments override this
+filter. Normalize still runs before planning. The current schema and valid `tagCounts` are required;
+an unsupported schema or absent/malformed `tagCounts` stops validation with an error. Other invalid
+reports or CLI failure select full checks in all current Components (within any explicit boundary).
 Diagnostics remain visible on Board. Missing project test targets are reported as unavailable and
 never stamped. Explicit file-level overrides must preserve language semantics; Go may require package
 or test-name selection instead.

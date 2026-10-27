@@ -17,6 +17,9 @@ from lib import git_state, repocli
 from repocli import snapshot
 
 
+VALIDATION_TAGS = frozenset({"source", "test", "config", "manifest", "lockfile"})
+
+
 @dataclass(frozen=True)
 class Comparison:
     base: str = "HEAD"
@@ -90,6 +93,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                checks: tuple[str, ...] = ("lint", "test")) -> Plan:
     """Analyze once after normalization, including dependencies outside dirty owners.
 
+    +spec=`Automatic checks require a positive source/test/config/manifest/lockfile tag count; other tags and analysis gaps do not trigger checks`
+    +spec=`Unsupported impact schemas or missing/invalid tagCounts stop validation without compatibility fallback`
     +spec=`Component selects the Makefile; affectedFiles/testFiles select check inputs`
     +why=`An execution boundary is not a request for full coverage; focused passes retain focused evidence`
     +spec=`Post-normalization Component metadata and impact come from one report; checks share that plan`
@@ -108,7 +113,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     files_by_check: dict[str, tuple[str, ...]] = {}
     observed = content_identity(repo)
     identity = observed.digest
-    if paths == [] and not full:
+    if paths == [] and not (full or explicit or test_extra):
         plan = Plan(repo_model.WorkSet((), "no changed paths"), comparison=comparison)
         persist_plan(repo, plan)
         return plan
@@ -126,8 +131,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             data = repocli.read_report(repo, "impact", argv)
             report = repocli.decode_impact(data, repo, "commit" if comparison.head else "working_tree")
             diagnostics = report.diagnostics
-            # Completeness remains separate from observed impact. Selection below
-            # conservatively includes Components whose impact is still unknown.
+            # Gaps remain visible but do not override the validation tag whitelist.
             if not report.complete or report.scope != "focused" or diagnostics:
                 codes = sorted({str(d.get("code", "analysis_gap")) for d in diagnostics})
                 detail = ": " + ", ".join(codes) if codes else ""
@@ -141,7 +145,10 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             current = {item["root"]: item for item in component_impacts if item["snapshot"] == "after"}
             units = tuple(unit for unit in inspection.components
                           if (unit.id in requested if requested is not None else
-                              current[unit.id]["affected"] or not current[unit.id]["complete"]))
+                              test_extra or current[unit.id]["affected"] or not current[unit.id]["complete"]
+                              or any(current[unit.id]["tagCounts"].values())))
+        except repocli.ImpactProtocolError:
+            raise
         except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as exc:
             reason = f"repocli fallback: {exc}"
     if reason:
@@ -155,6 +162,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                        if item["root"] == unit.id and item["snapshot"] == "after"), None)
         selection_reason = reason or analysis_reason + ("; explicit Component boundary" if explicit else "")
         if impact and not reason:
+            counts = ", ".join(f"{tag}={count}" for tag, count in sorted(impact["tagCounts"].items()))
+            selection_reason += "; tagCounts: " + (counts or "{}")
             if impact["affected"]:
                 selection_reason += "; affected Component"
             elif not impact["complete"]:
@@ -167,6 +176,10 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                     arg.startswith("TEST_FILES=") and not arg.partition("=")[2].strip()
                     for arg in test_extra)
                 selections[(unit.id, check)] = Selection(reason="caller supplied test arguments", explicit=not explicit_full)
+            elif not reason and not explicit and impact is not None and not any(
+                    impact["tagCounts"].get(tag, 0) > 0 for tag in VALIDATION_TAGS):
+                selections[(unit.id, check)] = Selection(
+                    skipped=True, reason=selection_reason + "; validation tag whitelist not matched")
             else:
                 files: tuple[str, ...] = ()
                 check_reason = selection_reason
@@ -189,8 +202,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                 selections[(unit.id, check)] = Selection(files=files, reason=check_reason)
     if reason:
         observed = content_identity(repo)
-    selection_summary = reason or ("repocli affected or unknown Components" if units else
-                                   "repocli found no affected or unknown Components")
+    selection_summary = reason or ("tag-based Component validation" if units else
+                                   "repocli found no affected Components")
     plan = Plan(repo_model.WorkSet(units, selection_summary), selections,
                 snapshot, comparison, observed.digest, observed.problem, component_impacts)
     persist_plan(repo, plan)

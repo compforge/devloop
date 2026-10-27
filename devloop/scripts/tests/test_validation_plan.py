@@ -47,7 +47,7 @@ def test_invalid_inspect_stops_validation_without_fabricated_component():
 
 
 def test_invalid_and_failed_cli_reports_fall_back():
-    outputs = ['not JSON', '{"schemaVersion":1}',
+    outputs = ['not JSON',
                json.dumps({"schemaVersion":3,"complete":False,"diagnostics":[{"code":"snapshot_changed"}]}),
                json.dumps({"schemaVersion":3,"complete":True,"scope":"focused"})]
     for output in outputs:
@@ -149,7 +149,7 @@ def test_dependent_component_added_and_explicit_boundary_preserved():
         assert [u.id for u in explicit.workset.components] == ["lib"]
 
 
-def test_component_facts_select_downstream_and_local_unknown_without_path_remapping():
+def test_component_tags_select_downstream_and_skip_unknown_without_path_remapping():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         names = ("lib", "app", "unknown", "unrelated")
@@ -162,24 +162,29 @@ def test_component_facts_select_downstream_and_local_unknown_without_path_remapp
                 "lint:\n\t@echo full > lint.observed\ntest:\n\t@echo full > test.observed\n")
         impacts = [dict(root=name, snapshot="after", component={"name": name},
                         affected=name in ("lib", "app"), complete=name != "unknown",
+                        tagCounts={"source": 1} if name in ("lib", "app") else {"unknown": 1} if name == "unknown" else {},
                         fallbackReasons=["configuration effect unknown"] if name == "unknown" else [])
                    for name in names]
-        # No file lists: Components are the authoritative selection, including a
-        # downstream source-only Component and one independently uncertain Component.
+        # No file lists: matching Components run full checks; unknown impact alone
+        # remains visible without triggering execution.
         with repocli_report(components=impacts, complete=False, scope="partial"):
             ws = repo_model.select_components(repo, explicit=repo / "lib")
             plan = build_plan(str(repo), ws, paths=["lib/config.json"])
         assert {unit.id for unit in plan.workset.components} == {"lib", "app", "unknown"}
-        assert all(selection.scope == "full" for selection in plan.selections.values())
+        assert all(plan.selections[(name, check)].scope == "full"
+                   for name in ("lib", "app") for check in ("lint", "test"))
+        assert all(plan.selections[("unknown", check)].skipped for check in ("lint", "test"))
         assert "unknown Component impact" in plan.selections[("unknown", "lint")].reason
         assert "configuration effect unknown" in plan.selections[("unknown", "lint")].reason
         with patch.object(checks, "_environment_failure", return_value=None):
             assert checks.lint_components(str(repo), plan.workset, plan=plan).ok
             assert checks.test_components(str(repo), plan.workset, plan=plan).ok
-        for name in ("lib", "app", "unknown"):
+        for name in ("lib", "app"):
             assert (repo / name / "lint.observed").read_text().strip() == "full"
             assert (repo / name / "test.observed").read_text().strip() == "full"
         assert not (repo / "unrelated/lint.observed").exists()
+        assert not (repo / "unknown/lint.observed").exists()
+        assert not (repo / "unknown/test.observed").exists()
 
 
 def test_complete_unaffected_components_skip_without_preparation_or_stamps():
@@ -195,13 +200,14 @@ def test_complete_unaffected_components_skip_without_preparation_or_stamps():
         assert not has_full_stamp(repo)
 
 
-def test_unknown_impact_is_not_an_empty_success():
+def test_unknown_impact_skips_checks_and_retains_diagnostics():
     with TemporaryDirectory() as root, repocli_report(complete=False, scope="partial"):
         repo = make_repo(root)
         plan = build_plan(str(repo), repo_model.select_components(repo))
         assert len(plan.workset.components) == 1
-        assert all(selection.scope == "full" for selection in plan.selections.values())
+        assert all(selection.skipped for selection in plan.selections.values())
         assert "unknown Component impact" in plan.selections[(".", "test")].reason
+        assert "partial analysis" in plan.selections[(".", "test")].reason
 
 
 def test_missing_or_invalid_affected_files_are_not_an_empty_result():
@@ -220,7 +226,7 @@ def test_missing_or_invalid_component_reports_fall_back():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         name = inspect_catalog(repo).components[0].name
-        valid = dict(root=".", snapshot="after", component={"name": name}, affected=False, complete=True)
+        valid = dict(root=".", snapshot="after", component={"name": name}, affected=False, complete=True, tagCounts={})
         for invalid in (None, [{k: v for k, v in valid.items() if k != "affected"}],
                         [dict(valid, complete="unknown")], [dict(valid, root="../outside")],
                         [dict(valid, packageTools="invalid")], [dict(valid, component={"name": name, "language": []})],
@@ -238,8 +244,8 @@ def test_before_only_component_is_evidence_not_an_execution_directory():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         name = inspect_catalog(repo).components[0].name
-        impacts = [dict(root=".", snapshot="after", component={"name": name}, affected=False, complete=True),
-                   dict(root="removed", snapshot="before", component={"name": "removed"}, affected=True, complete=True)]
+        impacts = [dict(root=".", snapshot="after", component={"name": name}, affected=False, complete=True, tagCounts={}),
+                   dict(root="removed", snapshot="before", component={"name": "removed"}, affected=True, complete=True, tagCounts={"source": 1})]
         with repocli_report(components=impacts):
             plan = build_plan(str(repo), repo_model.select_components(repo))
         assert not plan.workset.components
@@ -380,16 +386,16 @@ def test_local_outline_observations_keep_component_selection():
         assert not has_full_stamp(repo)
 
 
-def test_schema2_diff_falls_back_with_upgrade_guidance():
+def test_old_schema_stops_validation():
     with TemporaryDirectory() as root, repocli_report(
             sources=["source.py"], tests=["test_a.py"], schema=2):
         repo = make_repo(root)
-        plan = build_plan(str(repo), repo_model.select_components(repo))
-        assert "requires 3" in plan.workset.reason
-        assert "repocli >= 0.24.0" in plan.workset.reason
-        assert all(selection.scope == "full" for selection in plan.selections.values())
-        assert plan.execution_identity and not plan.identity_problem  # Snapshot schema remains 1.
-
+        try:
+            build_plan(str(repo), repo_model.select_components(repo))
+        except repocli.ImpactProtocolError as exc:
+            assert "requires 3" in str(exc)
+        else:
+            raise AssertionError("old impact schema accepted")
 
 
 def test_parent_component_does_not_receive_child_owned_files():
@@ -490,7 +496,7 @@ def test_impact_metadata_is_used_without_rediscovery_or_catalog_comparison():
         workset = repo_model.select_components(repo)
         impacts = [dict(root=".", snapshot="after", component={"name": "reported-name", "language": "python"},
                         packageTools=[dict(name="uv", evidence=["uv.lock"], version="0.9")],
-                        affected=True, complete=True)]
+                        affected=True, complete=True, tagCounts={"source": 1})]
         with repocli_report(sources=["source.py"], tests=["test_a.py"], components=impacts), \
                 patch.object(repocli, "inspect", side_effect=AssertionError("planning rediscovered Components")):
             plan = build_plan(str(repo), workset)
@@ -529,11 +535,90 @@ def test_impact_catalog_cannot_execute_an_escaping_component():
     with TemporaryDirectory() as root, TemporaryDirectory() as outside:
         repo = make_repo(root)
         (repo / "escape").symlink_to(outside, target_is_directory=True)
-        impacts = [dict(root="escape", snapshot="after", component={"name": "escape"}, affected=True, complete=True)]
+        impacts = [dict(root="escape", snapshot="after", component={"name": "escape"}, affected=True, complete=True, tagCounts={"source": 1})]
         with repocli_report(components=impacts):
             plan = build_plan(str(repo), repo_model.select_components(repo))
         assert "escapes checkout" in plan.workset.reason
         assert [unit.id for unit in plan.workset.components] == ["."]
+
+
+# +case:id=validation_tag_whitelist,desc=`Only the five execution tags trigger automatic checks, even with analysis gaps`
+def test_validation_tag_whitelist_ignores_completeness_for_selection():
+    cases = [({tag: 1}, True) for tag in ("source", "test", "config", "manifest", "lockfile")]
+    cases += [({tag: 1}, False) for tag in ("documentation", "version", "unknown", "resource", "tooling", "future")]
+    cases += [({}, False), ({"source": 0, "documentation": 1}, False),
+              ({"config": 1, "documentation": 1}, True)]
+    for counts, execute in cases:
+        with TemporaryDirectory() as root, repocli_report(
+                tag_counts=counts, complete=False, scope="partial",
+                diagnostics=[{"code": "impact_uncertain", "reason": "unsupported_resource_change"}]):
+            repo = make_repo(root)
+            plan = build_plan(str(repo), repo_model.select_components(repo))
+            assert len(plan.workset.components) == 1
+            assert all(selection.skipped != execute for selection in plan.selections.values()), counts
+            assert all("partial analysis" in selection.reason and "tagCounts:" in selection.reason
+                       for selection in plan.selections.values())
+            state = load_segment(repo, branch_segment("main", "validation_scope"))
+            assert state["component_impacts"][0]["tagCounts"] == counts
+            assert all(row["scope"] == ("full" if execute else "skipped") for row in state["checks"])
+            if not execute:
+                with patch.object(checks, "_environment_failure") as prepare, patch.object(checks, "_make") as make:
+                    assert checks.lint_components(str(repo), plan.workset, plan=plan).status == "skipped"
+                    assert checks.test_components(str(repo), plan.workset, plan=plan).status == "skipped"
+                prepare.assert_not_called()
+                make.assert_not_called()
+                assert not has_full_stamp(repo)
+
+
+def test_tag_whitelist_keeps_explicit_requests_and_full_checks():
+    with TemporaryDirectory() as root, repocli_report(tag_counts={"documentation": 1}):
+        repo = make_repo(root)
+        workset = repo_model.select_components(repo)
+        for options in ({"full": True}, {"explicit": True}):
+            plan = build_plan(str(repo), workset, paths=[], **options)
+            assert len(plan.workset.components) == 1
+            assert all(selection.scope == "full" for selection in plan.selections.values())
+        plan = build_plan(str(repo), workset, paths=[], test_extra=["TEST_FILES=test_a.py"])
+        assert plan.selections[(".", "lint")].skipped
+        assert plan.selections[(".", "test")].explicit
+        assert checks.test_components(str(repo), plan.workset, plan=plan, extra=["TEST_FILES=test_a.py"]).ok
+        assert (repo / "test.observed").read_text() == "test_a.py"
+        assert not has_full_stamp(repo)
+
+
+def test_tag_counts_missing_or_invalid_stop_validation():
+    for invalid in (None, [], "source", {"source": -1}, {"source": True},
+                    {"source": 1.5}, {"source": "1"}, {"": 1}, {" ": 1}, "missing"):
+        with TemporaryDirectory() as root, repocli_report() as cli:
+            repo = make_repo(root)
+            mutation = ("data['components'][0].pop('tagCounts')" if invalid == "missing" else
+                        "data['components'][0]['tagCounts']=" + repr(invalid))
+            cli.write_text(cli.read_text().replace("print(json.dumps(data))", mutation + "\nprint(json.dumps(data))"))
+            try:
+                build_plan(str(repo), repo_model.select_components(repo))
+            except repocli.ImpactProtocolError as exc:
+                assert "tagCounts" in str(exc)
+            else:
+                raise AssertionError(f"invalid tagCounts accepted: {invalid!r}")
+            assert not has_full_stamp(repo)
+
+
+def test_missing_tag_counts_fail_cli_and_commit_gate_without_running_checks():
+    # +case=`Missing required tagCounts fails validation entrypoints and the commit gate without running or stamping checks`
+    with TemporaryDirectory() as root, repocli_report() as cli:
+        repo = make_repo(root)
+        cli.write_text(cli.read_text().replace("print(json.dumps(data))",
+                       "data['components'][0].pop('tagCounts')\nprint(json.dumps(data))"))
+        with patch.object(checks, "lint", side_effect=AssertionError("lint must not run")), \
+                patch.object(checks, "test_components", side_effect=AssertionError("test must not run")):
+            for name in ("run_lint", "run_tests", "run_validate"):
+                assert _load_script(name).main([str(repo)]) == 1, name
+            result = dispatch("pre_commit", str(repo), paths=["source.py"], names=["lint", "test"])
+        assert not result.proceed
+        assert len(result.results) == 2
+        assert all(not item.ok and "tagCounts" in item.summary for item in result.results)
+        assert not (repo / "test.observed").exists()
+        assert not has_full_stamp(repo)
 
 
 if __name__ == "__main__":

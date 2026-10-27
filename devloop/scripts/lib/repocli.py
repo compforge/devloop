@@ -15,6 +15,10 @@ class InspectionError(ValueError):
     """Unavailable organization must not become an empty or fabricated catalog."""
 
 
+class ImpactProtocolError(ValueError):
+    """Unsupported impact contracts must stop automatic validation."""
+
+
 def read_report(repo: str, command: str, args: list[str]) -> dict:
     timeout = 30
     argv = [os.environ.get("DEVLOOP_REPOCLI", "repocli"), command, "--repo", repo,
@@ -111,7 +115,7 @@ def _impact_layout(impacts: list[dict], repo: str) -> toolkit.Layout:
 def decode_impact(data: dict, repo: str, input_kind: str) -> ImpactReport:
     """Validate the external wire contract without deciding test execution policy."""
     if not isinstance(data, dict) or data.get("schemaVersion") != 3:
-        raise ValueError("unsupported repocli schema (requires 3; install repocli >= 0.24.0)")
+        raise ImpactProtocolError("unsupported repocli schema (requires 3; install repocli >= 0.38.0)")
     diagnostics = data.get("diagnostics")
     if (not isinstance(data.get("complete"), bool)
             or data.get("scope") not in ("focused", "partial")
@@ -141,6 +145,13 @@ def decode_impact(data: dict, repo: str, input_kind: str) -> ImpactReport:
                 or not isinstance(item.get("fallbackReasons", []), list)
                 or any(not isinstance(reason, str) for reason in item.get("fallbackReasons", []))):
             raise ValueError("invalid ComponentImpact status or identity")
+        if "tagCounts" not in item:
+            raise ImpactProtocolError("missing required Component tagCounts (install repocli >= 0.38.0)")
+        counts = item["tagCounts"]
+        if (not isinstance(counts, dict)
+                or any(not isinstance(tag, str) or not tag.strip()
+                       or type(count) is not int or count < 0 for tag, count in counts.items())):
+            raise ImpactProtocolError("invalid Component tagCounts")
         key = (item["root"], item["snapshot"])
         if key in seen:
             raise ValueError("duplicate ComponentImpact root and snapshot")

@@ -54,10 +54,15 @@ transaction. General `impact` analysis, without `--test-dir`, reports affected C
 including downstream Components that have no discovered tests. `--test-dir` narrows the
 analysis around test candidates and is not the mode for Component selection.
 
-Devloop consumes `components` directly: `affected=true` selects a Component; `complete=false`
-selects it conservatively because its impact is unknown. Complete, unaffected Components are
-omitted. Before-only records retain deleted/previous ownership as evidence, but are not current
-execution directories. Explicitly targeting a Component retains that boundary.
+Devloop consumes `components.tagCounts` directly. Automatic lint/test execute only when at least
+one of `source`, `test`, `config`, `manifest`, or `lockfile` has a positive count. Other tags,
+including `documentation`, `version`, `unknown`, `resource`, and future tags, do not trigger checks.
+Tags overlap: `config + documentation` executes. Counts include known dependency reachability,
+so documentation reaching source can select that source Component. `affected`, `complete` and
+diagnostics remain visible; they do not independently trigger execution. Skipped checks retain
+their reasons and counts and do not prepare check dependencies, run check targets or write stamps.
+Normalization still precedes impact planning; this policy selects lint/test, not `make fix`.
+Before-only records retain deleted/previous ownership as evidence, but are not current execution directories. Explicitly targeting a Component retains that boundary.
 Component selection chooses the owning Makefile, not full coverage. Inside each selected Component,
 `affectedFiles` supplies `LINT_FILES` and `testFiles` supplies `TEST_FILES`, mapped through the same report's current
 Component catalog and made Component-relative. A project must consume the corresponding variable;
@@ -68,14 +73,15 @@ does not infer dependencies from paths or independently rediscover Components to
 
 The pre-commit input is the working tree restricted to intended changed paths;
 post-commit uses `HEAD^` versus `HEAD`; MR checks use target merge-base versus `HEAD`.
-If execution contents differ from the analyzed snapshot, or the report is unavailable,
-incompatible or invalid, validation performs a fresh inspection after normalization and falls back
-to all current Components (or the explicit Component). Diagnostics and per-Component gaps remain visible on Board.
+The current schema and valid `tagCounts` are required (repocli CLI 0.38.0+). An unsupported
+schema or missing/malformed `tagCounts` stops validation with an error; historical contracts are not supported.
+If execution contents differ from the analyzed snapshot, or the report is otherwise unavailable or invalid,
+validation performs a fresh inspection after normalization and falls back to all current Components (or the explicit Component). Diagnostics and per-Component gaps remain visible on Board.
 Local extraction observations do not independently expand selection. Check failures stay failures
 and never trigger a second run under the label of analysis fallback.
 
 `--full` bypasses impact selection and validates all requested Components. A valid selection with
-no affected or unknown Components skips checks without stamps. This is a static-analysis result,
+no positive execution-tag counts skips checks without stamps. This is a static-analysis result,
 not proof of runtime independence. Full checks clear inherited file-list variables and can stamp
 successful Component checks. Explicit arguments after `--` remain an advanced override: target one
 Component and report the scope accurately. Narrowed runs never grant a full Component stamp;

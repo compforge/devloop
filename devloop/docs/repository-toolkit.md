@@ -50,7 +50,9 @@ devloop 决定准备时机；已有但未经一致性验证的本地依赖可以
 ## 事实缺口与执行结果
 
 Working / commit / range 的改动路径与受影响 Component 由 repocli 分析，保留 rename 两端的归属；
-devloop 消费当前 Component 的影响事实决定执行范围，旧版本归属只作为分析证据保留。范围未知时退回完整验证，不当成空改动。Remote URL 的 host/path 同样来自
+devloop 消费当前 Component 的 `tagCounts`：只有 `source/test/config/manifest/lockfile` 任一计数大于 0
+才自动执行 lint/test；其它标签跳过。旧版本归属、`affected`、`complete` 与诊断保留为证据，不额外触发检查。
+显式执行请求优先；旧 schema 或缺少、无效的 `tagCounts` 直接报错并终止验证，不兼容历史协议。报告不可用或身份不符时退回完整验证。Remote URL 的 host/path 同样来自
 repocli，provider override、API 地址和 token 装配留在 devloop。
 
 Git status 不完整时，Board 展示 unknown，branch create 拒绝依赖 clean 假设继续操作。
@@ -103,7 +105,7 @@ repocli 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect �
 
 原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
 父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
-CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.28.0，保持 manifest/Makefile 识别与 Component 的 `affected` / `complete` 契约一致。
+CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.38.0+，保持 snapshot 身份与 Component 的 `tagCounts` 契约一致。
 
 仓库定位委托 find_checkout/findCheckout：无仓库是正常缺失，损坏元数据、权限与 Git 失败不能
 转换为“没有仓库”。必要 hook 事实读取失败继续走 fail_closed，不绕过保护分支规则。

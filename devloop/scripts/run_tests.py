@@ -26,7 +26,7 @@ from domain.lifecycle import checks  # noqa: E402
 def main(argv: list[str]) -> int:
     try:
         return _run(argv)
-    except repocli.InspectionError as exc:
+    except (repocli.InspectionError, repocli.ImpactProtocolError) as exc:
         print(f"run_tests: {exc}", file=sys.stderr)
         return 1
 

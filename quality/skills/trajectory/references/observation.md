@@ -3,7 +3,7 @@
 Use this reference to identify an evaluation subject, inspect its execution or connect task results
 to agent behavior. The shared data contract is Agent Ledger's
 [Observation](https://github.com/compforge/agent-ledger/blob/main/docs/observation.md).
-A View is a structured observation snapshot. Text and HTML render the same recorded facts for
+SessionView and JobView are structured observation snapshots. Text and HTML render the same recorded facts for
 different reading surfaces. “Loop view” and “agent view” requests select SessionView presentation.
 
 ## Two perspectives on execution
@@ -22,6 +22,49 @@ A Session snapshot has no inferred root completion verdict.
 Start from the question. Inspect Job goals and results for a task question, then open relevant
 Session context to explain decisions. Inspect a Session for a continuity or context question, then
 use explicit Job links to judge contribution. Neither perspective is restricted to cost or effect.
+
+## Context View
+
+A **Context View** is a text outline of an agent's context/prompt (a prompt outline): message
+roles form the outer structure, and sections within complex messages form the inner structure.
+It helps the user understand prompt composition and spot possible prompt problems. SessionView follows execution
+continuity; JobView follows business work. Context View is a presentation convention, not a new
+Agent Ledger schema.
+
+Lead with the message roles in their actual order, such as `system`, `user`, `assistant` and
+`tool`. Within a complex message, show how many meaningful sections it contains and briefly
+explain each one; a simple message needs only a short description. These sections describe prompt
+composition and need not correspond to native API content parts. Preserve repeated messages of the
+same role rather than merging them into one role bucket. Semantic labels such as background or
+candidate topics belong under the containing message, not in place of its role.
+
+Illustrative prompt outline; roles, counts and sections must follow the available evidence:
+
+```text
+system — 3 sections
+  1. Assistant identity and boundaries
+  2. Task-specific instructions
+  3. Output requirements
+user — 2 sections
+  1. Current background
+  2. This round's request and candidate data
+```
+
+Use brief descriptions and selected excerpts. Add source, refresh behavior or truncation details
+where they help inspect the prompt. Show tool definitions at their actual request location, which
+may be outside messages, and separate information available through tool reads from content already
+in the prompt. Mark unknown role placement in source reconstruction instead of inventing it.
+
+Use this overview to make potential problems visible: conflicting or duplicated instructions,
+missing decision context, stale history, irrelevant material, unclear instruction/data boundaries,
+and truncation that hides important facts. Follow the overview with brief, evidence-backed concerns
+when present; distinguish a possible prompt issue from a demonstrated cause of agent behavior.
+Expand exact messages or source details when needed to investigate a concern.
+
+A Context View may use recorded requests or source reconstruction. State which evidence it uses
+and the relevant call or code revision. Label summaries, omissions and illustrative values; leave
+runtime-only content unknown when reconstructing from source. An overview is not a verbatim request
+capture; exact recorded requests remain available through SessionView when the evidence exists.
 
 ## Nodes and evidence
 

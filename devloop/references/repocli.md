@@ -54,7 +54,7 @@ transaction. General `impact` analysis, without `--test-dir`, reports affected C
 including downstream Components that have no discovered tests. `--test-dir` narrows the
 analysis around test candidates and is not the mode for Component selection.
 
-Devloop consumes `components.tagCounts` directly. Automatic lint/test execute only when at least
+Devloop consumes `components.affectedFileCounts` directly. Automatic lint/test execute only when at least
 one of `source`, `test`, `config`, `manifest`, or `lockfile` has a positive count. Other tags,
 including `documentation`, `version`, `unknown`, `resource`, and future tags, do not trigger checks.
 Tags overlap: `config + documentation` executes. Counts include known dependency reachability,
@@ -73,8 +73,8 @@ does not infer dependencies from paths or independently rediscover Components to
 
 The pre-commit input is the working tree restricted to intended changed paths;
 post-commit uses `HEAD^` versus `HEAD`; MR checks use target merge-base versus `HEAD`.
-The current schema and valid `tagCounts` are required (repocli CLI 0.38.0+). An unsupported
-schema or missing/malformed `tagCounts` stops validation with an error; historical contracts are not supported.
+The current schema and valid `affectedFileCounts` are required (repocli CLI 0.39.0+). An unsupported
+schema or missing/malformed `affectedFileCounts` stops validation with an error; historical contracts are not supported.
 If execution contents differ from the analyzed snapshot, or the report is otherwise unavailable or invalid,
 validation performs a fresh inspection after normalization and falls back to all current Components (or the explicit Component). Diagnostics and per-Component gaps remain visible on Board.
 Local extraction observations do not independently expand selection. Check failures stay failures
@@ -114,8 +114,8 @@ outside validation, verify its published SHA-256 checksum, and put its binary on
 Python diff analysis; organization inspection does not use this setting.
 No validation workflow downloads, upgrades or compiles the repocli CLI.
 
-Use repocli CLI 0.28.0 or later for manifest/Makefile Component discovery and the shared
-content-identity contract (impact schema 3). The installed CLI is not pinned to a devloop release;
+Use repocli CLI 0.39.0 or later for manifest/Makefile Component discovery and the shared
+content-identity contract (impact schema 4). The installed CLI is not pinned to a devloop release;
 newer compatible releases are accepted. CLI and library versions are independent.
 
 On CLI versions providing self-upgrade, use `repocli upgrade --check` (or add `--json`)

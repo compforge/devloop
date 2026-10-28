@@ -94,7 +94,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     """Analyze once after normalization, including dependencies outside dirty owners.
 
     +spec=`Automatic checks require a positive source/test/config/manifest/lockfile tag count; other tags and analysis gaps do not trigger checks`
-    +spec=`Unsupported impact schemas or missing/invalid tagCounts stop validation without compatibility fallback`
+    +spec=`Unsupported impact schemas or missing/invalid affectedFileCounts stop validation without compatibility fallback`
     +spec=`Component selects the Makefile; affectedFiles/testFiles select check inputs`
     +why=`An execution boundary is not a request for full coverage; focused passes retain focused evidence`
     +spec=`Post-normalization Component metadata and impact come from one report; checks share that plan`
@@ -146,7 +146,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             units = tuple(unit for unit in inspection.components
                           if (unit.id in requested if requested is not None else
                               test_extra or current[unit.id]["affected"] or not current[unit.id]["complete"]
-                              or any(current[unit.id]["tagCounts"].values())))
+                              or any(current[unit.id]["affectedFileCounts"].values())))
         except repocli.ImpactProtocolError:
             raise
         except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as exc:
@@ -162,8 +162,8 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                        if item["root"] == unit.id and item["snapshot"] == "after"), None)
         selection_reason = reason or analysis_reason + ("; explicit Component boundary" if explicit else "")
         if impact and not reason:
-            counts = ", ".join(f"{tag}={count}" for tag, count in sorted(impact["tagCounts"].items()))
-            selection_reason += "; tagCounts: " + (counts or "{}")
+            counts = ", ".join(f"{tag}={count}" for tag, count in sorted(impact["affectedFileCounts"].items()))
+            selection_reason += "; affectedFileCounts: " + (counts or "{}")
             if impact["affected"]:
                 selection_reason += "; affected Component"
             elif not impact["complete"]:
@@ -177,7 +177,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                     for arg in test_extra)
                 selections[(unit.id, check)] = Selection(reason="caller supplied test arguments", explicit=not explicit_full)
             elif not reason and not explicit and impact is not None and not any(
-                    impact["tagCounts"].get(tag, 0) > 0 for tag in VALIDATION_TAGS):
+                    impact["affectedFileCounts"].get(tag, 0) > 0 for tag in VALIDATION_TAGS):
                 selections[(unit.id, check)] = Selection(
                     skipped=True, reason=selection_reason + "; validation tag whitelist not matched")
             else:

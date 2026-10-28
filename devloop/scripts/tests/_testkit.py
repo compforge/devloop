@@ -160,7 +160,7 @@ def run_main(g: dict) -> None:
 
 
 def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diagnostics=(),
-                   observations=(), schema=3, affected=None, components=None, tag_counts=None):
+                   observations=(), schema=4, affected=None, components=None, affected_file_counts=None):
     """Hermetic CLI protocol fixture; executes a real subprocess, never host repocli."""
     from contextlib import contextmanager
     from tempfile import TemporaryDirectory
@@ -188,13 +188,13 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 "data.update(snapshot=identity, checkout=repo, input='commit' if '--head' in sys.argv else 'working_tree')\n"
                 "if sys.argv[1]=='snapshot': data.update(complete=True, diagnostics=[])\n"
                 "if sys.argv[1]=='snapshot': data.update(schemaVersion=2)\n"
-                "tag_counts = " + repr(tag_counts) + "\n"
+                "affected_file_counts = " + repr(affected_file_counts) + "\n"
                 "components = " + repr(components) + "\n"
                 "if components is None:\n"
                 " catalog=inspect(repo)\n"
                 " paths=[item['path'] for item in data['affectedFiles']]\n"
                 " owned={binding.root for path in paths if (binding:=owner(catalog,path)) is not None}\n"
-                " components=[dict(root=b.root, snapshot='after', component={'name': b.name, 'language': b.language}, packageTools=[dict(name=t.name, evidence=list(t.evidence), **({'version': t.version} if t.version else {})) for t in b.package_tools], affected=b.root in owned, complete=data['complete'], fallbackReasons=[], tagCounts=(tag_counts if tag_counts is not None else ({'source': sum(1 for path in paths if (binding:=owner(catalog,path)) is not None and binding.root == b.root)} if b.root in owned else {}))) for b in catalog.components]\n"
+                " components=[dict(root=b.root, snapshot='after', component={'name': b.name, 'language': b.language}, packageTools=[dict(name=t.name, evidence=list(t.evidence), **({'version': t.version} if t.version else {})) for t in b.package_tools], affected=b.root in owned, complete=data['complete'], fallbackReasons=[], affectedFileCounts=(affected_file_counts if affected_file_counts is not None else ({'source': sum(1 for path in paths if (binding:=owner(catalog,path)) is not None and binding.root == b.root)} if b.root in owned else {}))) for b in catalog.components]\n"
                 "data['components']=components\n"
                 "print(json.dumps(data))\n"
             )

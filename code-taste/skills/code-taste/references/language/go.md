@@ -19,7 +19,7 @@
 - 避免 `{module}/{module}` 这类重复导入路径；仅供本仓库二进制使用的实现包放入 `internal/`，不要以
   顶层公共 package 暴露。
 
-单服务 CRUD 项目可以参考：
+单服务 CRUD 项目可以参考以下布局；`domain/`、`repo/` 按复杂度与封装价值引入，简单场景保留 Service / Biz 直接使用 DAO、client 的结构即可（见 [Repository 的按需边界](../modularity.md#repository按需表达业务的数据需求)）：
 
 ```text
 {project}/

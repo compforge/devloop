@@ -25,9 +25,9 @@ code-taste 那条「概念的载体不只 md，文档级概念应伺机升级为
 
 ## 索引
 
-- [`scope-not-special-case`](./scope-not-special-case.md) — 新增稳定业务维度，别先建成特判分支，先重组模型
-- [`guard-impl-side`](./guard-impl-side.md) — 守卫 / 空值检查放实现侧，不让每个调用方重复
-- [`noisy-signal-not-in-level-key`](./noisy-signal-not-in-level-key.md) — 会抖 / 异步的信号别折进"电平相等"变更键，边沿检测 + 迟滞才对
-- [`constraint-by-mechanism-not-docs`](./constraint-by-mechanism-not-docs.md) — 多人协作下设计约束靠机制（收权 / 契约测试 / 运行时对账）守住，docstring 宣告挡不住新变体
-- [`provider-stays-domain-pure`](./provider-stays-domain-pure.md) — 资源提供方只管理自己的领域模型，跨模型转换留给调用方或独立 Mapper
-- [`large-coordinator-missing-concept`](./large-coordinator-missing-concept.md) — 超大协调器反复按同一维度分支时，优先提取概念与 owner，不只切 helper
+- [`scope-not-special-case`](scope-not-special-case.md) — 新增稳定业务维度，别先建成特判分支，先重组模型
+- [`guard-impl-side`](guard-impl-side.md) — 守卫 / 空值检查放实现侧，不让每个调用方重复
+- [`noisy-signal-not-in-level-key`](noisy-signal-not-in-level-key.md) — 会抖 / 异步的信号别折进"电平相等"变更键，边沿检测 + 迟滞才对
+- [`constraint-by-mechanism-not-docs`](constraint-by-mechanism-not-docs.md) — 多人协作下设计约束靠机制（收权 / 契约测试 / 运行时对账）守住，docstring 宣告挡不住新变体
+- [`provider-stays-domain-pure`](provider-stays-domain-pure.md) — 资源提供方只管理自己的领域模型，跨模型转换留给调用方或独立 Mapper
+- [`large-coordinator-missing-concept`](large-coordinator-missing-concept.md) — 超大协调器反复按同一维度分支时，优先提取概念与 owner，不只切 helper

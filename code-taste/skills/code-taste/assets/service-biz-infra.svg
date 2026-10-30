@@ -1,78 +1,84 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1370" viewBox="0 0 1920 1370" role="img" aria-labelledby="title desc">
-  <title id="title">Application Architecture：入口、业务与基础设施的职责</title>
-  <desc id="desc">单个应用或服务内部的职责分层。Service 表示应用内业务层，不是独立部署的服务。Controller 承接 API、任务或消息触发并调用 Service。Service 可委托 Biz；二者均可直接使用 DAO 或 client。Service / Biz 决定所需对象与业务条件。Repository 按消费方 contract 提供必要的数据范围，将可表达的筛选落实到查询并保持所需结果完整，封装分页、缓存与跨表组合。DAO 提供可复用的条件查询与更新能力。独立 Domain 按需提取。虚线框表示可选边界，不表示必须经过的层级。</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1190" viewBox="0 0 2200 1190" role="img" aria-labelledby="title desc">
+  <title id="title">Application Architecture：Service、Biz 与 CQRS</title>
+  <desc id="desc">入口可以是 API handler、task 触发或 MQ message handler。入口中的 Query / Command 标记区分用例意图，下方统一由 Service 承接。Query 路径直接访问基础设施；Command 路径可以直接处理用例，也可委托 Biz。Service 和 Biz 可以基于复用、避免膨胀等因素进一步内部分层，并按职责操作基础设施。Repository interface 体现 Biz 对数据资源的需求，封装分页、缓存、跨表与 DAO 组合等细节。DAO 承接 Service、Biz 的数据库操作需求，提供与自身表相关的可复用 CRUD 方法，不预设调用方。独立 Domain 按需提取；虚线框不构成必经层级。</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
-      <path d="M 2 1 L 10 6 L 2 11" fill="none" stroke="#18212f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="15" markerHeight="15" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 2 1 L 10 6 L 2 11" fill="none" stroke="#171717" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
     </marker>
     <style>
-      text { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; fill: #18212f; font-size: 28px; }
-      .box { fill: #eef2f8; stroke: #18212f; stroke-width: 3.5; }
-      .optional { stroke-dasharray: 9 8; }
-      .infra { fill: #f8fafc; stroke: #18212f; stroke-width: 3.5; }
-      .flow { fill: none; stroke: #18212f; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
-      .label { font-size: 32px; text-anchor: middle; }
-      .note { font-size: 27px; }
+      text { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; fill: #202124; font-size: 28px; }
+      .box { fill: #eef2f8; stroke: #171717; stroke-width: 3.5; }
+      .optional { stroke-dasharray: 8 8; }
+      .flow { fill: none; stroke: #171717; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+      .label { font-size: 31px; text-anchor: middle; }
+      .note { font-size: 28px; }
+      .footer { font-size: 24px; fill: #555; }
     </style>
   </defs>
-  <rect width="1920" height="1370" fill="white"/>
-  <text x="70" y="52" style="font-size:38px;font-weight:600">Application Architecture</text>
-  <text x="70" y="96" style="font-size:25px">单个应用或服务内部的职责分层 · Service 表示应用内业务层，不代表独立部署的服务</text>
-  <g transform="translate(0 120)">
-  <text x="265" y="77">入口：API handler、task 触发、MQ message handler</text>
-  <rect class="box" x="500" y="115" width="250" height="160" rx="16"/>
-  <text class="label" x="625" y="209">Controller</text>
-  <path class="flow" d="M 625 285 V 327"/>
+  <rect width="2200" height="1190" fill="white"/>
+  <text x="570" y="76">入口，可能是 api handler，task 触发，mq message handler</text>
+  <rect class="box" x="50" y="115" width="1710" height="155" rx="14"/>
+  <polygon points="70,215 187,180 304,215 187,250" fill="#dff3e7" stroke="#171717" stroke-width="3.5" stroke-linejoin="round"/>
+  <text class="label" x="187" y="226">query</text>
+  <polygon points="790,215 927,180 1064,215 927,250" fill="#fbe4e4" stroke="#171717" stroke-width="3.5" stroke-linejoin="round"/>
+  <text class="label" x="927" y="226">command</text>
 
-  <rect class="box" x="500" y="342" width="250" height="320" rx="16"/>
-  <text x="520" y="435" font-size="32">Service</text>
-  <text x="520" y="515">biz = load(xx)</text>
-  <text x="520" y="557">biz.func()</text>
-  <text x="520" y="599">save(change)</text>
-  <text class="note" x="45" y="410">
-    <tspan x="45" dy="0">Service 和 Biz 可基于复用、</tspan>
-    <tspan x="45" dy="42">避免膨胀等因素进一步内部分工</tspan>
+  <path class="flow" d="M 187 282 V 332"/>
+  <rect class="box" x="70" y="345" width="235" height="125" rx="14"/>
+  <text class="label" x="187" y="420">service</text>
+  <path class="flow" d="M 187 482 V 758"/>
+
+  <path class="flow" d="M 927 282 V 320"/>
+  <rect class="box" x="800" y="333" width="255" height="310" rx="14"/>
+  <text x="812" y="420" style="font-size:31px">service</text>
+  <text x="812" y="500">biz = load(xx)</text>
+  <text x="812" y="542">biz.func</text>
+  <text x="812" y="584">save(change)</text>
+  <path class="flow" d="M 927 655 V 758"/>
+
+  <text class="note" x="355" y="395" style="font-size:27px">
+    <tspan x="355" dy="0">service 和 biz 基于复用、避免膨胀</tspan>
+    <tspan x="355" dy="40">等因素也可能会内部分层</tspan>
   </text>
-  <path class="flow" d="M 488 500 H 340 Q 320 500 320 520 V 543"/>
-  <rect class="box optional" x="195" y="557" width="250" height="113" rx="16"/>
-  <text class="label" x="320" y="626">Service</text>
+  <path class="flow" d="M 788 488 H 650 Q 627 488 627 510 V 528"/>
+  <rect class="box optional" x="510" y="540" width="235" height="105" rx="12"/>
+  <text class="label" x="627" y="604">service</text>
+  <path class="flow" d="M 627 657 V 758"/>
 
-  <text class="note" x="810" y="337">
-    <tspan x="810" dy="0">必要时，Service 把逻辑委托给 Biz；</tspan>
-    <tspan x="810" dy="42">Service 和 Biz 均可按职责使用 infra</tspan>
+  <text class="note" x="1085" y="325">
+    <tspan x="1085" dy="0">如有必要，service 可以把逻辑委托为 biz，</tspan>
+    <tspan x="1085" dy="40">biz 为了干活儿也可以操作 infra</tspan>
   </text>
-  <path class="flow" d="M 762 457 H 890"/>
-  <rect class="box" x="905" y="428" width="250" height="66" rx="16"/>
-  <text class="label" x="1030" y="473">Biz</text>
-  <rect class="box optional" x="1050" y="480" width="250" height="66" rx="16"/>
-  <text class="label" x="1175" y="525">Biz</text>
-  <path class="flow" d="M 1175 559 V 613"/>
-  <rect class="box optional" x="1050" y="628" width="250" height="82" rx="16"/>
-  <text class="label" x="1175" y="682">Repository</text>
-  <path class="flow" d="M 1175 723 V 742 Q 1175 765 1152 765 H 970 Q 945 765 945 785 V 796"/>
+  <path class="flow" d="M 1067 443 H 1173"/>
+  <rect class="box" x="1185" y="415" width="235" height="60" rx="13"/>
+  <text class="label" x="1302" y="457">biz</text>
+  <rect class="box optional" x="1320" y="460" width="235" height="60" rx="13"/>
+  <text class="label" x="1437" y="502">biz</text>
+  <path class="flow" d="M 1437 532 V 583"/>
+  <rect class="box optional" x="1320" y="595" width="235" height="80" rx="12"/>
+  <text class="label" x="1437" y="646">repository</text>
 
-  <rect class="box optional" x="1390" y="480" width="260" height="170" rx="85" style="fill:#ede9fa"/>
-  <text class="label" x="1520" y="577">Domain</text>
-  <text class="note" x="1380" y="698">领域模型与行为按需独立</text>
-  <text class="note" x="1200" y="770">
-    <tspan x="1200" dy="0">Repository 按消费方 contract 提供必要数据范围；</tspan>
-    <tspan x="1200" dy="42">可表达的筛选在查询时完成，保持所需结果完整；</tspan>
-    <tspan x="1200" dy="42">封装分页、缓存与跨表 / DAO 组合等访问细节</tspan>
+  <rect class="box optional" x="1610" y="460" width="235" height="155" rx="78" style="fill:#eae3fa"/>
+  <text class="label" x="1727" y="550">domain</text>
+  <path class="flow" d="M 1437 687 V 705 Q 1437 725 1417 725 H 1090 Q 1070 725 1070 745 V 758"/>
+  <text class="note" x="1435" y="742" style="font-size:26px">
+    <tspan x="1435" dy="0">Repository interface 体现了 biz 对数据资源的需求</tspan>
+    <tspan x="1435" dy="40">让 biz 核心逻辑可以不必关心分页、缓存、跨表 / dao 等细节</tspan>
   </text>
 
-  <rect class="infra" x="440" y="810" width="680" height="215" rx="16"/>
-  <rect class="box" x="500" y="835" width="250" height="165" rx="16"/>
-  <rect class="box" x="825" y="835" width="250" height="165" rx="16"/>
-  <text class="label" x="625" y="932">DAO</text>
-  <text class="label" x="950" y="932">xxClient</text>
-  <text x="1150" y="955" font-size="32">infra</text>
-  <path class="flow" d="M 625 675 V 796"/>
-  <path class="flow" d="M 320 683 V 900 Q 320 925 345 925 H 485"/>
+  <rect class="box" x="70" y="770" width="1285" height="205" rx="14"/>
+  <rect class="box" x="180" y="795" width="235" height="155" rx="14"/>
+  <text class="label" x="297" y="887">dao</text>
+  <rect class="box" x="470" y="795" width="235" height="155" rx="14"/>
+  <text class="label" x="587" y="887">dao</text>
+  <rect class="box" x="1105" y="795" width="235" height="155" rx="14"/>
+  <text class="label" x="1222" y="887">xxclient</text>
+  <text x="1385" y="910">infra</text>
 
-  <text class="note" x="220" y="1085">
-    <tspan x="220" dy="0">DAO 提供可复用的条件查询、CRUD 与条件更新，不预设由 Service 还是 Biz 调用。</tspan>
-    <tspan x="220" dy="44">Service / Biz 决定所需对象与业务条件；Repository 组织访问，DAO 落实查询。</tspan>
-    <tspan x="220" dy="44">虚线表示按需提取；Repository 和独立 Domain 分别判断是否需要，不要求同时引入。</tspan>
+  <text class="note" x="530" y="1040">
+    <tspan x="530" dy="0">dao 承接了 service、biz 的 db 操作需求，一个 dao 提供与自己对应的表有关的很多 crud 方法</tspan>
+    <tspan x="530" dy="40">但是不预期提供的方法由谁（service 或 biz）来调用。</tspan>
+    <tspan x="530" dy="40">也就是某个逻辑过于 service / biz specific 时，不适合放在 dao 里。</tspan>
   </text>
-  </g>
+  <text class="footer" x="70" y="1170">CQRS 按用例区分 Command / Query；虚线表示按需提取，不要求经过所有组件。</text>
 </svg>

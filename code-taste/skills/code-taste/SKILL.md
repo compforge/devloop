@@ -13,7 +13,7 @@ description: "Use when writing, modifying, refactoring, or reviewing software co
 
 - **业务架构：核心概念 + 关系 + 串起概念的主流程。**判断当前问题是已有模型下的实现细节，还是暴露了概念缺失、职责混淆或流程缺口。
 - **系统架构（System Architecture）：应用、服务与外部依赖的边界和协作。**判断职责与数据由谁拥有、通信契约是否充分、一致性与失败恢复由谁负责。具体见 [跨服务的职责与协作](references/modularity.md#跨服务的职责与协作)。
-- **应用架构（Application Architecture）：单个应用或服务内部的模块、分层、接口与依赖。**结合入口、Service / Biz、Repository、DAO / Infra 等现有布局，判断哪一层的契约或能力不足、哪些职责放错了位置。具体见 [按职责分派改动](references/modularity.md#按职责分派改动)。
+- **应用架构（Application Architecture）：单个应用或服务内部的模块、分层、接口与依赖。**结合入口、Service / Biz、Repository、DAO / Infra 等现有布局与 CQRS 的 Command / Query 职责，判断哪一层的契约或能力不足、哪些职责放错了位置。具体见 [按职责分派改动](references/modularity.md#按职责分派改动)。
 
 从原始需求出发，用 [绿地视角](references/evolution.md#绿地视角) 检验现有抽象；已有方法和调用关系是现状证据，不直接限定方案边界。再将必要调整落到现有布局，不仅根据报错文件或性能热点决定修复位置。
 

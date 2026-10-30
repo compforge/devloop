@@ -5,7 +5,19 @@ description: "Use when writing, modifying, refactoring, or reviewing software co
 
 # Code Taste
 
-个人代码品味，重点约束**判断力**而不是语法风格。
+个人代码品味：从项目的业务架构、系统架构和应用架构理解问题，判断缺了什么，再安排改动。重点约束**判断力**而不是语法风格。
+
+## 先建立全局视角，再决定改动落点
+
+根据问题范围，选用三个互补的视角。以下是本 skill 的工作定义：
+
+- **业务架构：核心概念 + 关系 + 串起概念的主流程。**判断当前问题是已有模型下的实现细节，还是暴露了概念缺失、职责混淆或流程缺口。
+- **系统架构（System Architecture）：应用、服务与外部依赖的边界和协作。**判断职责与数据由谁拥有、通信契约是否充分、一致性与失败恢复由谁负责。具体见 [跨服务的职责与协作](references/modularity.md#跨服务的职责与协作)。
+- **应用架构（Application Architecture）：单个应用或服务内部的模块、分层、接口与依赖。**结合入口、Service / Biz、Repository、DAO / Infra 等现有布局，判断哪一层的契约或能力不足、哪些职责放错了位置。具体见 [按职责分派改动](references/modularity.md#按职责分派改动)。
+
+从原始需求出发，用 [绿地视角](references/evolution.md#绿地视角) 检验现有抽象；已有方法和调用关系是现状证据，不直接限定方案边界。再将必要调整落到现有布局，不仅根据报错文件或性能热点决定修复位置。
+
+三个视角用于定位问题，下面的 T0 / T1 / T2 用于控制分析深度。局部改动只需理解相关概念、流程与职责；配置值、格式等机械改动可以直接处理，不要求每次重画架构或输出设计报告。
 
 ## 适用范围
 
@@ -17,56 +29,9 @@ description: "Use when writing, modifying, refactoring, or reviewing software co
 - 核心是“要不要新增功能、功能怎么设计”且需求还没稳 → 先澄清原始需求和约束。
 - 已有明确设计 / 计划 → 本 skill 只检查复杂度和边界，不替代执行型 skill。
 
-## 按问题读取：理念、评审、语言与案例
-
-### [模型：核心对象是什么、新概念是否成立](references/modeling.md)
-
-### [模块化：职责归属、内聚、耦合与复用](references/modularity.md)
-
-- 判断入口、Service / Biz、Repository 与 DAO 的职责，或是否需要独立 Domain：看 [按需的数据访问契约](references/modularity.md#repository按需表达业务的数据需求)。
-
-### [行为：控制流、函数职责与正确性](references/behavior.md)
-
-### [演进：绿地视角、长期方向与 MR 复盘](references/evolution.md)
-
-### [表达：命名、文档、注释与日志](references/expression.md)
-
-#### 业务概念、类型、函数与变量：命名
-
-- 纠结命名、抽象命名不顺：看 [命名原则](references/expression.md#命名)
-
-#### README / AGENTS.md / 设计文档 / Blog / 代码注释：写作
-
-- 编写或整理 README、AGENTS.md、设计文档、Blog、代码注释：看 [文档分层与写作原则](references/expression.md#文档与写作)；
-  AGENTS.md 的代码地图默认使用 tree 风格
-
-#### 行为契约、领域不变量、设计理由与临时措施：意图标记
-
-- 修改行为契约、领域不变量或非显而易见的设计意图：看 [结构化意图标记](references/mark.md)
-
-### 设计、评审与复盘
-
-- 做架构判断、模块拆分、接口设计：从 [架构判断入口](references/README.md) 按问题路由
-- 做架构 review 或逐项检查设计质量：看 [架构 Review](references/review.md#架构评审)
-- 回看近期 MR 做设计复盘：看 [MR 序列复盘](references/evolution.md#mr-序列复盘)
-
-#### [代码实现评审](references/review.md#代码评审流程)
-
-- 做代码 review 或逐项检查实现质量：看 [代码 Review](references/review.md#代码评审流程)
-
-### Go / Python / TypeScript：编写或修改代码的语言基线
-
-- 涉及 Go、Python 或 TypeScript 代码：读取
-  [语言专项约定入口](references/language/README.md)并只加载对应语言文件；这是执行基线，不改变
-  T0/T1/T2 定档
-
-### 具体反例与正例：查阅及积累
-
-- 积累 / 查反例正例案例：看 [案例索引](references/examples/README.md)（一案例一文件；加案例拷 `_TEMPLATE.md`、补索引）
-
 ## 按语义变化控制设计深度
 
-判断力 skill 的头号失败模式是**对琐碎改动过度上设计脑**。所以先定档，再决定起多少、读哪层深度。
+根据问题涉及的语义与职责确定分析深度，避免对琐碎改动过度设计；发现概念或边界缺口时再升级定档。
 
 **定档**（决定起多少设计脑）：
 
@@ -76,19 +41,6 @@ description: "Use when writing, modifying, refactoring, or reviewing software co
 | **T1 局部** | 在既有大概念和边界内，调整行为，或设计 / 调整局部小概念、类型与流程 | 局部设计 + 代码 review——确认 owner 不变，再看正确性、可读性、命名、函数层级与日志（见 [代码 Review](references/review.md#代码评审流程)） |
 | **T2 结构** | 改变顶层概念、owner、模块边界、依赖方向、跨边界契约或广泛引用的公共符号 | 完整设计脑——模型 / 边界 / 依赖 / 接口（从 [架构判断入口](references/README.md) 进入） |
 
-不同档位使用不同的主要观察尺度：
-
-- **T2：系统 = 核心概念 + 主流程**。核心概念落实到代码，通常由 interface、protocol、struct / class
-  等符号表达；承载身份、粒度、生命周期或策略选择的核心常量与配置，也是核心设计的代码落点。
-  主流程落实到拥有协作顺序与生命周期契约的函数、方法或编排入口。这些概念与流程的代码落点，
-  尽量用 [marker](references/mark.md) 保存仅靠实现难以还原的契约与设计理由，让阅读路径形成
-  “局部改动 → 所依赖的核心符号 → marker → 相关系统约束 / 核心设计”，为单次改动带入全局视角。
-  先判断顶层概念、owner、边界及其协作关系。每个系统都应能用“一句话”串起核心概念与主流程；
-  它是当前系统模型的最小摘要，应随项目演进持续校准、逐步清晰。
-  这套模型及其关键设计理由，在存在稳定共享内核时由 [kernel.md](references/expression.md#可选的-docskernelmd) 展开。
-- **T1 及以下：程序 = 数据结构 + 算法；代码 = 控制 + 逻辑**，在既有边界内判断数据如何表达、行为
-  如何实现，以及执行顺序与业务规则是否清楚分离。
-
 > 档由改动的**语义变化与影响层级**决定，不由行数、文件数或是否新增类型决定：百行机械 rename 仍是
 > T0；大概念内部新增私有类型或接口可以是 T1；5 行修改若改变跨边界契约也应是 T2。
 
@@ -97,10 +49,27 @@ description: "Use when writing, modifying, refactoring, or reviewing software co
 `rule` / `link`。涉及临时措施时检查 `tmp`，只有具体验证场景值得长期寻址或复用时才补 `case`。
 详细判断见 [结构化意图标记](references/mark.md)。
 
+## 按问题读取
+
+按当前缺口选读，不要求每次加载全部原则。详细问题入口见 [理念索引](references/README.md)。
+
+| 当前判断 | 阅读 |
+|---|---|
+| 核心概念、关系与流程是否充分，是否需要新概念 | [模型：业务概念、关系与流程](references/modeling.md) |
+| 服务边界、数据归属、通信与恢复责任是否合理 | [跨服务的职责与协作](references/modularity.md#跨服务的职责与协作) |
+| 应用内部哪层职责、契约或能力不足，代码如何组织 | [模块化：边界、分层与协作](references/modularity.md) |
+| 如何检验现有设计、比较差距并增量调整，或复盘 MR | [演进：绿地审视与增量调整](references/evolution.md) |
+| 既定职责下，控制流与行为是否正确清楚 | [行为：控制流、职责与契约](references/behavior.md) |
+| 命名、README / AGENTS.md、设计文档、Blog、注释与日志如何表达设计 | [表达：命名、文档、注释与日志](references/expression.md) |
+| 检查架构或实现是否成立 | [评审：架构与代码](references/review.md) |
+
+- 编写或修改 Go、Python、TypeScript：读取 [语言专项约定入口](references/language/README.md) 及对应语言文件；语言基线不改变 T0 / T1 / T2 定档。
+- 涉及行为契约、领域不变量或非显而易见的设计理由：读取 [结构化意图标记](references/mark.md)。
+- 查阅或沉淀反例与正例：见 [案例索引](references/examples/README.md)，一案例一文件。
+
 ## 设计判断的出发点
 
-先控制复杂度，再实现功能；先把模型、边界和命名想清楚，再进入实现细节。
-从第一性原理出发，先追问原始问题和原始需求到底是什么，再讨论方案、抽象和实现。
+从原始问题、需求和约束出发控制复杂度；按本次改动的分析深度厘清模型、边界和命名，再进入实现细节。
 
 开工前，以有独立判断的协作者身份，通过关键提问和必要的资料阅读，与用户厘清目标、约束、边界和完成标准。提问不仅补齐信息，也要帮助用户审视假设、明确取舍；有不同判断时，说明依据。等整体脉络清晰后，给出与任务复杂度匹配的方案。
 

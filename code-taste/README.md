@@ -49,3 +49,9 @@ Use code-taste to improve these names without changing behavior.
 
 For debugging and incident triage, establish runtime evidence first and use Code Taste only when the
 result points to a structural design issue.
+
+## Maintaining the skill
+
+When authoring or revising the skill, prioritize precision. Prefer an established English technical
+term when it names the concept precisely; use natural Chinese for the surrounding explanation.
+This is guidance for skill maintainers, not an instruction to include in the agent-facing skill.

@@ -25,6 +25,8 @@ code-taste 那条「概念的载体不只 md，文档级概念应伺机升级为
 
 ## 索引
 
+- [`query-scope-follows-consumer`](query-scope-follows-consumer.md) — 从慢查询追到消费方数据需求，按职责分派查询范围与执行能力
+
 - [`scope-not-special-case`](scope-not-special-case.md) — 新增稳定业务维度，别先建成特判分支，先重组模型
 - [`guard-impl-side`](guard-impl-side.md) — 守卫 / 空值检查放实现侧，不让每个调用方重复
 - [`noisy-signal-not-in-level-key`](noisy-signal-not-in-level-key.md) — 会抖 / 异步的信号别折进"电平相等"变更键，边沿检测 + 迟滞才对

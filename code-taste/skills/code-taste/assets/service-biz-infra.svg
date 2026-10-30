@@ -1,78 +1,72 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1370" viewBox="0 0 1920 1370" role="img" aria-labelledby="title desc">
-  <title id="title">Application Architecture：入口、业务与基础设施的职责</title>
-  <desc id="desc">单个应用或服务内部的职责分层。Service 表示应用内业务层，不是独立部署的服务。Controller 承接 API、任务或消息触发并调用 Service。Service 可委托 Biz；二者均可直接使用 DAO 或 client。Service / Biz 决定所需对象与业务条件。Repository 按消费方 contract 提供必要的数据范围，将可表达的筛选落实到查询并保持所需结果完整，封装分页、缓存与跨表组合。DAO 提供可复用的条件查询与更新能力。独立 Domain 按需提取。虚线框表示可选边界，不表示必须经过的层级。</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1250" viewBox="0 0 1600 1250" role="img" aria-labelledby="title desc">
+  <title id="title">Application Architecture：CQRS 与按需形成的业务边界</title>
+  <desc id="desc">入口按用例目的区分 Command 与 Query。Query Service 通过 DAO 或 client 组织展示查询和投影。Command Service 组织业务操作，可直接访问基础设施，也可按需委托 Biz、独立 Domain 或 Repository。Command 所需的读取仍属于命令用例。Biz 封装内聚业务能力；Domain 承接独立领域模型与行为；Repository 为 Command 组织对象加载和保存。虚线框为可选组件，不构成必须经过的层级。两侧可共用 Service、数据库和 DAO。</desc>
   <defs>
-    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
-      <path d="M 2 1 L 10 6 L 2 11" fill="none" stroke="#18212f" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="12" markerHeight="12" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M 2 1 L 10 6 L 2 11" fill="none" stroke="#334155" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
     </marker>
     <style>
-      text { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; fill: #18212f; font-size: 28px; }
-      .box { fill: #eef2f8; stroke: #18212f; stroke-width: 3.5; }
-      .optional { stroke-dasharray: 9 8; }
-      .infra { fill: #f8fafc; stroke: #18212f; stroke-width: 3.5; }
-      .flow { fill: none; stroke: #18212f; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
-      .label { font-size: 32px; text-anchor: middle; }
-      .note { font-size: 27px; }
+      text { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; fill: #18212f; font-size: 25px; }
+      .heading { font-size: 31px; font-weight: 600; }
+      .label { font-size: 29px; font-weight: 600; text-anchor: middle; }
+      .body { text-anchor: middle; }
+      .note { font-size: 23px; fill: #475569; }
+      .box { fill: white; stroke: #334155; stroke-width: 2.5; }
+      .optional { stroke-dasharray: 8 7; }
+      .flow { fill: none; stroke: #334155; stroke-width: 2.5; stroke-linejoin: round; marker-end: url(#arrow); }
     </style>
   </defs>
-  <rect width="1920" height="1370" fill="white"/>
-  <text x="70" y="52" style="font-size:38px;font-weight:600">Application Architecture</text>
-  <text x="70" y="96" style="font-size:25px">单个应用或服务内部的职责分层 · Service 表示应用内业务层，不代表独立部署的服务</text>
-  <g transform="translate(0 120)">
-  <text x="265" y="77">入口：API handler、task 触发、MQ message handler</text>
-  <rect class="box" x="500" y="115" width="250" height="160" rx="16"/>
-  <text class="label" x="625" y="209">Controller</text>
-  <path class="flow" d="M 625 285 V 327"/>
+  <rect width="1600" height="1250" fill="white"/>
+  <text x="80" y="65" style="font-size:38px;font-weight:600">Application Architecture · CQRS</text>
+  <text x="80" y="110">简单用例保持直接，复杂业务按职责、规则和变化形成边界</text>
 
-  <rect class="box" x="500" y="342" width="250" height="320" rx="16"/>
-  <text x="520" y="435" font-size="32">Service</text>
-  <text x="520" y="515">biz = load(xx)</text>
-  <text x="520" y="557">biz.func()</text>
-  <text x="520" y="599">save(change)</text>
-  <text class="note" x="45" y="410">
-    <tspan x="45" dy="0">Service 和 Biz 可基于复用、</tspan>
-    <tspan x="45" dy="42">避免膨胀等因素进一步内部分工</tspan>
-  </text>
-  <path class="flow" d="M 488 500 H 340 Q 320 500 320 520 V 543"/>
-  <rect class="box optional" x="195" y="557" width="250" height="113" rx="16"/>
-  <text class="label" x="320" y="626">Service</text>
+  <rect x="80" y="150" width="1440" height="100" rx="14" fill="#eef2f8" stroke="#334155" stroke-width="2.5"/>
+  <text class="label" x="800" y="192">入口：Controller / Task / MQ</text>
+  <text class="body note" x="800" y="228">承接协议与触发上下文，选择用例</text>
 
-  <text class="note" x="810" y="337">
-    <tspan x="810" dy="0">必要时，Service 把逻辑委托给 Biz；</tspan>
-    <tspan x="810" dy="42">Service 和 Biz 均可按职责使用 infra</tspan>
-  </text>
-  <path class="flow" d="M 762 457 H 890"/>
-  <rect class="box" x="905" y="428" width="250" height="66" rx="16"/>
-  <text class="label" x="1030" y="473">Biz</text>
-  <rect class="box optional" x="1050" y="480" width="250" height="66" rx="16"/>
-  <text class="label" x="1175" y="525">Biz</text>
-  <path class="flow" d="M 1175 559 V 613"/>
-  <rect class="box optional" x="1050" y="628" width="250" height="82" rx="16"/>
-  <text class="label" x="1175" y="682">Repository</text>
-  <path class="flow" d="M 1175 723 V 742 Q 1175 765 1152 765 H 970 Q 945 765 945 785 V 796"/>
+  <rect x="80" y="310" width="420" height="610" rx="16" fill="#eef7fb" stroke="#c2dbe6" stroke-width="2"/>
+  <rect x="540" y="310" width="980" height="610" rx="16" fill="#f4f1fa" stroke="#d9d0e8" stroke-width="2"/>
+  <text class="heading" x="110" y="355">Query · 读取与展示</text>
+  <text class="heading" x="580" y="355">Command · 业务操作（含所需读取）</text>
+  <path class="flow" d="M 100 250 V 375 H 290 V 395"/>
+  <path class="flow" d="M 560 250 V 375 H 765 V 395"/>
 
-  <rect class="box optional" x="1390" y="480" width="260" height="170" rx="85" style="fill:#ede9fa"/>
-  <text class="label" x="1520" y="577">Domain</text>
-  <text class="note" x="1380" y="698">领域模型与行为按需独立</text>
-  <text class="note" x="1200" y="770">
-    <tspan x="1200" dy="0">Repository 按消费方 contract 提供必要数据范围；</tspan>
-    <tspan x="1200" dy="42">可表达的筛选在查询时完成，保持所需结果完整；</tspan>
-    <tspan x="1200" dy="42">封装分页、缓存与跨表 / DAO 组合等访问细节</tspan>
-  </text>
+  <rect class="box" x="120" y="395" width="340" height="260" rx="14"/>
+  <text class="label" x="290" y="447">Query Service</text>
+  <text class="body" x="290" y="500">组织查询与结果</text>
+  <text class="body" x="290" y="545">筛选 / 分页 / 排序</text>
+  <text class="body" x="290" y="585">关联 / 字段投影</text>
+  <text class="body" x="290" y="625">View Model / DTO</text>
+  <path class="flow" d="M 290 655 V 1000"/>
 
-  <rect class="infra" x="440" y="810" width="680" height="215" rx="16"/>
-  <rect class="box" x="500" y="835" width="250" height="165" rx="16"/>
-  <rect class="box" x="825" y="835" width="250" height="165" rx="16"/>
-  <text class="label" x="625" y="932">DAO</text>
-  <text class="label" x="950" y="932">xxClient</text>
-  <text x="1150" y="955" font-size="32">infra</text>
-  <path class="flow" d="M 625 675 V 796"/>
-  <path class="flow" d="M 320 683 V 900 Q 320 925 345 925 H 485"/>
+  <rect class="box" x="590" y="395" width="350" height="190" rx="14"/>
+  <text class="label" x="765" y="447">Command Service</text>
+  <text class="body" x="765" y="497">组织用例与协调结果</text>
+  <text class="body note" x="765" y="540">加载 → 执行规则 → 保存</text>
+  <path class="flow" d="M 940 460 H 1040"/>
+  <rect class="box optional" x="1040" y="395" width="420" height="145" rx="14"/>
+  <text class="label" x="1250" y="450">Biz</text>
+  <text class="body" x="1250" y="500">内聚的业务能力与规则</text>
 
-  <text class="note" x="220" y="1085">
-    <tspan x="220" dy="0">DAO 提供可复用的条件查询、CRUD 与条件更新，不预设由 Service 还是 Biz 调用。</tspan>
-    <tspan x="220" dy="44">Service / Biz 决定所需对象与业务条件；Repository 组织访问，DAO 落实查询。</tspan>
-    <tspan x="220" dy="44">虚线表示按需提取；Repository 和独立 Domain 分别判断是否需要，不要求同时引入。</tspan>
-  </text>
-  </g>
+  <path class="flow" d="M 1250 540 V 610"/>
+  <rect class="box optional" x="1040" y="610" width="420" height="125" rx="14"/>
+  <text class="label" x="1250" y="660">Domain</text>
+  <text class="body" x="1250" y="703">独立的领域模型与行为</text>
+  <text class="body note" x="1250" y="785">按需由 Service / Biz 调用</text>
+
+  <path class="flow" d="M 765 585 V 745"/>
+  <path class="flow" d="M 1040 505 H 990 V 805 H 940"/>
+  <rect class="box optional" x="590" y="745" width="350" height="125" rx="14"/>
+  <text class="label" x="765" y="795">Repository</text>
+  <text class="body" x="765" y="838">Command 的对象加载与保存</text>
+  <path class="flow" d="M 765 870 V 1000"/>
+  <path class="flow" d="M 590 535 H 560 V 1000"/>
+  <path class="flow" d="M 1460 460 H 1490 V 1000"/>
+  <text class="note" x="855" y="960">Service / Biz 均可按职责直接访问基础设施</text>
+
+  <rect x="80" y="1000" width="1440" height="125" rx="14" fill="#eef2f8" stroke="#334155" stroke-width="2.5"/>
+  <text class="label" x="800" y="1050">DAO / Client · 基础设施</text>
+  <text class="body" x="800" y="1095">条件查询、分页与聚合、持久化、外部访问</text>
+  <text class="note" x="80" y="1175">CQRS 区分用例职责；两侧可共用 Service、数据库和 DAO。</text>
+  <text class="note" x="80" y="1215">箭头表示可能的调用；虚线框按需提取，Biz、Domain、Repository 不构成必经层级。</text>
 </svg>

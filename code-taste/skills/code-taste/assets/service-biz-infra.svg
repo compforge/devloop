@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1190" viewBox="0 0 2200 1190" role="img" aria-labelledby="title desc">
   <title id="title">Application Architecture：Service、Biz 与 CQRS</title>
-  <desc id="desc">入口可以是 API handler、task 触发或 MQ message handler。Query Service 直接访问基础设施；Command Service 可以直接处理用例，也可委托 Biz。Service 和 Biz 可以基于复用、避免膨胀等因素进一步内部分层，并按职责操作基础设施。Repository interface 体现 Biz 对数据资源的需求，封装分页、缓存、跨表与 DAO 组合等细节。DAO 承接 Service、Biz 的数据库操作需求，提供与自身表相关的可复用 CRUD 方法，不预设调用方。独立 Domain 按需提取；虚线框不构成必经层级。</desc>
+  <desc id="desc">入口可以是 API handler、task 触发或 MQ message handler。入口中的 Query / Command 标记区分用例意图，下方统一由 Service 承接。Query 路径直接访问基础设施；Command 路径可以直接处理用例，也可委托 Biz。Service 和 Biz 可以基于复用、避免膨胀等因素进一步内部分层，并按职责操作基础设施。Repository interface 体现 Biz 对数据资源的需求，封装分页、缓存、跨表与 DAO 组合等细节。DAO 承接 Service、Biz 的数据库操作需求，提供与自身表相关的可复用 CRUD 方法，不预设调用方。独立 Domain 按需提取；虚线框不构成必经层级。</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 12 12" refX="10" refY="6" markerWidth="15" markerHeight="15" orient="auto" markerUnits="userSpaceOnUse">
       <path d="M 2 1 L 10 6 L 2 11" fill="none" stroke="#171717" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -18,16 +18,19 @@
   <rect width="2200" height="1190" fill="white"/>
   <text x="570" y="76">入口，可能是 api handler，task 触发，mq message handler</text>
   <rect class="box" x="50" y="115" width="1710" height="155" rx="14"/>
-  <text class="label" x="905" y="208">controller</text>
+  <polygon points="70,215 187,180 304,215 187,250" fill="#dff3e7" stroke="#171717" stroke-width="3.5" stroke-linejoin="round"/>
+  <text class="label" x="187" y="226">query</text>
+  <polygon points="790,215 927,180 1064,215 927,250" fill="#fbe4e4" stroke="#171717" stroke-width="3.5" stroke-linejoin="round"/>
+  <text class="label" x="927" y="226">command</text>
 
   <path class="flow" d="M 187 282 V 332"/>
-  <rect class="box" x="70" y="345" width="235" height="125" rx="14" style="fill:#dff3e7"/>
-  <text class="label" x="187" y="420">query service</text>
+  <rect class="box" x="70" y="345" width="235" height="125" rx="14"/>
+  <text class="label" x="187" y="420">service</text>
   <path class="flow" d="M 187 482 V 758"/>
 
   <path class="flow" d="M 927 282 V 320"/>
-  <rect class="box" x="800" y="333" width="255" height="310" rx="14" style="fill:#fbe4e4"/>
-  <text class="label" x="927" y="420" style="font-size:28px">command service</text>
+  <rect class="box" x="800" y="333" width="255" height="310" rx="14"/>
+  <text x="812" y="420" style="font-size:31px">service</text>
   <text x="812" y="500">biz = load(xx)</text>
   <text x="812" y="542">biz.func</text>
   <text x="812" y="584">save(change)</text>

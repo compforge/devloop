@@ -62,30 +62,45 @@ regression from a change in workload or annotation coverage.
 
 ## Trace effect loss to its cause
 
-Good diagnosis explains both whether the result met the goal and where and why work departed from
-it. Use the three views to reconstruct a supported chain:
+Good diagnosis explains whether the result met the goal and how a deviation reached that result.
+Use a graph perspective: actions consume and produce evidence, intermediate judgments and delivered
+artifacts. Follow those dependencies across Job, Session and Context views, expanding the branches
+needed to explain the outcome. Existing records and explicit references can support this reasoning;
+a persisted graph or a new view is not a prerequisite.
 
-1. **Expected versus actual:** establish the unmet criterion and affected outcome in Job View.
-   Use project requirements or independent checks; the agent's own verdict is an output to inspect.
-2. **Point of deviation:** follow explicit dependencies through Session decisions, tool results,
-   handoffs and delivery. Find the earliest supported departure on the path to that outcome and,
-   where available, the preceding correct state. The first error by timestamp may be unrelated or
-   recovered; show how the candidate deviation propagated, was amplified or escaped correction.
-3. **Mechanism and owner:** inspect the relevant Context View and actual tool observations. Separate
-   a wrong objective, unavailable evidence, evidence lost during context construction, a decision
-   inconsistent with visible evidence, execution failure and delivery failure. Trace the supported
-   mechanism to its owning instructions, context policy, tool contract, loop or orchestration.
-   A symptom such as "wrong answer" or "the model did not understand" does not explain that mechanism.
-4. **Causal confidence:** state the evidence connecting the mechanism to the deviation and outcome,
-   contrary evidence, and any missing link. Identify an observation or bounded experiment that
-   would distinguish competing explanations; run it only within the requested scope. When the
-   origin is not observed, report the earliest visible deviation and root-cause hypotheses rather
-   than inventing a unique cause or an unobserved model reasoning process.
+1. **Anchor the deviation:** establish the expected behavior and affected outcome using project
+   requirements or independent checks. The agent's own verdict is an output to inspect.
+2. **Trace backward from the outcome:** identify the decisions and inputs that produced it, then
+   follow their recorded sources. Inspect the actual request in Context View and the relevant
+   calls in Session View. Keep the identity and version of a claim or artifact through handoffs;
+   distinguish evidence available to read, actually present in a request, and cited in a decision.
+   Temporal proximity alone does not establish a dependency; mark missing links explicitly.
+3. **Inspect what changed at each step:** compare consumed evidence with the resulting judgment
+   or artifact. Look for facts lost during selection or compression, omitted conditions,
+   uncertainty promoted to certainty, stale versions, and corrections absent from the delivered
+   content. Locate the earliest supported deviation on a path to the affected outcome and, where
+   available, the preceding correct state.
+4. **Follow propagation and correction:** trace forward to establish how the deviation affected
+   delivery. Inspect relevant review, retry, recovery and handoff steps: did they correct it,
+   amplify it, or allow it to pass? Identify both where the error arose and where an opportunity
+   to correct it failed. An earlier error may be unrelated or already corrected; later recovery
+   can limit duration while leaving an earlier loss or irreversible side effect intact.
+5. **Explain the mechanism and owner:** distinguish unavailable evidence, context loss, a decision
+   inconsistent with visible evidence, execution failure and delivery failure. Relate the
+   supported mechanism to instructions, context policy, tool contracts, loop or orchestration.
+   Preserve contrary evidence and separate recorded dependencies from inferred causal explanations.
+   State missing links and an observation or bounded experiment that would distinguish competing
+   causes; execute it only within the requested scope. If the origin is unobserved, report the
+   earliest visible deviation and root-cause hypotheses without inventing a unique cause or hidden
+   model reasoning.
 
-For example, when a conclusion overlooks a recovery path, check whether that path was unavailable,
-removed from the request, or present in the actual input but not accounted for in the response.
-Those observations lead to different candidate fixes. They do not by themselves prove that adding
-context or changing instructions will improve the result; verify that through a controlled comparison.
+For example, a review may propose "the failure is permanent", while a later assessment recognizes
+that the next successful pass restores the state, approves the original claim, and delivery retains
+"permanent". Inspect both the initial overstatement and the failed correction: a corrected assessment
+reason does not prove that the approved or delivered claim was corrected. If the recovery evidence
+was absent from the request, investigate acquisition or context construction instead. These paths
+suggest different fixes; neither the dependency chain nor the diagnosis alone proves a fix will
+improve Good, Fast, Cheap. Verify the chosen change through a controlled comparison.
 
 ## Search in priority order
 

@@ -18,9 +18,10 @@ export function fullEvidence(repo: string, component: string, check: string, ref
   if (ref.evidence !== segment) return undefined;
   const record = loadSegment(repo, segment) ?? {};
   const identity = object(record.identity);
-  if (record.status !== "passed" || identity.version !== 2 || identity.checkout !== realpathSync(repo)
+  if (record.status !== "passed" || identity.version !== 3 || identity.checkout !== realpathSync(repo)
       || identity.component !== component || identity.check !== check || identity.scope !== "full"
       || typeof identity.fingerprint !== "string" || !identity.fingerprint
+      || typeof identity.snapshot !== "string" || !identity.snapshot
       || typeof record.checked_at !== "number" || record.checked_at !== ref.checked_at) return undefined;
   return record;
 }
@@ -30,7 +31,7 @@ export function fullProjection(repo: string, branch: string | undefined, check: 
   const refs = loadSegment(repo, branchSegment(branch, check)) ?? {};
   return Object.fromEntries(Object.entries(refs).flatMap(([component, reference]) => {
     const record = fullEvidence(repo, component, check, reference);
-    return record ? [[component, { passed_at: record.checked_at ?? null, fingerprint: object(record.identity).fingerprint ?? null }]] : [];
+    return record ? [[component, { passed_at: record.checked_at ?? null, fingerprint: object(record.identity).snapshot ?? null }]] : [];
   }));
 }
 
@@ -38,7 +39,7 @@ export function reusableFullEvidence(record: JsonObject | undefined, fingerprint
   if (!record || !fingerprint) return false;
   const identity = object(record.identity);
   const environmentHash = environmentIdentity();
-  if (identity.environment !== environmentHash || identity.fingerprint !== fingerprint || JSON.stringify(identity.command) !== JSON.stringify(command)
+  if (identity.environment !== environmentHash || identity.snapshot !== fingerprint || JSON.stringify(identity.command) !== JSON.stringify(command)
       || !Array.isArray(identity.dependencies)) return false;
   // Native Python preparation owns the receipt. The runtime only reads its witnesses;
   // it never launches a workflow or reclassifies package managers.

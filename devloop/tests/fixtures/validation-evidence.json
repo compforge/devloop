@@ -87,6 +87,15 @@
       "record": {},
       "reference": {},
       "valid": true
+    },
+    {
+      "name": "missing snapshot",
+      "identity": {
+        "snapshot": ""
+      },
+      "valid": false,
+      "record": {},
+      "reference": {}
     }
   ]
 }

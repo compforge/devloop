@@ -195,6 +195,12 @@ def repocli_report(sources=(), tests=(), *, complete=True, scope="focused", diag
                 " paths=[item['path'] for item in data['affectedFiles']]\n"
                 " owned={binding.root for path in paths if (binding:=owner(catalog,path)) is not None}\n"
                 " components=[dict(root=b.root, snapshot='after', component={'name': b.name, 'language': b.language}, packageTools=[dict(name=t.name, evidence=list(t.evidence), **({'version': t.version} if t.version else {})) for t in b.package_tools], affected=b.root in owned, complete=data['complete'], fallbackReasons=[], affectedFileCounts=(affected_file_counts if affected_file_counts is not None else ({'source': sum(1 for path in paths if (binding:=owner(catalog,path)) is not None and binding.root == b.root)} if b.root in owned else {}))) for b in catalog.components]\n"
+                "catalog=inspect(repo)\n"
+                "for item in components:\n"
+                " item.setdefault('scope', 'focused' if item['complete'] else 'partial')\n"
+                " for key, paths in [('changedFiles',data['sourceFiles']),('sourceFiles',data['sourceFiles']),('affectedFiles',[x['path'] for x in data['affectedFiles']]),('testFiles',data['testFiles'])]:\n"
+                "  item.setdefault(key,[p for p in paths if (b:=owner(catalog,p)) is not None and b.root==item['root']])\n"
+                "data['unowned']=dict(affected=False,complete=True,scope='focused',affectedFileCounts={},changedFiles=[],sourceFiles=[],affectedFiles=[],testFiles=[])\n"
                 "data['components']=components\n"
                 "print(json.dumps(data))\n"
             )

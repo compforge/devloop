@@ -22,7 +22,7 @@ afterEach(() => { vi.unstubAllEnvs(); rmSync(repo, { recursive: true, force: tru
 
 function record(): JsonObject {
   return { status: "passed", checked_at: 100, identity: {
-    version: 2, checkout: repo, component: ".", check: "lint", scope: "full", fingerprint: "source",
+    version: 3, snapshot: "source", checkout: repo, component: ".", check: "lint", scope: "full", fingerprint: "source",
     environment: environmentIdentity(), command: ["make", "lint", "LINT_FILES="], dependencies: [],
   } };
 }
@@ -86,7 +86,8 @@ it("allows the staged verified tree, then denies omitted edits and commit path o
   const fingerprint = await componentFingerprint(repo, catalog.components[0]!, catalog);
   expect(fingerprint).toBeTruthy();
   const evidence = record();
-  (evidence.identity as JsonObject).fingerprint = fingerprint!;
+  (evidence.identity as JsonObject).fingerprint = "component-input-digest";
+  (evidence.identity as JsonObject).snapshot = fingerprint!;
   const segment = evidenceSegment(repo, ".", "lint");
   saveSegment(repo, segment, evidence);
   saveSegment(repo, branchSegment("feature", "lint"), { ".": { evidence: segment, checked_at: 100 } });

@@ -1840,21 +1840,21 @@ function fullEvidence(repo, component, check, reference2) {
   if (ref.evidence !== segment) return void 0;
   const record = loadSegment(repo, segment) ?? {};
   const identity2 = object3(record.identity);
-  if (record.status !== "passed" || identity2.version !== 2 || identity2.checkout !== realpathSync5(repo) || identity2.component !== component || identity2.check !== check || identity2.scope !== "full" || typeof identity2.fingerprint !== "string" || !identity2.fingerprint || typeof record.checked_at !== "number" || record.checked_at !== ref.checked_at) return void 0;
+  if (record.status !== "passed" || identity2.version !== 3 || identity2.checkout !== realpathSync5(repo) || identity2.component !== component || identity2.check !== check || identity2.scope !== "full" || typeof identity2.fingerprint !== "string" || !identity2.fingerprint || typeof identity2.snapshot !== "string" || !identity2.snapshot || typeof record.checked_at !== "number" || record.checked_at !== ref.checked_at) return void 0;
   return record;
 }
 function fullProjection(repo, branch, check) {
   const refs = loadSegment(repo, branchSegment(branch, check)) ?? {};
   return Object.fromEntries(Object.entries(refs).flatMap(([component, reference2]) => {
     const record = fullEvidence(repo, component, check, reference2);
-    return record ? [[component, { passed_at: record.checked_at ?? null, fingerprint: object3(record.identity).fingerprint ?? null }]] : [];
+    return record ? [[component, { passed_at: record.checked_at ?? null, fingerprint: object3(record.identity).snapshot ?? null }]] : [];
   }));
 }
 function reusableFullEvidence(record, fingerprint, command2) {
   if (!record || !fingerprint) return false;
   const identity2 = object3(record.identity);
   const environmentHash = environmentIdentity();
-  if (identity2.environment !== environmentHash || identity2.fingerprint !== fingerprint || JSON.stringify(identity2.command) !== JSON.stringify(command2) || !Array.isArray(identity2.dependencies)) return false;
+  if (identity2.environment !== environmentHash || identity2.snapshot !== fingerprint || JSON.stringify(identity2.command) !== JSON.stringify(command2) || !Array.isArray(identity2.dependencies)) return false;
   try {
     return identity2.dependencies.every((input) => Array.isArray(input) && input.length === 2 && typeof input[0] === "string" && typeof input[1] === "string" && createHash2("sha256").update(readFileSync9(input[0])).digest("hex") === input[1]);
   } catch {

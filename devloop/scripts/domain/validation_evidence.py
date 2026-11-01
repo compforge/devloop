@@ -21,10 +21,10 @@ def full_evidence(repo: str, component: str, check: str, reference: dict) -> dic
     identity = record.get("identity") or {}
     if not isinstance(identity, dict):
         return None
-    if (record.get("status") != "passed" or identity.get("version") != 2
+    if (record.get("status") != "passed" or identity.get("version") != 3
             or identity.get("checkout") != str(Path(repo).resolve())
             or identity.get("component") != component or identity.get("check") != check
-            or identity.get("scope") != "full" or not identity.get("fingerprint")
+            or identity.get("scope") != "full" or not identity.get("fingerprint") or not identity.get("snapshot")
             or not isinstance(record.get("checked_at"), (int, float))
             or record.get("checked_at") != reference.get("checked_at")):
         return None
@@ -50,5 +50,5 @@ def full_projection(repo: str, branch: str | None, check: str) -> dict:
     for component, reference in references.items():
         if isinstance(reference, dict) and (record := full_evidence(repo, component, check, reference)):
             result[component] = {"passed_at": record["checked_at"],
-                                 "fingerprint": record["identity"]["fingerprint"]}
+                                 "fingerprint": record["identity"]["snapshot"]}
     return result

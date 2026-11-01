@@ -37,10 +37,21 @@ class CheckRun:
     files: tuple[str, ...] = ()
     environment: str = field(default_factory=_environment_identity)
 
+    snapshot: str = ""
+    dependency_components: tuple[str, ...] = ()
     dependencies: tuple[tuple[str, str], ...] | None = field(init=False)
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "dependencies", dependencies.reuse_inputs(Path(self.repo) / self.component))
+        object.__setattr__(self, "dependencies", self.dependency_inputs())
+
+    def dependency_inputs(self) -> tuple[tuple[str, str], ...] | None:
+        witnesses: dict[str, str] = {}
+        for component in self.dependency_components or (self.component,):
+            inputs = dependencies.reuse_inputs(Path(self.repo) / component)
+            if inputs is None:
+                return None
+            witnesses.update(inputs)
+        return tuple(sorted(witnesses.items()))
 
     @property
     def segment(self) -> str:
@@ -48,11 +59,13 @@ class CheckRun:
 
     def identity(self) -> dict:
         return {
-            "version": 2,
+            "version": 3,
             "checkout": str(Path(self.repo).resolve()),
             "component": self.component,
             "check": self.check,
             "fingerprint": self.fingerprint,
+            "snapshot": self.snapshot or self.fingerprint,
+            "dependency_components": list(self.dependency_components),
             "command": list(self.command),
             "scope": self.scope,
             "environment": self.environment,
@@ -62,21 +75,40 @@ class CheckRun:
 
     def reuse(self) -> HookResult | None:
         if not self.fingerprint or self.dependencies is None or not self.environment_matches():
+            self.report_miss("input identity or managed environment unavailable")
             return None
         record = load_segment(self.repo, self.segment)
-        if not record or record.get("identity") != self.identity():
+        if not record:
+            self.report_miss("no previous check record")
+            return None
+        previous = dict(record.get("identity") or {})
+        current = self.identity()
+        # Reconcile content evidence to this freshly checked repository snapshot;
+        # the actual execution timestamp and check input identity remain unchanged.
+        previous.pop("snapshot", None)
+        comparable = {key: value for key, value in current.items() if key != "snapshot"}
+        if previous != comparable:
+            changed = sorted(key for key in previous.keys() | comparable.keys()
+                             if previous.get(key) != comparable.get(key))
+            self.report_miss("changed " + ", ".join(changed))
             return None
         if record.get("status") != "passed" or not isinstance(record.get("checked_at"), (int, float)):
+            self.report_miss("previous check did not pass")
             return None
+        if record["identity"] != current:
+            save_segment(self.repo, self.segment, {**record, "identity": current})
         return HookResult(
             self.check, ok=True, advisory=self.check == "test",
             summary=f"{self.component}: reused passed {self.check} ({self.scope}) — "
                     "identical contents, command, scope and managed environment",
         )
 
+    def report_miss(self, reason: str) -> None:
+        print(f"[validate] {self.check} {self.component}: reuse miss — {reason}; execute selected {self.scope} scope", flush=True)
+
     def environment_matches(self) -> bool:
         return (self.environment == _environment_identity()
-                and self.dependencies == dependencies.reuse_inputs(Path(self.repo) / self.component))
+                and self.dependencies == self.dependency_inputs())
 
     def record(self, result: HookResult) -> HookResult:
         # Failed/skipped/unavailable checks never grant reuse. Writing their status also

@@ -153,6 +153,10 @@ def normalize(repo: str, *, capture: bool = True, component: Component | None = 
 def _identity_problem(repo: str, plan: Plan | None, phase: str) -> str:
     if plan is None or not plan.execution_identity:
         return ""
+    if plan.input_policy:
+        from domain.validation_inputs import input_policy
+        if plan.input_policy != input_policy(repo):
+            return f"check input declaration changed {phase}; rerun validation"
     observed = content_identity(repo)
     if observed.problem:
         return f"cannot verify contents {phase}: {observed.problem}; validation not stamped"
@@ -192,7 +196,8 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
             summary=f"{component.id}: lint skipped — {selection.reason}; component lint stamp unchanged",
         )
     code_dir = component.path
-    target = component.lint_target()
+    frozen = plan.check(component, "lint").command if plan else None
+    target = (frozen[1] if frozen else None) if plan else component.lint_target()
     if target is None:
         # Availability is a validation fact; absence of a project entry point is not a failed run.
         return HookResult(
@@ -215,10 +220,13 @@ def lint(repo: str, *, capture: bool = True, component: Component | None = None,
             f"{code_dir}/Makefile 未消费 LINT_FILES；本轮运行全量 lint。"
             "如需按改动文件校验，请让 fix 和 lint targets 同时支持 LINT_FILES，空值保留全量行为。",
         )
-    args = command[2:] if command else ("LINT_FILES=",)
-    fingerprint = plan.execution_identity if plan else repo_model.component_fingerprint(repo, component)
+    args = frozen[2:] if plan else (command[2:] if command else ("LINT_FILES=",))
+    snapshot = plan.execution_identity if plan else repo_model.component_fingerprint(repo, component)
+    inputs = plan.check(component, "lint").inputs if plan else None
+    fingerprint = inputs.fingerprint if inputs else snapshot
     run = CheckRun(repo, component.id, "lint", fingerprint or "", ("make", target, *args),
-                   "focused" if command else "full", tuple(files) if command else ())
+                   "focused" if command else "full", tuple(files) if command else (),
+                   snapshot=snapshot or "", dependency_components=inputs.components if inputs else ())
     if cached := run.reuse():
         if problem := _identity_problem(repo, plan, "before reuse"):
             return HookResult("lint", ok=False, summary=problem)
@@ -355,7 +363,7 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
         ), False
     code_dir = component.path
     make_target = component.test_target()
-    command = component.test_command()
+    command = plan.check(component, "test").command if plan else component.test_command()
     guidance: tuple[str, ...] = ()
     if make_target is None:
         guidance = (
@@ -377,7 +385,8 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     explicit_full = supports_test_files and bool(extra) and all(
         arg.startswith("TEST_FILES=") and not arg.partition("=")[2].strip() for arg in extra
     )
-    unverified_scope = bool(extra) and not explicit_full
+    unverified_scope = (plan.selection(component, "test").explicit if plan else
+                        bool(extra) and not explicit_full)
     focused_files: list[str] = []
     focused = False
     scope = "full"
@@ -396,8 +405,10 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
         reason = selection.reason
     else:
         reason = "no analysis plan; canonical full Component validation"
-    argv = [*command, *extra]
-    if make_target is not None and not focused and not extra:
+    if unverified_scope:
+        scope = "explicit (coverage not inferred)"
+    argv = list(plan.check(component, "test").command) if plan else [*command, *extra]
+    if not plan and make_target is not None and not focused and not extra:
         # Full coverage must not inherit a narrower TEST_FILES from the caller's environment.
         argv.append("TEST_FILES=")
     display = " ".join(argv)
@@ -407,9 +418,12 @@ def _test_component(repo: str, *, capture: bool, extra: list[str] | None,
     if env_failure is not None:
         return env_failure, False
     sink: list[str] = []
-    fingerprint = plan.execution_identity if plan else repo_model.component_fingerprint(repo, component)
+    snapshot = plan.execution_identity if plan else repo_model.component_fingerprint(repo, component)
+    inputs = plan.check(component, "test").inputs if plan else None
+    fingerprint = inputs.fingerprint if inputs else snapshot
     run = CheckRun(repo, component.id, "test", fingerprint or "", tuple(argv), scope,
-                   tuple(focused_files))
+                   tuple(focused_files), snapshot=snapshot or "",
+                   dependency_components=inputs.components if inputs else ())
     if cached := run.reuse():
         if problem := _identity_problem(repo, plan, "before reuse"):
             return HookResult("test", ok=False, advisory=True, summary=problem), False

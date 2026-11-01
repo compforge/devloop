@@ -1,20 +1,45 @@
 ---
 name: trajectory
-description: Present SessionView as text in conversation or TUI (including loop view / agent view requests), inspect JobView observations, show Context View text outlines of prompts to spot possible prompt issues, diagnose agent failures and avoidable work, compare effect and cost, and design evidence-backed optimization experiments. Use project-owned recordings and evaluation entrypoints; do not invent missing evidence or judgments.
+description: Present SessionView as text in conversation or TUI (including loop view / agent view requests), inspect JobView observations, show Context View text outlines of prompts to spot possible prompt issues, diagnose agent failures and avoidable work, assess Good, Fast, Cheap for agents (effect, speed and cost), and design evidence-backed optimization experiments. Use project-owned recordings and evaluation entrypoints; do not invent missing evidence or judgments.
 ---
 
 # Trajectory Quality
 
-Evaluate how agents pursue goals through recorded observations, decisions and actions. Use
-SessionView to follow an Agent Session and JobView to follow business work across Sessions.
-Connect outcomes to the calls and context that explain them. Every diagnosis addresses failures,
-redundant overhead and execution evidence; optimization is a separate, requested activity.
+Evaluate how agents pursue goals through recorded observations, decisions and actions. Job View,
+Session View and Context View are peer analysis entry points: inspect business results, agent
+execution and prompt organization. Connect outcomes to the calls and context that explain them.
+Every diagnosis addresses failures, redundant overhead and execution evidence; optimization is a
+separate, requested activity.
 
 Read [Quality concepts](../../CONCEPTS.md) and [Observation](references/observation.md) to establish
 the subject and evidence model. Trajectory names the behavior under analysis; SessionView and
 JobView provide its shared observation structures. The project owns business goals, Job membership,
 annotations, evaluation criteria and its canonical commands. The skill operates those capabilities
 and explains their evidence.
+
+## Good, Fast, Cheap for agents
+
+Use the **Agent 效果—速度—成本铁三角** (Agent Good–Fast–Cheap triangle) to ask whether the agent
+did the work well, how long it took and what resources it consumed:
+
+| Dimension | Agent question | Evidence to inspect |
+|---|---|---|
+| **Good — effect** | Did it achieve the goal correctly, sufficiently and usefully? Where did it depart from that goal, and why? | Expected versus delivered results, independent checks, and the decisions, context and actions behind a deviation. |
+| **Fast — speed** | How long until the required result was delivered? | Elapsed task time, useful response milestones, waits, retries and the critical path where recorded. |
+| **Cheap — cost** | What did that result consume? | Model/tool calls, input/output/cache usage, compute and monetary cost under known metering and prices. |
+
+Measure the three together on the same work and outcome coverage. A quick incorrect answer or
+an early abort can reduce time and tokens without improving the agent. Extra verification may be
+worth its cost; parallel work may reduce elapsed time while increasing spend. Removing ineffective
+work can improve all three: the triangle frames trade-offs, not a law that only two can improve.
+Use [Evaluation](references/evaluation.md) for measurement and comparison rules. Keep unavailable
+dimensions explicit rather than inferring quality from speed or cost.
+
+Fast and Cheap usually have direct timing and usage signals to locate bottlenecks. Good also needs
+the project's intended behavior and a causal diagnosis: identify where work departed from that
+intent, trace how the deviation affected the result, and explain the supported cause. Use
+[effect diagnosis](references/diagnosis.md#trace-effect-loss-to-its-cause) to connect Job outcomes,
+Session decisions and Context evidence; a low score alone does not locate the problem.
 
 ## Choose the action and perspective
 
@@ -28,14 +53,15 @@ and explains their evidence.
 | Optimize an evidenced problem | Preserve the diagnosis, then select a mechanism reference below and define a controlled experiment. |
 
 “Loop view” and “agent view” are request phrases for viewing a SessionView. Choose text for
-conversation/TUI; use HTML or another artifact format when requested. SessionView preserves actual
-request structure; Context View summarizes prompt composition for inspection.
+conversation/TUI; use HTML or another artifact format when requested. Context View has its own
+reading task: expose prompt organization by actual message order, roles and internal sections.
 
-A Job question starts from goals, progress and outcomes, then follows relevant calls into their
-Sessions. A Session question starts from continuity, context and actions, then checks their
-contribution to Jobs where business links exist. Both perspectives support effect and cost analysis.
-A usable single perspective is enough for a bounded analysis; report missing relationships instead
-of inventing them or requiring the other view.
+A Job question starts from goals and outcomes, then follows relevant calls into their Sessions.
+A Session question starts from continuity and actions, then checks contribution to Jobs. A Context
+question starts from prompt composition, then follows the response and subsequent actions to
+check its consequences. Use explicit identities to move among the views. All three can inform
+Good, Fast, Cheap; they are not assigned one dimension each. A usable single view is enough for a
+bounded analysis; report missing relationships instead of inventing them or requiring all views.
 
 ## Establish inputs and capability
 
@@ -66,11 +92,15 @@ Use [Evaluation](references/evaluation.md) for assessment and comparison:
 
 1. Fix the subject, snapshot and analysis scope; check source health and applicable evidence.
 2. Identify unmet goals, incomplete outcomes and action errors, including recovered failures.
+   For effect loss, compare intended and observed behavior, locate the earliest supported deviation
+   on the relevant dependency path, and trace its consequences and upstream cause.
 3. Inspect costly or repeated work, including successful executions. Ask what evidence, decision
    or task progress each suspicious action contributed.
-4. Follow explicit Job/Session links to explain the behavior. Preserve contrary evidence and
-   distinguish confirmed causes from hypotheses.
-5. Quantify occurrence and impact within the supported scope, then report the diagnosis.
+4. Follow explicit Job/Session links and inspect the relevant Context View to explain decisions.
+   Distinguish evidence acquired, present in a request, cited by the agent and verified to support
+   the conclusion. Preserve contrary evidence and distinguish confirmed causes from hypotheses.
+5. Quantify effect, elapsed time and resource cost within the supported scope, including gaps.
+   Report the diagnosis before choosing an optimization.
 
 The project may supply automated evaluation components. A missing Detector does not prevent an
 analyst from inspecting representative and counterexample executions; label those observations
@@ -91,16 +121,19 @@ Read the relevant reference completely when evidence points to its subject:
 
 An aggregate label or smell does not prescribe a fix. Use evidence and counterexamples to select
 its owner and change surface. For experiments, follow [Evaluation](references/evaluation.md#controlled-experiments):
-change one principal lever, preserve the input workload and evaluation criteria, and compare effect,
-completion and cost. Selecting one experiment must not discard other material diagnostic findings.
+change one principal lever, preserve the input workload and evaluation criteria, and compare Good,
+Fast, Cheap with completion and evidence coverage. Selecting one experiment must not discard
+other material diagnostic findings.
 Assessment is read-only; changing agent behavior or evaluation assets requires the user's request.
 
 ## Report and retain learning
 
-Lead with diagnostic conclusions. Every analysis explicitly addresses:
+Lead with diagnostic conclusions and the supported Good, Fast, Cheap assessment; identify unknown
+dimensions and their missing evidence. Every diagnosis explicitly addresses:
 
 - **Failures and causes:** unmet objectives, incomplete delivery and action errors, including
-  failures hidden by recovery. Separate observed failure from causal hypotheses.
+  failures hidden by recovery. For effect loss, show the expected behavior, observed deviation,
+  propagation to the result and supported cause; distinguish unresolved links and causal hypotheses.
 - **Redundant overhead:** work whose contribution does not justify its cost. State occurrence,
   affected scope, attributable calls/tokens/time/cost and uncertainty where evidence supports them.
 - **Execution evidence:** link each conclusion to its Session/Job snapshot, scoped Node references

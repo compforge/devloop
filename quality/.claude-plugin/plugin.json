@@ -1,6 +1,6 @@
 {
   "name": "quality",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "description": "Evidence-driven skills that operate project-owned E2E, performance, and agent trajectory quality capabilities.",
   "author": {
     "name": "compforge",

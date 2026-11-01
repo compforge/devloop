@@ -92,8 +92,9 @@ Use [Evaluation](references/evaluation.md) for assessment and comparison:
 
 1. Fix the subject, snapshot and analysis scope; check source health and applicable evidence.
 2. Identify unmet goals, incomplete outcomes and action errors, including recovered failures.
-   For effect loss, compare intended and observed behavior, locate the earliest supported deviation
-   on the relevant dependency path, and trace its consequences and upstream cause.
+   For effect loss, trace backward from the affected result through its evidence and decisions,
+   then follow the deviation forward to delivery. Identify where it arose and where correction
+   failed, using the [dependency-based diagnosis](references/diagnosis.md#trace-effect-loss-to-its-cause).
 3. Inspect costly or repeated work, including successful executions. Ask what evidence, decision
    or task progress each suspicious action contributed.
 4. Follow explicit Job/Session links and inspect the relevant Context View to explain decisions.

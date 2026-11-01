@@ -1,15 +1,38 @@
 # Evaluating Session and Job behavior
 
-Use this reference for diagnosis, effect/cost comparison and controlled optimization. Start from
+Use this reference for diagnosis, Good/Fast/Cheap comparison and controlled optimization. Start from
 fixed observations and the project's goals. The shared roles and result states are defined in
 [Quality concepts](../../../CONCEPTS.md); subject and evidence identity are defined in
 [Observation](observation.md) and [Evidence](evidence.md).
 
-## Effect and efficiency
+## Measure Good, Fast, Cheap
 
-Effect asks whether the work met its goal with correct, sufficient evidence and useful results.
-Efficiency asks whether time, calls and tokens were justified by their contribution. Both apply to
-Session and Job observations. High consumption identifies an investigation target, not waste.
+Apply the [Agent triangle](../SKILL.md#good-fast-cheap-for-agents) to a declared workload and scope.
+Keep the dimensions visible together instead of collapsing them into an undeclared weighted score:
+
+- **Good:** use project criteria for correctness, completeness, evidential support and delivered
+  value. Record independent judgment and annotation coverage; an agent's self-assessment or an
+  intermediate review is not automatically ground truth. Finding count and successful tool status
+  alone do not measure quality. Precision needs adjudicated outputs; recall also needs evidence
+  about relevant omissions. When effect falls short, follow
+  [effect diagnosis](diagnosis.md#trace-effect-loss-to-its-cause) to locate the deviation and explain
+  its cause; outcome scores alone cannot identify which decision or mechanism needs changing.
+- **Fast:** measure elapsed time to the required outcome, with observed start and end boundaries.
+  Separate time to first useful response when it matters to the task. Use waits, retries and
+  recorded dependencies to explain the critical path; concurrent call durations cannot simply be
+  summed. If task completion is unobserved, report the observed interval rather than a completed
+  task latency; an open Session alone does not imply an unfinished Job. Report completion coverage
+  beside latency so early failures do not appear as speed improvements.
+- **Cheap:** report model and tool use, input/output/cache usage and other metered resources.
+  Preserve provider semantics for overlapping token fields and price/version provenance for money.
+  Fewer tokens need not mean lower spend across models or cache policies. Keep missing usage and
+  unknown charges visible; use the attribution rules below for shared work and aggregate cost.
+
+Efficiency asks whether time and resources were justified by their contribution. High consumption
+identifies an investigation target, not waste. For example, verification may improve Good at a
+Fast/Cheap cost; concurrent verification may improve Fast while increasing cost; fixing repeated
+failed tool calls may improve all three. These are hypotheses until compared on equivalent work.
+Saving resources is itself a valid objective, with explicit effect and completion guardrails.
 
 For a Session, examine context use, decisions, errors, repeated work and progress for the inputs it
 serves. For a Job, examine the goal, admitted work, division of labor, handoffs, aggregation and
@@ -17,9 +40,12 @@ result delivery. An open continuous Session is not a failed Job; a completed Job
 result is correct. Deliberate silence, recorded understanding or delegation can be valid outcomes
 under the project's criterion. An absent output alone cannot establish that criterion was met.
 
-Follow result problems into relevant Session calls and context. Follow suspicious Session behavior
-back to Job goals and consequences where explicit links exist. Missing links constrain attribution;
-useful analysis of the available perspective can still proceed.
+Follow result problems into relevant Session calls and Context Views. Follow suspicious prompt
+organization or Session behavior back to Job goals and consequences where explicit links exist.
+Evidence acquired, present in an actual request, cited in an answer and verified to support a claim
+are distinct observations. A cumulative acquisition receipt does not establish current visibility
+or support; visible evidence does not establish that the model used it correctly. Missing links
+constrain attribution; useful analysis of the available view can still proceed.
 
 ## Evaluation roles and evidence
 
@@ -97,11 +123,14 @@ when stochastic outcomes affect the conclusion. Evaluation-model cost is separat
 
 For a deterministic adapter, result filter, output compressor or partitioner, first replay identical
 captured inputs through both versions. This measures the transform. If it changes what agents
-observe, follow with aligned agent executions to check effect, completion and total cost.
+observe, follow with aligned agent executions to check effect, elapsed time, completion and total cost.
 
-Change one principal lever, predict the observable behavior change, choose a primary metric and
-retain effect, completion and data-health guardrails. Compare whole-workload coverage even when the
-number of Jobs, Sessions or turns changes; per-Session averages then describe different work.
-A smaller prompt, fewer Jobs or fewer calls is not sufficient evidence of improvement. For
-uncontrolled production cohorts, disclose workload and annotation differences and avoid claiming
-causal version improvement from a time trend alone.
+Change one principal lever and predict the observable behavior change. Choose a primary Good,
+Fast or Cheap metric and state acceptable bounds for the other dimensions, completion and data
+health. Report all three changes, including unmeasured dimensions. An improvement without measured
+regressions can dominate the baseline on the measured dimensions; a trade-off needs the project's
+priorities or budgets to justify it. Compare whole-workload coverage even when the number of Jobs,
+Sessions or turns changes; per-Session averages then describe different work. A smaller prompt,
+fewer Jobs or fewer calls can also reflect unfinished or omitted work. For uncontrolled production
+cohorts, disclose workload and annotation differences and avoid claiming causal version improvement
+from a time trend alone.

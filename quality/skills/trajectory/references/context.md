@@ -6,9 +6,10 @@ version before proposing a policy; a different checkout may already behave diffe
 
 ## Inspect request composition
 
-Start with [SessionView text rendering](observation.md#sessionview-text-rendering) so the reader can
-see the actual message structure before the diagnosis. Follow relevant ModelCalls across input,
-tool-result and compact boundaries. Compare their recorded requests to locate repeated background,
+Start with [Context View](observation.md#context-view) to expose the selected prompt's organization
+by actual message role and internal sections. Use SessionView to expand exact requests and trace
+responses and tool actions. Follow relevant ModelCalls across input, tool-result and compact
+boundaries. Compare their recorded requests to locate repeated background,
 changed instructions, stale evidence, misplaced messages and information that disappeared.
 Distinguish source-proven changes from hypotheses about why they occurred; show counterexamples
 where retention or repetition serves the current goal. Content labels aid explanation without

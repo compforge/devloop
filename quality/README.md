@@ -10,8 +10,8 @@ The bundled skills currently cover three independent quality views:
   coverage when requested;
 - `perf` operates and compares project-owned load, capacity, stress, and soak experiments, and can
   incrementally add bounded performance coverage when requested;
-- `trajectory` follows Agent Sessions and business Jobs, connects outcomes to decisions and actions,
-  compares effect and cost, and organizes evidence-backed optimization experiments.
+- `trajectory` offers Job, Session and Context views to connect results, execution and prompt
+  organization, assess Good/Fast/Cheap (effect, speed and cost), and design optimization experiments.
 
 The project owns the tests, profiles, recordings, adapters, and judgment criteria. A framework
 such as quality-harness supplies execution and analysis mechanisms; these skills discover and
@@ -46,10 +46,12 @@ invent a missing suite nor supply cross-skill execution orchestration.
 
 ## Agent trajectory analysis
 
-SessionView follows one Agent Session; JobView follows a business goal across the Sessions and
-operations that contribute to it. The trajectory skill connects the two using recorded identities:
-a task result can be traced to the context behind a decision, and repeated agent work can be checked
-against the goals it served. Both views support effect and cost analysis.
+Job View, Session View and Context View are peer analysis entry points. Job View follows a business
+goal and its results; Session View follows agent execution; Context View makes prompt organization
+readable by actual message role and internal sections. Recorded identities connect results to
+decisions and the prompts behind them. Use the
+[Agent Good–Fast–Cheap triangle](skills/trajectory/SKILL.md#good-fast-cheap-for-agents) to assess
+effect, speed and cost together, then use the views to explain the observed behavior.
 
 In conversation or TUI, asking to see a SessionView produces a text presentation of actual model
 requests, responses and tool calls, making context organization and prompt issues inspectable.
@@ -94,7 +96,7 @@ Add one bounded E2E case for this regression and run the nearest relevant checks
 Run the project's smallest capacity profile and report the trustworthy limit and caveats.
 Compare the latest performance run with its declared baseline without generating load again.
 Add one bounded soak or scaling profile using the project's existing workload adapter.
-Evaluate this project's agent trajectories and compare effect and cost with the baseline.
+Evaluate this project's agent trajectories: how well did it work, how long did it take, and what did it cost?
 Find the next trajectory problem worth optimizing.
 For this high-token trajectory problem, identify likely causes and controlled experiments.
 ```

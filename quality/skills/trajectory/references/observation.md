@@ -1,17 +1,20 @@
-# Session and Job observations
+# Job, Session and Context views
 
 Use this reference to identify an evaluation subject, inspect its execution or connect task results
 to agent behavior. The shared data contract is Agent Ledger's
 [Observation](https://github.com/compforge/agent-ledger/blob/main/docs/observation.md).
-SessionView and JobView are structured observation snapshots. Text and HTML render the same recorded facts for
-different reading surfaces. “Loop view” and “agent view” requests select SessionView presentation.
+Job View, Session View and Context View are peer entry points for human analysis. SessionView and
+JobView are structured observation snapshots; Context View organizes a prompt for reading using
+recorded requests or explicitly labeled source reconstruction. Text and HTML are reading surfaces.
+“Loop view” and “agent view” requests select SessionView presentation.
 
-## Two perspectives on execution
+## Three analysis views
 
 | Perspective | Subject | Questions |
 |---|---|---|
 | SessionView (`agent-ledger/session@1`) | One Agent Session accepting inputs and making calls | What context did the agent receive? What changed after followup, steer, compact or resume? Where did it repeat work or lose progress? |
 | JobView (`agent-ledger/job@1`) | One business goal and the work contributing to it | Was the goal achieved? Where did work wait, repeat or get lost? Were handoffs and delivery effective? |
+| Context View | The prompt for a selected model call, or a comparison of prompts | How are instructions, task facts, history, evidence and tools organized? What is missing, conflicting, stale or repeated? |
 
 One Session can contribute to several Jobs; one Job can involve several Sessions and deterministic
 operations. Task-oriented and continuous describe how an Agent serves Jobs, not different loop
@@ -19,17 +22,18 @@ algorithms. A task-oriented Session and Job may contain nearly the same calls wh
 distinct identities. Ending an invocation, closing a Session and completing a Job are independent.
 A Session snapshot has no inferred root completion verdict.
 
-Start from the question. Inspect Job goals and results for a task question, then open relevant
-Session context to explain decisions. Inspect a Session for a continuity or context question, then
-use explicit Job links to judge contribution. Neither perspective is restricted to cost or effect.
+Start from the question. Inspect Job goals and results, Session decisions and actions, or Context
+prompt organization. Move from a result to its calls and exact requests, or from a prompt concern
+to the response, subsequent actions and linked Job consequences. Preserve call identity and source
+positions across these views. None is restricted to one of Good, Fast, Cheap, and a bounded analysis
+need not render all three.
 
 ## Context View
 
 A **Context View** is a text outline of an agent's context/prompt (a prompt outline): message
 roles form the outer structure, and sections within complex messages form the inner structure.
-It helps the user understand prompt composition and spot possible prompt problems. SessionView follows execution
-continuity; JobView follows business work. Context View is a presentation convention, not a new
-Agent Ledger schema.
+It is a first-class reading and analysis view for prompt organization, alongside Session execution
+and Job outcomes. It reuses request evidence without requiring a separate Agent Ledger schema.
 
 Lead with the message roles in their actual order, such as `system`, `user`, `assistant` and
 `tool`. Within a complex message, show how many meaningful sections it contains and briefly
@@ -68,7 +72,7 @@ capture; exact recorded requests remain available through SessionView when the e
 
 ## Nodes and evidence
 
-Both views use the same Node types:
+SessionView and JobView use the same Node types; Context View selects ModelCall request content:
 
 - `Input`: input observed by the agent, with delivery mode when recorded.
 - `ModelCall`: an observed model invocation with its recorded request and response.

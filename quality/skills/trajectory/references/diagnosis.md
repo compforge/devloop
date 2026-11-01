@@ -60,6 +60,33 @@ same criterion. Investigate the decisions and actions behind the change; use the
 [experiment controls](evaluation.md#controlled-experiments) to distinguish a generating-version
 regression from a change in workload or annotation coverage.
 
+## Trace effect loss to its cause
+
+Good diagnosis explains both whether the result met the goal and where and why work departed from
+it. Use the three views to reconstruct a supported chain:
+
+1. **Expected versus actual:** establish the unmet criterion and affected outcome in Job View.
+   Use project requirements or independent checks; the agent's own verdict is an output to inspect.
+2. **Point of deviation:** follow explicit dependencies through Session decisions, tool results,
+   handoffs and delivery. Find the earliest supported departure on the path to that outcome and,
+   where available, the preceding correct state. The first error by timestamp may be unrelated or
+   recovered; show how the candidate deviation propagated, was amplified or escaped correction.
+3. **Mechanism and owner:** inspect the relevant Context View and actual tool observations. Separate
+   a wrong objective, unavailable evidence, evidence lost during context construction, a decision
+   inconsistent with visible evidence, execution failure and delivery failure. Trace the supported
+   mechanism to its owning instructions, context policy, tool contract, loop or orchestration.
+   A symptom such as "wrong answer" or "the model did not understand" does not explain that mechanism.
+4. **Causal confidence:** state the evidence connecting the mechanism to the deviation and outcome,
+   contrary evidence, and any missing link. Identify an observation or bounded experiment that
+   would distinguish competing explanations; run it only within the requested scope. When the
+   origin is not observed, report the earliest visible deviation and root-cause hypotheses rather
+   than inventing a unique cause or an unobserved model reasoning process.
+
+For example, when a conclusion overlooks a recovery path, check whether that path was unavailable,
+removed from the request, or present in the actual input but not accounted for in the response.
+Those observations lead to different candidate fixes. They do not by themselves prove that adding
+context or changing instructions will improve the result; verify that through a controlled comparison.
+
 ## Search in priority order
 
 1. **Version effect regression:** a newer generation configuration produces worse effect on the same
@@ -70,8 +97,9 @@ regression from a change in workload or annotation coverage.
    and repair loops, including errors that a later retry hides from the final outcome.
 4. **Effect regression within a version:** wrong, unsupported, missed, repeat, low-score, or
    low-completion outcomes, using the project's own Verifiers and annotations.
-5. **Pareto regression:** effect is unchanged or worse while normalized token, time, model calls, or
-   tool calls increase.
+5. **Pareto regression:** on comparable work and coverage, no measured Good/Fast/Cheap dimension
+   improves and at least one worsens. If dimensions move in different directions, inspect the
+   trade-off against project priorities rather than labeling it a Pareto regression.
 6. **Cost hotspot:** effect is acceptable, but a high-volume target or cohort dominates avoidable
    normalized cost.
 7. **Long tail:** average is stable while p95/p99, retries, timeouts, or a small cohort deteriorates.
@@ -140,7 +168,7 @@ Likely causes: ordered hypotheses, each with a disconfirming check
 Change surface: instructions, tools, context, loop mechanism, model, or orchestration
 Next experiment: one principal lever
 Primary metric: the signal expected to improve
-Guardrails: effect, completion, and data-health metrics that must not regress
+Guardrails: acceptable bounds for the other Good/Fast/Cheap dimensions, completion and data health
 ```
 
 This note is project evidence, not a new framework entity. Store it beside the project's trajectory

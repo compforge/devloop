@@ -49,6 +49,26 @@ constrain attribution; useful analysis of the available view can still proceed.
 
 ## Evaluation roles and evidence
 
+Define Good from the business goal before choosing an evaluator. **Golden metrics are
+business-specific:** customer support may prioritize correct issue resolution, while code review
+may prioritize valid, actionable findings and coverage of relevant defects. Shared dimensions such
+as correctness and completeness are prompts for defining criteria, not a universal metric set.
+The consuming project owns its criteria, references, thresholds and any aggregation policy.
+
+A **Rubric** makes those criteria judgeable: specify the evaluated outcome or process behavior,
+what counts as meeting, partly meeting or failing the criterion, and the evidence needed for each
+judgment. Keep insufficient evidence distinct from failure and not-applicable. Preserve individual
+criteria and any critical failure rules; weighted totals are optional and require an explicit
+business policy. AI can draft a rubric, but domain review and representative examples and
+counterexamples should establish whether it reflects the intended behavior.
+
+Use code for criteria that can be checked deterministically and semantic judgment where needed;
+an LLM judge is not inherently more accurate. Record rubric and evaluator versions separately from
+the agent generation and Dataset versions. Repeated judging can reveal variability but does not
+remove systematic bias. A rubric explains which criterion fell short; use
+[dependency-based diagnosis](diagnosis.md#trace-effect-loss-to-its-cause) to investigate where and
+why that deviation arose and escaped correction.
+
 | Role | Output | Meaning |
 |---|---|---|
 | Measurer | Measurement | Deterministic facts such as observed calls, usage or duration. |

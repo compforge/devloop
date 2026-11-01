@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { userPromptOutput } from "../adapters/process-hooks.js";
+import { evidenceSegment } from "../domain/validation-evidence.js";
 import { branchSegment, saveSegment } from "../domain/context/store.js";
 
 let root: string;
@@ -24,24 +25,37 @@ it("delivers full fallback reason from persisted state to the prompt", async () 
   expect(output).not.toContain("stamped");
 });
 
-it("shows missing lint as non-blocking and clears it when the entry is added", async () => {
+function observe(check: string, status: string): void {
+  saveSegment(root, evidenceSegment(root, ".", check), { report: {
+    schemaVersion: 1, checkout: root, components: [{ component: { root: "." }, checks: [{ check, status }] }],
+  } });
+}
+
+it("shows observed missing lint and clears it after a fresh report", async () => {
   writeFileSync(join(root, "go.mod"), "module example.test/demo\n\ngo 1.24\n");
+  const unknown = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "unknown-lint" }));
+  expect(unknown).not.toContain("Lint unavailable");
+  observe("lint", "unavailable");
   const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "missing-lint" }));
   expect(output).toContain("Lint unavailable: .");
   expect(output).toContain("non-blocking");
   expect(output).toContain("no recorded runs");
   writeFileSync(join(root, "Makefile"), "lint:\n\t@true\n");
+  observe("lint", "passed");
   const updated = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "with-lint" }));
   expect(updated).not.toContain("Lint unavailable");
 });
 
 it("shows missing test for Go without assuming an ecosystem fallback", async () => {
   writeFileSync(join(root, "go.mod"), "module example.test/demo\n\ngo 1.24\n");
+  observe("test", "unavailable");
+  observe("lint", "unavailable");
   const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "missing-test" }));
   expect(output).toContain("Test unavailable: .");
   expect(output).toContain("non-blocking");
   expect(output).toContain("no recorded runs");
   writeFileSync(join(root, "Makefile"), "test-local:\n\t@true\n");
+  observe("test", "passed");
   const updated = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "with-test" }));
   expect(updated).not.toContain("Test unavailable");
   expect(updated).toContain("Lint unavailable");

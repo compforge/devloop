@@ -39,7 +39,7 @@ harness 不跟踪、跑完不会 re-invoke 会话）——异步靠某个 hook �
 | 对象 | 位置 | 职责 |
 |---|---|---|
 | `dispatch` / `HookResult` / `BackgroundSpec` | `scripts/domain/lifecycle/base.py` | facade：并发 join + 聚合；纯机制 |
-| normalize + `lint` / `test` checks | `scripts/domain/lifecycle/checks.py` | 内置 Component validation（与 validate skill 共用） |
+| normalize + `lint` / `test` checks | `scripts/domain/validation.py` | 一次 repocli validate，记录报告并应用门禁策略 |
 | `run_lifecycle_gate` / `phase_paths` | `scripts/commit_flow.py` | 在 commit/mr 流水线里的 dispatch 插点 + 算出本相位「本次改动」的范围 |
 | `select_components` / `committed_paths` / `range_paths` | `scripts/domain/repo.py` | 范围 → component 投影；各相位取「本次改动」的 git 问法 |
 | `PrecommitGateRule` | `hooks/rules/index.ts` | 裸 `git commit` 的兜底守卫（查戳，不跑） |
@@ -106,15 +106,11 @@ dispatch 对 handler 抛异常一律收敛成 `ok=False`（fail-closed：把关�
 **handler 自己 catch 内部异常、恒返回 `ok=True`（必要时带告警 summary、不带 relay）**
 来保证，是 handler 的契约，不是 dispatcher 的特例。dispatcher 因此保持极简：一种行为。
 
-### 为什么 validation 逻辑在 `scripts/domain/lifecycle/checks`
+### 验证执行与流程策略
 
-validate skill 与 lifecycle pre_commit gate 必须跑**同一段**逻辑、在**同一处**盖各 check
-戳，否则手工验证和 gate 会漂移。component 选择、normalize、lint/test target、warm-cache 清理
-和盖戳都在 `scripts/domain/lifecycle/checks.py`；`scripts/run_validate.py` / `run_lint.py` / `run_tests.py`
-是 CLI adapter。
-
-`make fix` 是 validation 的 normalize 前置，不属于 lint check。dispatcher 必须等 normalize 完成，
-再并发启动只读 lint/test；否则 test 会与 fixer 同时读写代码树，两个 check 验证的不是同一份内容。
+`run_validate.py` 与 lifecycle dispatch 共用 `scripts/domain/validation.py`。适配层准备依赖，
+把本相位的基线、路径、检查项和已有证据交给一次 repocli validate，再保存原始报告和应用门禁。
+fix 先完成、重新规划、有界并发执行 lint/test 都由 repocli 保证；devloop 不另建执行器。
 
 ### 「本次改动」的范围由相位边界给，不由 handler 猜
 
@@ -138,32 +134,13 @@ handler 手里只有 `repo`。想知道「本次改动涉及哪些 component」�
 
 可重复的 `--file` 尤其要进 pre_commit 的范围：它是「工作树所有脏文件」的**子集**。拿超集当范围，会把你压根不打算提交的 component 拖进 gate——它有存量 lint 错误就拦掉你的 commit（与本表存在的理由同一类失败，只是换了扇门），且 normalize 会去改那些 component、改完又不进本次 commit，凭空搅脏工作树。故 staging 使用归一后的 scope，gate 再从同一 scope 展开真实 changed leaf files；`--file cli` 可以继续用于 staging，同时 test handler 能得到 `cli/tests/x.test.ts`，两边不会漂到 scope 之外。
 
-### lint 的按文件范围与全量结果
+### 范围与结果
 
-Component 仍拥有验证命令；文件列表只是本次调用的范围。项目 Makefile 显式消费 `LINT_FILES`
-时，normalize 的 `make fix` 与只读 lint 接收同一份冻结列表。没有采用该契约的项目继续跑全量，
-并收到接入提示，devloop 不自行猜测或替换项目的语言检查器。
-
-局部 lint 成功可放行本轮 inline gate，但不写整个 Component 的 lint 戳，防止后来以局部结果
-冒充全量验证。手工 `run_lint.py --full` 与完整 validate 保留全量行为；删除文件和无法安全传递的
-路径也回退全量。项目负责从配置、依赖和源文件变化判断需要扩大的检查范围，详细接入契约见
-[validation spec](../skills/validate/references/spec.md#focused-static-quality)。
-
-### 测试入口的事后优化提示
-
-test handler 从相位已经冻结的 path list 中识别改动测试。Makefile 显式消费 `TEST_FILES` 且存在
-改动测试时，通过 `make test TEST_FILES="..."` 聚焦执行；没有改动测试时运行完整测试。项目缺少
-`make test` 时提示补充统一入口；完整 Make 测试运行超过 10 秒且尚未采用 `TEST_FILES` 契约时，
-在运行结束后提示补充支持。guidance 只反馈已经观察到的接入或性能问题，不参与 gate 的
-`ok` / `proceed`，不会阻断 commit 或 MR。
-
-focused 结果只说明本轮选中的测试通过，不更新 Component 的全量 test validation。手工
-`run_tests.py` 使用 working-tree 改动作为 scope；完整 `run_validate.py` 仍执行全量测试。
-
-**`None` 与 `[]` 是两种语义，不能抹平**：`None` = 不知道范围 → 全跑（保守）；`[]` = 知道且
-为空 → 0 个 component、干净跳过。git 算不出时（如 `origin/<target>` 尚未 fetch）一律返回 `None`
-而非 `[]`——`gitcmd` 是 failure-safe 的，两者原始输出都是空，把失败读成 `[]` 就等于**静默跳过
-整个 lint gate**。gate 上宁可多跑，不可 fail-open。
+repocli 按 Component 的 affectedFiles/testFiles 和 Makefile 文件过滤契约选择范围；没有契约或
+删除、换归属、无法表示的路径保守回退全量。fix 允许改写内容，后续检查重新规划。
+局部通过只放行本轮 inline gate，不建立全量检查引用。`run_validate.py --full` 显式请求全量。
+缺少入口是 unavailable，不冒充成功；lint 失败或输入不一致阻断，test 失败保持 advisory。
+`paths=[]` 表示没有改动，跳过；未知范围由相位基线或显式全量处理，不把读取失败解释为空选择。
 
 ### 相位 × hook 的非重复约定
 
@@ -184,30 +161,16 @@ detach 起——pre/post_commit relays 在 commit 后、pre/post_mr relays 在 p
 
 ## Automatic validation scope
 
-Component organization comes from repocli inspect; unavailable organization stops the gate.
-Lint and test share one repocli impact plan after normalization. The phase caller supplies
-the comparison: working input for pre-commit, the actual commit for post-commit,
-and the target merge-base for MR phases. Changed-path filters restrict seeds, not
-dependency discovery. Repocli reports affected Components, which select the owning Makefiles.
-Within each selected Component, owned `affectedFiles` and `testFiles` supply Component-relative
-`LINT_FILES` and `TEST_FILES` when the project consumes those variables. Missing contracts,
-unsafe/deleted inputs or no returned files for a selected Component run that check in full.
-Components with incomplete impact are included conservatively; valid partial reports retain
-returned files and diagnostics. Complete unaffected Components are omitted. Before-only identities
-remain evidence and are not execution directories.
-Failed or invalid analysis runs full canonical checks for all current Components, within any
-explicit Component boundary. Scope and reasons are published in branch-owned
-`validation_scope` state for Board. Full successful checks may stamp the verified contents;
-focused checks retain scoped evidence and never grant a full Component stamp;
-a skipped or unavailable check never grants a stamp.
-See [repocli usage and compatibility](../references/repocli.md).
+Repocli consumes current ComponentImpact tag counts and file lists, retains before/unowned
+facts and reports full-scope fallback reasons. Devloop supplies phase baselines and requested
+Components without another selection engine. No positive execution tags means skipped;
+a selected Component with unsafe/deleted candidates or no file filtering contract uses full checks.
+Malformed or unavailable analysis stops the round. Initial history without a comparison revision
+uses explicit full selection. Check failures never trigger a second execution as an analysis fallback.
 
-缺少 `make lint` / `make lint-ci` 入口时，lint 记录为 `unavailable` 并在 Board 提示，
-不阻断提交，也不写通过戳。实际 lint 执行失败仍阻断；多个 Component 中缺少入口不能掩盖其他 Component 的失败。
-
-缺少 `make test` / `make test-ci` / `make test-local` 入口时使用同样的 `unavailable` 提示策略：
-不执行测试、不写通过戳、不阻断提交。即使已识别 Go 生态，也不自动回退到 `go test ./...`；测试入口由项目声明。
-
+Missing lint/test targets are unavailable and non-blocking in devloop, but never passing evidence.
+No language-specific runner is inferred. Input inconsistency or actual lint failure blocks the gate;
+test failures remain advisory. Scope and diagnostics are projected from the original report to Board.
 
 ## Candidate and validation evidence
 
@@ -226,13 +189,13 @@ reused. Dependencies observed as `present`, unpreparable `missing`, or otherwise
 may still enter actual project checks under the preparation policy, but cannot authorize
 reuse. Managed installations use repocli's receipt and dependency-input witnesses; this
 is an installation contract, not a byte-integrity scan of all installed dependencies.
-Inputs are observed again after execution; environment changes invalidate the result.
+Repocli checks source and receipt inputs again after execution; changes invalidate the result.
 
 Branch `lint`/`test` segments contain references to these records, not independent pass
 stamps. Full-check reuse binds the current branch to the original execution time.
 Focused/explicit checks cannot grant a full-Component pass; failed or replaced evidence
 invalidates old references. Python context and TypeScript Board resolve the same evidence
 contract. Board reports historical execution; the raw-commit guard additionally requires
-current source, command, process environment, dependency witnesses and a complete index.
-Different Harness and workflow process environments conservatively require the managed
-commit flow. Legacy stamps do not grant permission and are replaced by the next check.
+current source, dependency witnesses and a complete index. It does not compare the Harness
+process environment to the frozen check environment or decide execution reuse. Unsupported
+report formats never grant permission.

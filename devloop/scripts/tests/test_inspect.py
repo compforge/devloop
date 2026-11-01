@@ -7,13 +7,13 @@ from unittest.mock import patch
 import os
 import subprocess
 
-from _testkit import repocli_report, run_main
+from _testkit import run_main
 from domain import repo as repo_model
 from domain.repo_layout import inspect_catalog
-from domain.lifecycle.base import DispatchResult, HookResult, dispatch
+from domain.lifecycle.base import dispatch
 from domain.validation import content_identity
 from lib import repocli
-from test_test_scope import make_repo
+from _validation_fixture import make_repo
 
 def native_components(root):
     for name, marker, contents in (("service", "go.mod", "module api\n"), ("client", "package.json", '{"devDependencies":{"typescript":"*"}}')):
@@ -52,36 +52,14 @@ def test_catalog_is_authoritative_and_one_inspection_serves_many_paths():
         assert [c.id for c in inspect_catalog(root).components] == ["client"]
 
 
-def test_makefile_only_and_empty_repository_validation():
-    from domain.lifecycle import checks
+def test_makefile_only_and_empty_repository_organization():
     with TemporaryDirectory() as tmp:
         root = make_repo(tmp)
         (root / "pyproject.toml").unlink()
         (root / "Makefile").write_text("fix lint test:\n\t@true\n")
-        component = inspect_catalog(root).components[0]
-        assert component.language is None
-        assert component.lint_target() == "lint" and component.test_command() == ("make", "test")
-        with repocli_report():
-            result = dispatch("pre_commit", str(root), paths=["source.py"], names=["lint", "test"])
-        assert result.proceed
+        assert inspect_catalog(root).components[0].language is None
         (root / "Makefile").unlink()
-        with patch.object(checks, "_make", side_effect=AssertionError("empty catalog ran make")), patch.object(repocli, "read_report", side_effect=AssertionError("empty catalog ran impact")):
-            result = dispatch("pre_commit", str(root), paths=["source.py"], names=["lint", "test"])
-        assert result.proceed and all(row.status == "skipped" for row in result.results)
-        assert all("no recognized Components" in row.summary for row in result.results)
         assert not repo_model.select_components(root).components
-
-
-def test_makefile_target_headers_are_static_and_support_multiple_targets():
-    from domain.repo_layout import Component
-    with TemporaryDirectory() as tmp:
-        root = Path(tmp)
-        component = Component.at(root, root)
-        (root / "Makefile").write_text("# lint:\nlint := value\nrecipe:\n\t test: false\n")
-        assert not component.has_target("lint") and not component.has_target("test")
-        (root / "Makefile").write_text("fix lint \\\n test: dependency\n\t@true\nlint-ci::\n\t@true\n")
-        assert component.has_target("fix") and component.has_target("test")
-        assert component.lint_target() == "lint-ci"
 
 
 def test_incomplete_observation_and_git_failures_are_unavailable():
@@ -117,7 +95,7 @@ def test_execution_containment_rejects_symlinked_component_roots():
 def test_snapshot_is_native_and_separate_from_organization():
     with TemporaryDirectory() as tmp:
         root = make_repo(tmp)
-        with patch.object(repocli, "read_report", side_effect=AssertionError("CLI called")):
+        with patch.object(repocli, "validation_report", side_effect=AssertionError("CLI called")):
             first = content_identity(str(root))
             assert first.digest.startswith("sha256:")
             (root / "source.py").write_text("changed")
@@ -140,54 +118,7 @@ def test_manifest_language_is_retained_without_makefile():
         component = inspect_catalog(root).components[0]
         assert component.language == "go"
         (root / "Makefile").unlink()
-        assert component.test_command() is None
-
-
-def test_missing_component_lint_entry_is_unavailable():
-    from domain.lifecycle import checks
-    with TemporaryDirectory() as tmp:
-        root = make_repo(tmp)
-        component = inspect_catalog(root).components[0]
-        result = checks.lint(str(root), component=component)
-        assert result.ok and result.status == "unavailable"
-        assert result.guidance
-        assert DispatchResult("pre_commit", [result]).proceed
-        from domain.context import RepoContext
-        context = RepoContext.load(str(root))
-        assert context is None or not context.validation.component(component.id).last_lint_at
-
-
-def test_missing_test_entry_is_nonblocking_without_running_or_stamping():
-    from domain.context import RepoContext
-    from domain.lifecycle import checks
-    for language in ("python", "go"):
-        with TemporaryDirectory() as tmp:
-            root = make_repo(tmp)
-            (root / "Makefile").unlink()
-            if language == "go":
-                (root / "go.mod").write_text("module example.invalid/service\n")
-                (root / "pyproject.toml").unlink()
-            component = inspect_catalog(root).components[0]
-            with patch.object(checks, "_environment_failure", side_effect=AssertionError("must not prepare a missing command")):
-                result = checks.test(str(root), component=component)
-            assert result.ok and result.status == "unavailable"
-            assert result.guidance
-            assert DispatchResult("pre_commit", [result]).proceed
-            context = RepoContext.load(str(root))
-            assert context is None or not context.validation.component(component.id).last_test_at
-
-
-def test_missing_lint_does_not_hide_another_components_failed_lint():
-    from domain.lifecycle import checks
-    missing = HookResult("lint", ok=True, status="unavailable", summary="missing entry")
-    passed = HookResult("lint", ok=True, summary="passed")
-    failed = HookResult("lint", ok=False, summary="lint command failed")
-    available = checks._aggregate("lint", "two components", [missing, passed])
-    assert available.status == "unavailable"
-    assert DispatchResult("pre_commit", [available]).proceed
-    blocked = checks._aggregate("lint", "two components", [missing, failed])
-    assert blocked.status == "failed"
-    assert not DispatchResult("pre_commit", [blocked]).proceed
+        assert inspect_catalog(root).components[0].language == "go"
 
 
 if __name__ == "__main__":

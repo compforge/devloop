@@ -7,7 +7,7 @@ import os
 import shutil
 from pathlib import Path
 
-from _testkit import _FakeForge, _git, _git_out, run_main, repocli_report  # noqa: E402  (bootstrap first)
+from _testkit import _FakeForge, _git, _git_out, run_main  # noqa: E402  (bootstrap first)
 from domain import pull_request_lifecycle, worktree  # noqa: E402
 from domain.context import PullRequest, prstate, session, store  # noqa: E402
 from domain.forge import ForgeError  # noqa: E402
@@ -88,7 +88,6 @@ def _add_submodule(repo: str) -> None:
     _git(repo, "commit", "-qam", "add submodule")
 
 
-@repocli_report()
 def _reconcile_observed(repo):
     """Supply fresh Forge evidence to tests of local removal mechanics."""
     rows = store.load_segment(repo, "local_pull_requests")["branches"]
@@ -125,7 +124,6 @@ def test_new_worktree_refuses_a_stale_base_when_fetch_fails():
     assert _git_out(repo, "branch", "--list", "worktree-offline") == ""
 
 
-@repocli_report()
 def test_retained_branch_is_resumed_without_rewriting_it():
     repo, _, actor = _fixture("resume")
     retained_tip = _git_out(repo, "rev-parse", "HEAD")
@@ -140,7 +138,6 @@ def test_retained_branch_is_resumed_without_rewriting_it():
     assert message == "reused existing branch"
 
 
-@repocli_report()
 def test_create_and_reuse_leave_reclamation_to_pr_lifecycle():
     repo, _, _ = _fixture("create_without_pruning")
     old = _add_worktree(repo, "old")

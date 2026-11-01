@@ -3,57 +3,41 @@
 repocli 提供 Repository 的组织、内容与 Git/Forge 操作。devloop 把这些能力组合成以 PR/MR 为单位的
 开发闭环：确定任务范围、准备环境、执行验证、提交与发布，再处理 review 和生命周期清理。
 TypeScript hook 与 Python workflow 直接调用对应语言的工具包，不通过 repocli CLI 执行仓库操作。
-代码影响分析仍由 Go repocli impact 提供；调用方保留 ComponentImpact 的版本归属与缺口。
+代码影响分析与验证执行由 Go CLI 提供；原始报告保留 ComponentImpact 的版本归属与缺口。
 
 ## 验证链路
 
-准备阶段通过一次 inspect 选择 Component，复用这份目录执行 normalize。normalize 后调用一次 repocli impact，
-从同一报告取得当前 Component、工具证据和影响范围。直接消费每个 ComponentImpact 的文件列表、标签计数与缺口，
-形成按 Component 组织的计划；每个 lint/test 条目冻结选择范围、命令和复用输入。执行器共享这份计划。
-完整或回退验证在 normalize 后重新 inspect。before 条目保留为历史证据；删除或已换归属的文件不能作为当前
-局部命令的参数，对应检查回退全量并记录原因。unowned 独立记录，不构造根 Component 或自动触发全仓检查。
-检查前后核对内容；完整范围成功执行且内容身份可用时记录 Component stamp，hook 使用同一证据判断有效性。
+AI 可直接调用 `repocli fix/lint/test/validate`。devloop 的 Python workflow 负责依赖准备、相位基线、
+分支关联与门禁策略，然后通过一次 `repocli validate --check fix,lint,test --json` 执行整轮。
+Makefile 解析、影响分析、冻结计划、检查执行、输入指纹及复用判断均归 Go toolkit，CLI 只负责适配。
+Python 原生验证 API 保留，但 devloop 不调用它作为第二套验证引擎。
 
-验证记录分别保存整仓 `snapshot` 与检查输入 `fingerprint`。前者核对分析、执行与暂存内容的一致性；
-后者决定相同 Component/check、命令、文件集合和依赖环境能否复用通过结果。复用未命中只执行原计划，
-不会改变 affectedFiles/testFiles 选择。复用成功后将证据关联到本轮核对的整仓快照，保留实际执行时间；
-TypeScript hook 只接受已经关联到当前整仓内容的证据，不自行猜测 Component 输入。记录协议为 v3，旧记录重新验证。
+fix 是允许修改源码的准备步骤；repocli 在 fix 完成后重新观察内容和影响范围，再有界并发执行 lint/test。
+缺少可选 fix 不阻断后续检查；执行失败则停止。检查不能改写输入，项目应忽略验证输出。
+`ValidationReport.inputsConsistent` 单独表达输入一致性，complete 表达终态收集，passed 表达全部通过。
+unavailable 不等于 passed；devloop 对缺少项目入口采用非阻断提示，lint 失败或输入不一致阻断，test 失败仍是 advisory。
 
-通过现有 `.devloop/config.json` 的 `validation.inputs` 声明检查的完整仓内输入边界，例如：
+原始报告保存在分支 validation segment，并按 Component/check 保留原始结果引用。仅完整 scope 的通过结果
+建立分支 full-check 引用；局部成功只用于当前流程。复用保持实际 checkedAt，并关联到本轮核对的仓库 snapshot。
+TypeScript 守卫只核对当前内容、分支引用与依赖凭据，不比较 Harness 宿主环境、不重建 Make 命令或指纹。
+Board 使用报告中的 unavailable 事实；没有观察记录时为未知，不在展示时扫描 Makefile。
+
+`.devloop/config.json` 的 `validation.inputs` 仍由 devloop 装配并传给 repocli：
 
 ```json
-{
-  "validation": {
-    "inputs": {
-      "apps/api": {
-        "lint": {"components": [], "paths": ["tsconfig.base.json"]},
-        "test": {"components": ["packages/core"], "paths": ["scripts/test", "fixtures"]}
-      }
-    }
-  }
-}
+{"validation":{"inputs":{"apps/api":{
+  "lint":{"components":[],"paths":["tsconfig.base.json"]},
+  "test":{"components":["packages/core"],"paths":["scripts/test","fixtures"]}
+}}}}
 ```
 
-每个 lint/test 声明必须同时提供 `components` 和 `paths`，空数组明确表示没有此类额外输入。
-自身 Component 按 repocli 最具体文件归属自动纳入；`components` 列出所有仓内传递依赖 Component，
-`paths` 是仓库相对的字面文件或目录（递归包含，不展开 glob）。声明表示完整边界，不能只列本次修改文件。
-嵌套 Component 不自动归父级；聚合检查须列出实际读取的子 Component。内容、范围定义及依赖安装回执均参与复用。
-配置可以沿用现有全局/主仓/worktree 覆盖；有效声明在计划中冻结，检查期间变化会拒绝通过证据。
+components/paths 声明完整传递输入，自身 Component 自动包含，嵌套归属由 repocli 判定。声明与本次 affected
+选择无关；没有声明时使用整仓身份，非法声明直接报错。Python 依赖观察提供可信回执路径；没有可信回执时
+禁止复用但仍可真实检查。repocli 在执行边界检查回执变化，devloop 另核对有效配置是否变化。
+repocli 决定证据是否适用，devloop 只存储和提供已有报告，不重复实现复用比较。
 
-当前 inspect 只提供归属，不提供完整的命令依赖；partial impact 也不证明读取闭包。因此没有声明、声明无效、
-未知 Component 或跨范围符号链接时保守使用整仓指纹，并显示原因；快照捕获失败则不授予复用资格。
-现有文件归属与依赖环境观察自动复用，不引入第二个源码依赖分析器。忽略文件和外部资源不在内容摘要内，
-其输入必须由受管理的依赖环境覆盖；依赖实时外部服务的检查不应声明为可按 Component 复用。
-内容身份包含已跟踪和非忽略未跟踪文件，验证输出应由项目声明忽略，检查不能改写被验证内容。
-
-repocli Python 的 scoped snapshot 在一次双读捕获内批量计算 Component 和共享路径摘要，整仓摘要契约不变。
-仓库身份用于一致性，检查输入身份用于复用，affected-file 报告用于选择覆盖范围；三者互不替代。
-
-passed、failed、skipped、unavailable 描述实际检查结果，与 hard gate/advisory 策略分别记录。
-没有验证入口属于 unavailable；影响分析明确返回空选择属于 skipped。硬 lint gate 要求有可执行入口，
-test 是否阻断仍由 lifecycle 策略决定。项目在 Component 中提供 Makefile；根与子 Component 的 lint/test
-各自拥有验证资产，聚合入口使用单独的目标，避免一次 Component 执行计划重复运行子项目。
-`devloop/` 的 `make fix` 先生成受 Git 跟踪的构建产物，之后 lint/test 可并行读取；验证阶段不能重写这些产物。
+手动开发流程入口与 gcampr 都调用 `scripts/domain/validation.py`；`run_validate.py --check lint|test`
+负责仓库定位和展示。Skill 的普通检查直接调用 CLI，不需要纯转发脚本。
 
 ## 操作与策略
 
@@ -81,11 +65,9 @@ devloop 决定准备时机；已有但未经一致性验证的本地依赖可以
 
 ## 事实缺口与执行结果
 
-Working / commit / range 的改动路径与受影响 Component 由 repocli 分析，保留 rename 两端的归属；
-devloop 消费当前 Component 的 `affectedFileCounts`：只有 `source/test/config/manifest/lockfile` 任一计数大于 0
-才自动执行 lint/test；其它标签跳过。旧版本归属、`affected`、`complete` 与诊断保留为证据，不额外触发检查。
-显式执行请求优先；旧 schema 或缺少、无效的 `affectedFileCounts` 直接报错并终止验证，不兼容历史协议。报告不可用或身份不符时退回完整验证。Remote URL 的 host/path 同样来自
-repocli，provider override、API 地址和 token 装配留在 devloop。
+相位基线与初始改动路径由 devloop 提供，影响分析和检查选择由 repocli 完成。before/unowned 是有效分析事实，
+不为删除的 Component 或无归属路径伪造执行目录。CLI 缺失、协议错误或分析失败时停止验证，不悄悄回退另一个执行器。
+Remote URL 的 host/path 来自 repocli，provider override、API 地址和 token 装配留在 devloop。
 
 Git status 不完整时，Board 展示 unknown，branch create 拒绝依赖 clean 假设继续操作。
 写操作返回 uncertain 时，devloop 明确提示先检查实际 Git 状态再重试；rebase 保留事务，branch create
@@ -99,7 +81,7 @@ checkout 与 common Git directory 的关系由 repocli 提供。普通仓库和 
 
 暂存候选、工作区删除路径、index 前后文件模式和 submodule 注册事实来自 repocli 的结构化查询。
 devloop 按原始路径执行范围与敏感文件策略；读取失败阻止提交，不解释成空改动。依赖观察和锁定安装由 repocli 提供，准备时机由 Python
-workflow 执行，TypeScript 的 Component 只保留验证命令选择。
+workflow 执行；TypeScript Component 只保留组织事实。
 
 PR 生命周期清单消费 checkout 清单，保留主工作区与 linked checkout 的区别。已知分支的 checkout
 位置未知时不发布完整清单，避免将独立 Git 元数据目录当成工作区，或将未知位置当成已回收。
@@ -132,12 +114,11 @@ Forge 提供平台合并状态；哪些状态应成为 Board 提醒由 devloop �
 repocli 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect 描述零个、一个或多个 Component。
 无 Component 时跳过验证，不运行 impact 或 make，也不写入通过戳；读取失败仍按失败处理。
 单组件可以位于根或子目录；普通目录可以有组件归属，也可以没有。devloop 不再补隐式根组件，
-明确执行目标仍可由用户选择。manifest 优先、Makefile 次级的发现、目录排除与 owner 由工具包提供，Makefile 验证入口选择
-和跨组件执行范围仍属 devloop。Go CLI diff 的协议解码在 lib，采纳部分结果与回退策略在 domain。
+明确执行目标仍可由用户选择。manifest 优先、Makefile 次级的发现、目录排除与 owner 由工具包提供，Makefile 验证入口选择与跨组件执行范围归 repocli；devloop lib 校验外部报告协议，domain 执行流程策略。
 
 原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
 父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
-CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.42.0+，保持 snapshot 身份与 Component 的 `affectedFileCounts` 契约一致。
+验证需要支持组合步骤与 ValidationReport schema 1 的 repocli CLI；不兼容旧报告或旧验证脚本协议。
 
 仓库定位委托 find_checkout/findCheckout：无仓库是正常缺失，损坏元数据、权限与 Git 失败不能
 转换为“没有仓库”。必要 hook 事实读取失败继续走 fail_closed，不绕过保护分支规则。

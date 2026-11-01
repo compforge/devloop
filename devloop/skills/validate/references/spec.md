@@ -1,116 +1,38 @@
 # Component validation contract
 
-## Validation pipeline
+The project declares literal targets in each Component's Makefile:
 
-Validation belongs to a Component and consists of preparation followed by multiple checks:
+- `fix`: optional source normalization, explicitly requested before checks.
+- `lint-ci`, then `lint`: static checks.
+- `test`, then `test-ci`, then `test-local`: behavior checks.
 
-```text
-normalize: make fix
-        ↓
-stable Component content
-   ├─ static quality: make lint-ci | make lint
-   └─ behavior:       make test*
-```
+Repocli parses this contract without evaluating Make, freezes commands and uses
+`make -f Makefile`. It does not infer language-specific runners. The project owns
+whether recipes perform meaningful checks and their internal resource budgets.
 
-`make fix` is optional preparation, not a validation check. It is the only validation command allowed
-to rewrite tracked source; fixer steps that can touch the same files remain ordered. Its exit code is
-advisory because some fixers report that they changed files. Checks begin only after normalize finishes
-and may run concurrently because they observe the same stable content. If the target is absent,
-validation remains non-blocking but reports actionable guidance to add this canonical normalize entry.
+## Focused static quality
 
-Complete validation runs every required check. Running lint or test alone is partial validation: it may
-update that check's own stamp, but must not be presented as complete Component validation.
+`LINT_FILES` and `TEST_FILES` are optional space-delimited Component-relative paths.
+An empty value must mean the complete check. Repocli selects focused inputs only
+when the corresponding variable is explicitly consumed and paths are representable.
+Deleted/reowned paths, missing filtering support or empty candidates for an affected
+Component fall back to full scope. Partial impact does not by itself force full scope.
 
-## Static-quality check
+## Execution and evidence
 
-`make lint-ci` is preferred when present; otherwise devloop uses `make lint`. The selected target must
-be non-interactive and read-only, and return zero only when all configured checks pass. If neither target
-exists, static quality is skipped without a lint stamp. A full success stamps the post-normalize Component
-content fingerprint so later edits invalidate it.
+`repocli fix`, `lint`, `test` are independent. `validate` defaults to lint/test;
+`validate --check fix,lint,test` finishes fix before fresh planning and bounded parallel
+checks. Failed fix stops the round; absent optional fix allows checks. Fix-only
+success is never lint/test evidence. Dependencies must be prepared first.
 
-### Focused static quality
+The report distinguishes inputsConsistent, complete and passed. Missing targets are
+unavailable; failed commands remain failed. Input changes invalidate passing evidence
+independently of check availability. A focused pass does not grant full coverage.
 
-A project may explicitly consume `LINT_FILES`, a space-separated list of Component-relative
-paths, in **both** `fix` and the selected `lint-ci` / `lint` target:
+Repocli checks previous report eligibility using Component/check inputs, command,
+scope, environment and dependency receipts. Devloop stores reports and branch references,
+then applies lifecycle policy. It never compares Python/Node host environments.
 
-```console
-make fix LINT_FILES="src/a.py tests/test_a.py"
-make lint-ci LINT_FILES="src/a.py tests/test_a.py"
-```
-
-Missing or empty `LINT_FILES` retains full validation. The project owns file selection, supported file
-types and dependency expansion: config/lockfile changes may require full checks, and Go/TypeScript
-checks may need packages or the project graph rather than individual files. Do not change language
-semantics or suppress diagnostics to simulate file-level support. Fixers must only rewrite the selected
-files; read-only checks may expand their analysis where the language requires it.
-
-Normalization uses frozen changed paths, limiting rewrites when the project supports `LINT_FILES`.
-After normalization, repocli identifies affected Components; each Component selects its Makefile.
-Within that boundary, owned `affectedFiles` narrow lint through `LINT_FILES` when the project supports
-it. Missing contracts, unsafe/deleted inputs or no returned files for a selected Component fall back
-to full lint, clearing inherited `LINT_FILES`. `--full` bypasses both automatic Component and file
-selection. Focused checks remain partial feedback and do not update the full Component stamp.
-
-Independent formatter checks, static analyzers, and type checkers may run concurrently through a native
-worker pool or bounded Make target graph. Do not run multiple auto-fixers concurrently.
-
-## Behavior check
-
-Plain `make test` must run the Component's complete, non-interactive test suite, remain read-only, and
-return zero only when the selected tests pass. The Makefile and native runner own discovery, scheduling,
-fixtures, and cleanup; directory names alone do not define safe shards.
-
-A project may optionally consume a space-separated `TEST_FILES` list of Component-relative paths:
-
-```console
-make test TEST_FILES="tests/a.py tests/b.py"
-```
-
-Missing or empty `TEST_FILES` retains full-suite behavior. `run_tests.py --full` explicitly requests
-full tests in each selected Component. For a Makefile consuming `TEST_FILES`, passing only an empty
-`TEST_FILES=` also runs and stamps a successful full suite; it must not be classified as narrowed.
-Full runs explicitly clear inherited `TEST_FILES`. Non-empty files or other explicit test arguments
-produce partial feedback and leave the full test stamp unchanged. `--full` rejects arguments after
-`--` so the coverage request cannot contradict the runner arguments.
-
-Before execution, devloop prints the Component, scope, selection reason and command (including files).
-Automatic selection consumes repocli's Component impact facts to choose Makefiles. Within selected
-Components, owned `testFiles` narrow execution through the project's `TEST_FILES` contract. Valid
-partial analysis retains returned files and its diagnostics; it does not authorize full-coverage stamps.
-Selected Components without returned test files, usable paths or a file-list contract run full tests.
-Automatic checks require a positive `source`, `test`, `config`, `manifest`, or `lockfile` count in
-`affectedFileCounts`. All other tags skip checks; multiple tags execute if any matches. Analysis gaps remain
-visible but do not independently trigger checks. Skips prepare no check dependencies and write no
-passing stamps. Explicit Component targets, `--full`, and explicit test arguments override this
-filter. Normalize still runs before planning. The current schema and valid `affectedFileCounts` are required;
-an unsupported schema or absent/malformed `affectedFileCounts` stops validation with an error. Other invalid
-reports or CLI failure select full checks in all current Components (within any explicit boundary).
-Diagnostics remain visible on Board. Missing project test targets are reported as unavailable and
-never stamped. Explicit file-level overrides must preserve language semantics; Go may require package
-or test-name selection instead.
-
-## Reusing successful execution
-
-After normalization and dependency preparation, a check may reuse its latest successful
-execution for the same checkout, Component, verified content fingerprint, command arguments,
-scope and environment. Environment values are hashed, never persisted in the result record.
-The repository snapshot remains the planning/execution consistency guard. With a complete
-`validation.inputs` declaration, the reuse fingerprint covers Component-owned content,
-declared dependency Components and shared paths; otherwise it conservatively covers the repository.
-A reuse miss executes the already selected scope and never widens it. See
-[the input contract](../../../docs/repository-toolkit.md) for configuration and limitations.
-The output explicitly reports reuse and miss reasons. Failed, unavailable and skipped checks do not
-qualify; missing or unstable content identity cannot authorize reuse.
-
-Focused results are reusable only for the same selected files and do not create a full
-Component stamp. Full-suite requests cannot reuse a focused result. Reuse preserves the
-original validation stamps instead of reporting a new execution time.
-
-## Capacity and reporting
-
-- Expose conservative worker limits such as `LINT_JOBS`, `LINT_WORKERS`, or `TEST_WORKERS`; account for
-  CPU quota, memory, databases, ports, and other shared resources.
-- Prefer the test runner's native scheduler over one process per directory.
-- Avoid multiplying unbounded Make jobs and unbounded native worker pools.
-- Preserve a coherent result for every check so complete validation reports which quality dimension
-  failed instead of flattening everything into one opaque pass/fail.
+See [repository-toolkit](../../../docs/repository-toolkit.md) for input declarations,
+report association and gate ownership. An unsupported CLI contract stops validation;
+it does not trigger a second Make runner or a historical-protocol fallback.

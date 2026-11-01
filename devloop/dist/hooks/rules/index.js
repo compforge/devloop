@@ -1,4 +1,4 @@
-import { fullEvidence, reusableFullEvidence } from "../../domain/validation-evidence.js";
+import { fullEvidence, reusableFullEvidence, observedCheck } from "../../domain/validation-evidence.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { evaluateGate } from "../../domain/context/gate.js";
@@ -138,8 +138,8 @@ const pytestNaked = {
         if (catalog.components.length === 0)
             return [];
         const component = enclosingComponent(runDirectory, catalog);
-        return component.hasTarget("test", true)
-            ? finding("pytest-naked", `Use the project's canonical test target: cd ${component.path} && make test`, commandLine(value)) : [];
+        return observedCheck(repo, component.id, "test")?.scope === "full"
+            ? finding("pytest-naked", `Use repocli test --repo ${repo} --component ${component.id} to run the project test contract`, commandLine(value)) : [];
     },
 };
 const PROJECT_COMMANDS = {
@@ -247,12 +247,10 @@ const precommitGate = {
         const required = selectComponents(repo, { catalog }).components;
         const fingerprint = required.length ? await componentFingerprint(repo, required[0], catalog) : undefined;
         const stale = required.flatMap((component) => {
-            if (!component.lintTarget())
-                return [`  ${component.id}: lint entrypoint unavailable.`];
             const evidence = fullEvidence(repo, component.id, "lint", lint[component.id]);
             if (!evidence)
                 return [`  ${component.id}: lint has no full-check evidence for this branch.`];
-            return reusableFullEvidence(evidence, fingerprint, ["make", component.lintTarget(), "LINT_FILES="])
+            return reusableFullEvidence(evidence, fingerprint)
                 ? [] : [`  ${component.id}: contents, command or dependency environment require validation.`];
         });
         const unstaged = runGit(repo, ["diff", "--quiet", "--ignore-submodules=dirty"]);

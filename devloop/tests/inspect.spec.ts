@@ -8,7 +8,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as toolkit from "@compforge/repocli";
-import { Component, inspectCatalog, findGitRoot } from "../domain/repo-layout.js";
+import { inspectCatalog, findGitRoot } from "../domain/repo-layout.js";
 import { selectComponents } from "../domain/repo.js";
 import { PolicyContext } from "../hooks/core/context.js";
 import { evaluate } from "../hooks/core/engine.js";
@@ -176,21 +176,7 @@ describe("repository contract consumption", () => {
     const catalog = await inspectCatalog(root);
     const child = catalog.owner(join(root, "client/task.py"))!;
     expect(child.language).toBeUndefined();
-    expect(child.lintTarget()).toBe("lint");
-    expect(child.testCommand()).toEqual(["make", "test"]);
     expect(selectComponents(root, { catalog, paths: ["client/task.py"] }).components.map(c => c.id)).toEqual(["client"]);
-  });
-
-  it("detects literal multiple and continued target headers without executing make", () => {
-    const { root } = fixture();
-    const component = Component.at(root, root);
-    writeFileSync(join(root, "Makefile"), "# lint:\nlint := value\nrecipe:\n\ttest: false\n");
-    expect(component.hasTarget("lint")).toBe(false);
-    expect(component.hasTarget("test")).toBe(false);
-    writeFileSync(join(root, "Makefile"), "$(error must not execute)\nfix lint \\\n test:\n\t@true\nlint-ci::\n\t@true\n");
-    expect(component.hasTarget("fix")).toBe(true);
-    expect(component.testTarget()).toBe("test");
-    expect(component.lintTarget()).toBe("lint-ci");
   });
 
   it("preserves locator failures for hard guards", async () => {

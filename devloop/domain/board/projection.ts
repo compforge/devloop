@@ -1,4 +1,4 @@
-import { fullProjection } from "../validation-evidence.js";
+import { fullProjection, observedCheck } from "../validation-evidence.js";
 import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, checkoutInfo } from "../../lib/git-state.js";
 import { findAgentsDocument, inspectCatalog, type Component } from "../repo-layout.js";
 import { InspectionError } from "../../lib/repocli.js";
@@ -26,8 +26,8 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
   let unavailableTestComponents: string[] = [];
   try {
     const catalog = await inspectCatalog(repo);
-    unavailableLintComponents = catalog.components.filter((item) => !item.lintTarget()).map((item) => item.id);
-    unavailableTestComponents = catalog.components.filter((item) => !item.testTarget()).map((item) => item.id);
+    unavailableLintComponents = catalog.components.filter((item) => observedCheck(repo, item.id, "lint")?.status === "unavailable").map((item) => item.id);
+    unavailableTestComponents = catalog.components.filter((item) => observedCheck(repo, item.id, "test")?.status === "unavailable").map((item) => item.id);
     if (catalog.components.length > 0) component = catalog.default();
   }
   catch (error) {

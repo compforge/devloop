@@ -7,53 +7,77 @@ export function evidenceSegment(repo, component, check) {
 function object(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
-/** Resolve a branch reference; legacy stamps and replaced records cannot grant a pass. */
+/** Original CLI evidence, reconciled by the workflow to a branch. */
 export function fullEvidence(repo, component, check, reference) {
     const ref = object(reference);
     const segment = evidenceSegment(repo, component, check);
     if (ref.evidence !== segment)
         return undefined;
     const record = loadSegment(repo, segment) ?? {};
-    const identity = object(record.identity);
-    if (record.status !== "passed" || identity.version !== 3 || identity.checkout !== realpathSync(repo)
-        || identity.component !== component || identity.check !== check || identity.scope !== "full"
-        || typeof identity.fingerprint !== "string" || !identity.fingerprint
-        || typeof identity.snapshot !== "string" || !identity.snapshot
-        || typeof record.checked_at !== "number" || record.checked_at !== ref.checked_at)
+    const report = object(record.report);
+    if (record.eligible !== true || report.schemaVersion !== 1 || report.inputsConsistent !== true
+        || report.checkout !== realpathSync(repo) || typeof report.snapshot !== "string" || !report.snapshot
+        || typeof record.checked_at !== "string" || record.checked_at !== ref.checked_at)
         return undefined;
-    return record;
+    for (const raw of Array.isArray(report.components) ? report.components : []) {
+        const group = object(raw);
+        if (object(group.component).root !== component)
+            continue;
+        for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
+            const result = object(rawCheck);
+            if (result.check === check && result.scope === "full" && result.status === "passed" && result.checkedAt === record.checked_at)
+                return record;
+        }
+    }
+    return undefined;
 }
-/** Historical projection only; eligibility also requires current contents and dependency witnesses. */
 export function fullProjection(repo, branch, check) {
     const refs = loadSegment(repo, branchSegment(branch, check)) ?? {};
     return Object.fromEntries(Object.entries(refs).flatMap(([component, reference]) => {
         const record = fullEvidence(repo, component, check, reference);
-        return record ? [[component, { passed_at: record.checked_at ?? null, fingerprint: object(record.identity).snapshot ?? null }]] : [];
+        return record ? [[component, { passed_at: Date.parse(String(record.checked_at)) / 1000, fingerprint: object(record.report).snapshot ?? null }]] : [];
     }));
 }
-export function reusableFullEvidence(record, fingerprint, command) {
+/**
+ * Guard the checked working tree and dependency receipts; repocli alone decides execution reuse.
+ * @why The Harness process environment is not the frozen environment of a completed check.
+ */
+export function reusableFullEvidence(record, fingerprint) {
     if (!record || !fingerprint)
         return false;
-    const identity = object(record.identity);
-    const environmentHash = environmentIdentity();
-    if (identity.environment !== environmentHash || identity.snapshot !== fingerprint || JSON.stringify(identity.command) !== JSON.stringify(command)
-        || !Array.isArray(identity.dependencies))
+    const report = object(record.report);
+    if (report.snapshot !== fingerprint)
         return false;
-    // Native Python preparation owns the receipt. The runtime only reads its witnesses;
-    // it never launches a workflow or reclassifies package managers.
     try {
-        return identity.dependencies.every((input) => Array.isArray(input) && input.length === 2
-            && typeof input[0] === "string" && typeof input[1] === "string"
-            && createHash("sha256").update(readFileSync(input[0])).digest("hex") === input[1]);
+        return (Array.isArray(report.components) ? report.components : []).every((raw) => {
+            const group = object(raw);
+            return (Array.isArray(group.checks) ? group.checks : []).every((rawCheck) => {
+                const check = object(rawCheck);
+                if (object(check.inputs).disableReuse === true)
+                    return false;
+                return Object.entries(object(check.witnesses)).every(([path, digest]) => createHash("sha256").update(readFileSync(path)).digest("hex") === digest);
+            });
+        });
     }
     catch {
         return false;
     }
 }
-export function environmentIdentity(values = process.env) {
-    const pairs = Object.entries(values).filter(([key, value]) => value !== undefined
-        && !["_", "SHLVL", "PWD", "OLDPWD"].includes(key))
-        .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-    return createHash("sha256").update(JSON.stringify(pairs)).digest("hex");
+/** Last observed check capability, for presentation only; absence means unknown. */
+export function observedCheck(repo, component, check) {
+    const report = object((loadSegment(repo, evidenceSegment(repo, component, check)) ?? {}).report);
+    if (report.schemaVersion !== 1 || report.checkout !== realpathSync(repo))
+        return undefined;
+    for (const raw of Array.isArray(report.components) ? report.components : []) {
+        const group = object(raw);
+        if (object(group.component).root !== component)
+            continue;
+        for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
+            const result = object(rawCheck);
+            if (result.check === check)
+                return result;
+        }
+    }
+    return undefined;
 }
 //# sourceMappingURL=validation-evidence.js.map

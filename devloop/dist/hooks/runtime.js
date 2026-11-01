@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // hooks/runtime.ts
-import { readFileSync as readFileSync11 } from "node:fs";
+import { readFileSync as readFileSync10 } from "node:fs";
 
 // domain/task-trigger.ts
 import { spawn } from "node:child_process";
@@ -885,7 +885,7 @@ function triggerReconciliation(repo) {
 import { basename as basename9, dirname as dirname12, isAbsolute as isAbsolute5, resolve as resolve12 } from "node:path";
 
 // domain/repo-layout.ts
-import { existsSync as existsSync5, readFileSync as readFileSync3, realpathSync as realpathSync3 } from "node:fs";
+import { existsSync as existsSync5, realpathSync as realpathSync3 } from "node:fs";
 import { basename as basename2, join as join7, relative, resolve as resolve2 } from "node:path";
 
 // lib/repocli.ts
@@ -911,7 +911,6 @@ async function inspectRepository(repo) {
 }
 
 // domain/repo-layout.ts
-var SAFE_SCOPE = /^[A-Za-z0-9_./@+][A-Za-z0-9_./@+:-]*$/;
 var Component = class _Component {
   constructor(path, id, language, name = "", packageTools2 = []) {
     this.name = name;
@@ -933,52 +932,6 @@ var Component = class _Component {
   }
   static fromInfo(root, info) {
     return new _Component(join7(root, info.root), info.root, info.language, info.name, info.packageTools ?? []);
-  }
-  hasTarget(name, suffix = false) {
-    try {
-      const makefile = readFileSync3(join7(this.path, "Makefile"), "utf8");
-      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const pattern = new RegExp(`^${escaped}${suffix ? "(-\\w+)?" : ""}$`);
-      return makefile.replaceAll("\\\n", " ").split("\n").some((line) => {
-        if (line.startsWith("	")) return false;
-        const rule = line.split("#", 1)[0];
-        const colon = rule.indexOf(":");
-        if (colon < 0 || rule.slice(0, colon).includes("=") || rule[colon + 1] === "=") return false;
-        return rule.slice(0, colon).trim().split(/\s+/).some((target) => pattern.test(target));
-      });
-    } catch {
-      return false;
-    }
-  }
-  lintTarget() {
-    return ["lint-ci", "lint"].find((target) => this.hasTarget(target));
-  }
-  testTarget() {
-    return ["test", "test-ci", "test-local"].find((target) => this.hasTarget(target));
-  }
-  testCommand() {
-    const target = this.testTarget();
-    return target ? ["make", target] : void 0;
-  }
-  supportsLintFiles() {
-    return this.makefileUses("LINT_FILES");
-  }
-  supportsTestFiles() {
-    return this.makefileUses("TEST_FILES");
-  }
-  makefileUses(variable) {
-    try {
-      return new RegExp(`\\$\\(${variable}\\)|\\$\\{${variable}\\}`).test(readFileSync3(join7(this.path, "Makefile"), "utf8"));
-    } catch {
-      return false;
-    }
-  }
-  focusedLintCommand(files, target = this.lintTarget()) {
-    return target && files.length > 0 && this.supportsLintFiles() && files.every((path) => SAFE_SCOPE.test(path)) ? ["make", target, `LINT_FILES=${files.join(" ")}`] : void 0;
-  }
-  focusedTestCommand(files) {
-    const target = this.testTarget();
-    return target && files.length > 0 && this.supportsTestFiles() && files.every((path) => SAFE_SCOPE.test(path)) ? ["make", target, `TEST_FILES=${files.join(" ")}`] : void 0;
   }
 };
 function findGitRoot(path) {
@@ -1024,7 +977,7 @@ import { existsSync as existsSync8, lstatSync as lstatSync2, readdirSync, realpa
 import { join as join8, resolve as resolve4 } from "node:path";
 
 // lib/git-state.ts
-import { appendFileSync as appendFileSync2, existsSync as existsSync6, mkdirSync as mkdirSync3, readFileSync as readFileSync4 } from "node:fs";
+import { appendFileSync as appendFileSync2, existsSync as existsSync6, mkdirSync as mkdirSync3, readFileSync as readFileSync3 } from "node:fs";
 import { dirname as dirname6 } from "node:path";
 var PROTECTED_BRANCHES = [/^main$/, /^master$/, /^release$/, /^release.*/, /.*release$/];
 function isProtectedBranch(branch) {
@@ -1043,7 +996,7 @@ function ensureGitExclude(repo, pattern = "/.devloop/") {
   try {
     const path = gitPath(repo, "info/exclude");
     mkdirSync3(dirname6(path), { recursive: true });
-    const existing = existsSync6(path) ? readFileSync4(path, "utf8") : "";
+    const existing = existsSync6(path) ? readFileSync3(path, "utf8") : "";
     if (existing.split("\n").some((line) => line.trim() === pattern.trim())) return;
     appendFileSync2(path, `${existing && !existing.endsWith("\n") ? "\n" : ""}${pattern}
 `, "utf8");
@@ -1052,12 +1005,12 @@ function ensureGitExclude(repo, pattern = "/.devloop/") {
 }
 
 // lib/parsers.ts
-import { existsSync as existsSync7, readFileSync as readFileSync5 } from "node:fs";
+import { existsSync as existsSync7, readFileSync as readFileSync4 } from "node:fs";
 import { basename as basename3, dirname as dirname7, isAbsolute, resolve as resolve3 } from "node:path";
 function read(path) {
   if (!existsSync7(path)) return void 0;
   try {
-    return readFileSync5(path, "utf8");
+    return readFileSync4(path, "utf8");
   } catch {
     return void 0;
   }
@@ -1271,7 +1224,7 @@ var WorkspaceContext = class _WorkspaceContext {
 };
 
 // domain/context/session.ts
-import { closeSync as closeSync2, existsSync as existsSync9, mkdirSync as mkdirSync4, openSync as openSync2, readFileSync as readFileSync6, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync4, unlinkSync as unlinkSync2, writeFileSync as writeFileSync3 } from "node:fs";
+import { closeSync as closeSync2, existsSync as existsSync9, mkdirSync as mkdirSync4, openSync as openSync2, readFileSync as readFileSync5, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync4, unlinkSync as unlinkSync2, writeFileSync as writeFileSync3 } from "node:fs";
 import { basename as basename4, dirname as dirname8, join as join9, resolve as resolve5 } from "node:path";
 var OWNER_TTL_SECONDS = 1800;
 function identityFromEnvironment() {
@@ -1291,7 +1244,7 @@ function legacyLockFile(repo, harness) {
 }
 function readOwnerFile(path) {
   try {
-    const value = JSON.parse(readFileSync6(path, "utf8"));
+    const value = JSON.parse(readFileSync5(path, "utf8"));
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   } catch {
     return void 0;
@@ -1410,7 +1363,7 @@ function activeRepoFile(workspaceRoot2, sessionId2) {
 }
 function activeBinding(path, enforceTtl) {
   try {
-    const value = JSON.parse(readFileSync6(path, "utf8"));
+    const value = JSON.parse(readFileSync5(path, "utf8"));
     if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
     const row = value;
     if (typeof row.repo_dir !== "string" || !existsSync9(row.repo_dir)) return void 0;
@@ -1448,7 +1401,7 @@ function recordSessionEvent(repo, sessionId2, kind, fields = {}) {
 }
 
 // domain/context/tool-calls.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync3, statSync as statSync5, utimesSync, writeFileSync as writeFileSync4 } from "node:fs";
+import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync6, renameSync as renameSync3, statSync as statSync5, utimesSync, writeFileSync as writeFileSync4 } from "node:fs";
 import { join as join10 } from "node:path";
 var TOOL_CALL_SCHEMA = "devloop.tool-call/v1";
 var FILE_NAME = "tool-calls.jsonl";
@@ -1473,7 +1426,7 @@ function appendToolCall(root, record, at = Date.now() / 1e3) {
 function toolCallStartedAt(root, callId, at = Date.now() / 1e3) {
   if (!callId) return void 0;
   try {
-    const rows2 = readFileSync7(join10(stateDirectory(root), FILE_NAME), "utf8").trimEnd().split("\n").reverse();
+    const rows2 = readFileSync6(join10(stateDirectory(root), FILE_NAME), "utf8").trimEnd().split("\n").reverse();
     for (const row of rows2) {
       let value;
       try {
@@ -1494,7 +1447,7 @@ function toolCallStartedAt(root, callId, at = Date.now() / 1e3) {
 function compact(path, cutoff) {
   if (!existsSync10(path)) return;
   try {
-    const retained = readFileSync7(path, "utf8").split("\n").flatMap((line) => {
+    const retained = readFileSync6(path, "utf8").split("\n").flatMap((line) => {
       try {
         const record = JSON.parse(line);
         return record !== null && typeof record === "object" && !Array.isArray(record) && typeof record.ts === "number" && record.ts >= cutoff ? [JSON.stringify(record)] : [];
@@ -1516,7 +1469,7 @@ import { homedir as homedir2 } from "node:os";
 import { join as join12, resolve as resolve7 } from "node:path";
 
 // lib/config.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync8, renameSync as renameSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync7, renameSync as renameSync4, writeFileSync as writeFileSync5 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname as dirname9, isAbsolute as isAbsolute2, join as join11, resolve as resolve6 } from "node:path";
 var DEFAULTS = {
@@ -1557,7 +1510,7 @@ function deepMerge(base, override) {
 function readJson2(path) {
   if (!existsSync11(path)) return void 0;
   try {
-    const parsed = JSON.parse(readFileSync8(path, "utf8"));
+    const parsed = JSON.parse(readFileSync7(path, "utf8"));
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
   } catch {
     return void 0;
@@ -1827,7 +1780,7 @@ function number2(value) {
 
 // domain/validation-evidence.ts
 import { createHash as createHash2 } from "node:crypto";
-import { readFileSync as readFileSync9, realpathSync as realpathSync5 } from "node:fs";
+import { readFileSync as readFileSync8, realpathSync as realpathSync5 } from "node:fs";
 function evidenceSegment(repo, component, check) {
   return "validation_results/" + createHash2("sha256").update(`${realpathSync5(repo)}\0${component}\0${check}`).digest("hex");
 }
@@ -1839,31 +1792,54 @@ function fullEvidence(repo, component, check, reference2) {
   const segment = evidenceSegment(repo, component, check);
   if (ref.evidence !== segment) return void 0;
   const record = loadSegment(repo, segment) ?? {};
-  const identity2 = object3(record.identity);
-  if (record.status !== "passed" || identity2.version !== 3 || identity2.checkout !== realpathSync5(repo) || identity2.component !== component || identity2.check !== check || identity2.scope !== "full" || typeof identity2.fingerprint !== "string" || !identity2.fingerprint || typeof identity2.snapshot !== "string" || !identity2.snapshot || typeof record.checked_at !== "number" || record.checked_at !== ref.checked_at) return void 0;
-  return record;
+  const report = object3(record.report);
+  if (record.eligible !== true || report.schemaVersion !== 1 || report.inputsConsistent !== true || report.checkout !== realpathSync5(repo) || typeof report.snapshot !== "string" || !report.snapshot || typeof record.checked_at !== "string" || record.checked_at !== ref.checked_at) return void 0;
+  for (const raw of Array.isArray(report.components) ? report.components : []) {
+    const group = object3(raw);
+    if (object3(group.component).root !== component) continue;
+    for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
+      const result = object3(rawCheck);
+      if (result.check === check && result.scope === "full" && result.status === "passed" && result.checkedAt === record.checked_at) return record;
+    }
+  }
+  return void 0;
 }
 function fullProjection(repo, branch, check) {
   const refs = loadSegment(repo, branchSegment(branch, check)) ?? {};
   return Object.fromEntries(Object.entries(refs).flatMap(([component, reference2]) => {
     const record = fullEvidence(repo, component, check, reference2);
-    return record ? [[component, { passed_at: record.checked_at ?? null, fingerprint: object3(record.identity).snapshot ?? null }]] : [];
+    return record ? [[component, { passed_at: Date.parse(String(record.checked_at)) / 1e3, fingerprint: object3(record.report).snapshot ?? null }]] : [];
   }));
 }
-function reusableFullEvidence(record, fingerprint, command2) {
+function reusableFullEvidence(record, fingerprint) {
   if (!record || !fingerprint) return false;
-  const identity2 = object3(record.identity);
-  const environmentHash = environmentIdentity();
-  if (identity2.environment !== environmentHash || identity2.snapshot !== fingerprint || JSON.stringify(identity2.command) !== JSON.stringify(command2) || !Array.isArray(identity2.dependencies)) return false;
+  const report = object3(record.report);
+  if (report.snapshot !== fingerprint) return false;
   try {
-    return identity2.dependencies.every((input) => Array.isArray(input) && input.length === 2 && typeof input[0] === "string" && typeof input[1] === "string" && createHash2("sha256").update(readFileSync9(input[0])).digest("hex") === input[1]);
+    return (Array.isArray(report.components) ? report.components : []).every((raw) => {
+      const group = object3(raw);
+      return (Array.isArray(group.checks) ? group.checks : []).every((rawCheck) => {
+        const check = object3(rawCheck);
+        if (object3(check.inputs).disableReuse === true) return false;
+        return Object.entries(object3(check.witnesses)).every(([path, digest]) => createHash2("sha256").update(readFileSync8(path)).digest("hex") === digest);
+      });
+    });
   } catch {
     return false;
   }
 }
-function environmentIdentity(values = process.env) {
-  const pairs = Object.entries(values).filter(([key, value]) => value !== void 0 && !["_", "SHLVL", "PWD", "OLDPWD"].includes(key)).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
-  return createHash2("sha256").update(JSON.stringify(pairs)).digest("hex");
+function observedCheck(repo, component, check) {
+  const report = object3((loadSegment(repo, evidenceSegment(repo, component, check)) ?? {}).report);
+  if (report.schemaVersion !== 1 || report.checkout !== realpathSync5(repo)) return void 0;
+  for (const raw of Array.isArray(report.components) ? report.components : []) {
+    const group = object3(raw);
+    if (object3(group.component).root !== component) continue;
+    for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
+      const result = object3(rawCheck);
+      if (result.check === check) return result;
+    }
+  }
+  return void 0;
 }
 
 // domain/board/model.ts
@@ -1943,8 +1919,8 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   let unavailableTestComponents = [];
   try {
     const catalog = await inspectCatalog(repo);
-    unavailableLintComponents = catalog.components.filter((item) => !item.lintTarget()).map((item) => item.id);
-    unavailableTestComponents = catalog.components.filter((item) => !item.testTarget()).map((item) => item.id);
+    unavailableLintComponents = catalog.components.filter((item) => observedCheck(repo, item.id, "lint")?.status === "unavailable").map((item) => item.id);
+    unavailableTestComponents = catalog.components.filter((item) => observedCheck(repo, item.id, "test")?.status === "unavailable").map((item) => item.id);
     if (catalog.components.length > 0) component = catalog.default();
   } catch (error) {
     if (!(error instanceof InspectionError)) throw error;
@@ -2417,7 +2393,7 @@ var PolicyContext = class _PolicyContext {
 };
 
 // hooks/rules/index.ts
-import { existsSync as existsSync13, readFileSync as readFileSync10 } from "node:fs";
+import { existsSync as existsSync13, readFileSync as readFileSync9 } from "node:fs";
 import { basename as basename8, dirname as dirname11, extname, join as join14, resolve as resolve11 } from "node:path";
 
 // domain/forge.ts
@@ -2644,7 +2620,7 @@ var pytestNaked = {
     const catalog = await context.catalog(repo);
     if (catalog.components.length === 0) return [];
     const component = enclosingComponent(runDirectory, catalog);
-    return component.hasTarget("test", true) ? finding("pytest-naked", `Use the project's canonical test target: cd ${component.path} && make test`, commandLine(value)) : [];
+    return observedCheck(repo, component.id, "test")?.scope === "full" ? finding("pytest-naked", `Use repocli test --repo ${repo} --component ${component.id} to run the project test contract`, commandLine(value)) : [];
   }
 };
 var PROJECT_COMMANDS = {
@@ -2751,10 +2727,9 @@ var precommitGate = {
     const required = selectComponents(repo, { catalog }).components;
     const fingerprint = required.length ? await componentFingerprint(repo, required[0], catalog) : void 0;
     const stale2 = required.flatMap((component) => {
-      if (!component.lintTarget()) return [`  ${component.id}: lint entrypoint unavailable.`];
       const evidence = fullEvidence(repo, component.id, "lint", lint[component.id]);
       if (!evidence) return [`  ${component.id}: lint has no full-check evidence for this branch.`];
-      return reusableFullEvidence(evidence, fingerprint, ["make", component.lintTarget(), "LINT_FILES="]) ? [] : [`  ${component.id}: contents, command or dependency environment require validation.`];
+      return reusableFullEvidence(evidence, fingerprint) ? [] : [`  ${component.id}: contents, command or dependency environment require validation.`];
     });
     const unstaged = runGit(repo, ["diff", "--quiet", "--ignore-submodules=dirty"]);
     const untracked = runGit(repo, ["ls-files", "--others", "--exclude-standard"]);
@@ -2776,7 +2751,7 @@ function resultingText(target) {
   if (typeof input.file_text === "string") return input.file_text;
   let current;
   try {
-    current = readFileSync10(target.path, "utf8");
+    current = readFileSync9(target.path, "utf8");
   } catch {
     current = "";
   }
@@ -3085,7 +3060,7 @@ var claudeProcessAdapter = {
 // hooks/runtime.ts
 function readPayload() {
   try {
-    const parsed = JSON.parse(readFileSync11(0, "utf8") || "{}");
+    const parsed = JSON.parse(readFileSync10(0, "utf8") || "{}");
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};

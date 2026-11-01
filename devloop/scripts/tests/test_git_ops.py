@@ -371,19 +371,6 @@ def test_version_bump_mix_hint():
     sgo.warn_mixed_version_bump(R, plan)
     assert plan == []
 
-def test_component_lint_target():
-    """lint 戳记对齐 CI 入口:有 lint-ci(通常 uv sync 锁定工具链)优先于 lint,
-    消灭'本地 lint 绿、CI lint-ci 红'的版本漂移。目标选择是 component 自己的事实（Component.lint_target）。"""
-    from domain.repo_layout import Component
-    D = "/tmp/dlut_lint"
-    shutil.rmtree(D, ignore_errors=True); os.makedirs(D)
-    Path(f"{D}/Makefile").write_text("lint:\n\ttrue\n")
-    assert Component.at(D, D).lint_target() == "lint"
-    Path(f"{D}/Makefile").write_text("lint:\n\ttrue\nlint-ci:\n\ttrue\n")
-    assert Component.at(D, D).lint_target() == "lint-ci"
-    Path(f"{D}/Makefile").write_text("test:\n\ttrue\n")
-    assert Component.at(D, D).lint_target() is None
-
 def test_message_file_and_stdin_input():
     """Commit message via --message-file (path) or -F - (stdin) — the shell-escaping-free path
     for multi-line / quote-heavy messages (mirrors git -F / gh --body-file). Content round-trips

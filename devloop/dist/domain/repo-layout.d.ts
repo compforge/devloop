@@ -9,15 +9,6 @@ export declare class Component {
     private constructor();
     static at(pathValue: string, gitRoot: string): Component;
     static fromInfo(root: string, info: ComponentBinding): Component;
-    hasTarget(name: string, suffix?: boolean): boolean;
-    lintTarget(): string | undefined;
-    testTarget(): string | undefined;
-    testCommand(): readonly string[] | undefined;
-    supportsLintFiles(): boolean;
-    supportsTestFiles(): boolean;
-    private makefileUses;
-    focusedLintCommand(files: readonly string[], target?: string | undefined): readonly string[] | undefined;
-    focusedTestCommand(files: readonly string[]): readonly string[] | undefined;
 }
 export declare function findGitRoot(path: string): string | undefined;
 export declare function isGitRepository(path: string): boolean;

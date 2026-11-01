@@ -82,8 +82,8 @@ stable Component content
    └─ behavior:       make test
 ```
 
-- `make fix` 是可选的 normalize 步骤，也是唯一允许自动改写源码的验证命令；缺失时不阻断验证，但会提示项目补充统一入口。
-- normalize 完成后，lint 与 test 可以并发执行。
+- `make fix` 是可选的 normalize 步骤，也是唯一允许自动改写源码的验证命令；缺失时不阻断后续检查，结果明确记录为 unavailable。
+- repocli 在 fix 完成后重新规划，lint 与 test 可以有界并发执行。
 - 完整验证同时检查静态质量和行为；单独要求 lint 或 test 属于部分验证，devloop 会分别报告结果。
 - lifecycle 中 lint 失败会阻止 commit/MR；test 失败目前只提示、不阻塞，因为坏测可能来自基线或环境，是否与本次 diff 相关仍需 CI 或人判断。
 

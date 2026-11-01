@@ -1,24 +1,23 @@
-"""Validation planning owns repocli consumption; the CLI remains a neutral analyzer.
+"""Development workflow over repocli's validation commands.
 
-One immutable plan is shared by all checks in a transaction. Analysis failures
-select canonical full commands; check failures never cause an analysis retry.
+Repocli owns plans, execution and reuse. This adapter owns preparation policy,
+branch association, report storage and lifecycle gate decisions.
 """
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+import json
 import subprocess
+import tempfile
 import time
 
-from domain import repo as repo_model
-from domain.validation_inputs import CheckInputs, check_inputs, input_policy
-from domain.repo_layout import Catalog, Component, inspect_catalog
-from domain.context.store import branch_segment, save_segment
-from lib import git_state, repocli
 from repocli import snapshot
-
-
-VALIDATION_TAGS = frozenset({"source", "test", "config", "manifest", "lockfile"})
+from domain.context.store import branch_segment, load_segment, save_segment
+from domain.repo_layout import Catalog, inspect_catalog
+from domain.lifecycle.base import HookResult
+from domain.validation_evidence import evidence_segment, bind_full
+from lib import config, dependencies, git_state, repocli
 
 
 @dataclass(frozen=True)
@@ -29,271 +28,173 @@ class Comparison:
 
 
 @dataclass(frozen=True)
-class Selection:
-    files: tuple[str, ...] = ()  # Component relative; empty defaults to full unless skipped.
-    reason: str = ""
-    explicit: bool = False
-    skipped: bool = False
-
-    @property
-    def scope(self) -> str:
-        if self.skipped:
-            return "skipped"
-        return "explicit" if self.explicit else ("focused" if self.files else "full")
-
-
-@dataclass(frozen=True)
-class CheckPlan:
-    selection: Selection
-    inputs: CheckInputs
-    command: tuple[str, ...] | None
-
-
-def planned_check(component: Component, name: str, selection: Selection,
-                  inputs: CheckInputs, extra: tuple[str, ...] = ()) -> CheckPlan:
-    """Freeze the executable command with its selected coverage and reuse inputs."""
-    if selection.skipped:
-        return CheckPlan(selection, inputs, None)
-    if name == "lint":
-        target = component.lint_target()
-        command = (component.focused_lint_command(list(selection.files)) or
-                   ("make", target, "LINT_FILES=")) if target else None
-    else:
-        command = component.test_command()
-        if command:
-            command = ((*command, *extra) if extra else
-                       component.focused_test_command(list(selection.files)) or (*command, "TEST_FILES="))
-    return CheckPlan(selection, inputs, command)
-
-
-@dataclass(frozen=True)
-class ComponentPlan:
-    component: Component
-    impact: repocli.ImpactSummary | None
-    checks: dict[str, CheckPlan]
-
-
-@dataclass(frozen=True)
-class Plan:
-    workset: repo_model.WorkSet
-    components: tuple[ComponentPlan, ...] = ()
-    snapshot: str = ""
-    comparison: Comparison = Comparison()
-    execution_identity: str = ""
-    identity_problem: str = ""
-    component_impacts: tuple[dict, ...] = ()  # Includes before-side evidence with no execution target.
-    input_policy: str = ""
-    unowned: repocli.ImpactSummary | None = None
-
-    def check(self, component: Component, check: str) -> CheckPlan:
-        return next(item for item in self.components if item.component.id == component.id).checks[check]
-
-    def selection(self, component: Component, check: str) -> Selection:
-        return self.check(component, check).selection
-
-    @property
-    def selections(self) -> dict[tuple[str, str], Selection]:
-        return {(item.component.id, name): check.selection
-                for item in self.components for name, check in item.checks.items()}
-
-    @property
-    def inputs(self) -> dict[tuple[str, str], CheckInputs]:
-        return {(item.component.id, name): check.inputs
-                for item in self.components for name, check in item.checks.items()}
-
-
-@dataclass(frozen=True)
 class ContentIdentity:
     digest: str = ""
     problem: str = ""
 
 
 def content_identity(repo: str) -> ContentIdentity:
-    """Native repocli content identity; unavailable inputs never authorize a stamp."""
     try:
         observed = snapshot(repo)
-        if not observed.complete:
-            return ContentIdentity(problem="; ".join(observed.diagnostics))
-        return ContentIdentity(digest=observed.digest)
+        return ContentIdentity(digest=observed.digest) if observed.complete else ContentIdentity(problem="; ".join(observed.diagnostics))
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         return ContentIdentity(problem=str(exc))
 
 
-
-def _relative_files(root: Path, component: Component, paths: list[str]) -> tuple[str, ...]:
-    """Selected files must be runnable inside the owning Makefile's checkout boundary."""
-    files = []
-    for path in dict.fromkeys(paths):
-        absolute = root / path
-        if not absolute.is_file() or absolute.is_symlink():
-            raise ValueError("selected input is deleted or not a regular file")
-        if not absolute.resolve().is_relative_to(root.resolve()):
-            raise ValueError("selected input escapes checkout")
-        files.append(absolute.relative_to(component.path).as_posix())
-    return tuple(files)
+@dataclass(frozen=True)
+class ValidationOutcome:
+    results: tuple[HookResult, ...]
+    execution_identity: str = ""
 
 
-def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | None = None,
-               full: bool = False, explicit: bool = False,
-               comparison: Comparison | None = None,
-               test_extra: list[str] | None = None,
-               checks: tuple[str, ...] = ("lint", "test")) -> Plan:
-    """Analyze once after normalization, including dependencies outside dirty owners.
+def _policy(repo: str) -> dict:
+    value = config.load(repo).get("validation", {})
+    if not isinstance(value, dict) or not isinstance(value.get("inputs", {}), dict):
+        raise ValueError("validation.inputs must be a Component/check mapping")
+    return value
 
-    +spec=`Automatic checks require a positive source/test/config/manifest/lockfile tag count; other tags and analysis gaps do not trigger checks`
-    +spec=`Unsupported impact schemas or missing/invalid affectedFileCounts stop validation without compatibility fallback`
-    +spec=`Component selects the Makefile; affectedFiles/testFiles select check inputs`
-    +why=`An execution boundary is not a request for full coverage; focused passes retain focused evidence`
-    +spec=`Post-normalization Component metadata and impact come from one report; checks share that plan`
-    +link=component://docs/repository-toolkit.md
+
+def _inputs(repo: str, catalog: Catalog, policy: dict, names: tuple[str, ...]) -> dict:
+    declarations = policy.get("inputs", {})
+    result = {}
+    receipts = {unit.id: dependencies.reuse_inputs(unit.path) for unit in catalog.components}
+    for unit in catalog.components:
+        configured = declarations.get(unit.id, {})
+        if not isinstance(configured, dict):
+            raise ValueError(f"invalid validation.inputs for {unit.id}")
+        result[unit.id] = {}
+        for name in names:
+            declaration = dict(configured.get(name, {}))
+            if set(declaration) - {"components", "paths"}:
+                raise ValueError(f"unknown input declaration fields for {unit.id}/{name}")
+            related = {unit.id, *declaration.get("components", [])}
+            if not related <= receipts.keys():
+                raise ValueError(f"unknown input Component for {unit.id}/{name}")
+            witnesses = {path for root in related for path, _ in receipts[root] or ()}
+            declaration["witnesses"] = sorted(witnesses)
+            declaration["disableReuse"] = any(receipts[root] is None for root in related)
+            result[unit.id][name] = declaration
+    return result
+
+
+def _previous(repo: str, catalog: Catalog, names: tuple[str, ...]) -> dict:
+    groups = []
+    for unit in catalog.components:
+        checks = []
+        binding = None
+        for name in names:
+            record = load_segment(repo, evidence_segment(repo, unit.id, name)) or {}
+            report = record.get("report", {})
+            if not record.get("eligible") or report.get("schemaVersion") != 1 or not report.get("inputsConsistent"):
+                continue
+            if report.get("checkout") != str(Path(repo).resolve()):
+                continue
+            for group in report.get("components", []):
+                if group["component"]["root"] == unit.id:
+                    binding = group["component"]
+                    checks.extend(check for check in group["checks"] if check["check"] == name)
+        if binding:
+            groups.append({"component": binding, "checks": checks})
+    return {"schemaVersion": 1, "checkout": str(Path(repo).resolve()), "inputsConsistent": True, "components": groups}
+
+
+def _record(repo: str, report: dict, eligible: bool, comparison: Comparison) -> None:
+    branch = git_state.get_current_branch(repo)
+    save_segment(repo, branch_segment(branch, "validation"), {"report": report, "eligible": eligible, "base": comparison.base, "head": comparison.head})
+    summaries = []
+    for group in report["components"]:
+        root = group["component"]["root"]
+        for check in group["checks"]:
+            summaries.append({"component": root, "check": check["check"], "scope": check["scope"],
+                              "reason": check["reason"], "files": check["files"], "command": check["command"],
+                              "reuse": check["reuseReason"]})
+            if check["status"] == "skipped":
+                continue
+            # Preserve the original result, including its original execution timestamp.
+            single = {**report, "components": [{**group, "checks": [check]}]}
+            record = {"report": single, "eligible": eligible, "checked_at": check["checkedAt"]}
+            save_segment(repo, evidence_segment(repo, root, check["check"]), record)
+            if eligible and check["status"] == "passed" and check["scope"] == "full":
+                bind_full(repo, [root], check["check"])
+    save_segment(repo, branch_segment(branch, "validation_scope"), {
+        "generated_at": time.time(), "base": comparison.base, "head": comparison.head,
+        "snapshot": report["snapshot"], "execution_identity": report["snapshot"] if eligible else "",
+        "component_impacts": (report.get("impact") or {}).get("components", []),
+        "unowned": (report.get("impact") or {}).get("unowned"),
+        "checks": summaries, "identity_problem": "" if eligible else "validation inputs changed",
+    })
+
+
+def _results(report: dict, names: tuple[str, ...], eligible: bool) -> tuple[HookResult, ...]:
+    results = []
+    preparation_failed = any(check["status"] not in {"passed", "skipped", "unavailable"}
+                             for group in report.get("preparation", []) for check in group["checks"])
+    for name in names:
+        checks = [(group["component"]["root"], check) for group in report["components"]
+                  for check in group["checks"] if check["check"] == name]
+        failed = not eligible or not report["complete"] or preparation_failed or any(check["status"] not in {"passed", "skipped", "unavailable"} for _, check in checks)
+        status = ("failed" if failed else "unavailable" if any(c["status"] == "unavailable" for _, c in checks)
+                  else "passed" if any(c["status"] == "passed" for _, c in checks) else "skipped")
+        lines = []
+        for root, check in checks:
+            reuse = "reused" if check["reused"] else check["status"]
+            lines.append(f"{root}: {name} {reuse} ({check['scope']}) — {check['reason']}; {check['reuseReason']}")
+            if check["status"] not in {"passed", "skipped", "unavailable"}:
+                lines.append("\n".join((check["stdout"] + check["stderr"]).splitlines()[-40:]))
+        lines.extend(report.get("diagnostics", []))
+        if preparation_failed:
+            lines.append("make fix failed; checks were not started")
+            lines.extend("\n".join((check["stdout"] + check["stderr"]).splitlines()[-40:])
+                         for group in report.get("preparation", []) for check in group["checks"]
+                         if check["status"] not in {"passed", "skipped", "unavailable"})
+        if not eligible:
+            lines.append("input consistency not established; no passing evidence recorded")
+        results.append(HookResult(name, ok=not failed, advisory=name == "test", status=status,
+                                  summary="; ".join(lines) or "no selected checks"))
+    return tuple(results)
+
+
+def run_validation(repo: str, *, names: tuple[str, ...] = ("lint", "test"),
+                   components: tuple[str, ...] | None = None, paths: list[str] | None = None,
+                   full: bool = False, comparison: Comparison | None = None,
+                   concurrency: int = 2, fix: bool = True) -> ValidationOutcome:
+    """One CLI round for all requested checks, shared by lifecycle and manual workflow.
+
+    +spec=`Repocli owns scope, command, fingerprints and reuse; devloop only supplies workflow context`
+    +spec=`Input inconsistency blocks lint even when unavailable checks are non-blocking`
+    +why=`Harness host environment is not the environment in which checks executed`
     """
     comparison = comparison or Comparison()
-    if workset.catalog is not None and not workset.catalog.components:
-        plan = Plan(repo_model.WorkSet((), "no recognized Components; validation not run"), comparison=comparison)
-        persist_plan(repo, plan)
-        return plan
-    requested = {unit.id for unit in workset.components} if explicit else None
-    reason = "explicit full Component validation" if full else comparison.reason
-    snapshot = ""
-    analysis_reason = "repocli automatic impact"
-    component_impacts: tuple[dict, ...] = ()
-    unowned = None
-    observed = content_identity(repo)
-    identity = observed.digest
-    if paths == [] and not (full or explicit or test_extra):
-        plan = Plan(repo_model.WorkSet((), "no changed paths"), comparison=comparison)
-        persist_plan(repo, plan)
-        return plan
-    if not reason:
-        argv = ["--base", comparison.base]
-        if comparison.head:
-            argv += ["--head", comparison.head]
+    if not full and not comparison.reason and comparison.base in {"HEAD", "HEAD^"} and not git_state.target_exists(repo, comparison.base):
+        comparison = Comparison(reason="initial history has no comparison revision; full checks")
+    if paths == [] and not full and components is None:
+        return ValidationOutcome(tuple(HookResult(name, True, status="skipped", advisory=name == "test", summary="no changed paths") for name in names))
+    catalog = inspect_catalog(repo)
+    for unit in catalog.components:
+        if components is not None and unit.id not in components:
+            continue
+        if problem := dependencies.preparation_problem(unit.path):
+            raise ValueError(f"{unit.id}: dependency preparation failed: {problem}")
+    policy = _policy(repo)
+    inputs = _inputs(repo, catalog, policy, names)
+    previous = _previous(repo, catalog, names)
+    args = ["--check", ",".join(("fix", *names) if fix else names), "--concurrency", str(concurrency)]
+    if components is not None:
+        if not components:
+            return ValidationOutcome(tuple(HookResult(name, True, status="skipped", advisory=name == "test", summary="no Components") for name in names))
+        for root in components:
+            args += ["--component", root]
+    if not full and not comparison.reason:
+        args += ["--base", comparison.base]
         for path in paths or []:
-            argv += ["--changed-file", path]
-        try:
-            # A commit report describes committed bytes. Dirty execution contents cannot
-            # inherit its focused scope, even if the dirty files are outside the seeds.
-            if comparison.head and repo_model.changed_paths(repo):
-                raise ValueError("working tree differs from committed analysis target")
-            data = repocli.read_report(repo, "impact", argv)
-            report = repocli.decode_impact(data, repo, "commit" if comparison.head else "working_tree")
-            diagnostics = report.diagnostics
-            # Gaps remain visible but do not override the validation tag whitelist.
-            if not report.complete or report.scope != "focused" or diagnostics:
-                codes = sorted({str(d.get("code", "analysis_gap")) for d in diagnostics})
-                detail = ": " + ", ".join(codes) if codes else ""
-                analysis_reason += " (partial analysis" + detail + ")"
-            snapshot = report.snapshot
-            if not identity or snapshot != identity or identity != content_identity(repo).digest:
-                raise ValueError("execution contents differ from analyzed snapshot")
-            unowned = report.unowned
-            component_impacts = report.components
-            inspection = Catalog.from_layout(repo, report.layout)
-            current = {item["root"]: item for item in component_impacts if item["snapshot"] == "after"}
-            units = tuple(unit for unit in inspection.components
-                          if (unit.id in requested if requested is not None else
-                              test_extra or current[unit.id]["affected"] or not current[unit.id]["complete"]
-                              or any(current[unit.id]["affectedFileCounts"].values())))
-        except repocli.ImpactProtocolError:
-            raise
-        except (OSError, subprocess.TimeoutExpired, ValueError, TypeError) as exc:
-            reason = f"repocli fallback: {exc}"
-    if reason:
-        # Fix may change manifests. Full/fallback checks observe the current catalog,
-        # never reuse the pre-normalization view as execution metadata.
-        inspection = inspect_catalog(repo)
-        units = tuple(unit for unit in inspection.components if requested is None or unit.id in requested)
-    selections = {}
-    for unit in units:
-        impact = next((item for item in component_impacts
-                       if item["root"] == unit.id and item["snapshot"] == "after"), None)
-        selection_reason = reason or analysis_reason + ("; explicit Component boundary" if explicit else "")
-        if impact and not reason:
-            counts = ", ".join(f"{tag}={count}" for tag, count in sorted(impact["affectedFileCounts"].items()))
-            selection_reason += "; affectedFileCounts: " + (counts or "{}")
-            if impact["affected"]:
-                selection_reason += "; affected Component"
-            elif not impact["complete"]:
-                selection_reason += "; unknown Component impact"
-            if gaps := impact.get("fallbackReasons", []):
-                selection_reason += "; " + "; ".join(gaps)
-        summary = repocli.decode_summary(impact) if impact and not reason else None
-        for check in checks:
-            if check == "test" and test_extra:
-                explicit_full = unit.supports_test_files() and all(
-                    arg.startswith("TEST_FILES=") and not arg.partition("=")[2].strip()
-                    for arg in test_extra)
-                selections[(unit.id, check)] = Selection(reason="caller supplied test arguments", explicit=not explicit_full)
-            elif not reason and not explicit and impact is not None and not any(
-                    impact["affectedFileCounts"].get(tag, 0) > 0 for tag in VALIDATION_TAGS):
-                selections[(unit.id, check)] = Selection(
-                    skipped=True, reason=selection_reason + "; validation tag whitelist not matched")
-            else:
-                files: tuple[str, ...] = ()
-                check_reason = selection_reason
-                if not reason:
-                    try:
-                        owned = summary.affected_files if check == "lint" else summary.test_files
-                        for path in owned:
-                            owner = inspection.owner(inspection.root / path)
-                            if owner is None or owner.id != unit.id:
-                                raise ValueError("before-side file no longer belongs to this Component")
-                        files = _relative_files(inspection.root, unit, owned)
-                        command = (unit.focused_lint_command(list(files)) if check == "lint"
-                                   else unit.focused_test_command(list(files)))
-                        if not command:
-                            detail = (f"no returned {check} files in selected Component" if not files
-                                      else "project file-list contract missing or paths not representable")
-                            check_reason += f"; {detail}; canonical full check"
-                            files = ()
-                    except ValueError as exc:
-                        check_reason += f"; {exc}; canonical full check"
-                        files = ()
-                selections[(unit.id, check)] = Selection(files=files, reason=check_reason)
-    if reason:
-        observed = content_identity(repo)
-    selection_summary = reason or ("tag-based Component validation" if units else
-                                   "repocli found no affected Components")
-    policy = input_policy(repo)
-    identities = check_inputs(repo, inspection, tuple(key for key, value in selections.items() if not value.skipped),
-                              observed.digest, policy)
-    groups = tuple(ComponentPlan(unit,
-                   next((repocli.decode_summary(item) for item in component_impacts
-                         if item["root"] == unit.id and item["snapshot"] == "after"), None),
-                   {check: planned_check(unit, check, selections[(unit.id, check)],
-                                    identities.get((unit.id, check), CheckInputs("", "not selected")),
-                                    tuple(test_extra or ()) if check == "test" else ())
-                    for check in checks}) for unit in units)
-    plan = Plan(repo_model.WorkSet(units, selection_summary), groups,
-                snapshot, comparison, observed.digest, observed.problem, component_impacts, policy, unowned)
-    persist_plan(repo, plan)
-    return plan
-
-
-def persist_plan(repo: str, plan: Plan) -> None:
-    payload = {
-        "generated_at": time.time(), "base": plan.comparison.base, "head": plan.comparison.head,
-        "snapshot": plan.snapshot,
-        "component_impacts": list(plan.component_impacts),
-        "unowned": asdict(plan.unowned) if plan.unowned else None,
-        "execution_identity": plan.execution_identity, "identity_problem": plan.identity_problem,
-        "checks": [{"component": item.component.id, "check": name, "scope": check.selection.scope,
-                    "reason": check.selection.reason, "files": list(check.selection.files),
-                    "command": check.command, "reuse": check.inputs.reason}
-                   for item in plan.components for name, check in item.checks.items()],
-    }
-    # A failed identity lookup is not detached HEAD. Keep the previous display
-    # record rather than attribute this plan to the wrong branch; checks still run.
-    try:
-        branch = git_state.get_current_branch(repo)
-    except OSError as exc:
-        print(f"[validate] validation scope not recorded: {exc}", flush=True)
-    else:
-        save_segment(repo, branch_segment(branch, "validation_scope"), payload)
-    if plan.unowned and (plan.unowned.affected or not plan.unowned.complete):
-        print(f"[validate] unowned: counts={plan.unowned.counts}; complete={plan.unowned.complete}; "
-              "no Component execution target", flush=True)
-    if plan.identity_problem:
-        print(f"[validate] snapshot unavailable — {plan.identity_problem}; checks may run, results cannot be stamped", flush=True)
-    for item in payload["checks"]:
-        print(f"[validate] {item['check']} {item['component']}: scope={item['scope']} — {item['reason']}; reuse: {item['reuse']}", flush=True)
+            args += ["--changed-file", path]
+    with tempfile.TemporaryDirectory(prefix="devloop-validation-") as temporary:
+        inputs_path, previous_path = Path(temporary) / "inputs.json", Path(temporary) / "previous.json"
+        inputs_path.write_text(json.dumps(inputs))
+        previous_path.write_text(json.dumps(previous))
+        args += ["--inputs", str(inputs_path), "--reuse", str(previous_path)]
+        print(f"[validate] repocli: checks={','.join(names)}, concurrency={concurrency}, base={comparison.reason or (comparison.base if not full else 'full')}", flush=True)
+        report = repocli.validation_report(repo, args)
+    eligible = report["inputsConsistent"] and policy == _policy(repo)
+    _record(repo, report, eligible, comparison)
+    return ValidationOutcome(_results(report, names, eligible), report["snapshot"] if eligible else "")

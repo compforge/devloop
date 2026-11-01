@@ -20,14 +20,6 @@ _BUILTIN: dict[str, str] = {
     "review": "domain.lifecycle.review:review",   # signal hook：后台审全量改动、写 review.json + 有开放 MR 时发评论（挂哪相位由 config 决定）
 }
 
-# check → preparation handler。与 _BUILTIN 一样只存惰性调用规格；dispatch 负责按依赖顺序执行，
-# 不理解 normalize/fix 的业务含义。多个 check 将来可各自声明 preparation，而无需给机制加分支。
-_PREPARER: dict[str, str] = {
-    "lint": "domain.lifecycle.checks:normalize",
-    "test": "domain.lifecycle.checks:normalize",
-}
-
-
 @dataclass(frozen=True)
 class BackgroundSpec:
     """signal hook 的下游：一条跑到后台的命令。
@@ -107,15 +99,6 @@ def resolve_handler(name: str) -> Callable[..., HookResult] | None:
     return getattr(import_module(mod), fn)
 
 
-def resolve_preparer(name: str) -> Callable[..., HookResult] | None:
-    """check name → preparation handler；没有顺序依赖时返回 None。"""
-    spec = _PREPARER.get(name)
-    if not spec:
-        return None
-    mod, fn = spec.split(":", 1)
-    return getattr(import_module(mod), fn)
-
-
 def dispatch(
     phase: str,
     repo: str,
@@ -153,87 +136,29 @@ def dispatch(
     if not names:
         return DispatchResult(phase=phase, results=[])
 
-    preparation_failures: dict[str, HookResult] = {}
-    preparation_guidance: dict[str, tuple[str, ...]] = {}
-    workset = None
-    if registry is None and any(name in ("lint", "test") for name in names):
-        from domain import repo as repo_model
-        from lib.repocli import InspectionError
+    validation = {}
+    identity = ""
+    check_names = tuple(dict.fromkeys(name for name in names if name in ("lint", "test")))
+    if registry is None and check_names:
+        from domain.validation import run_validation
         try:
-            workset = repo_model.select_components(repo, paths=paths)
-        except InspectionError as exc:
-            for name in names:
-                if name in ("lint", "test"):
-                    preparation_failures[name] = HookResult(name, ok=False, summary=str(exc))
-    if registry is None:
-        # 真实内置 checks 先完成各自声明的 preparation，再进入并发区；测试注入 registry 不触盘。
-        prepared_handlers = {}
-        for name in names:
-            if name in preparation_failures:
-                continue
-            preparer = resolve_preparer(name)
-            if preparer is None:
-                continue
-            try:
-                if preparer not in prepared_handlers:
-                    prepared_handlers[preparer] = preparer(repo, paths=paths, workset=workset)
-                prepared = prepared_handlers[preparer]
-                if not prepared.ok:
-                    preparation_failures[name] = HookResult(
-                        name,
-                        ok=False,
-                        summary=prepared.summary,
-                        guidance=prepared.guidance,
-                    )
-                elif prepared.guidance:
-                    preparation_guidance[name] = prepared.guidance
-            except Exception as e:  # gate fail-closed
-                preparation_failures[name] = HookResult(name, ok=False, summary=f"preparation errored: {e}")
-
-    validation_plan = None
-    if workset is not None and any(name in ("lint", "test") and name not in preparation_failures for name in names):
-        from domain.validation import build_plan
-        from lib.repocli import ImpactProtocolError, InspectionError
-        try:
-            validation_plan = build_plan(repo, workset,
-                                         paths=paths, comparison=comparison,
-                                         checks=tuple(name for name in names if name in ("lint", "test")))
-        except (InspectionError, ImpactProtocolError) as exc:
-            for name in names:
-                if name in ("lint", "test"):
-                    preparation_failures[name] = HookResult(name, ok=False, summary=str(exc))
+            outcome = run_validation(repo, names=check_names, paths=paths, comparison=comparison, concurrency=max_workers)
+            validation = {result.name: result for result in outcome.results}
+            identity = outcome.execution_identity
+        except Exception as exc:
+            validation = {name: HookResult(name, False, advisory=name == "test", summary=f"validation failed: {exc}") for name in check_names}
 
     def _run(name: str) -> HookResult:
-        if name in preparation_failures:
-            return preparation_failures[name]
+        if name in validation:
+            return validation[name]
         handler = (registry or {}).get(name) or resolve_handler(name)
         if handler is None:
-            return HookResult(name=name, ok=False, summary=f"unknown lifecycle hook {name!r}")
+            return HookResult(name, False, summary=f"unknown lifecycle hook {name!r}")
         try:
-            # `paths=` 按**关键字**传：handler 各自决定把它声明成位置参数（`review`）还是
-            # keyword-only（`lint`/`test` 把它放在 `*,` 之后，与 capture/component 同列）。位置传在
-            # 后者上炸 TypeError，而 gate 的 fail-closed 会把异常收敛成 ok=False——那不是崩，
-            # 是**静默挡掉每一次 commit**。契约规定的是参数名，不是它的位置。
-            if validation_plan is not None and name in ("lint", "test"):
-                result = handler(repo, paths=paths, plan=validation_plan)
-            else:
-                result = handler(repo, paths=paths)
-            guidance = preparation_guidance.get(name, ())
-            if not guidance:
-                return result
-            return HookResult(
-                name=result.name,
-                ok=result.ok,
-                status=result.status,
-                summary=result.summary,
-                relay=result.relay,
-                advisory=result.advisory,
-                guidance=(*guidance, *result.guidance),
-            )
-        except Exception as e:  # gate fail-closed
-            return HookResult(name=name, ok=False, summary=f"{name} errored: {e}")
+            return handler(repo, paths=paths)
+        except Exception as exc:
+            return HookResult(name, False, summary=f"{name} errored: {exc}")
 
-    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(names)))) as ex:
-        results = list(ex.map(_run, names))   # ex.map 保序，结果与 names 对齐
-    return DispatchResult(phase=phase, results=results,
-                          execution_identity=validation_plan.execution_identity if validation_plan else "")
+    with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(names)))) as executor:
+        results = list(executor.map(_run, names))
+    return DispatchResult(phase=phase, results=results, execution_identity=identity)

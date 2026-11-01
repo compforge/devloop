@@ -9,7 +9,7 @@ verdict 形状相同——都是「在某个 git 生命周期相位触发的一�
 包内分工：
 - `base.py`  —— facade 核心：`dispatch` + `HookResult` / `BackgroundSpec` / `DispatchResult`
   + 内置 hook 注册表。纯机制。
-- `checks.py` —— Component normalize + 内置 `lint` / `test` checks，与 validate skill 共用同一段
+- `checks.py` —— 内置 lint/test 策略，执行委托 domain.validation 与 repocli CLI
   逻辑、同处盖 `.devloop` validation 戳（单一事实源，不漂移）。
 - （MR2）`review.py` —— code-review 的 signal handler，返回带 `relay` 的 HookResult。
 

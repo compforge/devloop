@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import subprocess
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -10,14 +11,14 @@ sys.path.insert(0, str(HERE.parent))
 
 from domain import repo as repo_model  # noqa: E402
 from domain.context import record_active_repo  # noqa: E402
-from domain.lifecycle import checks  # noqa: E402
-from lib import cli, repocli  # noqa: E402
+from domain.validation import run_validation  # noqa: E402
+from lib import cli  # noqa: E402
 
 
 def main(argv: list[str]) -> int:
     try:
         return _run(argv)
-    except (repocli.InspectionError, repocli.ImpactProtocolError) as exc:
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         print(f"run_validate: {exc}", file=sys.stderr)
         return 1
 
@@ -29,6 +30,7 @@ def _run(argv: list[str]) -> int:
     )
     cli.add_repo_arg(ap)
     ap.add_argument("--full", action="store_true", help="bypass impact selection and validate all requested Components")
+    ap.add_argument("--check", choices=("lint", "test"), action="append", help="requested checks; default both")
     ns = ap.parse_args(argv)
     resolved, how = cli.resolve_repo_or_exit(ns, "run_validate")
     repo = resolved.git_root
@@ -39,8 +41,10 @@ def _run(argv: list[str]) -> int:
     print(f"run_validate: components = {names}  [{workset.reason}]")
     record_active_repo(repo)
 
-    results = checks.validate_components(repo, workset, full=ns.full,
-        explicit=bool(resolved.target_path and Path(resolved.target_path).resolve() != Path(repo).resolve()))
+    explicit = bool(resolved.target_path and Path(resolved.target_path).resolve() != Path(repo).resolve())
+    outcome = run_validation(repo, names=tuple(ns.check or ("lint", "test")), full=ns.full,
+                             components=tuple(unit.id for unit in workset.components) if explicit else None)
+    results = outcome.results
     for result in results:
         print(({"passed": "✓ ", "failed": "✗ ", "skipped": "− ", "unavailable": "? "}[result.status]) + result.summary)
         for guidance in result.guidance:

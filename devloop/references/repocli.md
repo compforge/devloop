@@ -26,13 +26,12 @@ these describe static associations, not runtime probabilities.
 `inspect` supplies the Component catalog, language and package-tool metadata.
 TypeScript uses `@compforge/repocli`; Python uses `compforge-repocli`. Both call native
 `inspect` and `owner`, sharing the toolkit contract rather than the CLI JSON protocol.
-Devloop retains execution containment, command selection, dependency preparation timing,
+Devloop retains workflow boundaries, dependency preparation timing,
 validation gates and stamps.
 
 Each TypeScript policy operation shares one inspection promise per checkout, including in-flight
 work and rejection. Python preparation passes one explicit catalog through the operation.
-After normalization, validation consumes the Component metadata returned by `impact` and
-shares that plan with lint/test, without another inspection or a cross-catalog comparison.
+Validation planning and Makefile execution are owned by the Go CLI.
 A new operation observes fresh metadata; `owner` includes
 deleted paths. Discovery prefers manifests, then Makefiles with unknown language. No
 repocli-specific repository configuration is needed. Fixture manifests such as
@@ -47,45 +46,15 @@ state is still displayed. Environment preparation reports an inspection warning.
 
 ## Validation
 
-Normally call `run_validate.py`, `run_lint.py`, or `run_tests.py` without file lists.
-Do not have the agent guess `TEST_FILES` or `LINT_FILES`, and do not pass empty file
-arguments as boilerplate. The workflow normalizes first and calls repocli once per
-transaction. General `impact` analysis, without `--test-dir`, reports affected Components,
-including downstream Components that have no discovered tests. `--test-dir` narrows the
-analysis around test candidates and is not the mode for Component selection.
+Use `repocli fix/lint/test` independently or `repocli validate --check fix,lint,test`
+for a combined round. `--base` selects impact-based checks; without it selected
+Components run full checks. `--plan` is read-only. The Go toolkit owns Makefile
+parsing, plans, bounded execution, Component/check fingerprints and result reuse.
 
-Devloop consumes `components.affectedFileCounts` directly. Automatic lint/test execute only when at least
-one of `source`, `test`, `config`, `manifest`, or `lockfile` has a positive count. Other tags,
-including `documentation`, `version`, `unknown`, `resource`, and future tags, do not trigger checks.
-Tags overlap: `config + documentation` executes. Counts include known dependency reachability,
-so documentation reaching source can select that source Component. `affected`, `complete` and
-diagnostics remain visible; they do not independently trigger execution. Skipped checks retain
-their reasons and counts and do not prepare check dependencies, run check targets or write stamps.
-Normalization still precedes impact planning; this policy selects lint/test, not `make fix`.
-Before-only records retain deleted/previous ownership as evidence, but are not current execution directories. Explicitly targeting a Component retains that boundary.
-Component selection chooses the owning Makefile, not full coverage. Inside each selected Component,
-`affectedFiles` supplies `LINT_FILES` and `testFiles` supplies `TEST_FILES`, mapped through the same report's current
-Component catalog and made Component-relative. A project must consume the corresponding variable;
-unsupported contracts, deleted/unsafe paths, or an empty list for a selected Component run that check
-in full. A valid partial report can still supply focused inputs; diagnostics remain visible and a
-focused pass never claims full coverage. The impact report supplies execution metadata and ownership; devloop
-does not infer dependencies from paths or independently rediscover Components to cross-check it.
-
-The pre-commit input is the working tree restricted to intended changed paths;
-post-commit uses `HEAD^` versus `HEAD`; MR checks use target merge-base versus `HEAD`.
-The current schema and valid `affectedFileCounts` are required (repocli CLI 0.39.0+). An unsupported
-schema or missing/malformed `affectedFileCounts` stops validation with an error; historical contracts are not supported.
-If execution contents differ from the analyzed snapshot, or the report is otherwise unavailable or invalid,
-validation performs a fresh inspection after normalization and falls back to all current Components (or the explicit Component). Diagnostics and per-Component gaps remain visible on Board.
-Local extraction observations do not independently expand selection. Check failures stay failures
-and never trigger a second run under the label of analysis fallback.
-
-`--full` bypasses impact selection and validates all requested Components. A valid selection with
-no positive execution-tag counts skips checks without stamps. This is a static-analysis result,
-not proof of runtime independence. Full checks clear inherited file-list variables and can stamp
-successful Component checks. Explicit arguments after `--` remain an advanced override: target one
-Component and report the scope accurately. Narrowed runs never grant a full Component stamp;
-passing only `TEST_FILES=` under the project's Make contract requests the full suite.
+Devloop submits phase baselines and changed-file seeds, prepares dependencies and
+provides input declarations/receipt paths. `run_validate.py` and lifecycle dispatch
+share one adapter; ordinary AI checks can call the CLI directly. See
+[validation](../skills/validate/SKILL.md) and [repository-toolkit](../docs/repository-toolkit.md).
 
 ## Installation and compatibility
 
@@ -111,43 +80,23 @@ lockfile in both Git and the npm package.
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repocli/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
 `PATH`. `DEVLOOP_REPOCLI=/absolute/path/repocli` selects another installed binary for
-Python diff analysis; organization inspection does not use this setting.
+Python validation workflows and diff analysis; native organization inspection does not use this setting.
 No validation workflow downloads, upgrades or compiles the repocli CLI.
 
-Use repocli CLI 0.39.0 or later for manifest/Makefile Component discovery and the shared
-content-identity contract (impact schema 4). The installed CLI is not pinned to a devloop release;
-newer compatible releases are accepted. CLI and library versions are independent.
+Use repocli CLI 0.44.0 or later with fix/lint/test composition and ValidationReport
+schema 1. The Python native toolkit remains independently locked for repository,
+Git/Forge and dependency operations. Validation never downloads or builds the CLI.
 
 On CLI versions providing self-upgrade, use `repocli upgrade --check` (or add `--json`)
 to discover updates and `repocli upgrade` to install the latest stable release.
 Older installations can bootstrap from GitHub releases. Package-manager-owned
 installations should use that package manager's upgrade command. Updating the CLI
 does not update the TypeScript/Python libraries or their lockfiles.
-Impact supplies the complete current Component catalog alongside valid impact flags and file lists;
-validation requires a matching snapshot identity and verifies execution-path containment. Dependency analysis may be incomplete. An unsupported
-diff schema falls back to full checks and reports the required version.
-The content digest identifies observed input, not an atomic filesystem snapshot or
-proof of test coverage. Repocli diagnostics remain static-analysis estimates.
-
 ## Execution identity and reporting
 
-Validation obtains content identity through the native toolkit, including captured
-internal symlinks and initialized submodules with dirty contents. The workflow does
-not reproduce the digest algorithm. Missing, invalid
-or incomplete snapshots permit full checks but never grant a validation stamp;
-the reason is shown separately from the check result. An initial complete identity
-must still match before and after execution.
-
-Selection/fallback reasons remain in the scope lines and Board. Check summaries
-report command outcomes; selection reasons appear as separate guidance so a full
-check failure is not presented as a repocli execution error. Snapshot completeness
-verifies captured input; dependency-analysis completeness describes blocking input,
-workset and repository-resolution gaps, while local observations retain extraction limits. A
-partial dependency report can select Components only while the input identity still matches.
-
-Repository operations and working-tree content identities use the native toolkit. Python workflows
-consume compforge-repocli; TypeScript hooks consume @compforge/repocli. Only impact analysis uses the
-Go CLI. Content identity is shared by validation execution and the commit gate.
-
-`repocli diff` is a standalone captured-change view; validation consumes `repocli impact`.
-Unit formation is a separate repository capability and is not part of devloop test selection.
+Keep the original ValidationReport, including scope, diagnostics, command outputs,
+inputsConsistent and per-check results. A nonzero check exit may still return a valid
+JSON report; protocol/launch failures remain errors. Repocli decides reuse eligibility.
+Devloop records branch evidence and checks it before committing; it does not rebuild
+command scope or hash the Harness environment. Repository snapshots used by Git
+staging still come from the native toolkit and share the CLI's content contract.

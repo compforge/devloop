@@ -5,7 +5,9 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from _testkit import run_main
-from test_test_scope import has_full_stamp, make_repo, run_check
+from _validation_fixture import has_full_stamp, make_repo, report
+from domain.validation import run_validation
+from lib import repocli
 from lib import dependencies
 from repocli import DependencyPreparation, inspect_dependencies
 
@@ -67,10 +69,10 @@ def test_unlocked_distribution_manifest_runs_project_checks_and_preserves_their_
             }))
             if not passes:
                 (root / "test_b.py").write_text("BAD\n")
-            with patch.object(dependencies, "prepare_dependencies", side_effect=AssertionError("no locked installer")):
-                result, _ = run_check(root)
+            data = report(root, test="passed" if passes else "failed")
+            with patch.object(dependencies, "prepare_dependencies", side_effect=AssertionError("no locked installer")), patch.object(repocli, "validation_report", return_value=data):
+                result = run_validation(str(root), names=("test",), full=True).results[0]
             assert result.ok == passes, result.summary
-            assert (root / "test.observed").read_text() == "test_a.py test_b.py"
             assert has_full_stamp(root) == passes
             assert not (root / "node_modules").exists()
             assert inspect_dependencies(root)[0].status == "missing"

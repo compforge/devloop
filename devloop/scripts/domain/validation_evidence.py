@@ -1,7 +1,8 @@
-"""Read full-check evidence and maintain branch references to the original run."""
+"""Branch references to original repocli check reports; never reimplement reuse."""
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from pathlib import Path
 
 from domain.context.store import branch_segment, load_segment, save_segment
@@ -18,21 +19,21 @@ def full_evidence(repo: str, component: str, check: str, reference: dict) -> dic
     if reference.get("evidence") != segment:
         return None
     record = load_segment(repo, segment) or {}
-    identity = record.get("identity") or {}
-    if not isinstance(identity, dict):
+    report = record.get("report", {})
+    if (not record.get("eligible") or report.get("schemaVersion") != 1
+            or not report.get("inputsConsistent") or report.get("checkout") != str(Path(repo).resolve())
+            or not report.get("snapshot") or record.get("checked_at") != reference.get("checked_at")):
         return None
-    if (record.get("status") != "passed" or identity.get("version") != 3
-            or identity.get("checkout") != str(Path(repo).resolve())
-            or identity.get("component") != component or identity.get("check") != check
-            or identity.get("scope") != "full" or not identity.get("fingerprint") or not identity.get("snapshot")
-            or not isinstance(record.get("checked_at"), (int, float))
-            or record.get("checked_at") != reference.get("checked_at")):
-        return None
-    return record
+    for group in report.get("components", []):
+        if group["component"]["root"] == component:
+            for result in group["checks"]:
+                if (result["check"] == check and result["scope"] == "full" and result["status"] == "passed"
+                        and result["checkedAt"] == record.get("checked_at")):
+                    return record
+    return None
 
 
 def bind_full(repo: str, components: list[str], check: str) -> None:
-    """Called by the check coordinator after workers join, including successful reuse."""
     segment = branch_segment(git_state.get_current_branch(repo), check)
     references = load_segment(repo, segment) or {}
     for component in components:
@@ -49,6 +50,6 @@ def full_projection(repo: str, branch: str | None, check: str) -> dict:
     result = {}
     for component, reference in references.items():
         if isinstance(reference, dict) and (record := full_evidence(repo, component, check, reference)):
-            result[component] = {"passed_at": record["checked_at"],
-                                 "fingerprint": record["identity"]["snapshot"]}
+            result[component] = {"passed_at": datetime.fromisoformat(record["checked_at"].replace("Z", "+00:00")).timestamp(),
+                                 "fingerprint": record["report"]["snapshot"]}
     return result

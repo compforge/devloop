@@ -17,7 +17,9 @@ from domain.lifecycle import checks
 from domain.lifecycle.base import HookResult, dispatch
 from domain.repo import WorkSet
 from domain.repo_layout import Component
-from domain.validation import Plan, Selection, content_identity
+from domain.validation import Plan, ComponentPlan, planned_check, Selection, content_identity
+from domain.validation_inputs import CheckInputs
+
 from domain.validation_result import CheckRun
 
 
@@ -25,7 +27,7 @@ def plan_for(repo, *, files=(), full=False):
     unit = Component.at(repo, repo)
     selection = Selection(files=() if full else files, reason="fixture")
     return unit, Plan(WorkSet((unit,), "fixture"),
-                     selections={(unit.id, check): selection for check in ("lint", "test")},
+                     components=(ComponentPlan(unit, None, {check: planned_check(unit, check, selection, CheckInputs(content_identity(str(repo)).digest, "fixture")) for check in ("lint", "test")}),),
                      execution_identity=content_identity(str(repo)).digest)
 
 
@@ -218,7 +220,7 @@ def test_shared_evidence_contract():
         repo = make_repo(root)
         segment = evidence_segment(str(repo), ".", "lint")
         for case in contract["cases"]:
-            identity = {"version": 2, "checkout": str(repo), "component": ".", "check": "lint",
+            identity = {"version": 3, "snapshot": "source", "checkout": str(repo), "component": ".", "check": "lint",
                         "scope": "full", "fingerprint": "source", **case["identity"]}
             save_segment(str(repo), segment, {"identity": identity, "status": "passed", "checked_at": 100, **case["record"]})
             reference = {"evidence": segment, "checked_at": 100, **case["reference"]}

@@ -7,15 +7,47 @@ TypeScript hook 与 Python workflow 直接调用对应语言的工具包，不�
 
 ## 验证链路
 
-准备阶段通过一次 inspect 选择 Component，复用这份目录执行 normalize。normalize 后只调用一次 repocli impact，
-从同一报告取得当前 Component、语言、工具证据和影响范围，形成 lint/test 共享的验证计划；不再独立 inspect 后对比两份目录。
-完整或回退验证才在 normalize 后重新 inspect，避免复用修改前的目录。对已受影响或影响仍不完整的 Component，
-按项目文件列表契约执行 lint/test，并用原生 snapshot 在执行前后核对内容。只有完整范围、成功执行且内容身份可用时
-才记录 Component stamp；hook 使用同一内容契约判断 stamp 是否仍有效。
+准备阶段通过一次 inspect 选择 Component，复用这份目录执行 normalize。normalize 后调用一次 repocli impact，
+从同一报告取得当前 Component、工具证据和影响范围。直接消费每个 ComponentImpact 的文件列表、标签计数与缺口，
+形成按 Component 组织的计划；每个 lint/test 条目冻结选择范围、命令和复用输入。执行器共享这份计划。
+完整或回退验证在 normalize 后重新 inspect。before 条目保留为历史证据；删除或已换归属的文件不能作为当前
+局部命令的参数，对应检查回退全量并记录原因。unowned 独立记录，不构造根 Component 或自动触发全仓检查。
+检查前后核对内容；完整范围成功执行且内容身份可用时记录 Component stamp，hook 使用同一证据判断有效性。
 
-stamp 绑定完整仓库内容摘要。共享配置或其他 Component 内容变化同样会使旧 stamp 失效，代价是
-保守重验，收益是执行侧与 gate 不再各自定义“同一份代码”。内容身份包含已跟踪和非忽略未跟踪文件，
-验证输出应由项目声明忽略，不能在检查中改写被验证内容。
+验证记录分别保存整仓 `snapshot` 与检查输入 `fingerprint`。前者核对分析、执行与暂存内容的一致性；
+后者决定相同 Component/check、命令、文件集合和依赖环境能否复用通过结果。复用未命中只执行原计划，
+不会改变 affectedFiles/testFiles 选择。复用成功后将证据关联到本轮核对的整仓快照，保留实际执行时间；
+TypeScript hook 只接受已经关联到当前整仓内容的证据，不自行猜测 Component 输入。记录协议为 v3，旧记录重新验证。
+
+通过现有 `.devloop/config.json` 的 `validation.inputs` 声明检查的完整仓内输入边界，例如：
+
+```json
+{
+  "validation": {
+    "inputs": {
+      "apps/api": {
+        "lint": {"components": [], "paths": ["tsconfig.base.json"]},
+        "test": {"components": ["packages/core"], "paths": ["scripts/test", "fixtures"]}
+      }
+    }
+  }
+}
+```
+
+每个 lint/test 声明必须同时提供 `components` 和 `paths`，空数组明确表示没有此类额外输入。
+自身 Component 按 repocli 最具体文件归属自动纳入；`components` 列出所有仓内传递依赖 Component，
+`paths` 是仓库相对的字面文件或目录（递归包含，不展开 glob）。声明表示完整边界，不能只列本次修改文件。
+嵌套 Component 不自动归父级；聚合检查须列出实际读取的子 Component。内容、范围定义及依赖安装回执均参与复用。
+配置可以沿用现有全局/主仓/worktree 覆盖；有效声明在计划中冻结，检查期间变化会拒绝通过证据。
+
+当前 inspect 只提供归属，不提供完整的命令依赖；partial impact 也不证明读取闭包。因此没有声明、声明无效、
+未知 Component 或跨范围符号链接时保守使用整仓指纹，并显示原因；快照捕获失败则不授予复用资格。
+现有文件归属与依赖环境观察自动复用，不引入第二个源码依赖分析器。忽略文件和外部资源不在内容摘要内，
+其输入必须由受管理的依赖环境覆盖；依赖实时外部服务的检查不应声明为可按 Component 复用。
+内容身份包含已跟踪和非忽略未跟踪文件，验证输出应由项目声明忽略，检查不能改写被验证内容。
+
+repocli Python 的 scoped snapshot 在一次双读捕获内批量计算 Component 和共享路径摘要，整仓摘要契约不变。
+仓库身份用于一致性，检查输入身份用于复用，affected-file 报告用于选择覆盖范围；三者互不替代。
 
 passed、failed、skipped、unavailable 描述实际检查结果，与 hard gate/advisory 策略分别记录。
 没有验证入口属于 unavailable；影响分析明确返回空选择属于 skipped。硬 lint gate 要求有可执行入口，
@@ -105,7 +137,7 @@ repocli 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect �
 
 原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
 父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
-CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.39.0+，保持 snapshot 身份与 Component 的 `affectedFileCounts` 契约一致。
+CLI 仍使用旧摘要时，内容比对会拒绝复用自动选测结果并退回完整验证，应升级 CLI 至 0.42.0+，保持 snapshot 身份与 Component 的 `affectedFileCounts` 契约一致。
 
 仓库定位委托 find_checkout/findCheckout：无仓库是正常缺失，损坏元数据、权限与 Git 失败不能
 转换为“没有仓库”。必要 hook 事实读取失败继续走 fail_closed，不绕过保护分支规则。

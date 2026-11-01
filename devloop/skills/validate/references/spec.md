@@ -94,7 +94,12 @@ or test-name selection instead.
 After normalization and dependency preparation, a check may reuse its latest successful
 execution for the same checkout, Component, verified content fingerprint, command arguments,
 scope and environment. Environment values are hashed, never persisted in the result record.
-The output explicitly reports reuse. Failed, unavailable and skipped checks do not
+The repository snapshot remains the planning/execution consistency guard. With a complete
+`validation.inputs` declaration, the reuse fingerprint covers Component-owned content,
+declared dependency Components and shared paths; otherwise it conservatively covers the repository.
+A reuse miss executes the already selected scope and never widens it. See
+[the input contract](../../../docs/repository-toolkit.md) for configuration and limitations.
+The output explicitly reports reuse and miss reasons. Failed, unavailable and skipped checks do not
 qualify; missing or unstable content identity cannot authorize reuse.
 
 Focused results are reusable only for the same selected files and do not create a full

@@ -5,12 +5,13 @@ select canonical full commands; check failures never cause an analysis retry.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import subprocess
 import time
 
 from domain import repo as repo_model
+from domain.validation_inputs import CheckInputs, check_inputs, input_policy
 from domain.repo_layout import Catalog, Component, inspect_catalog
 from domain.context.store import branch_segment, save_segment
 from lib import git_state, repocli
@@ -42,17 +43,63 @@ class Selection:
 
 
 @dataclass(frozen=True)
+class CheckPlan:
+    selection: Selection
+    inputs: CheckInputs
+    command: tuple[str, ...] | None
+
+
+def planned_check(component: Component, name: str, selection: Selection,
+                  inputs: CheckInputs, extra: tuple[str, ...] = ()) -> CheckPlan:
+    """Freeze the executable command with its selected coverage and reuse inputs."""
+    if selection.skipped:
+        return CheckPlan(selection, inputs, None)
+    if name == "lint":
+        target = component.lint_target()
+        command = (component.focused_lint_command(list(selection.files)) or
+                   ("make", target, "LINT_FILES=")) if target else None
+    else:
+        command = component.test_command()
+        if command:
+            command = ((*command, *extra) if extra else
+                       component.focused_test_command(list(selection.files)) or (*command, "TEST_FILES="))
+    return CheckPlan(selection, inputs, command)
+
+
+@dataclass(frozen=True)
+class ComponentPlan:
+    component: Component
+    impact: repocli.ImpactSummary | None
+    checks: dict[str, CheckPlan]
+
+
+@dataclass(frozen=True)
 class Plan:
     workset: repo_model.WorkSet
-    selections: dict[tuple[str, str], Selection] = field(default_factory=dict)
+    components: tuple[ComponentPlan, ...] = ()
     snapshot: str = ""
     comparison: Comparison = Comparison()
     execution_identity: str = ""
     identity_problem: str = ""
-    component_impacts: tuple[dict, ...] = ()
+    component_impacts: tuple[dict, ...] = ()  # Includes before-side evidence with no execution target.
+    input_policy: str = ""
+    unowned: repocli.ImpactSummary | None = None
+
+    def check(self, component: Component, check: str) -> CheckPlan:
+        return next(item for item in self.components if item.component.id == component.id).checks[check]
 
     def selection(self, component: Component, check: str) -> Selection:
-        return self.selections[(component.id, check)]
+        return self.check(component, check).selection
+
+    @property
+    def selections(self) -> dict[tuple[str, str], Selection]:
+        return {(item.component.id, name): check.selection
+                for item in self.components for name, check in item.checks.items()}
+
+    @property
+    def inputs(self) -> dict[tuple[str, str], CheckInputs]:
+        return {(item.component.id, name): check.inputs
+                for item in self.components for name, check in item.checks.items()}
 
 
 @dataclass(frozen=True)
@@ -110,7 +157,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
     snapshot = ""
     analysis_reason = "repocli automatic impact"
     component_impacts: tuple[dict, ...] = ()
-    files_by_check: dict[str, tuple[str, ...]] = {}
+    unowned = None
     observed = content_identity(repo)
     identity = observed.digest
     if paths == [] and not (full or explicit or test_extra):
@@ -139,7 +186,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
             snapshot = report.snapshot
             if not identity or snapshot != identity or identity != content_identity(repo).digest:
                 raise ValueError("execution contents differ from analyzed snapshot")
-            files_by_check = {"lint": report.affected_files, "test": report.test_files}
+            unowned = report.unowned
             component_impacts = report.components
             inspection = Catalog.from_layout(repo, report.layout)
             current = {item["root"]: item for item in component_impacts if item["snapshot"] == "after"}
@@ -170,6 +217,7 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                 selection_reason += "; unknown Component impact"
             if gaps := impact.get("fallbackReasons", []):
                 selection_reason += "; " + "; ".join(gaps)
+        summary = repocli.decode_summary(impact) if impact and not reason else None
         for check in checks:
             if check == "test" and test_extra:
                 explicit_full = unit.supports_test_files() and all(
@@ -185,9 +233,11 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
                 check_reason = selection_reason
                 if not reason:
                     try:
-                        owned = [path for path in files_by_check.get(check, ())
-                                 if (owner := inspection.owner(inspection.root / path)) is not None
-                                 and owner.id == unit.id]
+                        owned = summary.affected_files if check == "lint" else summary.test_files
+                        for path in owned:
+                            owner = inspection.owner(inspection.root / path)
+                            if owner is None or owner.id != unit.id:
+                                raise ValueError("before-side file no longer belongs to this Component")
                         files = _relative_files(inspection.root, unit, owned)
                         command = (unit.focused_lint_command(list(files)) if check == "lint"
                                    else unit.focused_test_command(list(files)))
@@ -204,8 +254,18 @@ def build_plan(repo: str, workset: repo_model.WorkSet, *, paths: list[str] | Non
         observed = content_identity(repo)
     selection_summary = reason or ("tag-based Component validation" if units else
                                    "repocli found no affected Components")
-    plan = Plan(repo_model.WorkSet(units, selection_summary), selections,
-                snapshot, comparison, observed.digest, observed.problem, component_impacts)
+    policy = input_policy(repo)
+    identities = check_inputs(repo, inspection, tuple(key for key, value in selections.items() if not value.skipped),
+                              observed.digest, policy)
+    groups = tuple(ComponentPlan(unit,
+                   next((repocli.decode_summary(item) for item in component_impacts
+                         if item["root"] == unit.id and item["snapshot"] == "after"), None),
+                   {check: planned_check(unit, check, selections[(unit.id, check)],
+                                    identities.get((unit.id, check), CheckInputs("", "not selected")),
+                                    tuple(test_extra or ()) if check == "test" else ())
+                    for check in checks}) for unit in units)
+    plan = Plan(repo_model.WorkSet(units, selection_summary), groups,
+                snapshot, comparison, observed.digest, observed.problem, component_impacts, policy, unowned)
     persist_plan(repo, plan)
     return plan
 
@@ -215,10 +275,12 @@ def persist_plan(repo: str, plan: Plan) -> None:
         "generated_at": time.time(), "base": plan.comparison.base, "head": plan.comparison.head,
         "snapshot": plan.snapshot,
         "component_impacts": list(plan.component_impacts),
+        "unowned": asdict(plan.unowned) if plan.unowned else None,
         "execution_identity": plan.execution_identity, "identity_problem": plan.identity_problem,
-        "checks": [{"component": component, "check": check, "scope": selection.scope,
-                    "reason": selection.reason, "files": list(selection.files)}
-                   for (component, check), selection in plan.selections.items()],
+        "checks": [{"component": item.component.id, "check": name, "scope": check.selection.scope,
+                    "reason": check.selection.reason, "files": list(check.selection.files),
+                    "command": check.command, "reuse": check.inputs.reason}
+                   for item in plan.components for name, check in item.checks.items()],
     }
     # A failed identity lookup is not detached HEAD. Keep the previous display
     # record rather than attribute this plan to the wrong branch; checks still run.
@@ -228,7 +290,10 @@ def persist_plan(repo: str, plan: Plan) -> None:
         print(f"[validate] validation scope not recorded: {exc}", flush=True)
     else:
         save_segment(repo, branch_segment(branch, "validation_scope"), payload)
+    if plan.unowned and (plan.unowned.affected or not plan.unowned.complete):
+        print(f"[validate] unowned: counts={plan.unowned.counts}; complete={plan.unowned.complete}; "
+              "no Component execution target", flush=True)
     if plan.identity_problem:
         print(f"[validate] snapshot unavailable — {plan.identity_problem}; checks may run, results cannot be stamped", flush=True)
     for item in payload["checks"]:
-        print(f"[validate] {item['check']} {item['component']}: scope={item['scope']} — {item['reason']}", flush=True)
+        print(f"[validate] {item['check']} {item['component']}: scope={item['scope']} — {item['reason']}; reuse: {item['reuse']}", flush=True)

@@ -77,23 +77,23 @@ session-scoped 运行状态的统一生命周期约定：**activity 时创建 �
 
 ## 验证状态
 
-branch 域 `branches/<b>/lint.json` + `test.json`：验证戳**按 component 键**——key 是 component 的仓相对身份 `Component.id`（`.` / `server` / `cli`），每个 component 各记自己的 lint / test 通过时间，以及 **lint 通过那一刻的完整仓库内容身份**（repocli snapshot）。落盘拆两个段、`RepoContext.load()` 合并成一个内存视图（消费方看不到拆分）。
+验证结果归 `checkout × Component × check`，各自保存独立记录；branch 域的
+`branches/<b>/lint.json` 与 `test.json` 按 Component 仓相对路径保存对完整检查结果的引用。
+同一 check 的并行 worker 各写自己的结果，协调器等待结束后更新 branch 引用，避免共享段互相覆盖。
+不同 checkout 的执行环境独立，不因 Component 相对路径相同而直接复用结果。
 
-**三个维度各归各位**：**branch** 是目录（域，切分支即自动隔离）、**check** 是文件（= writer-role）、**component** 是文件内的 JSON key。
-- **check 必须拆到文件**：`lifecycle.dispatch` 用线程池**并发**跑 lint 与 test，而 segment 的纪律是「single-writer whole-file overwrite」。两个 writer 写同一个文件 = load-modify-write 互相覆盖，实测会丢戳——丢 lint 戳只是白跑一遍，丢 **test** 戳则是状态说「没测过」而其实测过，是**记录失真**。拆开后各写各的，这一类结构上不可能，不需要锁、也不需要「写前重读合并」（那只是把「不可能」降级成窗口更窄的 race）。
-- **component 不拆成目录**：component **不是 writer**（同一 check 内 fan-out 是顺序的），拆了不解决这个 race；且 component id 不是安全路径分量（根 component 是 `.`、可含斜杠如 `eval/reviewbench`），当目录还得枚举目录才能读回全集。当 JSON key 三个问题都没有。
+**覆盖范围、内容一致性、结果复用分开判断**：repocli impact 的 affectedFiles/testFiles
+决定检查哪些文件；整仓 snapshot 确认分析、执行和暂存使用同一份代码；检查输入 fingerprint
+决定已有通过结果能否复用。声明完整输入的检查按 Component 内容、依赖 Component 与共享路径
+计算指纹；没有完整声明时保守绑定整仓内容。配置与边界见
+[仓库工具包与开发流程](docs/repository-toolkit.md)。
 
-**lint 通行证绑内容，不绑「改了几次」**：gate 拿当前指纹与戳上的比，不等 = 内容变过 = 通行证作废。指纹 hash 的是该 component 名下**已改动文件的当前 bytes**（删除写 tombstone、symlink 写 target），不是 diff——新建的未跟踪文件改了内容路径不变，diff 看不出来，而 lint 会 lint 它。算不出 → gate 按未验证处理（fail-closed）。
+复用要求命令、文件集合、输入指纹和受管理依赖环境一致，不以编辑计数判断。未命中只执行
+原计划，不扩大检查范围。复用成功后证据关联到本轮核对的仓库快照，保留原执行时间；
+TypeScript gate 核对当前快照与依赖回执，不能把历史通过直接当作当前通过。
 
-**为什么不是编辑计数**：旧的 `edits_since_lint` 由 PostToolUse 计数，而那个 hook 只认 `Edit`/`Write`/`NotebookEdit`——**Codex 用 `apply_patch` 改文件一次都不会计**（`MultiEdit` 同理，Bash 里的 `sed -i` / 脚本更不会）。它读出的 0 是「没人报告」而不是「没改过」：一个只在部分 CLI、部分工具上生效的计数器守不住硬 gate。改问内容之后，谁改的、用什么工具改的都不重要，那个 hook 也随之删掉（少一个会漂的活动部件）。
-
-**Board turn item 只报「什么时候验过」，不报「还算不算数」**：后者要现算指纹（读改动文件的 bytes），而 Board 每轮都解析——按〈成本原则〉不值当，且陈旧与否本就该由 gate 在 commit 时判（那里算一次是合算的），gcam 路径更是直接把 lint 跑掉。
-
-**为什么不是 repo 级单值**：lint / test 本就按 component 执行（一个仓可有 `server/` + `cli/` 两套工具链），repo 级单戳表达不了「A 过 B 挂」——A 通过盖下的戳会让 `precommit_gate` 读到「已验、无待验编辑」而放行整个仓，于是一次 partial-fail 的 fan-out 恰好把防绕过守卫的锁打开（gate 挡住了 gcampr，却给裸 `git commit` 发通行证）。key 与执行范围（`WorkSet`）同粒度，这类偏差才**不可表达**，而不是靠各消费方记得多问一句。
-
-**为什么 key 是仓相对路径而非 `Component.path`**：后者是绝对路径（「这次在哪跑 make」），而 validation 段统一落**主仓** `branches/<b>/`——worktree 里的 `<repo>/.worktrees/foo/server` 与主 checkout 的 `<repo>/server` 是同一个 component，用绝对路径会让同一 component 在不同 checkout 下拿到不同 key（worktree 里 lint 过的戳回主 checkout 查不到，白跑一遍），且 key 随 worktree 增删无限累积。
-
-旧的扁平格式读进来是「都没验过」，要求重跑一次 lint——**刻意不写迁移**：`.devloop` 是 cache 不是事实源，退化方向是 fail-closed。
+定向检查结果可以复用，但不授予完整 Component stamp；完整检查不能复用定向通过结果。
+Board 展示历史执行事实，提交门禁负责实时有效性。旧记录不迁移成新协议的通过证据，首次重新验证。
 
 ## 状态文件 `.devloop/`
 

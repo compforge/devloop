@@ -226,7 +226,7 @@ def test_missing_or_invalid_component_reports_fall_back():
     with TemporaryDirectory() as root:
         repo = make_repo(root)
         name = inspect_catalog(repo).components[0].name
-        valid = dict(root=".", snapshot="after", component={"name": name}, affected=False, complete=True, affectedFileCounts={})
+        valid = dict(root=".", snapshot="after", component={"name": name}, affected=False, complete=True, affectedFileCounts={}, scope="focused", changedFiles=[], affectedFiles=[], sourceFiles=[], testFiles=[])
         for invalid in (None, [{k: v for k, v in valid.items() if k != "affected"}],
                         [dict(valid, complete="unknown")], [dict(valid, root="../outside")],
                         [dict(valid, packageTools="invalid")], [dict(valid, component={"name": name, "language": []})],
@@ -249,7 +249,7 @@ def test_before_only_component_is_evidence_not_an_execution_directory():
         with repocli_report(components=impacts):
             plan = build_plan(str(repo), repo_model.select_components(repo))
         assert not plan.workset.components
-        assert list(plan.component_impacts) == impacts
+        assert [(x["root"], x["snapshot"]) for x in plan.component_impacts] == [(x["root"], x["snapshot"]) for x in impacts]
         with repocli_report(components=impacts):
             explicit = build_plan(str(repo), repo_model.select_components(repo), explicit=True)
         assert [unit.id for unit in explicit.workset.components] == ["."]

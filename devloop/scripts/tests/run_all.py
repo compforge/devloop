@@ -30,6 +30,7 @@ MODULES = [
     "test_test_scope",
     "test_validation_plan",
     "test_validation_reuse",
+    "test_validation_inputs",
     "test_inspect",
     "test_dependencies",
     "test_python",

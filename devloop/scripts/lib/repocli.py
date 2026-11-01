@@ -52,6 +52,41 @@ def inspect(repo: str) -> InspectReport:
 
 
 @dataclass(frozen=True)
+class ImpactSummary:
+    affected: bool
+    complete: bool
+    scope: str
+    changed_files: tuple[str, ...]
+    affected_files: tuple[str, ...]
+    source_files: tuple[str, ...]
+    test_files: tuple[str, ...]
+    counts: dict[str, int]
+    reasons: tuple[str, ...]
+
+
+def decode_summary(value: dict) -> ImpactSummary:
+    if not isinstance(value, dict):
+        raise ImpactProtocolError("missing impact summary; requires repocli >= 0.42.0")
+    counts = value.get("affectedFileCounts")
+    if (not isinstance(counts, dict) or any(not isinstance(tag, str) or not tag.strip()
+            or type(count) is not int or count < 0 for tag, count in counts.items())):
+        raise ImpactProtocolError("invalid or missing affectedFileCounts")
+    if (type(value.get("affected")) is not bool or type(value.get("complete")) is not bool
+            or value.get("scope") not in ("focused", "partial")):
+        raise ValueError("invalid impact summary status")
+    reasons = value.get("fallbackReasons", [])
+    if not isinstance(reasons, list) or any(not isinstance(x, str) for x in reasons):
+        raise ValueError("invalid impact summary reasons")
+    try:
+        paths = [_paths(value.get(key)) for key in
+                 ("changedFiles", "affectedFiles", "sourceFiles", "testFiles")]
+    except ValueError as exc:
+        raise ImpactProtocolError("invalid Component file lists; requires repocli >= 0.42.0") from exc
+    return ImpactSummary(value["affected"], value["complete"], value["scope"],
+                         *paths, counts, tuple(reasons))
+
+
+@dataclass(frozen=True)
 class ImpactReport:
     complete: bool
     scope: str
@@ -60,6 +95,7 @@ class ImpactReport:
     components: tuple[dict, ...]
     affected_files: tuple[str, ...]
     test_files: tuple[str, ...]
+    unowned: ImpactSummary
     layout: toolkit.Layout
 
 
@@ -152,13 +188,15 @@ def decode_impact(data: dict, repo: str, input_kind: str) -> ImpactReport:
                 or any(not isinstance(tag, str) or not tag.strip()
                        or type(count) is not int or count < 0 for tag, count in counts.items())):
             raise ImpactProtocolError("invalid Component affectedFileCounts")
-        key = (item["root"], item["snapshot"])
+        decode_summary(item)
+        identity = item["component"]
+        key = (json.dumps(identity.get("repository"), sort_keys=True), identity["name"], item["root"])
         if key in seen:
-            raise ValueError("duplicate ComponentImpact root and snapshot")
+            raise ValueError("duplicate ComponentImpact identity")
         seen.add(key)
     affected = data.get("affectedFiles")
     if not isinstance(affected, list) or any(not isinstance(item, dict) for item in affected):
         raise ValueError("affected file list missing or invalid")
     return ImpactReport(data["complete"], data["scope"], tuple(diagnostics), snapshot,
                       tuple(impacts), _paths([item.get("path") for item in affected]),
-                      _paths(data.get("testFiles")), _impact_layout(impacts, repo))
+                      _paths(data.get("testFiles")), decode_summary(data.get("unowned")), _impact_layout(impacts, repo))

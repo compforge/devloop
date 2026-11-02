@@ -4117,9 +4117,9 @@ var ForgeConnection = class {
   timeoutMs;
   #token;
   constructor(config) {
-    this.host = config.host;
-    this.provider = detectProvider(config.host, config.provider);
-    this.apiHost = config.apiHost || config.host;
+    this.host = config.host.toLowerCase();
+    this.provider = detectProvider(this.host, config.provider);
+    this.apiHost = (config.apiHost || this.host).toLowerCase();
     this.stateDir = config.stateDir ?? join5(homedir(), ".repocli");
     this.timeoutMs = config.timeoutMs ?? 1e4;
     if (!this.host || !Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0)

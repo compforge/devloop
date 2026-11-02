@@ -164,7 +164,7 @@ def run_main(g: dict) -> None:
 
 def _pr_context(repo, reader):
     """Isolated repocli state used by workflow composition tests."""
-    from repocli.forge import PullRequestContext, PullRequestObserver
+    from repokit.forge import PullRequestContext, PullRequestObserver
     from domain import worktree
     primary = worktree.primary(repo)
     source = reader.repository()

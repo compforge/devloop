@@ -3,7 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { PullRequestContext } from "@compforge/repocli";
+import { PullRequestContext } from "@compforge/repokit";
 import { prContextForRepo } from "../lib/forge.js";
 import { userPromptOutput } from "../adapters/process-hooks.js";
 

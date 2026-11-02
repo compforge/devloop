@@ -5,14 +5,14 @@ reuse, removal, and dependency preparation behind this module prevents callers f
 reproducing only the visible ``git worktree add`` step and skipping lifecycle policy.
 """
 from __future__ import annotations
-from repocli import git as operations
-from repocli.git_state import checkout_info
+from repokit import git as operations
+from repokit.git.state import checkout_info
 
 import logging
 from enum import Enum
 from pathlib import Path
 
-from lib import dependencies, git_state, gitcmd, repocli
+from lib import dependencies, git_state, gitcmd, repokit
 
 from . import repo_layout
 
@@ -24,7 +24,7 @@ def prepare_environment(path: str) -> list[str]:
     warnings = []
     try:
         components = repo_layout.discover_components(path)
-    except repocli.InspectionError as exc:
+    except repokit.InspectionError as exc:
         return [str(exc)]
     for component in components:
         if problem := dependencies.preparation_problem(component.path):

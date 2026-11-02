@@ -1618,15 +1618,15 @@ import { readFileSync as readFileSync10 } from "node:fs";
 
 // domain/task-trigger.ts
 import { spawn } from "node:child_process";
-import { closeSync, existsSync as existsSync3, mkdirSync as mkdirSync2, openSync, readFileSync as readFileSync2, statSync as statSync3, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { closeSync, existsSync as existsSync3, mkdirSync as mkdirSync3, openSync, readFileSync as readFileSync3, statSync as statSync2, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { join as join6 } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// node_modules/@compforge/repocli/dist/inspect.js
+// node_modules/@compforge/repokit/dist/inspect.js
 import { realpath as realpath2 } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 
-// node_modules/@compforge/repocli/dist/git.js
+// node_modules/@compforge/repokit/dist/git/catalog.js
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
@@ -1642,7 +1642,7 @@ function pullRequestId(pr) {
   return `${repositoryId(pr.repository)}#${pr.number}`;
 }
 
-// node_modules/@compforge/repocli/dist/model.js
+// node_modules/@compforge/repokit/dist/model.js
 function owner(layout, path) {
   let found;
   for (const component of layout.components) {
@@ -1659,7 +1659,7 @@ function repository(forge, path) {
   return Object.defineProperty(value, "id", { value: () => repositoryId(value) });
 }
 
-// node_modules/@compforge/repocli/dist/operations.js
+// node_modules/@compforge/repokit/dist/git/operations.js
 import { spawnSync } from "node:child_process";
 function runGit(repo, args, timeoutMs = 5e3, raw = false) {
   const result = spawnSync("git", ["-C", repo, ...args], {
@@ -1684,7 +1684,7 @@ function changedPaths(repo) {
   return [...new Set((tracked.stdout + untracked.stdout).split("\0").filter((p) => p && !p.endsWith("/")))];
 }
 
-// node_modules/@compforge/repocli/dist/remote.js
+// node_modules/@compforge/repokit/dist/git/remote.js
 function parseRemoteUrl(value) {
   let host, path;
   if (value.includes("://")) {
@@ -1714,7 +1714,7 @@ function remote(repo, name = "origin") {
   return result.ok ? parseRemoteUrl(result.stdout) : void 0;
 }
 
-// node_modules/@compforge/repocli/dist/layout.js
+// node_modules/@compforge/repokit/dist/layout.js
 import { posix } from "node:path";
 var compare = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 var needsContent = (name) => posix.basename(name) === "package.json";
@@ -1833,7 +1833,7 @@ function manifestEcosystem(path) {
   return markers.find(([, ...names]) => names.includes(posix.basename(path)))?.[0] ?? "";
 }
 
-// node_modules/@compforge/repocli/dist/git.js
+// node_modules/@compforge/repokit/dist/git/catalog.js
 var maxFileBytes = 2 << 20;
 var maxTotalBytes = 128 << 20;
 var Git = class _Git {
@@ -2013,7 +2013,7 @@ var Git = class _Git {
   }
 };
 
-// node_modules/@compforge/repocli/dist/inspect.js
+// node_modules/@compforge/repokit/dist/inspect.js
 async function inspect(options = {}) {
   if (options.head && options.staged)
     throw new Error("head and staged are mutually exclusive");
@@ -2049,8 +2049,8 @@ async function inspect(options = {}) {
   }
 }
 
-// node_modules/@compforge/repocli/dist/git-state.js
-import { existsSync, realpathSync, lstatSync, statSync } from "node:fs";
+// node_modules/@compforge/repokit/dist/git/state.js
+import { appendFileSync, mkdirSync, readFileSync, existsSync, realpathSync, lstatSync, statSync } from "node:fs";
 import { join as join2, dirname as dirname2, basename } from "node:path";
 function gitPath(repo, name) {
   const result = runGit(repo, ["rev-parse", "--path-format=absolute", "--git-path", name], 5e3, true);
@@ -2213,8 +2213,78 @@ function findCheckout(directory) {
       return void 0;
   }
 }
+function localDefaultBranch(repo, remote2 = "origin") {
+  const prefix = `refs/remotes/${remote2}/`;
+  const result = runGit(repo, ["symbolic-ref", "--quiet", `${prefix}HEAD`]);
+  if (result.code === 1)
+    return void 0;
+  if (!result.ok)
+    throw new Error(`cannot read default branch for ${remote2}: ${result.stderr}`);
+  if (!result.stdout.startsWith(prefix) || result.stdout === prefix)
+    throw new Error(`invalid remote HEAD: ${result.stdout}`);
+  return result.stdout.slice(prefix.length);
+}
+function addExclude(repo, pattern) {
+  if (!pattern || /[\r\n]/.test(pattern))
+    throw new Error("exclude requires one nonempty pattern");
+  const path = gitPath(repo, "info/exclude");
+  let existing;
+  try {
+    existing = readFileSync(path);
+  } catch (error) {
+    if (error.code !== "ENOENT")
+      throw error;
+    existing = Buffer.alloc(0);
+  }
+  if (existing.toString("utf8").split("\n").includes(pattern))
+    return false;
+  mkdirSync(dirname2(path), { recursive: true });
+  appendFileSync(path, `${existing.length && existing.at(-1) !== 10 ? "\n" : ""}${pattern}
+`, "utf8");
+  return true;
+}
+var checkoutCache = /* @__PURE__ */ new Map();
+function checkoutAt(directory) {
+  let metadata;
+  try {
+    metadata = statSync(join2(directory, ".git"));
+  } catch (error) {
+    if (error.code === "ENOENT")
+      return void 0;
+    throw error;
+  }
+  const marker = `${metadata.dev}:${metadata.ino}:${metadata.mtimeMs}`;
+  const cached = checkoutCache.get(directory);
+  if (cached?.marker === marker && cached.expires > performance.now())
+    return cached.info;
+  const info = checkoutInfo(directory);
+  if (checkoutCache.size >= 64)
+    checkoutCache.delete(checkoutCache.keys().next().value);
+  checkoutCache.set(directory, { marker, expires: performance.now() + 1e3, info });
+  return info;
+}
+function refExists(repo, ref) {
+  if (!ref.startsWith("refs/"))
+    throw new Error(`full reference required: ${ref}`);
+  return Boolean(revParse(repo, ref));
+}
+function isIgnored(repo, path) {
+  const result = runGit(repo, ["check-ignore", "-q", "--", path]);
+  if (result.code === 0 || result.code === 1)
+    return result.code === 0;
+  throw new Error(`cannot inspect ignore status: ${result.stderr}`);
+}
+function hasUnstagedChanges(repo) {
+  const tracked = runGit(repo, ["diff", "--quiet", "--ignore-submodules=dirty"]);
+  if (tracked.code !== 0 && tracked.code !== 1)
+    throw new Error(`cannot compare index/worktree: ${tracked.stderr}`);
+  const untracked = runGit(repo, ["ls-files", "--others", "--exclude-standard", "-z"]);
+  if (!untracked.ok)
+    throw new Error(`cannot read untracked files: ${untracked.stderr}`);
+  return tracked.code === 1 || Boolean(untracked.stdout);
+}
 
-// node_modules/@compforge/repocli/dist/snapshot.js
+// node_modules/@compforge/repokit/dist/snapshot.js
 import { createHash } from "node:crypto";
 import { constants as constants2 } from "node:fs";
 import { lstat as lstat2, open as open2, readlink, realpath as realpath3 } from "node:fs/promises";
@@ -2346,7 +2416,7 @@ async function capture(root, signal) {
   return { checkout: root, digest: `sha256:${digest2.digest("hex")}`, fileCount: files.size, complete: issues.length === 0, diagnostics: issues };
 }
 
-// node_modules/@compforge/repocli/dist/forge/model.js
+// node_modules/@compforge/repokit/dist/forge/model.js
 var ForgeError = class extends Error {
 };
 var ForgeCoverageError = class extends ForgeError {
@@ -2364,7 +2434,7 @@ var ForgeRateLimitError = class extends ForgeError {
   }
 };
 
-// node_modules/@compforge/repocli/dist/forge/key.js
+// node_modules/@compforge/repokit/dist/forge/key.js
 function pullRequestKey(forge, path, number3) {
   return { repository: { forge: { name: forge }, path }, number: number3 };
 }
@@ -2377,7 +2447,7 @@ function assertPullRequestKey(value, forge) {
     throw new Error("Invalid PullRequest repository path");
 }
 
-// node_modules/@compforge/repocli/dist/forge/query.js
+// node_modules/@compforge/repokit/dist/forge/query.js
 import { createHash as createHash2 } from "node:crypto";
 function connectionKey(provider, forge, endpoint, token) {
   return createHash2("sha256").update(JSON.stringify([provider, forge, endpoint, token])).digest("hex");
@@ -2423,7 +2493,7 @@ function nextPage(headers, page, provider) {
   return Number(next);
 }
 
-// node_modules/@compforge/repocli/dist/forge/issues.js
+// node_modules/@compforge/repokit/dist/forge/issues.js
 function readIssue(error, stage, subject = {}) {
   return {
     ...subject,
@@ -2434,7 +2504,7 @@ function readIssue(error, stage, subject = {}) {
   };
 }
 
-// node_modules/@compforge/repocli/dist/forge/scan.js
+// node_modules/@compforge/repokit/dist/forge/scan.js
 var SECOND = 1e3;
 var INITIAL_LOOKBACK_MS = 7 * 24 * 60 * 60 * SECOND;
 var OVERLAP_MS = 60 * SECOND;
@@ -2640,7 +2710,7 @@ function createPullRequestScanner(reader, options) {
   return (query) => scanPullRequests(reader, query, (options.now ?? (() => /* @__PURE__ */ new Date()))(), options.withinDeadline ?? ((operation) => operation()), options.connection);
 }
 
-// node_modules/@compforge/repocli/dist/forge/page.js
+// node_modules/@compforge/repokit/dist/forge/page.js
 function pagePosition(scope, query) {
   let position = { version: 2, scope, page: 1, pageSize: query.pageSize ?? 50 };
   if (query.cursor !== void 0) {
@@ -2661,7 +2731,7 @@ function pageContinuation(position, next) {
   return next === void 0 ? void 0 : JSON.stringify({ ...position, page: next });
 }
 
-// node_modules/@compforge/repocli/dist/forge/http.js
+// node_modules/@compforge/repokit/dist/forge/http.js
 import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { createHash as createHash3 } from "node:crypto";
@@ -2818,7 +2888,7 @@ function reviewActivityFingerprint(provider, tokens) {
   return createHash3("sha256").update(JSON.stringify([provider, [...tokens].sort()])).digest("hex");
 }
 
-// node_modules/@compforge/repocli/dist/forge/github.js
+// node_modules/@compforge/repokit/dist/forge/github.js
 var MAX_REVIEW_THREAD_PAGES = 20;
 var MAX_COMMENT_PAGES = 20;
 function repositoryPath(repository2) {
@@ -3180,7 +3250,7 @@ var GitHubForgeReader = class {
   }
 };
 
-// node_modules/@compforge/repocli/dist/forge/gitlab.js
+// node_modules/@compforge/repokit/dist/forge/gitlab.js
 var MAX_DISCUSSION_PAGES = 20;
 function lifecycle2(mergeRequest) {
   switch (mergeRequest.state) {
@@ -3503,15 +3573,15 @@ var GitLabForgeReader = class {
   }
 };
 
-// node_modules/@compforge/repocli/dist/forge/create.js
+// node_modules/@compforge/repokit/dist/forge/create.js
 function createForgeReader(config, options = {}) {
   return config.provider === "github" ? new GitHubForgeReader(config, options) : new GitLabForgeReader(config, options);
 }
 
-// node_modules/@compforge/repocli/dist/forge/observation/engine.js
+// node_modules/@compforge/repokit/dist/forge/observation/engine.js
 import { setTimeout as delay3 } from "node:timers/promises";
 
-// node_modules/@compforge/repocli/dist/forge/observation/store.js
+// node_modules/@compforge/repokit/dist/forge/observation/store.js
 var import_proper_lockfile = __toESM(require_proper_lockfile(), 1);
 import { createHash as createHash4, randomUUID } from "node:crypto";
 import { mkdir, open as open3, readFile, readdir, rename, rm } from "node:fs/promises";
@@ -3622,7 +3692,7 @@ var ObservationStore = class {
   }
 };
 
-// node_modules/@compforge/repocli/dist/forge/observation/engine.js
+// node_modules/@compforge/repokit/dist/forge/observation/engine.js
 var positive = (name, value) => {
   if (!Number.isSafeInteger(value) || value < 1 || value > 2147483647)
     throw new Error(`${name} must be a positive timer-safe integer`);
@@ -3853,7 +3923,7 @@ var ObservationEngine = class {
   }
 };
 
-// node_modules/@compforge/repocli/dist/forge/observation/context.js
+// node_modules/@compforge/repokit/dist/forge/observation/context.js
 var sameRepository = (a, b) => a?.forge.name === b.forge.name && a.path === b.path;
 var PullRequestContext = class {
   reader;
@@ -4030,23 +4100,13 @@ var PullRequestContext = class {
 };
 
 // domain/context/store.ts
-import { appendFileSync, existsSync as existsSync2, mkdirSync, readFileSync, renameSync, statSync as statSync2, writeFileSync } from "node:fs";
+import { appendFileSync as appendFileSync2, existsSync as existsSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync2, renameSync, writeFileSync } from "node:fs";
 import { dirname as dirname5, join as join5, parse, resolve as resolve2 } from "node:path";
 var STATE_DIRECTORY_NAME = ".devloop";
 var WORKSPACE_STATE_FILE = "context.json";
-var stateRoots = /* @__PURE__ */ new Map();
 function sharedStateRoot(root) {
-  const path = join5(root, ".git");
-  if (!existsSync2(path)) return root;
-  const metadata = statSync2(path);
-  const marker = `${metadata.dev}:${metadata.ino}:${metadata.mtimeMs}`;
-  const cached = stateRoots.get(root);
-  if (cached?.marker === marker) return cached.home;
-  const info = checkoutInfo(root);
-  const home = info.mainRoot ?? info.commonDir;
-  if (stateRoots.size >= 64) stateRoots.delete(stateRoots.keys().next().value);
-  stateRoots.set(root, { marker, home });
-  return home;
+  const info = checkoutAt(root);
+  return info ? info.mainRoot ?? info.commonDir : root;
 }
 function stateDirectory(root) {
   return join5(sharedStateRoot(resolve2(root)), STATE_DIRECTORY_NAME);
@@ -4068,7 +4128,7 @@ function segmentFile(root, name) {
 }
 function atomicWrite(path, data) {
   try {
-    mkdirSync(dirname5(path), { recursive: true });
+    mkdirSync2(dirname5(path), { recursive: true });
     const temporary = join5(dirname5(path), `${parse(path).base}.${process.pid}.tmp`);
     writeFileSync(temporary, JSON.stringify(data, null, 2), "utf8");
     renameSync(temporary, path);
@@ -4078,7 +4138,7 @@ function atomicWrite(path, data) {
 function readJson(path) {
   if (!existsSync2(path)) return void 0;
   try {
-    const value = JSON.parse(readFileSync(path, "utf8"));
+    const value = JSON.parse(readFileSync2(path, "utf8"));
     return value !== null && typeof value === "object" && !Array.isArray(value) ? value : void 0;
   } catch {
     return void 0;
@@ -4099,8 +4159,8 @@ function saveSegment(root, name, data) {
 function appendLedger(root, name, record2) {
   try {
     const path = join5(stateDirectory(root), `${name}.jsonl`);
-    mkdirSync(dirname5(path), { recursive: true });
-    appendFileSync(path, `${JSON.stringify(record2)}
+    mkdirSync2(dirname5(path), { recursive: true });
+    appendFileSync2(path, `${JSON.stringify(record2)}
 `, "utf8");
   } catch {
   }
@@ -4126,22 +4186,22 @@ function triggerReconciliation(repo) {
     control = info.mainRoot ?? info.root;
     if (!remote(control)) return false;
     const plugin = process.env.PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT ?? fileURLToPath(new URL("../../", import.meta.url));
-    const catalog = JSON.parse(readFileSync2(join6(plugin, "tasks/tasks.json"), "utf8"));
+    const catalog = JSON.parse(readFileSync3(join6(plugin, "tasks/tasks.json"), "utf8"));
     const task = catalog.find((entry) => entry.name === TASK);
     if (!task) throw new Error(`missing task definition: ${TASK}`);
     const runner = join6(plugin, "scripts/run_task.py");
     const launcher = join6(plugin, "scripts/python");
     if (!existsSync3(runner) || !existsSync3(launcher)) throw new Error(`missing task entrypoint: ${runner}`);
     const home = temporaryDirectory(control);
-    mkdirSync2(home, { recursive: true });
+    mkdirSync3(home, { recursive: true });
     const stamp = join6(home, `${TASK}.opportunistic`);
-    if (existsSync3(stamp) && Date.now() - statSync3(stamp).mtimeMs < task.interval_seconds * 1e3) return false;
+    if (existsSync3(stamp) && Date.now() - statSync2(stamp).mtimeMs < task.interval_seconds * 1e3) return false;
     claim = join6(home, `${TASK}.claim`);
     if (existsSync3(claim)) {
       try {
-        const pid = Number(readFileSync2(claim, "utf8"));
+        const pid = Number(readFileSync3(claim, "utf8"));
         if (Number.isInteger(pid) && pid > 0 && running(pid)) return false;
-        if ((!Number.isInteger(pid) || pid <= 0) && Date.now() - statSync3(claim).mtimeMs < 6e4) return false;
+        if ((!Number.isInteger(pid) || pid <= 0) && Date.now() - statSync2(claim).mtimeMs < 6e4) return false;
         unlinkSync(claim);
       } catch (error) {
         if (error.code !== "ENOENT") throw error;
@@ -4160,7 +4220,7 @@ function triggerReconciliation(repo) {
     } finally {
       closeSync(fd);
     }
-    if (existsSync3(stamp) && Date.now() - statSync3(stamp).mtimeMs < task.interval_seconds * 1e3) {
+    if (existsSync3(stamp) && Date.now() - statSync2(stamp).mtimeMs < task.interval_seconds * 1e3) {
       unlinkSync(claim);
       claimed = false;
       return false;
@@ -4196,13 +4256,13 @@ function triggerReconciliation(repo) {
 }
 
 // adapters/process-hooks.ts
-import { basename as basename9, dirname as dirname13, isAbsolute as isAbsolute5, resolve as resolve13 } from "node:path";
+import { basename as basename9, dirname as dirname12, isAbsolute as isAbsolute5, resolve as resolve13 } from "node:path";
 
 // domain/repo-layout.ts
 import { existsSync as existsSync5, realpathSync as realpathSync3 } from "node:fs";
 import { basename as basename2, join as join8, relative, resolve as resolve3 } from "node:path";
 
-// lib/repocli.ts
+// lib/repokit.ts
 import { realpathSync as realpathSync2, existsSync as existsSync4 } from "node:fs";
 import { dirname as dirname6, join as join7, sep } from "node:path";
 var InspectionError = class extends Error {
@@ -4287,42 +4347,33 @@ function findAgentsDocument(repo, component) {
 }
 
 // domain/context/workspace.ts
-import { existsSync as existsSync8, lstatSync as lstatSync2, readdirSync, realpathSync as realpathSync4 } from "node:fs";
+import { existsSync as existsSync7, lstatSync as lstatSync2, readdirSync, realpathSync as realpathSync4 } from "node:fs";
 import { join as join9, resolve as resolve5 } from "node:path";
 
 // lib/git-state.ts
-import { appendFileSync as appendFileSync2, existsSync as existsSync6, mkdirSync as mkdirSync3, readFileSync as readFileSync3 } from "node:fs";
-import { dirname as dirname7 } from "node:path";
 var PROTECTED_BRANCHES = [/^main$/, /^master$/, /^release$/, /^release.*/, /.*release$/];
 function isProtectedBranch(branch) {
   return branch !== void 0 && PROTECTED_BRANCHES.some((pattern) => pattern.test(branch));
 }
 function localDefaultTarget(repo) {
-  const result = runGit(repo, ["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"]);
-  if (!result.ok && result.code !== 1) throw new Error(`cannot read default branch reference: ${result.stderr}`);
-  const prefix = "refs/remotes/origin/";
-  if (result.ok && result.stdout.startsWith(prefix)) return result.stdout.slice(prefix.length);
+  const branch = localDefaultBranch(repo);
+  if (branch !== void 0) return branch;
   if (targetExists(repo, "main")) return "main";
   if (targetExists(repo, "master")) return "master";
   return "main";
 }
 function ensureGitExclude(repo, pattern = "/.devloop/") {
   try {
-    const path = gitPath(repo, "info/exclude");
-    mkdirSync3(dirname7(path), { recursive: true });
-    const existing = existsSync6(path) ? readFileSync3(path, "utf8") : "";
-    if (existing.split("\n").some((line) => line.trim() === pattern.trim())) return;
-    appendFileSync2(path, `${existing && !existing.endsWith("\n") ? "\n" : ""}${pattern}
-`, "utf8");
+    addExclude(repo, pattern);
   } catch {
   }
 }
 
 // lib/parsers.ts
-import { existsSync as existsSync7, readFileSync as readFileSync4 } from "node:fs";
-import { basename as basename3, dirname as dirname8, isAbsolute, resolve as resolve4 } from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync4 } from "node:fs";
+import { basename as basename3, dirname as dirname7, isAbsolute, resolve as resolve4 } from "node:path";
 function read(path) {
-  if (!existsSync7(path)) return void 0;
+  if (!existsSync6(path)) return void 0;
   try {
     return readFileSync4(path, "utf8");
   } catch {
@@ -4352,13 +4403,13 @@ function parseReferencesSection(path) {
       const after = value.slice(link.index + link[0].length).replace(/^[:：—-]+/, "").trim();
       const title = before || link[1].trim();
       const description = before ? [link[1] !== link[2] ? link[1] : "", after].filter(Boolean).join(" ") : after || link[1];
-      entries.push({ title, path: concretePath(link[2].trim(), dirname8(path)), description });
+      entries.push({ title, path: concretePath(link[2].trim(), dirname7(path)), description });
       continue;
     }
     const bare = /`([^`]+\.md)`/.exec(value);
     if (bare?.[1]) {
       const description = `${value.slice(0, bare.index)} ${value.slice(bare.index + bare[0].length)}`.replace(/[:：—-]+/g, " ").trim();
-      entries.push({ title: basename3(bare[1]), path: concretePath(bare[1], dirname8(path)), description: description || basename3(bare[1]) });
+      entries.push({ title: basename3(bare[1]), path: concretePath(bare[1], dirname7(path)), description: description || basename3(bare[1]) });
     }
   }
   return entries;
@@ -4425,7 +4476,7 @@ function formatTimestamp(timestamp) {
 // domain/context/workspace.ts
 var DISCOVERY_SKIP = /* @__PURE__ */ new Set(["docs", "worktrees", "worktree", "node_modules"]);
 function isGitRepository(path) {
-  return existsSync8(join9(path, ".git"));
+  return checkoutAt(path) !== void 0;
 }
 function discoverSubprojectNames(root) {
   try {
@@ -4499,7 +4550,7 @@ var WorkspaceContext = class _WorkspaceContext {
   static refresh(rootValue) {
     const root = resolve5(rootValue);
     const agentsPath = join9(root, "AGENTS.md");
-    const hasAgents = existsSync8(agentsPath);
+    const hasAgents = existsSync7(agentsPath);
     const context = new _WorkspaceContext(
       root,
       { ...hasAgents ? { path: agentsPath } : {}, references: hasAgents ? parseReferencesSection(agentsPath).map(referenceFrom) : [] },
@@ -4530,7 +4581,7 @@ var WorkspaceContext = class _WorkspaceContext {
       })),
       parsed_at: this.parsedAt
     });
-    if (existsSync8(join9(this.workspaceRoot, ".git"))) ensureGitExclude(this.workspaceRoot);
+    if (checkoutAt(this.workspaceRoot) !== void 0) ensureGitExclude(this.workspaceRoot);
   }
   isStale(ttl = WORKSPACE_STALE_SECONDS) {
     return stale(this.parsedAt || void 0, ttl);
@@ -4538,8 +4589,8 @@ var WorkspaceContext = class _WorkspaceContext {
 };
 
 // domain/context/session.ts
-import { closeSync as closeSync2, existsSync as existsSync9, mkdirSync as mkdirSync4, openSync as openSync2, readFileSync as readFileSync5, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync4, unlinkSync as unlinkSync2, writeFileSync as writeFileSync3 } from "node:fs";
-import { basename as basename4, dirname as dirname9, join as join10, resolve as resolve6 } from "node:path";
+import { closeSync as closeSync2, existsSync as existsSync8, mkdirSync as mkdirSync4, openSync as openSync2, readFileSync as readFileSync5, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync3, unlinkSync as unlinkSync2, writeFileSync as writeFileSync3 } from "node:fs";
+import { basename as basename4, dirname as dirname8, join as join10, resolve as resolve6 } from "node:path";
 var OWNER_TTL_SECONDS = 1800;
 function identityFromEnvironment() {
   const codex = process.env.CODEX_THREAD_ID ?? process.env.CODEX_SESSION_ID;
@@ -4619,7 +4670,7 @@ function acquireOwner(repo, identity2, branch = currentBranch(repo) ?? "", at = 
   try {
     ensureGitExclude(repo);
     mkdirSync4(workingTreeStateDirectory(repo), { recursive: true });
-    if (existsSync9(path)) unlinkSync2(path);
+    if (existsSync8(path)) unlinkSync2(path);
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const descriptor = openSync2(path, "wx", 420);
@@ -4680,8 +4731,8 @@ function activeBinding(path, enforceTtl) {
     const value = JSON.parse(readFileSync5(path, "utf8"));
     if (value === null || typeof value !== "object" || Array.isArray(value)) return void 0;
     const row = value;
-    if (typeof row.repo_dir !== "string" || !existsSync9(row.repo_dir)) return void 0;
-    const timestamp = typeof row.ts === "number" ? row.ts : statSync4(path).mtimeMs / 1e3;
+    if (typeof row.repo_dir !== "string" || !existsSync8(row.repo_dir)) return void 0;
+    const timestamp = typeof row.ts === "number" ? row.ts : statSync3(path).mtimeMs / 1e3;
     const age = Math.max(0, now() - timestamp);
     return enforceTtl && age >= ACTIVE_REPO_TTL_SECONDS ? void 0 : { repo: row.repo_dir, age };
   } catch {
@@ -4691,7 +4742,7 @@ function activeBinding(path, enforceTtl) {
 function recordActiveRepo(workspaceRoot2, repo, sessionId2) {
   const path = activeRepoFile(workspaceRoot2, sessionId2);
   try {
-    mkdirSync4(dirname9(path), { recursive: true });
+    mkdirSync4(dirname8(path), { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
     writeFileSync3(temporary, JSON.stringify({ repo_dir: resolve6(repo), ts: now() }));
     renameSync2(temporary, path);
@@ -4715,7 +4766,7 @@ function recordSessionEvent(repo, sessionId2, kind, fields = {}) {
 }
 
 // domain/context/tool-calls.ts
-import { existsSync as existsSync10, mkdirSync as mkdirSync5, readFileSync as readFileSync6, renameSync as renameSync3, statSync as statSync5, utimesSync, writeFileSync as writeFileSync4 } from "node:fs";
+import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync6, renameSync as renameSync3, statSync as statSync4, utimesSync, writeFileSync as writeFileSync4 } from "node:fs";
 import { join as join11 } from "node:path";
 var TOOL_CALL_SCHEMA = "devloop.tool-call/v1";
 var FILE_NAME = "tool-calls.jsonl";
@@ -4727,7 +4778,7 @@ function appendToolCall(root, record2, at = Date.now() / 1e3) {
   const marker = join11(directory, "tool-calls.compact");
   try {
     mkdirSync5(directory, { recursive: true });
-    const due = !existsSync10(marker) || at - statSync5(marker).mtimeMs / 1e3 >= COMPACT_INTERVAL_SECONDS;
+    const due = !existsSync9(marker) || at - statSync4(marker).mtimeMs / 1e3 >= COMPACT_INTERVAL_SECONDS;
     if (due) {
       compact(path, at - WINDOW_SECONDS);
       writeFileSync4(marker, "", { flag: "a" });
@@ -4759,7 +4810,7 @@ function toolCallStartedAt(root, callId, at = Date.now() / 1e3) {
   return void 0;
 }
 function compact(path, cutoff) {
-  if (!existsSync10(path)) return;
+  if (!existsSync9(path)) return;
   try {
     const retained = readFileSync6(path, "utf8").split("\n").flatMap((line) => {
       try {
@@ -4778,14 +4829,14 @@ function compact(path, cutoff) {
 }
 
 // domain/workspace.ts
-import { existsSync as existsSync12, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync11, statSync as statSync5 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
 import { join as join13, resolve as resolve8 } from "node:path";
 
 // lib/config.ts
-import { existsSync as existsSync11, mkdirSync as mkdirSync6, readFileSync as readFileSync7, renameSync as renameSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { existsSync as existsSync10, mkdirSync as mkdirSync6, readFileSync as readFileSync7, renameSync as renameSync4, writeFileSync as writeFileSync5 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname as dirname10, isAbsolute as isAbsolute2, join as join12, resolve as resolve7 } from "node:path";
+import { dirname as dirname9, isAbsolute as isAbsolute2, join as join12, resolve as resolve7 } from "node:path";
 var DEFAULTS = {
   workspaces: [],
   forges: {},
@@ -4822,7 +4873,7 @@ function deepMerge(base, override) {
   return result;
 }
 function readJson2(path) {
-  if (!existsSync11(path)) return void 0;
+  if (!existsSync10(path)) return void 0;
   try {
     const parsed = JSON.parse(readFileSync7(path, "utf8"));
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : void 0;
@@ -4837,9 +4888,9 @@ function ancestorFiles(root) {
   let current = root;
   while (true) {
     const candidate = join12(current, ".devloop", "config.json");
-    if (resolve7(candidate) !== global2 && existsSync11(candidate)) found.push(candidate);
-    if (current === home || current === dirname10(current)) break;
-    current = dirname10(current);
+    if (resolve7(candidate) !== global2 && existsSync10(candidate)) found.push(candidate);
+    if (current === home || current === dirname9(current)) break;
+    current = dirname9(current);
   }
   return found.reverse();
 }
@@ -4872,7 +4923,7 @@ function loadConfig(repo) {
 }
 function saveConfig(data) {
   const path = configFile();
-  mkdirSync6(dirname10(path), { recursive: true });
+  mkdirSync6(dirname9(path), { recursive: true });
   const temporary = `${path}.tmp`;
   writeFileSync5(temporary, `${JSON.stringify(data, null, 2)}
 `, "utf8");
@@ -4931,9 +4982,9 @@ function registerWorkspace(path) {
 }
 function maybeRegisterWorkspace(path) {
   const root = resolve8(path);
-  if (reserved(root) || !existsSync12(root) || !statSync6(root).isDirectory() || existsSync12(join13(root, ".git"))) return void 0;
+  if (reserved(root) || !existsSync11(root) || !statSync5(root).isDirectory() || checkoutAt(root) !== void 0) return void 0;
   const agents = join13(root, "AGENTS.md");
-  if (!existsSync12(agents)) return void 0;
+  if (!existsSync11(agents)) return void 0;
   if (discoverSubprojectNames(root).length === 0 && parseSubprojectsSection(agents).length === 0) return void 0;
   registerWorkspace(root);
   return root;
@@ -5740,14 +5791,14 @@ async function evaluate(change, context, rules) {
 }
 
 // hooks/core/context.ts
-import { dirname as dirname11, isAbsolute as isAbsolute4, resolve as resolve10 } from "node:path";
+import { dirname as dirname10, isAbsolute as isAbsolute4, resolve as resolve10 } from "node:path";
 var PolicyContext = class _PolicyContext {
   constructor(cwd2, identity2, anchorPath = "", inspections = /* @__PURE__ */ new Map()) {
     this.inspections = inspections;
     this.cwd = cwd2;
     this.identity = identity2;
     this.anchorPath = anchorPath ? isAbsolute4(anchorPath) ? anchorPath : resolve10(cwd2, anchorPath) : "";
-    this.anchorDirectory = this.anchorPath ? dirname11(this.anchorPath) : cwd2;
+    this.anchorDirectory = this.anchorPath ? dirname10(this.anchorPath) : cwd2;
   }
   inspections;
   cwd;
@@ -5778,8 +5829,8 @@ var PolicyContext = class _PolicyContext {
 };
 
 // hooks/rules/index.ts
-import { existsSync as existsSync13, readFileSync as readFileSync9 } from "node:fs";
-import { basename as basename8, dirname as dirname12, extname, join as join16, resolve as resolve12 } from "node:path";
+import { existsSync as existsSync12, readFileSync as readFileSync9 } from "node:fs";
+import { basename as basename8, dirname as dirname11, extname, join as join16, resolve as resolve12 } from "node:path";
 
 // domain/context/gate.ts
 async function evaluateGate(repo) {
@@ -5901,7 +5952,7 @@ function tagOnlyPush(args, repo) {
       return Boolean(source) && destination?.startsWith("refs/tags/") === true;
     }
     if (spec.startsWith("refs/tags/")) return true;
-    return runGit(repo, ["show-ref", "--verify", "--quiet", `refs/tags/${spec}`]).ok && !runGit(repo, ["show-ref", "--verify", "--quiet", `refs/heads/${spec}`]).ok;
+    return refExists(repo, `refs/tags/${spec}`) && !refExists(repo, `refs/heads/${spec}`);
   });
 }
 var protectBranch = {
@@ -5957,7 +6008,7 @@ var pipInstall = {
     const catalog = await context.catalog(repo);
     if (catalog.components.length === 0) return [];
     const component = enclosingComponent(runDirectory, catalog).path;
-    if (!existsSync13(join16(component, "pyproject.toml")) || !existsSync13(join16(component, "uv.lock"))) return [];
+    if (!existsSync12(join16(component, "pyproject.toml")) || !existsSync12(join16(component, "uv.lock"))) return [];
     return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
   }
 };
@@ -6023,7 +6074,7 @@ var editOwner = {
     const owner2 = foreignOwner(repo, context.sessionId, context.harness);
     if (owner2) {
       const path = context.anchorPath || file(target).path;
-      if (runGit(repo, ["check-ignore", "-q", "--", path]).ok) return [];
+      if (isIgnored(repo, path)) return [];
       return finding("edit-owner", `Checkout '${repositoryName(repo)}' is owned by another devloop session (${ownerDescription(owner2)}). Use an isolated managed worktree.`, file(target).path);
     }
     acquireOwner(repo, context.identity, currentBranch(repo) ?? "");
@@ -6049,8 +6100,8 @@ var requirementsEdit = {
   check: (target, context) => {
     const path = context.anchorPath || file(target).path;
     if (basename8(path) !== "requirements.txt") return [];
-    const parent = dirname12(path);
-    return existsSync13(join16(parent, "pyproject.toml")) || existsSync13(join16(dirname12(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
+    const parent = dirname11(path);
+    return existsSync12(join16(parent, "pyproject.toml")) || existsSync12(join16(dirname11(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
   }
 };
 function stringArray(value) {
@@ -6090,9 +6141,7 @@ var precommitGate = {
       if (!evidence) return [`  ${component.id}: lint has no full-check evidence for this branch.`];
       return reusableFullEvidence(evidence, fingerprint) ? [] : [`  ${component.id}: contents, command or dependency environment require validation.`];
     });
-    const unstaged = runGit(repo, ["diff", "--quiet", "--ignore-submodules=dirty"]);
-    const untracked = runGit(repo, ["ls-files", "--others", "--exclude-standard"]);
-    if (!commitsExistingIndex(value.args) || !unstaged.ok || !untracked.ok || untracked.stdout) {
+    if (!commitsExistingIndex(value.args) || hasUnstagedChanges(repo)) {
       stale2.push("  index differs from the checked working tree; use the devloop commit flow.");
     }
     return stale2.length === 0 ? [] : finding("precommit-gate", [
@@ -6316,7 +6365,7 @@ function afterTool(payload, harness) {
   const direct = findGitRoot(cwd(payload));
   if (direct) repositories.add(direct);
   for (const target of change.targets) {
-    const directory = target.kind === "file_change" ? dirname13(resolve13(cwd(payload), target.path)) : target.workingDirectory.path;
+    const directory = target.kind === "file_change" ? dirname12(resolve13(cwd(payload), target.path)) : target.workingDirectory.path;
     const affected = directory ? findGitRoot(directory) : void 0;
     if (affected) repositories.add(affected);
     if (target.kind !== "command" || !target.subcommand || !STATE_SUBCOMMANDS.has(target.subcommand) || !target.workingDirectory.path) continue;
@@ -6345,14 +6394,14 @@ function recordToolCall(payload, harness) {
   for (const target of change.targets) {
     if (target.kind === "file_change") {
       const path = isAbsolute5(target.path) ? target.path : resolve13(directory, target.path);
-      anchors.push(dirname13(path));
+      anchors.push(dirname12(path));
     } else if (target.workingDirectory.path) anchors.push(target.workingDirectory.path);
   }
   for (const key of ["file_path", "notebook_path", "path"]) {
     const value = toolInput[key];
     if (typeof value !== "string" || !value.trim()) continue;
     const path = isAbsolute5(value) ? value : resolve13(directory, value);
-    anchors.push(dirname13(path));
+    anchors.push(dirname12(path));
   }
   if (anchors.length === 0) anchors.push(directory);
   const timestamp = Date.now() / 1e3;

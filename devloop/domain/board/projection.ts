@@ -2,7 +2,7 @@ import { prContextForRepo } from "../../lib/forge.js";
 import { fullProjection, observedCheck } from "../validation-evidence.js";
 import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, checkoutInfo } from "../../lib/git-state.js";
 import { findAgentsDocument, inspectCatalog, type Component } from "../repo-layout.js";
-import { InspectionError } from "../../lib/repocli.js";
+import { InspectionError } from "../../lib/repokit.js";
 import { parseReferencesSection } from "../../lib/parsers.js";
 import { branchSegment, loadSegment, segmentFile } from "../context/store.js";
 import { REVIEW_STALE_SECONDS, now } from "../context/base.js";

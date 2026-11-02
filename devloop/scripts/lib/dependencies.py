@@ -6,7 +6,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from repocli import inspect_dependencies, prepare_dependencies
+from repokit import inspect_dependencies, prepare_dependencies
 
 _LOG = logging.getLogger(__name__)
 

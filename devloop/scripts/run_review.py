@@ -17,7 +17,7 @@ advisory：从不挡 commit。引擎没装 / LLM 没配好 → 写 `status=skipp
 from __future__ import annotations
 
 import json
-import subprocess
+import logging
 import sys
 import tempfile
 from pathlib import Path
@@ -48,13 +48,11 @@ def _ready_label(comment: dict) -> str:
 
 
 def _head_sha(repo: str) -> str:
-    r = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else ""
+    return git_state.get_head_sha(repo)
 
 
 def _branch(repo: str) -> str:
-    r = subprocess.run(["git", "-C", repo, "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else ""
+    return git_state.get_current_branch(repo) or ""
 
 
 def _write(repo: str, branch: str, **fields) -> None:
@@ -264,12 +262,15 @@ def _build_background(repo: str, target: str, forge, pr, extra: str | None) -> s
     parts = []
     if extra and extra.strip():
         parts.append(extra.strip()[:_BG_CAP])
-    log = subprocess.run(
-        ["git", "-C", repo, "log", f"origin/{target}..HEAD", "--no-merges", "--pretty=format:- %s%n%b"],
-        capture_output=True, text=True,
-    )
-    if log.stdout.strip():
-        parts.append("## 本次改动的提交说明\n" + log.stdout.strip()[:_BG_CAP])
+    try:
+        commits = git_state.commits(repo, f"origin/{target}", include_merges=False)
+    except OSError as error:
+        logging.getLogger(__name__).warning("review commit context unavailable repo=%s base=%s error=%s",
+                                            repo, target, error)
+        commits = []
+    if commits:
+        text = "\n".join(f"- {commit.subject}\n{commit.body}" for commit in commits)
+        parts.append("## 本次改动的提交说明\n" + text.strip()[:_BG_CAP])
     if forge is not None and pr is not None:
         title = (pr.title or "").strip()
         try:

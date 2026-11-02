@@ -2,8 +2,11 @@
 from __future__ import annotations
 import re
 from pathlib import Path
-from repocli import git as gitcmd
-from repocli.git_state import (
+from repokit import git as gitcmd
+from repokit.git.state import (
+    commits as commits,
+    merge_base as merge_base,
+    validate_branch_name as validate_branch_name,
     get_current_branch as get_current_branch,
     get_ahead_behind as get_ahead_behind,
     get_workspace_status as get_workspace_status,

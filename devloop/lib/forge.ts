@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { createForgeReader, remote, PullRequestContext } from "@compforge/repocli";
+import { createForgeReader, remote, PullRequestContext } from "@compforge/repokit";
 import { forgeEntry, forgeToken } from "./config.js";
 
 /**

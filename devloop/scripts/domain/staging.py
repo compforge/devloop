@@ -1,13 +1,12 @@
 """Commit selection and validation policy; repocli owns the index transaction."""
 from __future__ import annotations
 
-import hashlib
 import os
-import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-from repocli import git, git_index
+from repokit import git
+from repokit.git import index as git_index
 
 
 class StagingError(Exception):
@@ -140,48 +139,7 @@ def require_validated_candidate(repo: str, index: git_index.IndexView, identity:
             raise StagingError("contents changed since validation; rerun checks; index unchanged")
 
     require_identity()
-    root = Path(repo).resolve()
-    listed = git.git(repo, "ls-files", "--cached", "--others", "--exclude-standard", "-z", raw=True)
-    if not listed.ok:
-        raise StagingError("cannot observe validation inputs; index unchanged")
-    original = {entry.path: entry for entry in git_index.index_view(repo).entries}
-    names = {name for name in listed.out.split("\0") if name
-             and (os.path.lexists(root / name) or original.get(name) and original[name].mode == "160000")}
-    candidates = {entry.path: entry for entry in index.entries}
-    different = names.symmetric_difference(candidates)
-    for name in names.intersection(candidates):
-        entry, path = candidates[name], root / name
-        if entry.stage != 0:
-            different.add(name)
-            continue
-        if entry.mode == "160000":
-            # A deinitialized gitlink has no child checkout; its index OID is the input.
-            if (path / ".git").exists():
-                child = git.git(path, "rev-parse", "HEAD")
-                oid = child.out.strip() if child.ok else ""
-            else:
-                oid = original[name].oid if name in original else ""
-            if entry.oid != oid:
-                different.add(name)
-            continue
-        info = path.lstat()
-        algorithm = "sha256" if len(entry.oid) == 64 else "sha1"
-        if stat.S_ISLNK(info.st_mode):
-            data = os.fsencode(os.readlink(path))
-            digest = hashlib.new(algorithm, f"blob {len(data)}\0".encode() + data).hexdigest()
-            mode = "120000"
-        elif stat.S_ISREG(info.st_mode):
-            hasher = hashlib.new(algorithm, f"blob {info.st_size}\0".encode())
-            with path.open("rb") as source:
-                while chunk := source.read(65536):
-                    hasher.update(chunk)
-            digest = hasher.hexdigest()
-            mode = "100755" if info.st_mode & stat.S_IXUSR else "100644"
-        else:
-            different.add(name)
-            continue
-        if (entry.oid, entry.mode) != (digest, mode):
-            different.add(name)
+    different = git_index.working_tree_differences(repo, index)
     require_identity()
     if different:
         raise StagingError(

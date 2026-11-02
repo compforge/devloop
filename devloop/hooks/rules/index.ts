@@ -11,7 +11,7 @@ import { componentFingerprint, selectComponents } from "../../domain/repo.js";
 import { workspaces } from "../../lib/config.js";
 import { lifecycleConfig, type JsonObject } from "../../lib/config.js";
 import { currentBranch, listCheckouts } from "../../lib/git-state.js";
-import { runGit } from "../../lib/process.js";
+import { refExists, isIgnored, hasUnstagedChanges } from "@compforge/repokit";
 import { WorkspaceContext } from "../../domain/context/workspace.js";
 import type { Change, CommandTarget, FileChangeTarget, Finding, Target } from "../core/domain.js";
 import type { Rule } from "../core/rule.js";
@@ -51,8 +51,8 @@ function tagOnlyPush(args: readonly string[], repo: string): boolean {
     const spec = raw.replace(/^\+/, "");
     if (spec.includes(":")) { const [source, destination] = spec.split(":"); return Boolean(source) && destination?.startsWith("refs/tags/") === true; }
     if (spec.startsWith("refs/tags/")) return true;
-    return runGit(repo, ["show-ref", "--verify", "--quiet", `refs/tags/${spec}`]).ok
-      && !runGit(repo, ["show-ref", "--verify", "--quiet", `refs/heads/${spec}`]).ok;
+    return refExists(repo, `refs/tags/${spec}`)
+      && !refExists(repo, `refs/heads/${spec}`);
   });
 }
 
@@ -164,7 +164,7 @@ const editOwner: Rule = {
     const repo = context.gitRoot; const owner = foreignOwner(repo, context.sessionId, context.harness);
     if (owner) {
       const path = context.anchorPath || file(target).path;
-      if (runGit(repo, ["check-ignore", "-q", "--", path]).ok) return [];
+      if (isIgnored(repo, path)) return [];
       return finding("edit-owner", `Checkout '${repositoryName(repo)}' is owned by another devloop session (${ownerDescription(owner)}). Use an isolated managed worktree.`, file(target).path);
     }
     acquireOwner(repo, context.identity, currentBranch(repo) ?? ""); return [];
@@ -228,9 +228,7 @@ const precommitGate: Rule = {
       return reusableFullEvidence(evidence, fingerprint)
         ? [] : [`  ${component.id}: contents, command or dependency environment require validation.`];
     });
-    const unstaged = runGit(repo, ["diff", "--quiet", "--ignore-submodules=dirty"]);
-    const untracked = runGit(repo, ["ls-files", "--others", "--exclude-standard"]);
-    if (!commitsExistingIndex(value.args) || !unstaged.ok || !untracked.ok || untracked.stdout) {
+    if (!commitsExistingIndex(value.args) || hasUnstagedChanges(repo)) {
       stale.push("  index differs from the checked working tree; use the devloop commit flow.");
     }
     return stale.length === 0 ? [] : finding("precommit-gate", [

@@ -1,4 +1,4 @@
-import { inspect } from "@compforge/repocli";
+import { inspect } from "@compforge/repokit";
 import { realpathSync, existsSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 export class InspectionError extends Error {
@@ -25,4 +25,4 @@ export async function inspectRepository(repo) {
         throw new InspectionError(`repository inspection unavailable: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
 }
-//# sourceMappingURL=repocli.js.map
+//# sourceMappingURL=repokit.js.map

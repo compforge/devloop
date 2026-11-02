@@ -1,5 +1,5 @@
 """Presentation policy over repocli Forge objects."""
-from repocli.forge.model import (
+from repokit.forge.model import (
     ForgeError as ForgeError,
     ForgeAuthError as ForgeAuthError,
     ForgeNotFound as ForgeNotFound,

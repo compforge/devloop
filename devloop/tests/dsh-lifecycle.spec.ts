@@ -6,7 +6,7 @@ import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import { createUserMessage, type UserMessage } from "@deepseek-ai/dsh-llm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as dshPlugin from "../adapters/dsh.js";
-import { runGit } from "../lib/process.js";
+import { runGit } from "@compforge/repokit";
 
 let root: string;
 let ctx: Context;

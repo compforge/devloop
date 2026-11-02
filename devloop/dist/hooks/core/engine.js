@@ -1,4 +1,4 @@
-import { InspectionError } from "../../lib/repocli.js";
+import { InspectionError } from "../../lib/repokit.js";
 import { decision } from "./domain.js";
 /** Evaluate independent policy rules; rule bugs fail open unless explicitly declared otherwise. */
 export async function evaluate(change, context, rules) {

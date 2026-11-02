@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from repocli import git as operations, stash
+from repokit import git as operations
+from repokit.git import stash as stash
 
 from lib import git_state, gitcmd
 
@@ -41,9 +42,10 @@ def create(
     """
     if not name:
         raise BranchError("branch name is required")
-    valid = gitcmd.git(repo, "check-ref-format", "--branch", name)
-    if not valid.ok:
-        raise BranchError(f"invalid branch name {name!r}: {valid.err or valid.out}")
+    try:
+        git_state.validate_branch_name(repo, name)
+    except ValueError as error:
+        raise BranchError(str(error)) from error
 
     current = git_state.get_current_branch(repo)
     ident = identity or session.current_identity()

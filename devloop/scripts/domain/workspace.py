@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from repokit.git.state import checkout_at
 
 from lib import config
 
@@ -57,7 +58,7 @@ def maybe_register_workspace(cwd: str | Path) -> str | None:
     root = Path(cwd).resolve()
     if _is_reserved_tool_home(root):
         return None
-    if not root.is_dir() or (root / ".git").exists():
+    if not root.is_dir() or checkout_at(root) is not None:
         return None
     agents_md = root / "AGENTS.md"
     if not agents_md.exists():

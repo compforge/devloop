@@ -4,13 +4,13 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createForgeReader } from "@compforge/repocli";
+import { createForgeReader } from "@compforge/repokit";
 import { forgeEntry, forgeToken } from "../lib/config.js";
 import { prContextForRepo } from "../lib/forge.js";
 
 vi.mock("../lib/config.js", () => ({ forgeEntry: vi.fn(), forgeToken: vi.fn() }));
-vi.mock("@compforge/repocli", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@compforge/repocli")>();
+vi.mock("@compforge/repokit", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@compforge/repokit")>();
   return { ...actual, createForgeReader: vi.fn(actual.createForgeReader) };
 });
 const roots: string[] = [];

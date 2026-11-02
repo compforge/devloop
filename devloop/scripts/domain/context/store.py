@@ -26,9 +26,8 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict
-from functools import lru_cache
 from pathlib import Path
-from repocli.git_state import checkout_info
+from repokit.git.state import checkout_at
 
 STATE_DIRNAME = ".devloop"
 STATE_FILENAME = "context.json"   # workspace-level state (single owner: the refresh)
@@ -49,22 +48,9 @@ STATE_FILENAME = "context.json"   # workspace-level state (single owner: the ref
 # `save_segment` 调用点。
 
 
-@lru_cache(maxsize=64)
-def _observed_state_root(root: str, marker_identity: tuple[int, int, int]) -> Path:
-    """Reuse topology until this checkout's .git marker changes or is replaced."""
-    info = checkout_info(root)
-    return Path(info.main_root or info.common_dir)
-
-
 def _state_root(root: str) -> Path:
-    p = Path(root)
-    try:
-        marker = (p / ".git").stat()
-    except FileNotFoundError:
-        return p
-    # Do not turn a failed query into a different state home. The marker key
-    # invalidates cached topology when Git relocates metadata or repairs a worktree.
-    return _observed_state_root(root, (marker.st_dev, marker.st_ino, marker.st_mtime_ns))
+    info = checkout_at(root)
+    return Path(info.main_root or info.common_dir) if info else Path(root)
 
 
 def state_dir(root: str | Path) -> Path:

@@ -1,3 +1,4 @@
+import { checkoutAt } from "@compforge/repokit";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -26,7 +27,7 @@ export function registerWorkspace(path: string): void {
 
 export function maybeRegisterWorkspace(path: string): string | undefined {
   const root = resolve(path);
-  if (reserved(root) || !existsSync(root) || !statSync(root).isDirectory() || existsSync(join(root, ".git"))) return undefined;
+  if (reserved(root) || !existsSync(root) || !statSync(root).isDirectory() || checkoutAt(root) !== undefined) return undefined;
   const agents = join(root, "AGENTS.md");
   if (!existsSync(agents)) return undefined;
   if (discoverSubprojectNames(root).length === 0 && parseSubprojectsSection(agents).length === 0) return undefined;

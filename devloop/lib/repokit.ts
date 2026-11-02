@@ -1,4 +1,4 @@
-import { inspect, type InspectReport } from "@compforge/repocli";
+import { inspect, type InspectReport } from "@compforge/repokit";
 import { realpathSync, existsSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 

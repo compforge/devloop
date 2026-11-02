@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { architectureConfig, forgeEntry, forgeToken, lifecycleConfig, loadConfig, saveConfig, workspaces } from "../lib/config.js";
-import { runGit } from "../lib/process.js";
+import { runGit } from "@compforge/repokit";
 
 let root: string;
 let repo: string;

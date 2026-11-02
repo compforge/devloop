@@ -6,7 +6,7 @@ bare ``git push --force-with-lease`` that derives its expectation after the reba
 silently bless a colleague's intervening push and overwrite it.
 """
 from __future__ import annotations
-from repocli import git as operations
+from repokit import git as operations
 
 import json
 import os
@@ -109,9 +109,10 @@ def _require_clean(repo: str, action: str) -> None:
 
 
 def _check_branch_name(repo: str, branch: str, label: str) -> None:
-    result = gitcmd.git(repo, "check-ref-format", "--branch", branch)
-    if not result.ok:
-        raise RebaseError(f"invalid {label} branch {branch!r}: {gitcmd.operation_detail(result)}")
+    try:
+        git_state.validate_branch_name(repo, branch)
+    except ValueError as error:
+        raise RebaseError(f"invalid {label} branch: {error}") from error
 
 
 def _refresh(repo: str) -> None:
@@ -159,17 +160,7 @@ def start(repo: str, target: str | None = None) -> list[str]:
     if not tips.get(selected_target):
         raise RebaseError(f"origin/{selected_target} does not exist or the remote is unavailable")
 
-    # Explicit destinations make both tracking refs authoritative even when the configured
-    # fetch refspec is narrow. '+' is local-only: a rewritten remote branch must still be
-    # observable so the ancestry preflight can reject it safely.
-    fetched = gitcmd.git(
-        repo,
-        "fetch",
-        "origin",
-        f"+refs/heads/{branch}:refs/remotes/origin/{branch}",
-        f"+refs/heads/{selected_target}:refs/remotes/origin/{selected_target}",
-        timeout=60,
-    )
+    fetched = operations.fetch_branches(repo, [branch, selected_target], timeout=60)
     if not fetched.ok:
         raise RebaseError(f"fetching origin failed: {fetched.err or fetched.out}")
 

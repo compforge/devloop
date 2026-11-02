@@ -4,8 +4,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from _testkit import _git, _git_out, _load_script, run_main
-from repocli.git_index import staged_changes
-from repocli.git_state import git_path
+from repokit.git.index import staged_changes
+from repokit.git.state import git_path
 
 
 @contextmanager
@@ -241,13 +241,13 @@ def test_branch_checkout_failure_restores_partial_staging():
     from unittest.mock import patch
     from domain import branch
     from domain.context.session import SessionIdentity
-    from repocli.git import GitResult
+    from repokit.git import GitResult
     with repository() as root:
         (root / "a.py").write_text("staged")
         _git(str(root), "add", "a.py")
         (root / "a.py").write_text("working")
         before = _git_out(str(root), "write-tree")
-        with patch("repocli.git.create_branch", return_value=GitResult(1, "", "checkout failed")):
+        with patch("repokit.git.create_branch", return_value=GitResult(1, "", "checkout failed")):
             try:
                 branch.create(str(root), "next", "HEAD", carry_changes=True,
                               identity=SessionIdentity("test", ""))

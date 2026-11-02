@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from repokit.git.state import checkout_at
 from typing import Any
 
 from lib import parsers
@@ -78,7 +79,7 @@ class WorkspaceContext:
         self.parsed_at = base.now()
         store.save_raw(root, store.to_dict(self))
         # A workspace root is usually not a git repo; exclude only if it is one.
-        if (Path(root) / ".git").exists():
+        if checkout_at(root) is not None:
             from lib import git_state
             git_state.ensure_gitignore_excluded(root)
 
@@ -135,7 +136,7 @@ def discover_subproject_names(root: str | Path) -> list[str]:
         try:
             if not child.is_dir():               # follows symlinks → symlink-to-dir qualifies
                 continue
-            if not (child / ".git").exists():     # .git dir (repo) or .git file (worktree/submodule)
+            if checkout_at(child) is None:     # .git dir (repo) or .git file (worktree/submodule)
                 continue
         except OSError:
             continue
@@ -179,11 +180,11 @@ def _build_subproject(root: Path, s: dict) -> Subproject:
         # Auto-detect language when the table didn't pin one (table value wins).
         if not sub.language:
             import logging
-            from lib import repocli
+            from lib import repokit
             from .. import repo_layout
             try:
                 sub.language = repo_layout.default_component(sp_dir).language
-            except repocli.InspectionError as exc:
+            except repokit.InspectionError as exc:
                 logging.getLogger(__name__).warning("Component context unavailable for %s: %s", sp_dir, exc)
     return sub
 

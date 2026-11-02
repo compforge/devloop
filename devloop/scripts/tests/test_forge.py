@@ -17,9 +17,9 @@ from _testkit import _FakeForge, _git, _load_script, run_main  # noqa: E402  (bo
 from domain.context import Cadence, PullRequest  # noqa: E402
 from lib.forge import detect_provider, parse_origin  # noqa: E402
 from domain.forge import parse_pr_number, pr_label  # noqa: E402
-from repocli.forge.github import GitHubForge  # noqa: E402
-from repocli.forge.gitlab import GitLabForge  # noqa: E402
-from repocli.forge._rest import RestClient  # noqa: E402
+from repokit.forge.github import GitHubForge  # noqa: E402
+from repokit.forge.gitlab import GitLabForge  # noqa: E402
+from repokit.forge._rest import RestClient  # noqa: E402
 
 
 def test_pr_label():
@@ -263,29 +263,6 @@ def test_release_cli_dispatch():
         rel.forge_for_repo, rel.cli.resolve_repo_or_exit = orig_forge, orig_resolve
         git_state.local_default_target = orig_trunk
 
-def test_reuse_or_create_pr_over_narrowed_port():
-    """reuse_or_create_pr: reuse the branch's OPEN pr if present (via prs_for_branch),
-    else create. Over the narrowed port + a fake forge — no HTTP; label is repo-level."""
-    sgo = _load_script("commit_flow")
-    orig = sgo.forge_for_repo
-    try:
-        # reuse: an open PR exists for the branch
-        f = _FakeForge([PullRequest(number=3, state="open", source_branch="feat/x", target_branch="main", web_url="u/3")])
-        sgo.forge_for_repo = lambda repo: f
-        plan = []
-        pr = sgo.reuse_or_create_pr("/repo", "feat/x", "main", "t", "", plan)
-        assert pr.number == 3 and f.created is None
-        assert any("reused open PR #3" in line for line in plan)
-        # create: only a finished PR for the branch → open a new one, body = description
-        f2 = _FakeForge([PullRequest(number=3, state="merged", source_branch="feat/x")])
-        sgo.forge_for_repo = lambda repo: f2
-        plan = []
-        pr = sgo.reuse_or_create_pr("/repo", "feat/x", "main", "t", "why & what", plan)
-        assert f2.created is not None and pr.number == 4
-        assert any("created PR #4" in line for line in plan)
-        assert f2.description(4) == "why & what"
-    finally:
-        sgo.forge_for_repo = orig
 
 def test_checkout_pr_without_forge():
     """Repositories without a Forge have no remote PR context."""
@@ -327,39 +304,14 @@ def test_pullrequest_and_cadence():
 
 
 def test_repo_meta_default_branch_roundtrip():
-    """default_branch + default_branch_at 经 asdict/from_dict 往返不丢(meta 段持久化路径)。"""
+    """默认开发目标投影经 asdict/from_dict 往返不丢。"""
     from dataclasses import asdict
 
     from domain.context.repo import RepoMeta
-    m = RepoMeta(repo_dir="/r", default_branch="release", default_branch_at=123.0)
+    m = RepoMeta(repo_dir="/r", default_branch="release")
     m2 = RepoMeta.from_dict(asdict(m))
-    assert m2.default_branch == "release" and m2.default_branch_at == 123.0
+    assert m2.default_branch == "release"
 
-def test_resolve_default_branch_ttl():
-    """TTL 门控:新鲜缓存零网络(不碰 forge);过期才取 forge 的权威值并打新时间戳。"""
-    from domain.context import base as B
-    from domain.context import repo as R
-
-    calls = {"forge": 0}
-
-    def _no_forge(d):
-        calls["forge"] += 1
-        return None
-
-    orig = R.forge_for_repo
-    R.forge_for_repo = _no_forge
-    try:
-        db, at = R._resolve_default_branch("/r", "main", B.now())   # 新鲜
-        assert db == "main" and calls["forge"] == 0                 # 命中缓存、未拉
-
-        class _F:
-            def default_branch(self): return "release"
-
-        R.forge_for_repo = lambda d: _F()
-        db2, at2 = R._resolve_default_branch("/r", "main", 0.0)     # 过期(at=0)
-        assert db2 == "release" and at2 > 0                         # forge 权威值 + 新时间戳
-    finally:
-        R.forge_for_repo = orig
 
 
 

@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { PullRequestContext, type PullRequestSnapshot } from "@compforge/repocli";
+import { PullRequestContext, type PullRequestSnapshot } from "@compforge/repokit";
 import { prContextForRepo } from "../lib/forge.js";
 import { evaluateGate } from "../domain/context/gate.js";
 

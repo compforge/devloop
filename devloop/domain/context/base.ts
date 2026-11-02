@@ -9,7 +9,6 @@ export const LOCAL_PR_POLL_CONCURRENCY = 4;
 export const REMOTE_VIEW_STALE_SECONDS = 120;
 export const ACTIVE_REPO_TTL_SECONDS = 21_600;
 export const REVIEW_STALE_SECONDS = 1_800;
-export const DEFAULT_BRANCH_TTL_SECONDS = 86_400;
 export const REVIEW_FINDING_NUDGE_CAP = 3;
 export const REVIEW_NUDGE_CAP = 1;
 

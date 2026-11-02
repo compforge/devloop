@@ -24,7 +24,7 @@ these describe static associations, not runtime probabilities.
 ## Organization
 
 `inspect` supplies the Component catalog, language and package-tool metadata.
-TypeScript uses `@compforge/repocli`; Python uses `compforge-repocli`. Both call native
+TypeScript uses `@compforge/repokit`; Python uses `compforge-repokit`. Both call native
 `inspect` and `owner`, sharing the toolkit contract rather than the CLI JSON protocol.
 Devloop retains workflow boundaries, dependency preparation timing,
 validation gates and stamps.
@@ -72,7 +72,7 @@ Warm the environment before offline work:
 
 Update the pinned PyPI version in `devloop/scripts/_python.py`, then run
 `uv lock --script devloop/scripts/_python.py`.
-For the TypeScript library, use `npm update @compforge/repocli` in the plugin directory.
+For the TypeScript library, use `npm update @compforge/repokit` in the plugin directory.
 Validate the resulting dependencies before committing either lockfile. Keep the Python
 lockfile in both Git and the npm package.
 

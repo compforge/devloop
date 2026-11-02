@@ -7,7 +7,6 @@ export declare const LOCAL_PR_POLL_CONCURRENCY = 4;
 export declare const REMOTE_VIEW_STALE_SECONDS = 120;
 export declare const ACTIVE_REPO_TTL_SECONDS = 21600;
 export declare const REVIEW_STALE_SECONDS = 1800;
-export declare const DEFAULT_BRANCH_TTL_SECONDS = 86400;
 export declare const REVIEW_FINDING_NUDGE_CAP = 3;
 export declare const REVIEW_NUDGE_CAP = 1;
 export interface Reference {

@@ -12,7 +12,7 @@ from domain import repo as repo_model
 from domain.repo_layout import inspect_catalog
 from domain.lifecycle.base import dispatch
 from domain.validation import content_identity
-from lib import repocli
+from lib import repokit
 from _validation_fixture import make_repo
 
 def native_components(root):
@@ -30,8 +30,8 @@ def test_catalog_is_authoritative_and_one_inspection_serves_many_paths():
         corpus.mkdir(parents=True)
         (root / "service/go.mod").write_text("module api\n")
         (corpus / "go.mod").write_text("module fixture\n")
-        with patch.object(repocli.toolkit, "inspect", wraps=repocli.toolkit.inspect) as read:
-            with patch.object(repocli, "owner", wraps=repocli.owner) as query:
+        with patch.object(repokit.toolkit, "inspect", wraps=repokit.toolkit.inspect) as read:
+            with patch.object(repokit, "owner", wraps=repokit.owner) as query:
                 catalog = inspect_catalog(root)
                 selected = repo_model.select_components(root, paths=["service/old.go", "client/new.ts", "service/testdata/corpus/go.mod"], catalog=catalog)
                 assert [c.id for c in selected.components] == ["service", "client"]
@@ -65,16 +65,16 @@ def test_makefile_only_and_empty_repository_organization():
 def test_incomplete_observation_and_git_failures_are_unavailable():
     with TemporaryDirectory() as tmp:
         root = make_repo(tmp)
-        report = repocli.toolkit.inspect(root)
-        with patch.object(repocli.toolkit, "inspect", return_value=replace(report, complete=False)):
+        report = repokit.toolkit.inspect(root)
+        with patch.object(repokit.toolkit, "inspect", return_value=replace(report, complete=False)):
             result = dispatch("pre_commit", str(root), names=["lint", "test"])
             assert not result.proceed
         for failure in (TimeoutError("deadline"), subprocess.CalledProcessError(1, ["git"])):
-            with patch.object(repocli.toolkit, "inspect", side_effect=failure):
+            with patch.object(repokit.toolkit, "inspect", side_effect=failure):
                 try:
                     inspect_catalog(root)
                     raise AssertionError("fabricated component")
-                except repocli.InspectionError as exc:
+                except repokit.InspectionError as exc:
                     assert exc.__cause__ is failure
 
 
@@ -82,20 +82,20 @@ def test_execution_containment_rejects_symlinked_component_roots():
     with TemporaryDirectory() as tmp, TemporaryDirectory() as outside:
         root = make_repo(tmp)
         (root / "escape").symlink_to(outside, target_is_directory=True)
-        report = repocli.toolkit.inspect(root)
+        report = repokit.toolkit.inspect(root)
         binding = replace(report.components[0], root="escape/missing")
-        with patch.object(repocli.toolkit, "inspect", return_value=replace(report, components=(binding,))):
+        with patch.object(repokit.toolkit, "inspect", return_value=replace(report, components=(binding,))):
             try:
                 inspect_catalog(root)
                 raise AssertionError("accepted escaping component")
-            except repocli.InspectionError as exc:
+            except repokit.InspectionError as exc:
                 assert "escapes checkout" in str(exc)
 
 
 def test_snapshot_is_native_and_separate_from_organization():
     with TemporaryDirectory() as tmp:
         root = make_repo(tmp)
-        with patch.object(repocli, "validation_report", side_effect=AssertionError("CLI called")):
+        with patch.object(repokit, "validation_report", side_effect=AssertionError("CLI called")):
             first = content_identity(str(root))
             assert first.digest.startswith("sha256:")
             (root / "source.py").write_text("changed")

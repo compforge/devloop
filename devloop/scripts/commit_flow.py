@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gcam / gcamp / gcampr orchestrator — the one place the commit→push→MR flow lives.
 
-Repository operations come from repocli; Forge configuration is assembled by `lib.forge`.
+Repository operations come from repokit; Forge configuration is assembled by `lib.forge`.
 This workflow owns scope, gates and lifecycle decisions. Skills call this
 (via smart_gcamp.sh / smart_gcampr.sh)
 rather than raw git, so the AI never issues raw `git commit/push` (which the PreToolUse
@@ -23,7 +23,8 @@ A fresh-cut branch is then asserted to carry only this run's commit(s) before pu
 mis-based branch is caught at creation rather than at merge. Emits a self-narrating PLAN banner.
 """
 from __future__ import annotations
-from repocli import git as operations, git_index
+from repokit import git as operations
+from repokit.git import index as git_index
 
 import argparse
 import os
@@ -33,7 +34,7 @@ import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from harness_common import Repository
+from repokit.forge import ensure_pull_request
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -94,13 +95,6 @@ class BranchResult:
 @dataclass(frozen=True)
 class StageResult:
     committed: bool
-
-
-def run(repo: str, *args: str, timeout: int = 30) -> str:
-    r = gitcmd.git(repo, *args, timeout=timeout)
-    if not r.ok:
-        raise SmartError(f"git {' '.join(args)} failed: {r.err or r.out}")
-    return r.out
 
 
 def decide_branch(
@@ -205,7 +199,7 @@ def warn_mixed_version_bump(repo: str, plan: list[str]) -> None:
     bumped = [
         f for f in vfiles
         if any(_VERSION_LINE_RE.match(line)
-               for line in gitcmd.git(repo, "diff", "--cached", "-U0", "--", f).out.splitlines())
+               for line in git_index.staged_patch(repo, f).splitlines())
     ]
     if bumped:
         plan.append(
@@ -234,51 +228,6 @@ def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: l
         plan.append(f"appended commit body to {label} description")
     except ForgeError as e:
         plan.append(f"⚠ could not sync {label} description (non-fatal): {e}")
-
-
-def reuse_or_create_pr(
-    repo: str, source: str, target: str | None, title: str, description: str,
-    plan: list[str], *, target_repository: str | None = None,
-) -> PullRequest:
-    """Create/reuse for an explicit destination ID; source remains the current repository.
-
-    @spec Destination selection affects only PR creation/reuse. Local Git baselines
-    stay current-repository scoped. An omitted target branch preserves an open PR's base.
-    """
-    forge = forge_for_repo(repo)
-    if forge is None:
-        raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
-    try:
-        source_repository = forge.repository()
-        destination = source_repository
-        if target_repository is not None:
-            forge_name, sep, path = target_repository.partition("/")
-            if not sep or not path or forge_name != source_repository.forge.name:
-                raise ValueError(
-                    f"target repository {target_repository!r} must be a Repository ID "
-                    f"within Forge {source_repository.forge.name!r}"
-                )
-            destination = Repository(source_repository.forge, path)
-        if destination.id() != source_repository.id():
-            forge = forge.for_repository(destination.path)
-        plan.append(f"PR source={source_repository.id()}:{source} target={destination.id()}")
-        existing = next((p for p in forge.prs_for_branch(source, source_repository=source_repository)
-                         if p.is_open and (target is None or p.target_branch == target)), None)
-        if existing:
-            plan.append(f"reused open {pr_label(forge.provider, existing.number)}: {existing.web_url}")
-            sync_pr_description(forge, existing, description, plan)
-            return existing
-        target = target or forge.default_branch()
-        if not target:
-            raise ForgeError(f"cannot determine default branch for {destination.id()}")
-        pr = forge.create(source_repository=source_repository, source_branch=source,
-                          target_repository=destination, target_branch=target,
-                          title=title, body=description)
-        plan.append(f"created {pr_label(forge.provider, pr.number)} "
-                    f"{source_repository.id()}:{source} -> {destination.id()}:{target}: {pr.web_url}")
-        return pr
-    except (ForgeError, ValueError) as e:
-        raise SmartError(f"branch pushed, but PR/MR create/reuse failed: {e}")
 
 
 def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
@@ -406,10 +355,11 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
     # classic footgun where a prior gcampr left HEAD on an unrelated feature branch — and the
     # MR would smuggle foreign commits into <target>. Catch at creation, not at merge.
     if branch.cut and not intent.explicit_base:
-        ahead = run(repo, "rev-list", "--count", f"origin/{target}..{current}").strip()
+        commits = git_state.commits(repo, f"origin/{target}", current)
+        ahead = len(commits)
         expected = 1 if staged.committed else 0
-        if ahead.isdigit() and int(ahead) > expected:
-            subjects = run(repo, "log", "--oneline", f"origin/{target}..{current}")
+        if ahead > expected:
+            subjects = "\n".join(f"{c.oid[:9]} {c.subject}" for c in commits)
             raise SmartError(
                 f"'{current}' has {ahead} commit(s) vs origin/{target} but this run added {expected} — "
                 f"it carries foreign commits (cut off a non-{target} base?). Re-cut off origin/{target}:\n{subjects}"
@@ -427,12 +377,26 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
             sync_pr_description(forge, branch.active_pr, intent.description, plan)
 
     if intent.mode == "mr":
-        rng = run(repo, "log", "--oneline", f"origin/{target}..{current}").strip()
-        plan.append(f"branch carries {len(rng.splitlines()) if rng else 0} commit(s) vs origin/{target}")
-        reuse_or_create_pr(
-            repo, current, intent.pr_target,
-            intent.title, intent.description, plan, target_repository=intent.target_repository,
-        )
+        commits = git_state.commits(repo, f"origin/{target}", current)
+        plan.append(f"branch carries {len(commits)} commit(s) vs origin/{target}")
+        forge = forge_for_repo(repo)
+        if forge is None:
+            raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
+        try:
+            result = ensure_pull_request(forge, source_branch=current, title=intent.title,
+                                         body=intent.description, target_branch=intent.pr_target,
+                                         target_repository=intent.target_repository)
+            pr = result.pull_request
+            plan.append(f"PR source={result.source_repository.id()}:{current} "
+                        f"target={result.target_repository.id()}")
+            plan.append(f"{'created' if result.created else 'reused open'} "
+                        f"{pr_label(forge.provider, pr.number)}: {pr.web_url}")
+            if not result.created:
+                client = (forge if result.source_repository.id() == result.target_repository.id()
+                          else forge.for_repository(result.target_repository.path))
+                sync_pr_description(client, pr, intent.description, plan)
+        except (ForgeError, ValueError) as error:
+            raise SmartError(f"branch pushed, but PR/MR create/reuse failed: {error}") from error
         RepoContext.refresh_branch(repo)
 
 
@@ -572,8 +536,8 @@ def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecy
     if phase == "post_commit":
         comparison = Comparison(base="HEAD^", head="HEAD")
     elif phase in ("pre_mr", "post_mr"):
-        base = gitcmd.git(intent.repo, "merge-base", "HEAD", f"origin/{intent.target}")
-        comparison = (Comparison(base=base.out, head="HEAD") if base.ok and base.out
+        base = git_state.merge_base(intent.repo, "HEAD", f"origin/{intent.target}")
+        comparison = (Comparison(base=base, head="HEAD") if base
                       else Comparison(reason="branch merge base unavailable"))
     res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase), comparison=comparison)
     if not res.results:

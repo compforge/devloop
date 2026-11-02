@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from repocli.forge import BranchPullRequests
+from repokit.forge import BranchPullRequests
 from lib import git_state
 from lib.forge import forge_for_repo, pr_context_for_repo
 from domain.forge import Forge, ForgeError, PullRequest

@@ -18,5 +18,4 @@ export function runCommand(command, args, options = {}) {
         ok: code === 0,
     };
 }
-export { runGit } from "@compforge/repocli";
 //# sourceMappingURL=process.js.map

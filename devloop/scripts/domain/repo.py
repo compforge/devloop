@@ -21,15 +21,15 @@ Fuzzy scoring is shared with the managed-worktree resolver, so a name means the
 same thing everywhere.
 """
 from __future__ import annotations
-from repocli import snapshot
-from repocli.git import changed_paths as toolkit_changed_paths, committed_paths as toolkit_committed_paths, range_paths as toolkit_range_paths
+from repokit import snapshot
+from repokit.git import changed_paths as toolkit_changed_paths, committed_paths as toolkit_committed_paths, range_paths as toolkit_range_paths
 
 import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from lib import repocli
+from lib import repokit
 
 from . import repo_layout, staging, workspace
 from .context import RepoContext, WorkspaceContext

@@ -35,7 +35,7 @@ def has_full_stamp(repo: Path) -> bool:
 def report(repo, *, lint="passed", test="passed", consistent=True, scope="full"):
     checks = []
     for name, status in (("lint", lint), ("test", test)):
-        checks.append({"check": name, "status": status, "scope": "unavailable" if status == "unavailable" else scope,
+        checks.append({"check": name, "requestedComponents": ["."], "status": status, "scope": "unavailable" if status == "unavailable" else scope,
                        "command": ["make", "-f", "Makefile", name, "LINT_FILES=", "TEST_FILES="],
                        "files": [], "reason": "fixture", "reused": False, "reuseReason": "no previous check",
                        "checkedAt": "2026-11-01T12:00:00Z", "inputFingerprint": "sha256:inputs",

@@ -514,25 +514,34 @@ def test_pending_review_verdict_nudge_is_forge_derived():
     ctx = RepoContext.refresh_all(G)
     R, branch = ctx.repo.repo_dir, ctx.branch.local.name
 
-    def prseg(**kw): store.save_segment(R, "pr", {"branch": branch, "provider": "github", **kw})
+    from unittest.mock import patch
+    from domain.context import prstate
+    proposal = {"branch": branch, "provider": "github"}
+    def prseg(**kw):
+        proposal.clear()
+        proposal.update(branch=branch, provider="github", **kw)
+    original_load = RepoContext.load
+    def load(root):
+        with patch.object(prstate, "poll_pr", return_value=proposal.copy()):
+            return original_load(root)
     _rseg = store.branch_segment(branch, "review")
     def revseg(**kw): store.save_segment(R, _rseg, {"reviewed_sha": "abcdef1234567", "comments": [],
                                                     "generated_at": 1.0, **kw})
 
     revseg(status="success", count=2)
-    prseg(pending_review_verdicts=2); assert "2 条待判定" in RepoContext.load(R).turn_text()
-    prseg(pending_review_verdicts=0); assert "待判定" not in RepoContext.load(R).turn_text()
-    prseg(pending_review_verdicts=None); assert "待判定" not in RepoContext.load(R).turn_text()
+    prseg(pending_review_verdicts=2); assert "2 条待判定" in load(R).turn_text()
+    prseg(pending_review_verdicts=0); assert "待判定" not in load(R).turn_text()
+    prseg(pending_review_verdicts=None); assert "待判定" not in load(R).turn_text()
 
     # review.json 没了（下轮覆盖 / 换机器 / worktree 删了）→ nudge 仍在：MR 上没标的还挂着
     store.save_segment(R, _rseg, {})
-    prseg(pending_review_verdicts=3); t = RepoContext.load(R).turn_text()
+    prseg(pending_review_verdicts=3); t = load(R).turn_text()
     assert "3 条待判定" in t and "Review:" not in t
 
     # pr.json 是 branch-keyed：切走后不认（与 pr_number / merge_readiness 同一条约定）
     prseg(pending_review_verdicts=3)
-    store.save_segment(R, "pr", {"branch": "other", "pending_review_verdicts": 3})
-    assert "待判定" not in RepoContext.load(R).turn_text()
+    proposal.update(branch="other", pending_review_verdicts=3)
+    assert "待判定" not in load(R).turn_text()
 
 
 def test_review_finding_nudge_decays_then_reopens_on_new_findings():
@@ -548,12 +557,21 @@ def test_review_finding_nudge_decays_then_reopens_on_new_findings():
     ctx = RepoContext.refresh_all(G)
     R, branch = ctx.repo.repo_dir, ctx.branch.local.name
 
-    def prseg(**kw): store.save_segment(R, "pr", {"branch": branch, "provider": "github", **kw})
+    from unittest.mock import patch
+    from domain.context import prstate
+    proposal = {"branch": branch, "provider": "github"}
+    def prseg(**kw):
+        proposal.clear()
+        proposal.update(branch=branch, provider="github", **kw)
+    original_load = RepoContext.load
+    def load(root):
+        with patch.object(prstate, "poll_pr", return_value=proposal.copy()):
+            return original_load(root)
 
     def ask() -> bool:
         """一个 emit→mark 回合，返回这轮有没有喊。"""
         text = BoardRuntime.from_facts(
-            R, "label-test", repo=RepoContext.load(R)
+            R, "label-test", repo=load(R)
         ).deliver_prompt()
         return bool(text and "待判定" in text)
 

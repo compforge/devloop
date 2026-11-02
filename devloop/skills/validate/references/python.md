@@ -9,7 +9,7 @@ Ruff and mypy checks:
 LINT_JOBS ?= 2
 
 .PHONY: fix lint lint-ci lint-ruff lint-mypy
-fix:
+format:
 	uv run ruff check --fix .
 	uv run ruff format .
 lint:

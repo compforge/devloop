@@ -1,19 +1,14 @@
-"""Reconcile local branch resources from authoritative PR/MR state.
-
-Forge observation and checkout mutation stay separate: ``context.prstate`` owns the
-snapshot, ``worktree`` owns resource removal, and this module owns the small policy
-that maps one to the other. Reconciliation is desired-state based and idempotent, so an
-offline monitor can catch up later without having observed the exact state transition.
-"""
+"""Workflow reclamation policy over repocli PR/branch queries and live Git identity."""
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 from . import worktree
-from .context import prstate, store
-from .forge import Forge, ForgeError, ForgeRateLimited
-from lib.forge import forge_for_repo
+from .context import prstate
+from .forge import Forge, ForgeError
+from lib.forge import pr_context_for_repo
+from repocli.forge import PullRequestContext
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ReconcileAction:
-    """One lifecycle reaction retained in the latest local inventory snapshot."""
+    """One lifecycle reaction returned in the task report."""
 
     action: str
     status: str
@@ -31,8 +26,8 @@ class ReconcileAction:
     path: str
 
 
-def reconcile(repo: str, *, forge: Forge | None = None) -> list[ReconcileAction]:
-    """Apply lifecycle reactions for the latest complete local PR/MR snapshot.
+def reconcile(repo: str, *, forge: Forge | None = None, context: PullRequestContext | None = None, inventory: dict | None = None) -> list[ReconcileAction]:
+    """Apply lifecycle reactions to individually verified branch observations.
 
     A finished PR/MR (merged or closed) makes its linked worktree reclaimable. Forge
     state is authoritative: dirty state, owner locks, initialized submodules, nested
@@ -40,11 +35,11 @@ def reconcile(repo: str, *, forge: Forge | None = None) -> list[ReconcileAction]
     checkout remains the repository anchor and is never a deletion target.
     """
     control_repo = worktree.primary(repo)
-    payload = store.load_segment(control_repo, "local_pull_requests")
-    if payload is None:
+    context = context or pr_context_for_repo(repo, forge=forge)
+    if context is None:
         return []
+    payload = inventory if inventory is not None else prstate.inventory_view(context)
     actions: list[ReconcileAction] = []
-    removed: set[str] = set()
     candidates = []
     for local_branch in payload.get("branches") or []:
         pr = local_branch.get("pull_request") or {}
@@ -59,25 +54,18 @@ def reconcile(repo: str, *, forge: Forge | None = None) -> list[ReconcileAction]
     # Remove deepest checkouts first so a terminal nested worktree gets its own completed
     # action before a terminal parent recursively removes the containing directory.
     candidates.sort(key=lambda item: len(Path(item[2]).parts), reverse=True)
-    if candidates:
-        forge = forge if forge is not None else forge_for_repo(repo)
     for local_branch, pr, path in candidates:
         # +spec=`A cached terminal PR never authorizes removal. Revalidate the branch
         # association and then let remove_finished verify the live local identity.`
         branch = str(local_branch.get("branch") or "")
-        head = str(local_branch.get("head_sha") or "")
         try:
-            if forge is None:
-                raise ForgeError("no usable forge for checkout removal")
-            current = prstate.pick_branch_pr(forge.prs_for_branch(branch), repo, head)
-            if current is None or not current.inactive or current.number != int(pr["number"]):
+            observed = context.verify(local_branch["context"])
+            current = observed.selected
+            if current is None or not current.inactive or (current.number, current.target_repository) != (int(pr["number"]), pr["target_repository"]):
                 raise ForgeError("branch PR association changed; refresh before removal")
         except (ForgeError, OSError) as exc:
-            if isinstance(exc, ForgeRateLimited):
-                prstate.record_failure(repo, "lifecycle", exc)
-            else:
-                logger.warning("checkout removal deferred repo=%s branch=%s pr=%s error=%s",
-                               repo, branch, pr["number"], exc)
+            logger.warning("checkout removal deferred repo=%s branch=%s pr=%s error=%s",
+                           repo, branch, pr["number"], exc)
             actions.append(ReconcileAction("remove_worktree", "deferred", "forge_unverified",
                                            branch, int(pr["number"]), path))
             continue
@@ -95,22 +83,4 @@ def reconcile(repo: str, *, forge: Forge | None = None) -> list[ReconcileAction]
             path=path,
         )
         actions.append(action)
-        if outcome is worktree.RemovalOutcome.REMOVED:
-            removed.add(path)
-
-    # The local branch and its finished PR/MR outlive a reclaimed checkout. Keep that
-    # lifecycle record and clear only its optional checkout projection. A reclaimed
-    # parent also removes nested linked checkouts, including ones whose own PR/MR is open.
-    # Deferred actions stay visible and are retried on the next authoritative sweep.
-    removed_roots = [Path(path).resolve() for path in removed]
-    for local_branch in payload.get("branches") or []:
-        checkout = local_branch.get("checkout") or {}
-        checkout_path = str(checkout.get("path") or "")
-        if not checkout_path:
-            continue
-        candidate = Path(checkout_path).resolve()
-        if any(candidate == root or root in candidate.parents for root in removed_roots):
-            local_branch["checkout"] = None
-    payload["actions"] = [asdict(action) for action in actions]
-    prstate.persist_local_pull_requests(control_repo, payload)
     return actions

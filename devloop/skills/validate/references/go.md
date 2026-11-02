@@ -8,7 +8,7 @@ If the project uses golangci-lint, let its runner coordinate linters and cap its
 LINT_WORKERS ?= 4
 
 .PHONY: fix lint lint-ci
-fix:
+format:
 	golangci-lint run --fix --concurrency $(LINT_WORKERS)
 lint:
 	golangci-lint run --concurrency $(LINT_WORKERS)

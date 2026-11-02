@@ -54,19 +54,27 @@ def validation_report(repo: str, args: list[str]) -> dict:
         raise ValueError("ValidationReport snapshot missing")
     if not isinstance(data.get("components"), list) or not isinstance(data.get("diagnostics"), list):
         raise ValueError("ValidationReport results missing")
-    selected = set(args[args.index("--check") + 1].split(",")) - {"fix"} if "--check" in args else {"lint", "test"}
+    selected = set(args[args.index("--check") + 1].split(",")) - {"format"} if "--check" in args else {"lint", "test"}
     seen = set()
+    coverage = {}
     for group in data["components"]:
         root = group["component"]["root"]
         if not isinstance(root, str) or not (Path(repo) / root).resolve().is_relative_to(Path(repo).resolve()):
             raise ValueError("ValidationReport Component escapes checkout")
-        if {check["check"] for check in group["checks"]} != selected:
-            raise ValueError("ValidationReport omitted requested checks")
         for check in group["checks"]:
             name = check["check"]
-            if name not in {"lint", "test"} or (root, name) in seen:
+            if name not in selected or (root, name) in seen:
                 raise ValueError("invalid or duplicate ValidationReport check")
             seen.add((root, name))
+            sources = check.get("requestedComponents")
+            if not isinstance(sources, list) or not sources or len(set(sources)) != len(sources):
+                raise ValueError("ValidationReport requestedComponents missing or duplicated")
+            for source in sources:
+                if not isinstance(source, str) or not (Path(repo) / source).resolve().is_relative_to(Path(repo).resolve()):
+                    raise ValueError("ValidationReport requested Component escapes checkout")
+                if name in coverage.setdefault(source, set()):
+                    raise ValueError("duplicate requested Component check")
+                coverage[source].add(name)
             if check["scope"] not in {"full", "focused", "skipped", "unavailable"} or check["status"] not in {
                     "passed", "failed", "skipped", "unavailable", "cancelled", "uncertain"}:
                 raise ValueError("invalid validation check status or scope")
@@ -76,4 +84,6 @@ def validation_report(repo: str, args: list[str]) -> dict:
                 raise ValueError("incomplete validation check result")
             if any(not isinstance(check.get(key), list) or any(not isinstance(x, str) for x in check[key]) for key in ("command", "files")):
                 raise ValueError("invalid validation command or file list")
+    if any(checks != selected for checks in coverage.values()):
+        raise ValueError("ValidationReport omitted requested checks")
     return data

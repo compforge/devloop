@@ -309,10 +309,12 @@ def test_prepare_branch_reads_gate_pr_state():
 
     # in-flight: an OPEN PR for feat/a in the monitor-owned pr segment → gate picks it (open
     # wins, no SHA check) → continue + a self-narrating line built with the repo-level provider
-    prstate.persist_pr(R, {"branch": "feat/a", "provider": "github", "pr_number": 7,
-                           "prs": [{"number": 7, "state": "open", "source_branch": "feat/a"}]})
+    from unittest.mock import patch
+    from _testkit import _pr_context, _FakeForge
+    context = _pr_context(R, _FakeForge([PullRequest(number=7, state="open", source_branch="feat/a")]))
     plan = []
-    res = sgo.prepare_branch(intent, gate.evaluate(R), plan)
+    with patch.object(prstate, "pr_context_for_repo", return_value=context):
+        res = sgo.prepare_branch(intent, gate.evaluate(R), plan)
     assert res.branch == "feat/a" and res.cut is False
     assert any("continuing in-flight PR #7" in line for line in plan)
 
@@ -768,7 +770,7 @@ def test_explicit_repository_pr_target_does_not_change_local_git_baseline_or_per
         forge = _ForkForge()
         with patch.object(flow, "forge_for_repo", return_value=forge), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")) as push, \
-             patch.object(flow.RepoContext, "refresh_branch"), patch.object(flow.prstate, "refresh_pr"):
+             patch.object(flow.RepoContext, "refresh_branch"), patch.object(flow.prstate, "poll_pr"):
             flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
         push.assert_called_once_with(str(Path(repo).resolve()), "fix", upstream=True)
         assert forge.destination.created.target_branch == "release"
@@ -814,7 +816,7 @@ def test_publish_current_repository_preserves_existing_nondefault_base():
         with patch.object(flow, "forge_for_repo", return_value=forge), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")), \
              patch.object(flow, "run", return_value=""), \
-             patch.object(flow.RepoContext, "refresh_branch"), patch.object(flow.prstate, "refresh_pr"):
+             patch.object(flow.RepoContext, "refresh_branch"), patch.object(flow.prstate, "poll_pr"):
             flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
         assert (forge.created is None) == (requested != "main")
         if forge.created:

@@ -78,7 +78,7 @@ Session 猜测哪些中间结论可发布。`finding` 事件已经完成 Trial�
 
 Finding 判定与处理（异步、人/agent 触发，见 `skills/review`）：
 ```
-poll_pr（monitor / gcampr）→ forge.comments(n) → review_feedback.pending → pr.json.pending_review_verdicts
+review_details → forge.comments(n) → review_feedback.pending → 查询时构造的 review 视图
 下一轮注入：`Review findings: N 条待判定`
 agent：review findings <n> --pending → 逐条对照真实 diff 求证 → review label <n> <id> <verdict>
       → 真问题修复、验证并发布 / 误报附反证 → review resolve <n> <id> [--fixed]

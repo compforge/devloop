@@ -4,12 +4,12 @@
 PYTHON ?= python3
 
 
-.PHONY: help fix lint test build check-all typecheck bump-version
+.PHONY: help format lint test build check-all typecheck bump-version
 
 help:
 	@echo "Targets:"
 	@echo "  test (marketplace indexes) / check-all (all Components)"
-	@echo "  fix / lint"
+	@echo "  format / lint"
 	@echo "  build"
 	@echo "  typecheck"
 	@echo "  bump-version PLUGIN=<name> [LEVEL=patch|minor|major]"
@@ -22,7 +22,7 @@ help:
 	@echo "  make bump-version PLUGIN=devloop VERSION=0.1.0"
 
 # Root validation owns marketplace assets; child checks run in their Components.
-fix:
+format:
 	@true
 lint:
 	$(PYTHON) scripts/check_marketplace.py

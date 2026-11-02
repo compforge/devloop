@@ -20,8 +20,8 @@ Component fall back to full scope. Partial impact does not by itself force full 
 
 ## Execution and evidence
 
-`repocli fix`, `lint`, `test` are independent. `validate` defaults to lint/test;
-`validate --check fix,lint,test` finishes fix before fresh planning and bounded parallel
+`repocli format`, `lint`, `test` are independent. `validate` defaults to lint/test;
+`validate --check format,lint,test` finishes fix before fresh planning and bounded parallel
 checks. Failed fix stops the round; absent optional fix allows checks. Fix-only
 success is never lint/test evidence. Dependencies must be prepared first.
 

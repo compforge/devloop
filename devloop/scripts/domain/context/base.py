@@ -1,7 +1,7 @@
 """Context layer — shared fact leaves, constants, and compatibility primitives.
 
 The `.devloop/` facts span two levels. **Repo** state is split into per-owner
-*segment* files (`meta`/`branch`/`pr`/`local_pull_requests`/`lint`/`test`/`review`.json) so independent
+*segment* files (`meta`/`branch`/`lint`/`test`/`review`.json) so independent
 writer-roles never share a file — see `repo.py`. **Workspace** state is a single
 `context.json` (one writer-role: the refresh). This module holds what both share:
 leaf dataclasses (`Reference`, `AgentsMd`) plus the re-exported forge

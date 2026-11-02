@@ -74,7 +74,7 @@ resolve_intent → prepare_branch
               → publish (push / 建 MR)
 ```
 
-- `pre_commit` 故意排在 staging **之前**：normalize 的 `make fix` 会改文件，这些改动要被随后的
+- `pre_commit` 故意排在 staging **之前**：normalize 的 `make format` 会改文件，这些改动要被随后的
   stage 收进同一个 commit。
 - **硬拦截** gate 失败（lint `ok=False`）→ 抛 `SmartError`、中止、PLAN 显示 `pre_commit: lint ✗`、
   commit 不发生。**软提示**失败（test `ok=False`）→ PLAN 显示 `test ⚠` + 一行通报、**commit 照常**。

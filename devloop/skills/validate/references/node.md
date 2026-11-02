@@ -8,7 +8,7 @@ Keep Prettier and ESLint writers ordered; run read-only checks concurrently:
 LINT_JOBS ?= 3
 
 .PHONY: fix lint lint-ci lint-eslint lint-format lint-types
-fix:
+format:
 	pnpm exec prettier --write .
 	pnpm exec eslint --fix .
 lint:

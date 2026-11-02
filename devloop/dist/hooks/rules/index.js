@@ -1,3 +1,4 @@
+import { isProtectedBranch } from "../../lib/git-state.js";
 import { fullEvidence, reusableFullEvidence, observedCheck } from "../../domain/validation-evidence.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -66,7 +67,8 @@ const protectBranch = {
         const repo = runDirectory ? findGitRoot(runDirectory) : undefined;
         if (!repo)
             return [];
-        const gate = evaluateGate(repo);
+        const branch = currentBranch(repo);
+        const gate = { protected: isProtectedBranch(branch), branch };
         if (!gate.protected || value.subcommand === "push" && tagOnlyPush(value.args, repo))
             return [];
         return finding("protect-branch", `Refusing \`git commit/push\` on protected branch '${gate.branch ?? "?"}'. Create a feature branch with the devloop branch command first.`, commandLine(value));
@@ -191,10 +193,10 @@ const editOwner = {
 };
 const branchMerged = {
     name: "branch-merged", failurePolicy: "fail_closed", targetKind: "file_change", applies: () => true,
-    check: (target, context) => {
+    check: async (target, context) => {
         if (!context.gitRoot)
             return [];
-        const gate = evaluateGate(context.gitRoot);
+        const gate = await evaluateGate(context.gitRoot);
         const pr = gate.activePullRequest;
         return gate.inactive
             ? finding("branch-merged", `Branch '${gate.branch ?? "?"}' is inactive (${pr ? `${pullRequestLabel(gate.provider, pr.number)} ${pr.state}` : "PR/MR finished"}). Cut a new branch from origin/${gate.target} before editing.`, file(target).path) : [];

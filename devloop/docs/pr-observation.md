@@ -1,42 +1,32 @@
-# PR 观察与生命周期对账
+# PR 状态查询与生命周期对账
 
-PR 状态由 Forge 拥有，devloop 保存 Repo 范围的观察，并把 PR 关联到本地 Branch 和 Checkout。
-后台请求量主要由开放 PR 和变化决定。历史分支仍可查证，其存在本身不要求每轮查询。
+Forge 是远端事实来源。repocli 负责原生 Python/TypeScript 状态查询、本地观察、重试、周期维护，
+以及 PR ↔ branch ↔ checkout 关联。devloop 配置访问身份和目标仓库，拥有开发门禁、Board 投递与
+本地资源回收策略。`.devloop/pr.json`、`local_pull_requests.json` 不再读写，也不做旧格式迁移。
 
-## 一轮观察
+## 查询与视图
 
-执行端按主仓状态目录取得进程锁，再检查任务到期时间。Claude monitor、Codex hook、Scheduled
-task 和手工任务经过同一个执行入口。TS claim 只避免重复启动，Python lease 保证实际执行去重。
-本地 branch/HEAD/checkout 变化会使执行端提前刷新；空闲仓库降低频率。触发频率仍由 Harness 决定。
+PR 由目标 Repository + number 标识。源仓和源分支用于关联本地 branch；checkout 是可选的实时
+Git 拓扑，一个 branch 可以没有 checkout，detached HEAD 没有 branch 关联。目标仓默认当前仓，
+fork 工作流可通过该 Forge 配置的 `target_repository` 明确指定目标。
 
-先读取本地清单，再完整分页查询同源仓的开放 PR。上轮开放、本轮消失的 PR 按身份补查，不能把
-列表缺席推断成 merged。历史查询按最久未验证排序，每轮有固定上限；带 checkout 的分支和本地
-身份变化优先查证。未补齐历史的行保留 unknown，不声称已经确认无 PR。
+Gate、Board 与脚本查询 repocli，库决定本地状态是否可用、何时访问 Forge。merged 是生命周期
+终态，持久保存后停止普通轮询；closed 仍可重新打开。branch 可能被新 PR 复用，因此 merged
+不冻结 branch 关联。多个候选保留歧义，读取失败不能当作无 PR 或已完成。
 
-`local_pull_requests` 的 fetched_at 表示这次清单观察；每行 checked_at / history_checked_at 保留
-对应事实自己的验证时间。任何计划内读取失败保留上一份清单。`pr_observation_attempt` 单独保存
-失败类型、用途和可重试时间，不更新成功观察时间。旧格式清单没有行级时间，按未知历史渐进补齐。
+评论、finding verdict 和 merge readiness 按需独立读取。评论读取失败不会撤回已确认的生命周期，
+readiness 失败也不会擦掉已取得的 finding 视图。devloop 只持久化验证证据、review 工作流记录、
+开发基线、任务执行租约与 Board 投递游标，不复制通用 PR 缓存。
 
-当前分支视图复用这次清单。最近 PR 窗口、merge readiness 和待打标统计独立刷新，使用自己的
-details_checked_at；review 发布后按当前 PR 身份主动刷新。评论仍完整分页，HEAD 未变化不代表
-评论或 thread resolution 未变化。
-发布 PR 视图时短暂持有写锁；慢速辅助查询仅在原始观察仍未变化时写入，不能覆盖较新的实时结果。
+## 周期任务与副作用
 
-## 决策与副作用
+Claude monitor、Codex hook、Scheduled task 和手工调用共用一次性 task。任务的进程锁与执行
+cadence 只用于工作流去重；repocli 自己维护观察的到期、冷却和失败重试。已知 PR 的维护与分支
+历史发现分开，单项失败保留其它可用结果，任务报告逐项未知/歧义与动作结果。
 
-提交期的 live gate 只定向读取当前分支 PR。已配置 Forge 的读取失败向上传播，不能用旧窗口替代
-本次要求的权威读取；未配置 Forge 的仓库保留现有不启用 Forge 检查的行为。
+回收前调用 repocli `verify` 重新确认分支仍对应同一个已完成 PR；随后 `remove_finished` 再检查
+实时 branch / HEAD / checkout 身份。旧缓存、歧义、未知关联、查询失败和新 PR 复用均不授权回收。
+primary checkout 始终保留。原有 linked checkout 回收策略不变，branch ref 不随 checkout 删除。
 
-生命周期回收前重新读取该分支的 PR 关联，必须仍是同一个终态 PR；随后 remove_finished 核对
-实时 branch / HEAD / checkout 身份。旧缓存、未知历史、读取失败或已被新 PR 复用的分支均不授权
-回收。原有 primary checkout 保护及 linked checkout 回收策略继续由生命周期模块拥有。
-
-## 请求机制与诊断
-
-devloop 给 repocli 装配用户级 forge-http 目录，使不同 Repo 和短进程共享凭据级串行、冷却与
-条件缓存。库负责 HTTP / GraphQL 分类及 ETag；devloop 负责刷新用途、频率与副作用决策。
-共享状态按 host 和凭据摘要隔离，不保存原始 token。不同 token 的账号级额度关联目前不推断。
-
-任务报告包含核心观察、辅助详情的结果、实际 HTTP 请求及 304 数、失败原因和回收动作。
-限流期间保留旧观察，下一次任务不得提前发起网络请求；空闲和去重跳过与失败分别报告。
-具体时间间隔和历史批量上限以代码常量为准。此流程保持一次性 task，不引入常驻调度服务。
+repocli 状态位于用户级 `~/.repocli`，Python 和 TypeScript 使用相同访问 revision 摘要和记录/锁
+协议。不同短进程可以复用观察，状态中不保存原始凭据。HTTP 客户端与凭据解析继续复用统一入口。

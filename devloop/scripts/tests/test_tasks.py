@@ -88,36 +88,35 @@ def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory()
     from unittest.mock import patch
     from pathlib import Path
     from test_worktree import _fixture, _add_worktree, _add_submodule
-    from _testkit import _FakeForge, _git, _git_out
-    from domain.context import PullRequest, prstate, store
+    from _testkit import _pr_context, _FakeForge, _git, _git_out
+    from domain.context import PullRequest, store
     from domain.forge import ForgeError
     repo, _, _ = _fixture("task_submodule")
     _add_submodule(repo)
     linked = _add_worktree(repo, "finished")
     ongoing = _add_worktree(repo, "ongoing")
-    without_pr = _add_worktree(repo, "without-pr")
     _git(linked, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "-q")
     (Path(linked) / "doctor" / "module.txt").write_text("child edit\n")
-    (Path(linked) / "doctor" / "scratch.txt").write_text("child scratch\n")
     fake = _FakeForge([
         PullRequest(number=1, state="merged", source_branch="worktree-finished", sha=_git_out(linked, "rev-parse", "HEAD")),
         PullRequest(number=2, state="open", source_branch="worktree-ongoing", sha=_git_out(ongoing, "rev-parse", "HEAD")),
     ])
-    with patch.object(prstate, "forge_for_repo", return_value=fake):
-        # Seed an old terminal snapshot, then make the live refresh fail.
-        assert prstate.refresh_local_pull_requests(repo)
-        with patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
-            report = pr_lifecycle.sweep_repo(repo, force=True)
-        assert report["updated"]["local_pull_requests"] is False
-        assert report["actions"] == [] and Path(linked).exists()
+    context = _pr_context(repo, fake)
+    with patch.object(pr_lifecycle, "pr_context_for_repo", return_value=context), \
+         patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
         report = pr_lifecycle.sweep_repo(repo, force=True)
-        assert report["updated"]["local_pull_requests"] is True
+    assert report["errors"] and report["actions"] == [] and Path(linked).exists()
+    def query(_repo):
+        context = _pr_context(repo, fake)
+        context.observer.now = lambda: 4000000000
+        return context
+    with patch.object(pr_lifecycle, "pr_context_for_repo", side_effect=query):
+        report = pr_lifecycle.sweep_repo(repo, force=True)
         assert report["actions"][0]["status"] == "completed"
-        assert not Path(linked).exists()
-        assert Path(ongoing).is_dir() and Path(without_pr).is_dir()
+        assert not Path(linked).exists() and Path(ongoing).is_dir()
         assert _git_out(repo, "branch", "--list", "worktree-finished") == "worktree-finished"
         assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []
-        assert store.load_segment(repo, "local_pull_requests")["actions"] == []
+    assert store.load_segment(repo, "local_pull_requests") is None
 
 
 def test_sweep_defers_when_checkout_changes_during_forge_lookup():
@@ -125,7 +124,7 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
     from unittest.mock import patch
     from pathlib import Path
     from test_worktree import _fixture, _add_worktree
-    from _testkit import _FakeForge, _git, _git_out
+    from _testkit import _pr_context, _FakeForge, _git, _git_out
     from domain.context import PullRequest, prstate, store
 
     for change in ("branch", "head", "detached"):
@@ -136,7 +135,7 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
         lookup = fake.prs_for_branch
         changed = False
 
-        def change_during_lookup(branch):
+        def change_during_lookup(branch, **kwargs):
             nonlocal changed
             if branch == "worktree-finished" and not changed:
                 if change == "branch":
@@ -147,17 +146,13 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
                     _git(target, "switch", "--detach", "-q")
                 (Path(target) / "unsaved.txt").write_text("new work\n")
                 changed = True
-            return lookup(branch)
+            return lookup(branch, **kwargs)
 
         fake.prs_for_branch = change_during_lookup
-        with patch.object(prstate, "forge_for_repo", return_value=fake):
+        with patch.object(pr_lifecycle, "pr_context_for_repo", side_effect=lambda _: _pr_context(repo, fake)):
             report = pr_lifecycle.sweep_repo(repo, force=True)
-            assert report["updated"]["local_pull_requests"] is True
             assert changed and (Path(target) / "unsaved.txt").read_text() == "new work\n", change
-            assert [(a["status"], a["reason"]) for a in report["actions"]] == [("deferred", "identity_changed")]
-            snapshot = store.load_segment(repo, "local_pull_requests")
-            observed = next(row for row in snapshot["branches"] if row["branch"] == "worktree-finished")
-            assert observed["checkout"] is not None
+            assert [(a["status"], a["reason"]) for a in report["actions"]] == [("deferred", "forge_unverified")]
             if change == "branch":
                 # A fresh sweep observes the new PR-less branch and retains it.
                 assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []

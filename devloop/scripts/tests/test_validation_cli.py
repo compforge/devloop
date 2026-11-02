@@ -23,7 +23,7 @@ def test_one_round_for_lifecycle_checks_and_original_report_storage():
         assert result.proceed and all(item.ok for item in result.results)
         assert invoke.call_count == 1
         args = invoke.call_args.args[1]
-        assert args[args.index("--check") + 1] == "fix,lint,test"
+        assert args[args.index("--check") + 1] == "format,lint,test"
         assert args[args.index("--base") + 1] == "main"
         assert args[args.index("--changed-file") + 1] == "source.py"
         assert load_segment(str(repo), branch_segment("main", "validation"))["report"] == data
@@ -156,6 +156,29 @@ def test_cli_rejects_omitted_requested_check():
                 raise AssertionError("accepted missing test result")
             except ValueError as error:
                 assert "omitted requested checks" in str(error)
+
+
+def test_root_fallback_accepts_partial_groups_and_binds_requested_component():
+    from types import SimpleNamespace
+    from domain.validation_evidence import full_projection
+    from domain.validation import _record, Comparison
+    with TemporaryDirectory() as tmp:
+        repo = make_repo(tmp)
+        (repo / "child").mkdir()
+        value = report(repo)
+        lint, test = value["components"][0]["checks"]
+        lint["requestedComponents"] = ["child"]
+        test["requestedComponents"] = ["child"]
+        value["components"] = [
+            {"component": {"root": "."}, "checks": [lint]},
+            {"component": {"root": "child"}, "checks": [test]},
+        ]
+        with patch.object(repocli.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout=json.dumps(value), stderr="")):
+            decoded = repocli.validation_report(str(repo), ["--check", "format,lint,test"])
+        _record(str(repo), decoded, True, Comparison())
+        from lib.git_state import get_current_branch
+        assert "child" in full_projection(str(repo), get_current_branch(repo), "lint")
+        assert "child" in full_projection(str(repo), get_current_branch(repo), "test")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,4 @@
+import { prContextForRepo } from "../../lib/forge.js";
 import { fullProjection, observedCheck } from "../validation-evidence.js";
 import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, checkoutInfo } from "../../lib/git-state.js";
 import { findAgentsDocument, inspectCatalog, type Component } from "../repo-layout.js";
@@ -61,6 +62,18 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
   }));
   // An unavailable identity cannot select detached-HEAD or another branch's persisted state.
   if (branch === undefined) return new Board(root, items);
+  const prContext = branch ? await prContextForRepo(repo) : undefined;
+  if (prContext) {
+    try {
+      const view = await prContext.getCheckout();
+      if (view?.selected || view?.error || view?.ambiguous) items.push(boardItem("repo.pull-request", "state", scope, {
+        branch: view.branch, provider: prContext.reader.provider,
+        ...(view.selected ? { repository: view.selected.repository.path, number: view.selected.number, state: view.selected.state, url: view.selected.url } : {}),
+        ...(view.error ? { error: view.error } : {}), ambiguous: view.ambiguous,
+      }));
+    } catch (error) { items.push(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) })); }
+    finally { prContext.close(); }
+  }
   const lint = fullProjection(repo, branch || undefined, "lint");
   const test = fullProjection(repo, branch || undefined, "test");
   const componentIds = [...new Set([...Object.keys(lint), ...Object.keys(test)])].sort();

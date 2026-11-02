@@ -319,7 +319,7 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
 def refusal_detail(gv: gate.GateView, fallback: str) -> str:
     """Enrich a refuse-to-continue reason with the live-polled PR evidence the gate already holds.
 
-    The push gate runs an authoritative forge poll (`live_refresh`) before deciding, so when it
+    The push gate queries repocli before deciding, so when it
     refuses a stale branch it KNOWS the PR's number/state/sha — but the bare "current branch's MR
     is merged/closed" line dropped all of it. A caller that just created the MR then distrusts the
     verdict as a stale-context false-positive and re-queries the forge by hand to second-guess it.
@@ -437,7 +437,7 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
         # Don't write pr_number here — keep the `pr` segment single-owner. Trigger one
         # authoritative poll so it (the sole writer) populates number + window for the new
         # branch — and this one PERSISTS (the old refresh_pr_state discarded the poll).
-        prstate.refresh_pr(repo)
+        prstate.poll_pr(repo)
 
 
 # The failure that bites gcampr callers most: a --message whose quotes/specials broke shell
@@ -563,12 +563,12 @@ def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecy
     """跑某相位的 lifecycle validation checks / signal hooks，写进 PLAN，返回 DispatchResult。
 
     配置为空 → 静默 no-op（opt-in，零行为变化）。inline gate 失败 → 抛 SmartError 中止本次
-    git 动作。pre_commit 故意排在 staging 之前：normalize 的 `make fix` 改的文件要被随后的 stage
+    git 动作。pre_commit 故意排在 staging 之前：normalize 的 `make format` 改的文件要被随后的 stage
     收进同一个 commit。signal hook（如 code-review）不挡、把后台下游放进 `res.to_launch`，由
     调用方在 git 动作完成后用 launch_background_relays detach 起。
 
     范围（`phase_paths`）在**跑 hook 之前**算好：既让 post_commit / pre_mr 不退化成跑全仓，也让
-    normalize 与同相位并发的 lint/test 看到同一个集合（fix 会改工作树，各自现算会分叉）。
+    normalize 与同相位并发的 lint/test 看到同一个集合（format 会改工作树，各自现算会分叉）。
     """
     from domain.validation import Comparison
     comparison = Comparison()
@@ -636,11 +636,11 @@ def main(argv: list[str]) -> int:
         return 1
 
     # Gate truth (LIVE branch + SHA-validated PR state). For push/mr — outward, hard to
-    # reverse — pass live_refresh so an authoritative forge poll runs first: a PR merged on the
+    # reverse — query repocli for the current PR association first: a PR merged on the
     # server the monitor hasn't caught yet still blocks committing onto the dead branch (the
     # exact lag devloop exists to kill). The cached RepoContext stays for prompt hints only.
     try:
-        gv = gate.evaluate(intent.repo, live_refresh=(intent.mode in ("push", "mr")))
+        gv = gate.evaluate(intent.repo)
     except ForgeError as e:
         print(f"commit_flow: PR state verification failed for {intent.repo}: {e}", file=sys.stderr)
         return 1

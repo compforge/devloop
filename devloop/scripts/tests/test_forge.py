@@ -315,27 +315,8 @@ def test_refresh_pr_failopen():
     R = "/tmp/dlut_refresh"
     shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
     _git(R, "init", "-q")
-    assert prstate.refresh_pr(R) is False   # no forge → no-op, no exception, nothing written
+    assert prstate.poll_pr(R) is None   # no forge → no-op, no exception, nothing written
 
-def test_pick_branch_pr():
-    """Relocated to domain.context.prstate (so the gate and the monitor share one picker). Open PR
-    wins; else the most-recent finished PR whose source sha is an ancestor of HEAD — the
-    SHA-ancestry check is git_state.is_ancestor (patched here)."""
-    from lib import git_state
-    from domain.context import prstate
-    P = lambda **kw: PullRequest(**kw)  # noqa: E731
-    orig = git_state.is_ancestor
-    try:
-        git_state.is_ancestor = lambda repo, anc, desc: True
-        assert prstate.pick_branch_pr([P(number=5, state="open", sha="a"),
-                                       P(number=4, state="merged", sha="b")], "r", "h").number == 5
-        git_state.is_ancestor = lambda repo, anc, desc: anc == "b"
-        assert prstate.pick_branch_pr([P(number=4, state="merged", sha="b"),
-                                       P(number=3, state="closed", sha="c")], "r", "h").number == 4
-        git_state.is_ancestor = lambda repo, anc, desc: False
-        assert prstate.pick_branch_pr([P(number=4, state="merged", sha="dead")], "r", "h") is None
-    finally:
-        git_state.is_ancestor = orig
 
 def test_pullrequest_and_cadence():
     pr = PullRequest.from_dict({"number": 7, "state": "merged", "source_branch": "f", "target_branch": "m"})

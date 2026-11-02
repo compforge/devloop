@@ -107,3 +107,26 @@ def forge_for_repo(repo_dir: str | Path, *, timeout: int = 10) -> Forge | None:
                            state_dir=config.config_dir() / "forge-http")
     return GitLabForge(r.api_host, r.path, r.token, timeout=timeout,
                        state_dir=config.config_dir() / "forge-http")
+
+
+def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
+    """Assemble access policy; repocli owns observation and local associations."""
+    import hashlib
+    import json
+    from harness_common import Forge as ForgeIdentity, Repository
+    from repocli.forge import PullRequestContext, PullRequestObserver
+    r = resolve_forge(repo_dir)
+    if r is None or not r.token:
+        return None
+    reader = forge if forge is not None else forge_for_repo(repo_dir)
+    if reader is None:
+        return None
+    name = "github" if r.host == "github.com" else "gitlab" if r.host == "gitlab.com" else r.host
+    source = Repository(ForgeIdentity(name), r.path)
+    # Target selection is workflow policy. A configured upstream supports fork PRs
+    # without making the generic query silently choose a parent repository.
+    target_path = config.forge_entry(r.host, repo_dir).get("target_repository") or r.path
+    target = Repository(source.forge, target_path)
+    connection = hashlib.sha256(json.dumps([r.provider, name, r.api_host, r.token], separators=(",", ":")).encode()).hexdigest()
+    observer = PullRequestObserver(reader, forge=name, state_dir=Path.home() / ".repocli", connection=connection)
+    return PullRequestContext(observer, repo_dir, source=source, targets=(target,))

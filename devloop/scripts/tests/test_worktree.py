@@ -7,7 +7,7 @@ import os
 import shutil
 from pathlib import Path
 
-from _testkit import _FakeForge, _git, _git_out, run_main  # noqa: E402  (bootstrap first)
+from _testkit import _pr_context, _FakeForge, _git, _git_out, run_main  # noqa: E402  (bootstrap first)
 from domain import pull_request_lifecycle, worktree  # noqa: E402
 from domain.context import PullRequest, prstate, session, store  # noqa: E402
 from domain.forge import ForgeError  # noqa: E402
@@ -88,16 +88,36 @@ def _add_submodule(repo: str) -> None:
     _git(repo, "commit", "-qam", "add submodule")
 
 
+_inventories = {}
+_contexts = {}
+
+
+def _set_inventory(repo, payload):
+    # Fixture input, not an application-owned PR store.
+    _inventories[worktree.primary(repo)] = payload
+
+
 def _reconcile_observed(repo):
-    """Supply fresh Forge evidence to tests of local removal mechanics."""
-    rows = store.load_segment(repo, "local_pull_requests")["branches"]
-    prs = []
-    for row in rows:
-        if row.get("pull_request"):
-            raw = dict(row["pull_request"])
-            raw.setdefault("sha", row["head_sha"])
-            prs.append(PullRequest.from_dict(raw))
-    return pull_request_lifecycle.reconcile(repo, forge=_FakeForge(prs))
+    primary = worktree.primary(repo)
+    rows = _inventories[primary]["branches"]
+    prs = [PullRequest.from_dict(dict(row["pull_request"], sha=row["head_sha"]))
+           for row in rows if row.get("pull_request")]
+    context = _pr_context(primary, _FakeForge(prs))
+    _contexts[primary] = context
+    inventory = prstate.inventory_view(context)
+    # Fixture ordering remains explicit; local topology and PR observations come from repocli.
+    order = {row["branch"]: i for i, row in enumerate(rows)}
+    inventory["branches"].sort(key=lambda row: order.get(row["branch"], len(rows)))
+    return pull_request_lifecycle.reconcile(primary, context=context, inventory=inventory)
+
+
+def _view(repo):
+    repo = worktree.primary(repo)
+    inventory = prstate.inventory_view(_contexts[repo])
+    selected = {row["branch"] for row in _inventories[repo]["branches"]}
+    inventory["branches"] = [row for row in inventory["branches"] if row["branch"] in selected]
+    assert store.load_segment(repo, "local_pull_requests") is None
+    return inventory
 
 
 def test_new_worktree_fetches_latest_target_tip():
@@ -152,22 +172,6 @@ def test_create_and_reuse_leave_reclamation_to_pr_lifecycle():
     assert reused == created and Path(old).is_dir()
 
 
-def test_failed_inventory_read_preserves_monitor_snapshot():
-    from unittest.mock import patch
-    from repocli import git
-    repo, _, _ = _fixture("inventory_read_failure")
-    previous = {"branches": [{"branch": "main"}], "provider": "github", "fetched_at": 1}
-    prstate.persist_local_pull_requests(repo, previous)
-    before = store.load_segment(repo, "local_pull_requests")
-    original = git.git
-    def fail_branches(path, *args, **kwargs):
-        if args[0] in {"for-each-ref", "ls-remote"}:
-            return git.GitResult(-1, "", "injected read failure")
-        return original(path, *args, **kwargs)
-    with patch.object(git, "git", side_effect=fail_branches), patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])):
-        assert prstate.refresh_local_pull_requests(repo) is False
-        assert store.load_segment(repo, "local_pull_requests") == before
-        assert prstate.poll_remote_branches(repo) is None
 
 
 def test_repo_context_topology_uses_checkout_locations():
@@ -183,92 +187,16 @@ def test_repo_context_topology_uses_checkout_locations():
     assert str(metadata) not in [b.path for b in observed.worktrees]
 
 
-def test_local_pr_inventory_never_projects_separate_metadata_as_checkout():
-    from unittest.mock import patch
-    repo, _, _ = _fixture("separate_metadata_inventory")
-    metadata = Path(repo).parent / "metadata"
-    _git(repo, "init", "--separate-git-dir", str(metadata))
-    linked = _add_external_worktree(repo, "separate-linked")
-    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])):
-        payload = prstate.poll_local_pull_requests(repo)
-        assert payload is not None
-        branches = {item["branch"]: item for item in payload["branches"]}
-        assert branches["main"]["checkout"] == {"path": str(Path(repo).resolve()), "kind": "primary"}
-        assert branches["external-separate-linked"]["checkout"]["path"] == str(Path(linked).resolve())
-        # From the linked checkout Git cannot locate the primary checkout.
-        # Do not replace the previous complete lifecycle inventory with a gap.
-        assert prstate.poll_local_pull_requests(linked) is None
-        assert prstate.poll_local_pull_requests(str(metadata.parent)) is None
 
 
-def test_local_pull_request_inventory_joins_primary_and_linked_checkouts():
-    repo, _, _ = _fixture("local_pr_inventory")
-    managed = _add_worktree(repo, "managed")
-    external = _add_external_worktree(repo, "linked")
-    _git(repo, "branch", "retained")
-    head = _git_out(repo, "rev-parse", "HEAD")
-    fake = _FakeForge([
-        PullRequest(number=1, state="open", source_branch="main", sha=head),
-        PullRequest(number=2, state="merged", source_branch="worktree-managed", sha=head),
-        PullRequest(number=3, state="closed", source_branch="external-linked", sha=head),
-        PullRequest(number=4, state="merged", source_branch="retained", sha=head),
-    ])
-    original_forge = prstate.forge_for_repo
-    try:
-        prstate.forge_for_repo = lambda _repo: fake
-        payload = prstate.poll_local_pull_requests(repo)
-    finally:
-        prstate.forge_for_repo = original_forge
-
-    assert payload is not None
-    by_branch = {item["branch"]: item for item in payload["branches"]}
-    assert by_branch["main"]["checkout"]["kind"] == "primary"
-    assert by_branch["worktree-managed"]["checkout"]["kind"] == "managed"
-    assert by_branch["external-linked"]["checkout"]["kind"] == "external"
-    assert by_branch["retained"]["checkout"] is None
-    assert by_branch["worktree-managed"]["checkout"]["path"] == str(Path(managed).resolve())
-    assert by_branch["external-linked"]["checkout"]["path"] == str(Path(external).resolve())
-    assert {
-        item["pull_request"]["state"] for item in by_branch.values()
-    } == {"open", "merged", "closed"}
 
 
-def test_local_pull_request_inventory_is_all_or_nothing_on_forge_failure():
-    repo, _, _ = _fixture("local_pr_inventory_failure")
-    _add_worktree(repo, "broken")
-    head = _git_out(repo, "rev-parse", "HEAD")
-
-    class BrokenForge(_FakeForge):
-        def prs_for_branch(self, branch):
-            if branch == "worktree-broken":
-                raise ForgeError("offline")
-            return super().prs_for_branch(branch)
-
-    fake = BrokenForge([
-        PullRequest(number=1, state="open", source_branch="main", sha=head),
-    ])
-    previous = {
-        "fetched_at": 1,
-        "provider": "github",
-        "branches": [],
-        "changes": [],
-        "actions": [],
-    }
-    prstate.persist_local_pull_requests(repo, previous)
-    original_forge = prstate.forge_for_repo
-    try:
-        prstate.forge_for_repo = lambda _repo: fake
-        assert prstate.refresh_local_pull_requests(repo) is False
-    finally:
-        prstate.forge_for_repo = original_forge
-
-    assert store.load_segment(repo, "local_pull_requests") == previous
 
 
 def test_finished_reconciliation_can_remove_the_checkout_it_runs_from():
     repo, _, _ = _fixture("merged_current_checkout")
     current = _add_worktree(repo, "current")
-    prstate.persist_local_pull_requests(current, {
+    _set_inventory(current, {
         "fetched_at": 1,
         "provider": "github",
         "branches": [{
@@ -293,7 +221,7 @@ def test_finished_reconciliation_can_remove_the_checkout_it_runs_from():
     assert [(action.pr_number, action.status, action.reason) for action in actions] == [
         (1, "completed", "removed")
     ]
-    snapshot = store.load_segment(repo, "local_pull_requests")
+    snapshot = _view(repo)
     assert snapshot is not None
     assert snapshot["branches"][0]["checkout"] is None
 
@@ -312,7 +240,7 @@ def test_finished_reconciliation_force_reclaims_dirty_initialized_submodule():
         "-q",
     )
     (Path(target) / "doctor" / "module.txt").write_text("dirty\n")
-    prstate.persist_local_pull_requests(repo, {
+    _set_inventory(repo, {
         "fetched_at": 1,
         "provider": "github",
         "branches": [{
@@ -342,7 +270,7 @@ def test_finished_parent_reclaims_nested_open_checkout_and_projection():
     _git(repo, "branch", "nested-open")
     _git(repo, "worktree", "add", "-q", str(nested), "nested-open")
     head = _git_out(repo, "rev-parse", "HEAD")
-    prstate.persist_local_pull_requests(repo, {
+    _set_inventory(repo, {
         "fetched_at": 1,
         "provider": "github",
         "branches": [
@@ -375,7 +303,7 @@ def test_finished_parent_reclaims_nested_open_checkout_and_projection():
     assert [(action.pr_number, action.status) for action in actions] == [(1, "completed")]
     assert not Path(parent).exists()
     assert not nested.exists()
-    snapshot = store.load_segment(repo, "local_pull_requests")
+    snapshot = _view(repo)
     assert snapshot is not None
     assert all(item["checkout"] is None for item in snapshot["branches"])
 
@@ -428,7 +356,7 @@ def test_finished_pr_reconciliation_force_reclaims_every_linked_worktree():
         "changes": [],
         "actions": [],
     }
-    prstate.persist_local_pull_requests(repo, payload)
+    _set_inventory(repo, payload)
 
     actions = _reconcile_observed(repo)
 
@@ -443,7 +371,7 @@ def test_finished_pr_reconciliation_force_reclaims_every_linked_worktree():
         (6, "completed", "removed"),
         (7, "completed", "removed"),
     ]
-    snapshot = store.load_segment(repo, "local_pull_requests")
+    snapshot = _view(repo)
     assert snapshot is not None
     completed_branch = next(
         item for item in snapshot["branches"] if item["branch"] == "worktree-completed"
@@ -455,82 +383,11 @@ def test_finished_pr_reconciliation_force_reclaims_every_linked_worktree():
     )
     assert closed_branch["checkout"] is None
     assert closed_branch["pull_request"]["state"] == "closed"
-    assert snapshot["actions"] == [
-        {
-            "action": "remove_worktree",
-            "status": action.status,
-            "reason": action.reason,
-            "branch": action.branch,
-            "pr_number": action.pr_number,
-            "path": action.path,
-        }
-        for action in actions
-    ]
 
 
-def test_local_pull_request_refresh_records_only_authoritative_state_changes():
-    repo, _, _ = _fixture("local_pr_changes")
-    head = _git_out(repo, "rev-parse", "HEAD")
-    fake = _FakeForge([
-        PullRequest(number=1, state="open", source_branch="main", sha=head),
-    ])
-    original_forge = prstate.forge_for_repo
-    try:
-        prstate.forge_for_repo = lambda _repo: fake
-        assert prstate.refresh_local_pull_requests(repo)
-        first = store.load_segment(repo, "local_pull_requests")
-        assert first["changes"] == [{
-            "change": "discovered",
-            "branch": "main",
-            "pull_request": 1,
-            "to": "open",
-        }]
-
-        fake._prs[1] = PullRequest(
-            number=1,
-            state="merged",
-            source_branch="main",
-            sha=head,
-        )
-        assert prstate.refresh_local_pull_requests(repo)
-        changed = store.load_segment(repo, "local_pull_requests")
-        assert changed["changes"] == [{
-            "change": "state_changed",
-            "branch": "main",
-            "pull_request": 1,
-            "from": "open",
-            "to": "merged",
-        }]
-
-        assert prstate.refresh_local_pull_requests(repo)
-        stable = store.load_segment(repo, "local_pull_requests")
-        assert stable["changes"] == []
-    finally:
-        prstate.forge_for_repo = original_forge
 
 
-def test_failed_scalar_queries_preserve_pr_observation_and_block_gate():
-    from unittest.mock import patch
-    from domain.context import gate
 
-    repo, _, _ = _fixture("scalar_read_failure")
-    previous = {"branch": "main", "pr_number": 31, "prs": [], "fetched_at": 1}
-    prstate.persist_pr(repo, previous)
-    before = store.load_segment(repo, "pr")
-    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([])), \
-         patch.object(git_state, "get_current_branch", side_effect=OSError("injected read failure")):
-        assert prstate.refresh_pr(repo) is False
-        assert store.load_segment(repo, "pr") == before
-        try:
-            gate.evaluate(repo)
-        except OSError as exc:
-            assert "injected read failure" in str(exc)
-        else:
-            raise AssertionError("write gate accepted unavailable identity")
-    closed = PullRequest(number=31, state="merged", source_branch="main", sha="missing-object")
-    with patch.object(prstate, "forge_for_repo", return_value=_FakeForge([closed])):
-        assert prstate.poll_pr(repo) is None
-        assert prstate.poll_local_pull_requests(repo) is None
 
 
 if __name__ == "__main__":

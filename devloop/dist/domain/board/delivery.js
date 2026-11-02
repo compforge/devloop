@@ -6,6 +6,7 @@ import { renderPrompt } from "./render.js";
 const RULES = {
     workspace: { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
     "repo.references": { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
+    "repo.pull-request": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
     "repo.identity": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
     "repo.validation": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
     "repo.pr-blocked": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: 1, replayAfterCompact: false },

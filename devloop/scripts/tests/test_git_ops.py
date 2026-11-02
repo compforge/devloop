@@ -722,13 +722,13 @@ def test_commit_without_forge_origin_and_non_pr_modes_reject_destination_option(
 
 
 def test_publish_current_repository_preserves_existing_nondefault_base():
-    """@case Local validation baseline must not become an implicit requested PR base."""
+    """@case Keep the existing PR base and append follow-up text without losing human edits."""
     from lib.gitcmd import GitResult
     from unittest.mock import patch
     flow = _load_script("commit_flow")
     for requested in [None, "release", "main"]:
         existing = PullRequest(number=8, state="open", source_branch="fix", target_branch="release")
-        forge = _FakeForge([existing])
+        forge = _FakeForge([existing], bodies={8: "original"})
         intent = flow.GitIntent(mode="mr", message="m", title="m", requested_branch=None,
                                 target="main", base="origin/main", explicit_base=False, files=[],
                                 repo="/repo", source="test", invoke_cwd="/repo", pr_target=requested, description="follow-up body")
@@ -741,7 +741,7 @@ def test_publish_current_repository_preserves_existing_nondefault_base():
         if forge.created:
             assert forge.created.target_branch == "main"
         else:
-            assert forge.description(8) == "follow-up body"
+            assert forge.description(8) == "original\n\nfollow-up body"
 
 
 

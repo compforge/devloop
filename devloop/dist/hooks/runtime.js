@@ -1626,7 +1626,7 @@ import { fileURLToPath } from "node:url";
 import { realpath as realpath2 } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 
-// node_modules/@compforge/repokit/dist/git.js
+// node_modules/@compforge/repokit/dist/git/catalog.js
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { lstat, open, realpath } from "node:fs/promises";
@@ -1659,7 +1659,7 @@ function repository(forge, path) {
   return Object.defineProperty(value, "id", { value: () => repositoryId(value) });
 }
 
-// node_modules/@compforge/repokit/dist/operations.js
+// node_modules/@compforge/repokit/dist/git/operations.js
 import { spawnSync } from "node:child_process";
 function runGit(repo, args, timeoutMs = 5e3, raw = false) {
   const result = spawnSync("git", ["-C", repo, ...args], {
@@ -1684,7 +1684,7 @@ function changedPaths(repo) {
   return [...new Set((tracked.stdout + untracked.stdout).split("\0").filter((p) => p && !p.endsWith("/")))];
 }
 
-// node_modules/@compforge/repokit/dist/remote.js
+// node_modules/@compforge/repokit/dist/git/remote.js
 function parseRemoteUrl(value) {
   let host, path;
   if (value.includes("://")) {
@@ -1833,7 +1833,7 @@ function manifestEcosystem(path) {
   return markers.find(([, ...names]) => names.includes(posix.basename(path)))?.[0] ?? "";
 }
 
-// node_modules/@compforge/repokit/dist/git.js
+// node_modules/@compforge/repokit/dist/git/catalog.js
 var maxFileBytes = 2 << 20;
 var maxTotalBytes = 128 << 20;
 var Git = class _Git {
@@ -2049,7 +2049,7 @@ async function inspect(options = {}) {
   }
 }
 
-// node_modules/@compforge/repokit/dist/git-state.js
+// node_modules/@compforge/repokit/dist/git/state.js
 import { appendFileSync, mkdirSync, readFileSync, existsSync, realpathSync, lstatSync, statSync } from "node:fs";
 import { join as join2, dirname as dirname2, basename } from "node:path";
 function gitPath(repo, name) {

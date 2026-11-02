@@ -4,8 +4,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from _testkit import _git, _git_out, _load_script, run_main
-from repokit.git_index import staged_changes
-from repokit.git_state import git_path
+from repokit.git.index import staged_changes
+from repokit.git.state import git_path
 
 
 @contextmanager

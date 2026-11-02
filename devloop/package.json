@@ -72,7 +72,7 @@
     }
   },
   "dependencies": {
-    "@compforge/repokit": "^0.13.0",
+    "@compforge/repokit": "^0.13.1",
     "@deepseek-ai/schemastery": "^3.18.2"
   },
   "devDependencies": {

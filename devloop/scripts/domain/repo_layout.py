@@ -11,7 +11,7 @@ from pathlib import Path
 from repokit import Layout
 
 from lib import repokit
-from repokit.git_state import find_checkout
+from repokit.git.state import find_checkout
 
 
 @dataclass(frozen=True)

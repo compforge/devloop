@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from repokit import git as operations, stash
+from repokit import git as operations
+from repokit.git import stash as stash
 
 from lib import git_state, gitcmd
 

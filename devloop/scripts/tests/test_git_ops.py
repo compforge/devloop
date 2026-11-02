@@ -55,7 +55,7 @@ def test_gitlink_guard_exempts_registered_submodule():
 
 def test_staging_preserves_literal_paths_and_sensitive_policy():
     from tempfile import TemporaryDirectory
-    from repokit.git_index import staged_changes
+    from repokit.git.index import staged_changes
 
     sgo = _load_script("commit_flow")
     with TemporaryDirectory() as repo:
@@ -608,7 +608,7 @@ def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
         def fail_status(repo, *args, **kwargs):
             return gitcmd.GitResult(1, "", "unavailable") if args[0] == "status" else original(repo, *args, **kwargs)
 
-        with patch("repokit.git.git", side_effect=fail_status):
+        with patch("repokit.git.operations.git", side_effect=fail_status):
             try:
                 branch.create(root, "feature", "main", identity=session.SessionIdentity("test", ""))
                 assert False, "unknown status must block branch creation"
@@ -623,7 +623,7 @@ def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
                 return gitcmd.GitResult(-1, "", "timeout", uncertain=True)
             return original(repo, *args, **kwargs)
 
-        with patch("repokit.git.git", side_effect=timeout_checkout):
+        with patch("repokit.git.operations.git", side_effect=timeout_checkout):
             try:
                 branch.create(root, "feature", "main", carry_changes=True, identity=session.SessionIdentity("test", ""))
                 assert False, "timeout must be reported"

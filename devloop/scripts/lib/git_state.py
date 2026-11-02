@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from repokit import git as gitcmd
-from repokit.git_state import (
+from repokit.git.state import (
     commits as commits,
     merge_base as merge_base,
     validate_branch_name as validate_branch_name,

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
-from repokit.remote import remote
+from repokit.git.remote import remote
 from domain.forge import (
     Comment,
     Forge,

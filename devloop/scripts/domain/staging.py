@@ -5,7 +5,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from repokit import git, git_index
+from repokit import git
+from repokit.git import index as git_index
 
 
 class StagingError(Exception):

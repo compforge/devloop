@@ -27,7 +27,7 @@ import json
 import os
 from dataclasses import asdict
 from pathlib import Path
-from repokit.git_state import checkout_at
+from repokit.git.state import checkout_at
 
 STATE_DIRNAME = ".devloop"
 STATE_FILENAME = "context.json"   # workspace-level state (single owner: the refresh)

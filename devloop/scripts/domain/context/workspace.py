@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from repokit.git_state import checkout_at
+from repokit.git.state import checkout_at
 from typing import Any
 
 from lib import parsers

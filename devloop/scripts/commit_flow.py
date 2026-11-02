@@ -23,7 +23,8 @@ A fresh-cut branch is then asserted to carry only this run's commit(s) before pu
 mis-based branch is caught at creation rather than at merge. Emits a self-narrating PLAN banner.
 """
 from __future__ import annotations
-from repokit import git as operations, git_index
+from repokit import git as operations
+from repokit.git import index as git_index
 
 import argparse
 import os

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from repokit.git_state import checkout_at
+from repokit.git.state import checkout_at
 
 from lib import config
 

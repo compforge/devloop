@@ -6,7 +6,7 @@ reproducing only the visible ``git worktree add`` step and skipping lifecycle po
 """
 from __future__ import annotations
 from repokit import git as operations
-from repokit.git_state import checkout_info
+from repokit.git.state import checkout_info
 
 import logging
 from enum import Enum

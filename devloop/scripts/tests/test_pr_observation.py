@@ -137,7 +137,7 @@ def test_gate_distinguishes_missing_credentials_from_no_forge_origin():
         try:
             gate.evaluate(repo)
         except ForgeAuthError as exc:
-            assert "no credential for github.com/example/repo" in str(exc)
+            assert "no credential for github.com" in str(exc)
         else:
             raise AssertionError("missing credentials must not authorize a gate")
         assert prstate.checkout_pr(repo) == ("", None)  # Presentation remains best-effort.

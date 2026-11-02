@@ -34,21 +34,25 @@ def _baseline_branches(repo: str) -> tuple[str, ...]:
 
 def checkout_pr(repo: str, *, forge: Forge | None = None, required: bool = False) -> tuple[str, BranchPullRequests | None]:
     """Query native associations; workflow gates reject unavailable or ambiguous results."""
-    context = pr_context_for_repo(repo, forge=forge)
-    if context is None:
-        return "", None
+    context = None
+    provider = ""
     try:
+        context = pr_context_for_repo(repo, forge=forge)
+        if context is None:
+            return "", None
+        provider = context.observer.reader.provider
         current = context.get_checkout()
         if current and (current.error or current.ambiguous):
             raise ForgeError(current.error or "multiple PRs match this branch; select a proposal explicitly")
-        return context.observer.reader.provider, current
+        return provider, current
     except (ForgeError, OSError) as exc:
         if required:
             raise
         logger.warning("PR view unavailable repo=%s error=%s", repo, exc)
-        return context.observer.reader.provider, None
+        return provider, None
     finally:
-        context.observer.close()
+        if context is not None:
+            context.observer.close()
 
 
 # ── remote_branches.json (the server's trunk tips; read-freshness baseline) ────

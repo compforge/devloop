@@ -14,6 +14,11 @@ Gate、Board 与脚本查询 repocli，库决定本地状态是否可用、何�
 终态，持久保存后停止普通轮询；closed 仍可重新打开。branch 可能被新 PR 复用，因此 merged
 不冻结 branch 关联。多个候选保留歧义，读取失败不能当作无 PR 或已完成。
 
+有 Forge origin 却缺凭据属于查询不可用；没有 Forge origin 才表示该查询不适用。
+所有开发门禁（包括 commit-only）在查询不可用或歧义时阻断，commit-only 仅承诺不发布。
+Board 为 PR 查询提供 1 秒等待预算，超时或缺凭据时展示不可用并继续投递其它上下文；
+此预算不改变 repocli 的缓存与刷新职责。
+
 RepoContext 直接持有选中的原生 PR；生命周期对账直接消费 BranchPullRequests，
 不再维护 recent window 或字典形式的中间库存。评论、finding verdict 和 merge readiness
 由 Board 展示按需独立读取，普通 RepoContext.load / 分支刷新不触发这些请求。评论读取失败不会撤回已确认的生命周期，
@@ -25,6 +30,8 @@ readiness 失败也不会擦掉已取得的 finding 视图。devloop 只持久�
 Claude monitor、Codex hook、Scheduled task 和手工调用共用一次性 task。任务的进程锁与执行
 cadence 只用于工作流去重；repocli 自己维护观察的到期、冷却和失败重试。已知 PR 的维护与分支
 历史发现分开，单项失败保留其它可用结果，任务报告逐项未知/歧义与动作结果。
+观察错误或回收延后会让单次 CLI 返回非零退出码。所有关联已知、没有开放 PR 和 linked checkout
+时进入空闲周期；primary checkout 上已完成的 PR 不阻止降频。
 
 回收前调用 repocli `verify` 重新确认分支仍对应同一个已完成 PR；随后 `remove_finished` 再检查
 实时 branch / HEAD / checkout 身份。旧缓存、歧义、未知关联、查询失败和新 PR 复用均不授权回收。

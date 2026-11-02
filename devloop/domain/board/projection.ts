@@ -62,18 +62,20 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
   }));
   // An unavailable identity cannot select detached-HEAD or another branch's persisted state.
   if (branch === undefined) return new Board(root, items);
-  const prContext = branch ? await prContextForRepo(repo) : undefined;
-  if (prContext) {
-    try {
-      const view = await prContext.getCheckout();
+  let prContext: Awaited<ReturnType<typeof prContextForRepo>>;
+  try {
+    prContext = branch ? await prContextForRepo(repo) : undefined;
+    if (prContext) {
+      // @why Prompt display has a short wait budget; repocli still owns cache and refresh policy.
+      const view = await prContext.getCheckout({ signal: AbortSignal.timeout(1_000) });
       if (view?.selected || view?.error || view?.ambiguous) items.push(boardItem("repo.pull-request", "state", scope, {
         branch: view.branch, provider: prContext.reader.provider,
         ...(view.selected ? { repository: view.selected.repository.path, number: view.selected.number, state: view.selected.state, url: view.selected.url } : {}),
         ...(view.error ? { error: view.error } : {}), ambiguous: view.ambiguous,
       }));
-    } catch (error) { items.push(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) })); }
-    finally { prContext.close(); }
-  }
+    }
+  } catch (error) { items.push(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) })); }
+  finally { prContext?.close(); }
   const lint = fullProjection(repo, branch || undefined, "lint");
   const test = fullProjection(repo, branch || undefined, "test");
   const componentIds = [...new Set([...Object.keys(lint), ...Object.keys(test)])].sort();

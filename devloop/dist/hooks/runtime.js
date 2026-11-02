@@ -5135,7 +5135,7 @@ async function prContextForRepo(repo) {
   const entry = forgeEntry(origin.host, repo);
   const provider = entry.type === "github" || entry.type === "gitlab" ? entry.type : origin.host === "github.com" || origin.host.startsWith("github.") ? "github" : "gitlab";
   const token = forgeToken(origin.host, provider, repo);
-  if (!token) return void 0;
+  if (!token) throw new Error(`PR query unavailable: no credential for ${origin.host}/${origin.path}`);
   const forge = origin.host === "github.com" ? "github" : origin.host === "gitlab.com" ? "gitlab" : origin.host;
   const host = typeof entry.api_host === "string" && entry.api_host ? entry.api_host : origin.host;
   const source = { forge: { name: forge }, path: origin.path };
@@ -5342,10 +5342,11 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
     ...staleBindingHours === void 0 ? {} : { staleBindingHours }
   }));
   if (branch === void 0) return new Board(root, items);
-  const prContext = branch ? await prContextForRepo(repo) : void 0;
-  if (prContext) {
-    try {
-      const view = await prContext.getCheckout();
+  let prContext;
+  try {
+    prContext = branch ? await prContextForRepo(repo) : void 0;
+    if (prContext) {
+      const view = await prContext.getCheckout({ signal: AbortSignal.timeout(1e3) });
       if (view?.selected || view?.error || view?.ambiguous) items.push(boardItem("repo.pull-request", "state", scope, {
         branch: view.branch,
         provider: prContext.reader.provider,
@@ -5353,11 +5354,11 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
         ...view.error ? { error: view.error } : {},
         ambiguous: view.ambiguous
       }));
-    } catch (error) {
-      items.push(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) }));
-    } finally {
-      prContext.close();
     }
+  } catch (error) {
+    items.push(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) }));
+  } finally {
+    prContext?.close();
   }
   const lint = fullProjection(repo, branch || void 0, "lint");
   const test = fullProjection(repo, branch || void 0, "test");

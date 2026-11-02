@@ -632,10 +632,9 @@ def main(argv: list[str]) -> int:
         print(f"commit_flow: {e}", file=sys.stderr)  # no PLAN yet — nothing was attempted
         return 1
 
-    # Gate truth (LIVE branch + SHA-validated PR state). For push/mr — outward, hard to
-    # reverse — query repocli for the current PR association first: a PR merged on the
-    # server the monitor hasn't caught yet still blocks committing onto the dead branch (the
-    # exact lag devloop exists to kill). The cached RepoContext stays for prompt hints only.
+    # Every mode checks the branch lifecycle through repocli before mutation.
+    # Commit-only forbids publishing, not PR queries; unavailable or ambiguous state
+    # cannot authorize work on a branch that may already be merged.
     try:
         gv = gate.evaluate(intent.repo)
     except ForgeError as e:

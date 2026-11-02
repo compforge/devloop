@@ -1,13 +1,13 @@
 # Node validation guidance
 
-## Fix and lint
+## Format and lint
 
 Keep Prettier and ESLint writers ordered; run read-only checks concurrently:
 
 ```make
 LINT_JOBS ?= 3
 
-.PHONY: fix lint lint-ci lint-eslint lint-format lint-types
+.PHONY: format lint lint-ci lint-eslint lint-format lint-types
 format:
 	pnpm exec prettier --write .
 	pnpm exec eslint --fix .

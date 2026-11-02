@@ -3,7 +3,10 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createForgeReader, remote, PullRequestContext } from "@compforge/repocli";
 import { forgeEntry, forgeToken } from "./config.js";
-/** Credentials and target policy belong to the workflow; PR state belongs to repocli. */
+/**
+ * @spec A Forge origin without credentials is unavailable, never known to have no PR.
+ * @see {@link component://docs/pr-observation.md}
+ */
 export async function prContextForRepo(repo) {
     const origin = await remote(repo);
     if (!origin)
@@ -13,7 +16,7 @@ export async function prContextForRepo(repo) {
         : origin.host === "github.com" || origin.host.startsWith("github.") ? "github" : "gitlab";
     const token = forgeToken(origin.host, provider, repo);
     if (!token)
-        return undefined;
+        throw new Error(`PR query unavailable: no credential for ${origin.host}/${origin.path}`);
     const forge = origin.host === "github.com" ? "github" : origin.host === "gitlab.com" ? "gitlab" : origin.host;
     const host = typeof entry.api_host === "string" && entry.api_host ? entry.api_host : origin.host;
     const source = { forge: { name: forge }, path: origin.path };

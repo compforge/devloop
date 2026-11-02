@@ -109,17 +109,24 @@ def forge_for_repo(repo_dir: str | Path, *, timeout: int = 10) -> Forge | None:
 
 
 def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
-    """Assemble access policy; repocli owns observation and local associations."""
+    """Assemble access policy; repocli owns observation and local associations.
+
+    +spec=`Only an absent Forge origin means PR queries are inapplicable;
+    a configured origin without credentials is unavailable, never known to have no PR.`
+    +link=`component://docs/pr-observation.md`
+    """
     import hashlib
     import json
     from harness_common import Forge as ForgeIdentity, Repository
     from repocli.forge import PullRequestContext, PullRequestObserver
     r = resolve_forge(repo_dir)
-    if r is None or not r.token:
+    if r is None:
         return None
+    if not r.token:
+        raise ForgeAuthError(f"PR query unavailable: no credential for {r.host}/{r.path}")
     reader = forge if forge is not None else forge_for_repo(repo_dir)
     if reader is None:
-        return None
+        raise ForgeError(f"PR query unavailable: no reader for {r.host}/{r.path}")
     name = "github" if r.host == "github.com" else "gitlab" if r.host == "gitlab.com" else r.host
     source = Repository(ForgeIdentity(name), r.path)
     # Target selection is workflow policy. A configured upstream supports fork PRs

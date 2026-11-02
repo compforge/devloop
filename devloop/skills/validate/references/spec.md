@@ -2,7 +2,7 @@
 
 The project declares literal targets in each Component's Makefile:
 
-- `fix`: optional source normalization, explicitly requested before checks.
+- `format`: optional source normalization, explicitly requested before checks.
 - `lint-ci`, then `lint`: static checks.
 - `test`, then `test-ci`, then `test-local`: behavior checks.
 
@@ -21,8 +21,8 @@ Component fall back to full scope. Partial impact does not by itself force full 
 ## Execution and evidence
 
 `repocli format`, `lint`, `test` are independent. `validate` defaults to lint/test;
-`validate --check format,lint,test` finishes fix before fresh planning and bounded parallel
-checks. Failed fix stops the round; absent optional fix allows checks. Fix-only
+`validate --check format,lint,test` finishes format before fresh planning and bounded parallel
+checks. Failed format stops the round; absent optional format allows checks. Format-only
 success is never lint/test evidence. Dependencies must be prepared first.
 
 The report distinguishes inputsConsistent, complete and passed. Missing targets are

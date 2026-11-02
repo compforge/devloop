@@ -13,8 +13,8 @@ repocli test --repo <repo> --component <component>
 repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m
 ```
 
-`validate` defaults to lint/test. `--check` selects the steps to combine. Fix always runs
-first; repocli replans from the resulting contents before running lint/test. Fix can
+`validate` defaults to lint/test. `--check` selects the steps to combine. Format always runs
+first; repocli replans from the resulting contents before running lint/test. Format can
 change files and never grants validation evidence. `--plan` is read-only; when format is
 selected, subsequent check commands are previews and must be replanned after format.
 

@@ -40,7 +40,7 @@ def main(argv: list[str]) -> int:
         if report:
             print(json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
         if not loop:
-            return int(any(row.get("error") or any(value is False for value in row.get("updated", {}).values())
+            return int(any(row.get("error") or row.get("errors") or any(value is False for value in row.get("updated", {}).values())
                            or any(action.get("status") == "deferred" for action in row.get("actions", []))
                            for row in repositories))
         time.sleep(spec.interval_seconds)

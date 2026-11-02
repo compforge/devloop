@@ -76,7 +76,9 @@ def test_task_exit_status_exposes_refresh_and_cleanup_failures():
     runner = _load_script("run_task")
     for row in [
         {"repo": "/repo", "error": "ForgeError"},
-        {"repo": "/repo", "updated": {"local_pull_requests": False}},
+        {"repo": "/repo", "errors": ["no usable forge"], "actions": [], "pull_requests": []},
+        {"repo": "/repo", "errors": ["offline"], "updated": {"remote_branches": True}},
+        {"repo": "/repo", "updated": {"remote_branches": False}},
         {"repo": "/repo", "actions": [{"status": "deferred", "reason": "git_error"}]},
     ]:
         with patch.object(runner.registry, "run", return_value=[row]) as run:
@@ -157,6 +159,69 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
                 # A fresh sweep observes the new PR-less branch and retains it.
                 assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []
                 assert (Path(target) / "unsaved.txt").is_file()
+
+
+def test_idle_cadence_ignores_terminal_pr_on_primary_checkout():
+    from unittest.mock import patch
+    from test_worktree import _fixture
+    from domain.context import store
+
+    repo, _, _ = _fixture("idle_primary")
+    discovery = pr_lifecycle.discover()["pr-lifecycle-reconcile"].interval_seconds
+    for state, linked, errors, observation, expected in [
+        ("merged", False, [], "known", pr_lifecycle.IDLE_INTERVAL),
+        ("closed", False, [], "known", pr_lifecycle.IDLE_INTERVAL),
+        ("open", False, [], "known", discovery),
+        ("merged", True, [], "known", discovery),
+        ("merged", False, ["offline"], "unknown", discovery),
+        ("merged", False, [], "ambiguous", discovery),
+    ]:
+        report = {"errors": errors, "has_linked_checkouts": linked,
+                  "associations": [{"observation": observation}],
+                  "pull_requests": [{"state": state, "checkout": {"primary": True, "path": repo}}]}
+        with patch.object(pr_lifecycle, "_sweep_repo", return_value=report), \
+             patch.object(pr_lifecycle.time, "time", return_value=1000):
+            pr_lifecycle.sweep_repo(repo, force=True)
+        assert store.load_segment(repo, "pr_task_attempt")["next_attempt_at"] == 1000 + expected
+
+
+def test_removal_rechecks_identity_after_successful_association_verification():
+    # +case=`A checkout change after Forge verification is rejected at the deletion boundary`
+    from unittest.mock import patch
+    from pathlib import Path
+    from test_worktree import _fixture, _add_worktree
+    from _testkit import _pr_context, _FakeForge, _git, _git_out
+    from domain import pull_request_lifecycle, worktree
+    from domain.context import PullRequest
+
+    for change in ("branch", "head", "detached"):
+        repo, _, _ = _fixture(f"final_identity_{change}")
+        target = _add_worktree(repo, "finished")
+        fake = _FakeForge([PullRequest(1, state="merged", source_branch="worktree-finished",
+                                      sha=_git_out(target, "rev-parse", "HEAD"))])
+        context = _pr_context(repo, fake)
+        inventory = context.local_branches()
+        verify = context.verify
+        def change_after_verification(row):
+            verified = verify(row)
+            assert verified.selected and verified.selected.inactive and not verified.error
+            if change == "branch":
+                _git(target, "switch", "-qc", "new-work")
+            elif change == "head":
+                _git(target, "commit", "--allow-empty", "-qm", "new work")
+            else:
+                _git(target, "switch", "--detach", "-q")
+            (Path(target) / "unsaved.txt").write_text("new work")
+            return verified
+        try:
+            with patch.object(context, "verify", side_effect=change_after_verification), \
+                 patch.object(worktree.operations, "remove_worktree") as remove:
+                actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
+            remove.assert_not_called()
+            assert [(a.status, a.reason) for a in actions] == [("deferred", "identity_changed")]
+            assert (Path(target) / "unsaved.txt").read_text() == "new work"
+        finally:
+            context.observer.close()
 
 
 if __name__ == "__main__":

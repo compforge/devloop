@@ -33,3 +33,16 @@ it.each([
     expect(context?.options.connection).toBe(createHash("sha256").update(JSON.stringify(["gitlab", "gitlab.example.com", host, "test-credential"])).digest("hex"));
   } finally { context?.close(); }
 });
+
+it("distinguishes an absent Forge origin from unavailable credentials at the gate", async () => {
+  const { evaluateGate } = await import("../domain/context/gate.js");
+  const root = mkdtempSync(join(tmpdir(), "devloop-forge-missing-")); roots.push(root);
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args]);
+  git("init", "-b", "feature"); git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-m", "initial");
+  expect((await evaluateGate(root)).activePullRequest).toBeUndefined();
+  git("remote", "add", "origin", "https://github.com/example/repo.git");
+  vi.mocked(forgeEntry).mockReturnValue({});
+  vi.mocked(forgeToken).mockReturnValue(undefined);
+  await expect(evaluateGate(root)).rejects.toThrow("no credential for github.com/example/repo");
+  expect(createForgeReader).not.toHaveBeenCalled();
+});

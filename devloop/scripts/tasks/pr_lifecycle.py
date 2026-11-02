@@ -52,7 +52,7 @@ def sweep_repo(repo: str, *, force: bool = False) -> dict:
         started = time.time()
         report = _sweep_repo(control)
         interval = discover()["pr-lifecycle-reconcile"].interval_seconds
-        if not report.get("errors") and not report.get("has_linked_checkouts") and all(row["observation"] == "known" for row in report.get("associations", [])) and not any(pr["state"] == "open" or pr.get("checkout") for pr in report.get("pull_requests", [])):
+        if not report.get("errors") and not report.get("has_linked_checkouts") and all(row["observation"] == "known" for row in report.get("associations", [])) and not any(pr["state"] == "open" for pr in report.get("pull_requests", [])):
             interval = IDLE_INTERVAL
         next_at = time.time() + interval
         store.save_segment(control, "pr_task_attempt", {"attempted_at": started,
@@ -118,5 +118,6 @@ def run(target: str, *, repo_only: bool = False) -> list[dict]:
         try:
             results.append(sweep_repo(repo))
         except Exception as exc:
+            logger.warning("PR observation failed repo=%s error=%s: %s", repo, type(exc).__name__, exc)
             results.append({"repo": repo, "error": type(exc).__name__})
     return results

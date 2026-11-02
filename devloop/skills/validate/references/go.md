@@ -1,13 +1,13 @@
 # Go validation guidance
 
-## Fix and lint
+## Format and lint
 
 If the project uses golangci-lint, let its runner coordinate linters and cap its native worker pool:
 
 ```make
 LINT_WORKERS ?= 4
 
-.PHONY: fix lint lint-ci
+.PHONY: format lint lint-ci
 format:
 	golangci-lint run --fix --concurrency $(LINT_WORKERS)
 lint:
@@ -16,7 +16,7 @@ lint-ci: lint
 ```
 
 Do not start separate runners per directory; golangci-lint already analyzes packages concurrently and
-normally locks against concurrent instances. With only standard Go tools, use `go fmt ./...` in `fix`
+normally locks against concurrent instances. With only standard Go tools, use `go fmt ./...` in `format`
 and `go vet -p $(LINT_WORKERS) ./...` in `lint`. See the
 [golangci-lint concurrency contract](https://golangci-lint.run/docs/configuration/cli/#run).
 

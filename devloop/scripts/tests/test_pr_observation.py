@@ -85,7 +85,7 @@ def test_reused_branch_is_reverified_before_removal():
     assert store.load_segment(repo, "local_pull_requests") is None
 
 
-def test_gate_reports_unavailable_and_ambiguous_queries():
+def test_gate_reports_unavailable_queries():
     repo, _, _ = _fixture("query_gate")
     fake = _FakeForge([PullRequest(1, state="open", source_branch="main")])
     context = _pr_context(repo, fake)
@@ -119,6 +119,61 @@ def test_query_view_isolates_one_branch_failure():
         rows = {row.branch: row for row in context.local_branches()}
     assert rows["main"].error
     assert rows["healthy"].selected.number == 2
+
+
+def test_gate_distinguishes_missing_credentials_from_no_forge_origin():
+    # +case=`Missing credentials cannot authorize a commit; an absent Forge origin is inapplicable`
+    from contextlib import redirect_stderr
+    from io import StringIO
+    from lib import config
+    from domain.forge import ForgeAuthError
+
+    repo, _, _ = _fixture("gate_credentials")
+    _git(repo, "switch", "-qc", "feature")
+    assert gate.evaluate(repo).active_pr is None  # Local filesystem origin.
+    _git(repo, "remote", "set-url", "origin", "https://github.com/example/repo.git")
+    command = _load_script("commit_flow")
+    with patch.object(config, "forge_token", return_value=None):
+        try:
+            gate.evaluate(repo)
+        except ForgeAuthError as exc:
+            assert "no credential for github.com/example/repo" in str(exc)
+        else:
+            raise AssertionError("missing credentials must not authorize a gate")
+        assert prstate.checkout_pr(repo) == ("", None)  # Presentation remains best-effort.
+        with patch.object(command, "prepare_branch") as mutation, redirect_stderr(StringIO()) as error:
+            assert command.main(["commit", "--repo", repo, "-m", "blocked"]) == 1
+        mutation.assert_not_called()
+        assert "no credential" in error.getvalue()
+
+
+def test_commit_only_rejects_unavailable_and_ambiguous_pr_queries():
+    # +case=`Commit-only still requires an unambiguous PR lifecycle observation`
+    from contextlib import redirect_stderr
+    from io import StringIO
+
+    for failure in ("offline", "ambiguous"):
+        repo, _, _ = _fixture(f"commit_query_{failure}")
+        _git(repo, "switch", "-qc", "feature")
+        fake = _FakeForge([PullRequest(n, state="open", source_branch="feature") for n in (1, 2)])
+        if failure == "offline":
+            def unavailable(*args, **kwargs):
+                raise ForgeError("offline")
+            fake.prs_for_branch = unavailable
+        context = _pr_context(repo, fake)
+        command = _load_script("commit_flow")
+        with patch.object(prstate, "pr_context_for_repo", return_value=context), \
+             patch.object(command, "prepare_branch") as mutation, redirect_stderr(StringIO()) as error:
+            assert command.main(["commit", "--repo", repo, "-m", "blocked"]) == 1
+        mutation.assert_not_called()
+        expected = "offline" if failure == "offline" else "multiple PRs match"
+        assert expected in error.getvalue()
+
+
+def test_gate_accepts_verified_absence_of_pr():
+    repo, _, _ = _fixture("gate_no_pr")
+    with patch.object(prstate, "pr_context_for_repo", return_value=_pr_context(repo, _FakeForge([]))):
+        assert gate.evaluate(repo).active_pr is None
 
 
 if __name__ == "__main__":

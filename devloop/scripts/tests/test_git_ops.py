@@ -777,7 +777,7 @@ def test_explicit_repository_pr_target_does_not_change_local_git_baseline_or_per
         assert _git_out(repo, "config", "--local", "--list") == config_before
 
 
-def test_commit_remains_local_and_rejects_pr_destination_option():
+def test_commit_without_forge_origin_and_non_pr_modes_reject_destination_option():
     from contextlib import redirect_stderr
     from io import StringIO
     from tempfile import TemporaryDirectory
@@ -797,7 +797,7 @@ def test_commit_remains_local_and_rejects_pr_destination_option():
         _git(repo, "config", "user.email", "test@example.invalid")
         _git(repo, "commit", "--allow-empty", "-qm", "base")
         Path(repo, "f").write_text("local change")
-        with patch.object(flow, "forge_for_repo", side_effect=AssertionError("commit requires no Forge")):
+        with patch.object(flow.operations, "push", side_effect=AssertionError("commit must not push")):
             assert flow.main(["commit", "--repo", repo, "-m", "local", "--file", "f"]) == 0
         assert _git_out(repo, "log", "-1", "--format=%s") == "local"
 

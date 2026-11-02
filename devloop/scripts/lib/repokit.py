@@ -1,7 +1,6 @@
 """Native repository facts and the Go CLI impact protocol boundary."""
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 from pathlib import Path
@@ -40,50 +39,5 @@ def validation_report(repo: str, args: list[str]) -> dict:
                                timeout=timeout + 15, check=False)
     if completed.returncode not in (0, 1):
         raise ValueError(f"repocli validate exited {completed.returncode}: {completed.stderr[-2000:]}")
-    try:
-        data = json.loads(completed.stdout)
-    except ValueError as exc:
-        raise ValueError(f"repocli validate did not return a report: {completed.stderr[-2000:]}") from exc
-    if not isinstance(data, dict) or data.get("schemaVersion") != 1:
-        raise ValueError("unsupported ValidationReport; upgrade repocli")
-    if data.get("checkout") != str(Path(repo).resolve()):
-        raise ValueError("ValidationReport checkout mismatch")
-    if any(type(data.get(key)) is not bool for key in ("inputsConsistent", "complete", "passed")):
-        raise ValueError("invalid ValidationReport outcome")
-    if not isinstance(data.get("snapshot"), str) or not data["snapshot"].startswith("sha256:"):
-        raise ValueError("ValidationReport snapshot missing")
-    if not isinstance(data.get("components"), list) or not isinstance(data.get("diagnostics"), list):
-        raise ValueError("ValidationReport results missing")
-    selected = set(args[args.index("--check") + 1].split(",")) - {"format"} if "--check" in args else {"lint", "test"}
-    seen = set()
-    coverage = {}
-    for group in data["components"]:
-        root = group["component"]["root"]
-        if not isinstance(root, str) or not (Path(repo) / root).resolve().is_relative_to(Path(repo).resolve()):
-            raise ValueError("ValidationReport Component escapes checkout")
-        for check in group["checks"]:
-            name = check["check"]
-            if name not in selected or (root, name) in seen:
-                raise ValueError("invalid or duplicate ValidationReport check")
-            seen.add((root, name))
-            sources = check.get("requestedComponents")
-            if not isinstance(sources, list) or not sources or any(not isinstance(source, str) for source in sources) or len(set(sources)) != len(sources):
-                raise ValueError("ValidationReport requestedComponents missing or duplicated")
-            for source in sources:
-                if not isinstance(source, str) or not (Path(repo) / source).resolve().is_relative_to(Path(repo).resolve()):
-                    raise ValueError("ValidationReport requested Component escapes checkout")
-                if name in coverage.setdefault(source, set()):
-                    raise ValueError("duplicate requested Component check")
-                coverage[source].add(name)
-            if check["scope"] not in {"full", "focused", "skipped", "unavailable"} or check["status"] not in {
-                    "passed", "failed", "skipped", "unavailable", "cancelled", "uncertain"}:
-                raise ValueError("invalid validation check status or scope")
-            if type(check["reused"]) is not bool or not isinstance(check["witnesses"], dict):
-                raise ValueError("invalid validation evidence")
-            if any(not isinstance(check.get(key), str) for key in ("checkedAt", "inputFingerprint", "environment", "reason", "reuseReason", "stdout", "stderr")):
-                raise ValueError("incomplete validation check result")
-            if any(not isinstance(check.get(key), list) or any(not isinstance(x, str) for x in check[key]) for key in ("command", "files")):
-                raise ValueError("invalid validation command or file list")
-    if any(checks != selected for checks in coverage.values()):
-        raise ValueError("ValidationReport omitted requested checks")
-    return data
+    checks = args[args.index("--check") + 1].split(",") if "--check" in args else ("lint", "test")
+    return toolkit.decode_validation_report(completed.stdout, checkout=repo, checks=checks)

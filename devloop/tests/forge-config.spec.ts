@@ -1,18 +1,14 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createForgeReader } from "@compforge/repokit";
+import { ForgeConnection } from "@compforge/repokit";
 import { forgeEntry, forgeToken } from "../lib/config.js";
 import { prContextForRepo } from "../lib/forge.js";
 
 vi.mock("../lib/config.js", () => ({ forgeEntry: vi.fn(), forgeToken: vi.fn() }));
-vi.mock("@compforge/repokit", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@compforge/repokit")>();
-  return { ...actual, createForgeReader: vi.fn(actual.createForgeReader) };
-});
+const reader = vi.spyOn(ForgeConnection.prototype, "reader");
 const roots: string[] = [];
 afterEach(() => { vi.clearAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
@@ -28,9 +24,9 @@ it.each([
   vi.mocked(forgeToken).mockReturnValue("test-credential");
   const context = await prContextForRepo(root);
   try {
-    expect(createForgeReader).toHaveBeenCalledWith({ forge: "gitlab.example.com", provider: "gitlab", host, token: "test-credential" });
+    expect(reader).toHaveBeenCalledOnce();
+    expect(reader.mock.contexts[0]).toMatchObject({ host: "gitlab.example.com", provider: "gitlab", apiHost: host });
     expect(context?.options.targets[0]?.path).toBe(target);
-    expect(context?.options.connection).toBe(createHash("sha256").update(JSON.stringify(["gitlab", "gitlab.example.com", host, "test-credential"])).digest("hex"));
   } finally { context?.close(); }
 });
 
@@ -43,6 +39,6 @@ it("distinguishes an absent Forge origin from unavailable credentials at the gat
   git("remote", "add", "origin", "https://github.com/example/repo.git");
   vi.mocked(forgeEntry).mockReturnValue({});
   vi.mocked(forgeToken).mockReturnValue(undefined);
-  await expect(evaluateGate(root)).rejects.toThrow("no credential for github.com/example/repo");
-  expect(createForgeReader).not.toHaveBeenCalled();
+  await expect(evaluateGate(root)).rejects.toThrow("no credential for github.com");
+  expect(reader).not.toHaveBeenCalled();
 });

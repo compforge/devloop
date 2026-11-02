@@ -32,25 +32,13 @@ from domain.forge import (
     pr_label,
     vocab,
 )
-from repokit.forge import GitHubForge
-from repokit.forge import GitLabForge
+from repokit.forge import ForgeConnection, detect_provider as detect_provider
 
 
 def parse_origin(repo_dir: str | Path) -> tuple[str, str] | None:
     """Configured Git identity; provider and credential policy stay in devloop."""
     observed = remote(repo_dir)
     return (observed.host, observed.path) if observed else None
-
-
-def detect_provider(host: str, explicit_type: str | None) -> str:
-    """'github' | 'gitlab'. Config `type` wins (covers GHE / self-hosted GitLab on a
-    custom host); otherwise infer from the host."""
-    if explicit_type in ("github", "gitlab"):
-        return explicit_type
-    h = host.lower()
-    if h == "github.com" or h.startswith("github."):
-        return "github"
-    return "gitlab"
 
 
 @dataclass(frozen=True)
@@ -98,14 +86,13 @@ def forge_for_repo(repo_dir: str | Path, *, timeout: int = 10) -> Forge | None:
     r = resolve_forge(repo_dir)
     if r is None or not r.token:
         return None
-    if r.provider == "github":
-        owner, _, name = r.path.partition("/")
-        if not owner or not name:
-            return None
-        return GitHubForge(r.api_host, owner, name, r.token, timeout=timeout,
-                           state_dir=config.config_dir() / "forge-http")
-    return GitLabForge(r.api_host, r.path, r.token, timeout=timeout,
-                       state_dir=config.config_dir() / "forge-http")
+    return _connection(r, timeout=timeout).client(r.path)
+
+
+def _connection(resolution: ForgeResolution, *, timeout: int = 10) -> ForgeConnection:
+    return ForgeConnection(host=resolution.host, token=resolution.token or "",
+                           provider=detect_provider(resolution.host, resolution.provider),
+                           api_host=resolution.api_host, timeout=timeout)
 
 
 def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
@@ -115,24 +102,10 @@ def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
     a configured origin without credentials is unavailable, never known to have no PR.`
     +link=`component://docs/pr-observation.md`
     """
-    import hashlib
-    import json
-    from harness_common import Forge as ForgeIdentity, Repository
-    from repokit.forge import PullRequestContext, PullRequestObserver
     r = resolve_forge(repo_dir)
     if r is None:
         return None
-    if not r.token:
-        raise ForgeAuthError(f"PR query unavailable: no credential for {r.host}/{r.path}")
-    reader = forge if forge is not None else forge_for_repo(repo_dir)
-    if reader is None:
-        raise ForgeError(f"PR query unavailable: no reader for {r.host}/{r.path}")
-    name = "github" if r.host == "github.com" else "gitlab" if r.host == "gitlab.com" else r.host
-    source = Repository(ForgeIdentity(name), r.path)
-    # Target selection is workflow policy. A configured upstream supports fork PRs
-    # without making the generic query silently choose a parent repository.
-    target_path = config.forge_entry(r.host, repo_dir).get("target_repository") or r.path
-    target = Repository(source.forge, target_path)
-    connection = hashlib.sha256(json.dumps([r.provider, name, r.api_host, r.token], separators=(",", ":")).encode()).hexdigest()
-    observer = PullRequestObserver(reader, forge=name, state_dir=Path.home() / ".repocli", connection=connection)
-    return PullRequestContext(observer, repo_dir, source=source, targets=(target,))
+    connection = _connection(r)
+    # Target selection belongs to the workflow; RepoKit never infers a fork parent.
+    target = config.forge_entry(r.host, repo_dir).get("target_repository") or r.path
+    return connection.pull_request_context(repo_dir, source=r.path, targets=(target,), reader=forge)

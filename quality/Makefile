@@ -1,7 +1,7 @@
 PYTHON ?= python3
-.PHONY: fix lint test
+.PHONY: format lint test
 # Skill assets have no generated source to normalize.
-fix:
+format:
 	@true
 lint:
 	$(PYTHON) scripts/check_assets.py

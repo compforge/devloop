@@ -107,15 +107,17 @@ def _record(repo: str, report: dict, eligible: bool, comparison: Comparison) -> 
         for check in group["checks"]:
             summaries.append({"component": root, "check": check["check"], "scope": check["scope"],
                               "reason": check["reason"], "files": check["files"], "command": check["command"],
-                              "reuse": check["reuseReason"]})
+                              "requestedComponents": check["requestedComponents"], "reuse": check["reuseReason"]})
             if check["status"] == "skipped":
                 continue
             # Preserve the original result, including its original execution timestamp.
             single = {**report, "components": [{**group, "checks": [check]}]}
             record = {"report": single, "eligible": eligible, "checked_at": check["checkedAt"]}
-            save_segment(repo, evidence_segment(repo, root, check["check"]), record)
+            sources = check["requestedComponents"]
+            for source in set([root, *sources]):
+                save_segment(repo, evidence_segment(repo, source, check["check"]), record)
             if eligible and check["status"] == "passed" and check["scope"] == "full":
-                bind_full(repo, [root], check["check"])
+                bind_full(repo, list(set([root, *sources])), check["check"])
     save_segment(repo, branch_segment(branch, "validation_scope"), {
         "generated_at": time.time(), "base": comparison.base, "head": comparison.head,
         "snapshot": report["snapshot"], "execution_identity": report["snapshot"] if eligible else "",
@@ -143,7 +145,7 @@ def _results(report: dict, names: tuple[str, ...], eligible: bool) -> tuple[Hook
                 lines.append("\n".join((check["stdout"] + check["stderr"]).splitlines()[-40:]))
         lines.extend(report.get("diagnostics", []))
         if preparation_failed:
-            lines.append("make fix failed; checks were not started")
+            lines.append("make format failed; checks were not started")
             lines.extend("\n".join((check["stdout"] + check["stderr"]).splitlines()[-40:])
                          for group in report.get("preparation", []) for check in group["checks"]
                          if check["status"] not in {"passed", "skipped", "unavailable"})
@@ -157,7 +159,7 @@ def _results(report: dict, names: tuple[str, ...], eligible: bool) -> tuple[Hook
 def run_validation(repo: str, *, names: tuple[str, ...] = ("lint", "test"),
                    components: tuple[str, ...] | None = None, paths: list[str] | None = None,
                    full: bool = False, comparison: Comparison | None = None,
-                   concurrency: int = 2, fix: bool = True) -> ValidationOutcome:
+                   concurrency: int = 2, format: bool = True) -> ValidationOutcome:
     """One CLI round for all requested checks, shared by lifecycle and manual workflow.
 
     +spec=`Repocli owns scope, command, fingerprints and reuse; devloop only supplies workflow context`
@@ -178,7 +180,7 @@ def run_validation(repo: str, *, names: tuple[str, ...] = ("lint", "test"),
     policy = _policy(repo)
     inputs = _inputs(repo, catalog, policy, names)
     previous = _previous(repo, catalog, names)
-    args = ["--check", ",".join(("fix", *names) if fix else names), "--concurrency", str(concurrency)]
+    args = ["--check", ",".join(("format", *names) if format else names), "--concurrency", str(concurrency)]
     if components is not None:
         if not components:
             return ValidationOutcome(tuple(HookResult(name, True, status="skipped", advisory=name == "test", summary="no Components") for name in names))

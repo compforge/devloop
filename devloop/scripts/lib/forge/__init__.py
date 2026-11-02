@@ -1,7 +1,7 @@
 """Unified forge facade — provider-neutral access to GitHub / GitLab, picked per-repo.
 
     from lib.forge import forge_for_repo
-    from domain.forge import ForgeError, build_window
+    from domain.forge import ForgeError
     f = forge_for_repo(repo_dir)              # None if no token / unsupported remote
     if f:
         pr = f.create(source_branch="feat/x", target_branch="main", title="...")
@@ -9,7 +9,7 @@
 `forge_for_repo` resolves the repo's origin → (provider, host, token) in one place
 (`resolve_forge`), then builds the matching adapter. The aggregate-workspace case is
 first-class: each repo resolves its own provider, so a GitHub subproject and a GitLab one
-coexist. Cross-provider window *policy* is `build_window` (domain-level), not per-adapter.
+coexist. Workflow presentation policy stays in the domain layer.
 """
 from __future__ import annotations
 
@@ -28,7 +28,6 @@ from domain.forge import (
     PullRequest,
     PullRequestIdentity,
     Release,
-    build_window,
     parse_pr_number,
     pr_label,
     vocab,
@@ -107,3 +106,33 @@ def forge_for_repo(repo_dir: str | Path, *, timeout: int = 10) -> Forge | None:
                            state_dir=config.config_dir() / "forge-http")
     return GitLabForge(r.api_host, r.path, r.token, timeout=timeout,
                        state_dir=config.config_dir() / "forge-http")
+
+
+def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
+    """Assemble access policy; repocli owns observation and local associations.
+
+    +spec=`Only an absent Forge origin means PR queries are inapplicable;
+    a configured origin without credentials is unavailable, never known to have no PR.`
+    +link=`component://docs/pr-observation.md`
+    """
+    import hashlib
+    import json
+    from harness_common import Forge as ForgeIdentity, Repository
+    from repocli.forge import PullRequestContext, PullRequestObserver
+    r = resolve_forge(repo_dir)
+    if r is None:
+        return None
+    if not r.token:
+        raise ForgeAuthError(f"PR query unavailable: no credential for {r.host}/{r.path}")
+    reader = forge if forge is not None else forge_for_repo(repo_dir)
+    if reader is None:
+        raise ForgeError(f"PR query unavailable: no reader for {r.host}/{r.path}")
+    name = "github" if r.host == "github.com" else "gitlab" if r.host == "gitlab.com" else r.host
+    source = Repository(ForgeIdentity(name), r.path)
+    # Target selection is workflow policy. A configured upstream supports fork PRs
+    # without making the generic query silently choose a parent repository.
+    target_path = config.forge_entry(r.host, repo_dir).get("target_repository") or r.path
+    target = Repository(source.forge, target_path)
+    connection = hashlib.sha256(json.dumps([r.provider, name, r.api_host, r.token], separators=(",", ":")).encode()).hexdigest()
+    observer = PullRequestObserver(reader, forge=name, state_dir=Path.home() / ".repocli", connection=connection)
+    return PullRequestContext(observer, repo_dir, source=source, targets=(target,))

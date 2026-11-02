@@ -1,3 +1,4 @@
+import { pullRequestLabel } from "../forge.js";
 import { basename } from "node:path";
 import { formatTimestamp } from "../context/base.js";
 function rows(value) { return Array.isArray(value) ? value.filter((item) => item !== null && typeof item === "object" && !Array.isArray(item)) : []; }
@@ -34,6 +35,13 @@ export function renderItem(item) {
         if (payload.inspectionProblem)
             warnings.push(text(payload.inspectionProblem));
         return `[Current repo: ${text(payload.codeDir) || text(payload.repoRoot)} (${text(payload.language) || "?"})] | Branch: ${text(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${typeof payload.ahead === "number" ? payload.ahead : "?"}, behind ${typeof payload.behind === "number" ? payload.behind : "?"} vs ${text(payload.baseBranch)}, target=${text(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` ⚠️ ${warnings.join("; ")}` : ""}`;
+    }
+    if (item.type === "repo.pull-request") {
+        if (payload.error)
+            return `PR status unavailable: ${text(payload.error)}`;
+        if (payload.ambiguous)
+            return `Branch '${text(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
+        return `${pullRequestLabel(text(payload.provider), number(payload.number))} ${text(payload.state)} (${text(payload.repository)})`;
     }
     if (item.type === "repo.validation") {
         const components = rows(payload.components);

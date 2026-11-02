@@ -3,21 +3,29 @@ revision = 3
 requires-python = ">=3.11"
 
 [manifest]
-requirements = [{ name = "compforge-repocli", git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=07b8c2e0e7af8c58353c5dfd0d6f1d1ae0958155" }]
+requirements = [{ name = "compforge-repocli", specifier = "==0.13.0" }]
 
 [[package]]
 name = "compforge-repocli"
-version = "0.11.0"
-source = { git = "https://github.com/compforge/repocli.git?subdirectory=toolkit%2Fpython&rev=07b8c2e0e7af8c58353c5dfd0d6f1d1ae0958155#07b8c2e0e7af8c58353c5dfd0d6f1d1ae0958155" }
+version = "0.13.0"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "harness-common" },
     { name = "pyyaml" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/1e/e0/a82816bbc007a17c798382b8d054386cf5096b21bb1ab947b4fd0664cdb7/compforge_repocli-0.13.0.tar.gz", hash = "sha256:8799b7f0a2736dcf00f8932f429b3a8b64b3f69be6d4249b6ce7bd980c6bf1a3", size = 120536, upload-time = "2026-11-02T03:45:08.488Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/22/2d9ece6f72876caa8e21e717387d008980ca2ef6644fa88fea0385aa8cd7/compforge_repocli-0.13.0-py3-none-any.whl", hash = "sha256:b174fc9cb863cb54b8a06f2737c60e90aa6057cb01642fd448a18c504e32ddde", size = 78108, upload-time = "2026-11-02T03:45:07.145Z" },
+]
 
 [[package]]
 name = "harness-common"
-version = "0.5.7"
-source = { git = "https://github.com/compforge/quality-harness.git?subdirectory=sdks%2Fpython%2Fcommon&rev=6cbaf18ef6a675131c56f1b84f3b720cca231669#6cbaf18ef6a675131c56f1b84f3b720cca231669" }
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/8c/08ef86d66b8a413897c4c415842b2911285036dc98e4c6ca6e846fb6c7f3/harness_common-0.6.0.tar.gz", hash = "sha256:096a6718e0139144a146c61b4f6866eeff03b395bfc822ea3fcae82683dee5dc", size = 37161, upload-time = "2026-10-23T09:19:25.206Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/a7/2ade5ac86cbfda1e2e73fad72318a49a4aeca20b4f31605c5e1af47e946b/harness_common-0.6.0-py3-none-any.whl", hash = "sha256:1a63b5f6af47d4eb4a6466640c7c2169f06c41412f5ca865e649dec760b1a88b", size = 37135, upload-time = "2026-10-23T09:19:23.981Z" },
+]
 
 [[package]]
 name = "pyyaml"

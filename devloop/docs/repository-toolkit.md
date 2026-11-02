@@ -8,7 +8,7 @@ TypeScript hook 与 Python workflow 直接调用对应语言的工具包，不�
 ## 验证链路
 
 AI 可直接调用 `repocli fix/lint/test/validate`。devloop 的 Python workflow 负责依赖准备、相位基线、
-分支关联与门禁策略，然后通过一次 `repocli validate --check fix,lint,test --json` 执行整轮。
+分支关联与门禁策略，然后通过一次 `repocli validate --check format,lint,test --json` 执行整轮。
 Makefile 解析、影响分析、冻结计划、检查执行、输入指纹及复用判断均归 Go toolkit，CLI 只负责适配。
 Python 原生验证 API 保留，但 devloop 不调用它作为第二套验证引擎。
 

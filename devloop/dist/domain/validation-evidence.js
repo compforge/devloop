@@ -21,10 +21,10 @@ export function fullEvidence(repo, component, check, reference) {
         return undefined;
     for (const raw of Array.isArray(report.components) ? report.components : []) {
         const group = object(raw);
-        if (object(group.component).root !== component)
-            continue;
         for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
             const result = object(rawCheck);
+            if (object(group.component).root !== component && !(Array.isArray(result.requestedComponents) && result.requestedComponents.includes(component)))
+                continue;
             if (result.check === check && result.scope === "full" && result.status === "passed" && result.checkedAt === record.checked_at)
                 return record;
         }
@@ -70,10 +70,10 @@ export function observedCheck(repo, component, check) {
         return undefined;
     for (const raw of Array.isArray(report.components) ? report.components : []) {
         const group = object(raw);
-        if (object(group.component).root !== component)
-            continue;
         for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
             const result = object(rawCheck);
+            if (object(group.component).root !== component && !(Array.isArray(result.requestedComponents) && result.requestedComponents.includes(component)))
+                continue;
             if (result.check === check)
                 return result;
         }

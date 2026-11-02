@@ -1,7 +1,7 @@
 """Context layer — shared fact leaves, constants, and compatibility primitives.
 
 The `.devloop/` facts span two levels. **Repo** state is split into per-owner
-*segment* files (`meta`/`branch`/`pr`/`local_pull_requests`/`lint`/`test`/`review`.json) so independent
+*segment* files (`meta`/`branch`/`lint`/`test`/`review`.json) so independent
 writer-roles never share a file — see `repo.py`. **Workspace** state is a single
 `context.json` (one writer-role: the refresh). This module holds what both share:
 leaf dataclasses (`Reference`, `AgentsMd`) plus the re-exported forge
@@ -27,7 +27,7 @@ from datetime import datetime
 
 # The neutral code-review proposal lives in the forge domain (provider-agnostic). The
 # state layer persists it and joins it by number; it does not redefine it.
-from domain.forge import PRS_CAP, Comment, MergeReadiness, PullRequest, pr_label, vocab  # noqa: F401
+from domain.forge import Comment, MergeReadiness, PullRequest, pr_label, vocab  # noqa: F401
 
 # ── tunables (seconds unless noted) ──────────────────────────────────────────
 REPO_STALE_SEC = 300          # repo context older than this → refresh_all on next cd/prompt

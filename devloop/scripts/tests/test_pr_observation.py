@@ -5,7 +5,7 @@ import fcntl
 from pathlib import Path
 from unittest.mock import patch
 
-from _testkit import _FakeForge, _git, _git_out, _load_script, run_main
+from _testkit import _pr_context, _FakeForge, _git, _git_out, _load_script, run_main
 from test_worktree import _fixture, _add_worktree
 from domain.context import prstate, store, base, gate
 from domain.forge import ForgeError, ForgeRateLimited, PullRequest
@@ -29,64 +29,12 @@ def test_commit_cli_reports_live_rate_limit_before_any_mutation():
     assert "retry_at=2000000000" in error.getvalue()
 
 
-def test_retained_history_does_not_multiply_fast_poll_requests():
-    # +case=`250 retained historical branches require one open inventory and no branch queries`
-    repo, _, _ = _fixture("bounded_observation")
-    head = _git_out(repo, "rev-parse", "HEAD")
-    branches = [(f"old-{i}", head) for i in range(250)]
-    previous = {"branches": [{"branch": b, "head_sha": head, "checkout": None,
-                              "pull_request": None, "checked_at": base.now(),
-                              "history_checked_at": base.now()} for b, _ in branches]}
-    prstate.persist_local_pull_requests(repo, previous)
-    fake = _FakeForge([])
-    with patch.object(prstate.git_state, "list_local_branches", return_value=branches), \
-         patch.object(fake, "prs_for_branch", side_effect=AssertionError("history reread")), \
-         patch.object(fake, "open_pull_requests", wraps=fake.open_pull_requests) as inventory:
-        assert len(prstate.poll_local_pull_requests(repo, forge=fake)["branches"]) == 250
-        inventory.assert_called_once()
 
 
-def test_cold_history_is_bounded_and_unknown_entries_are_explicit():
-    repo, _, _ = _fixture("cold_observation")
-    head = _git_out(repo, "rev-parse", "HEAD")
-    branches = [(f"old-{i}", head) for i in range(250)]
-    fake = _FakeForge([])
-    with patch.object(prstate.git_state, "list_local_branches", return_value=branches), \
-         patch.object(fake, "prs_for_branch", wraps=fake.prs_for_branch) as history:
-        payload = prstate.poll_local_pull_requests(repo, forge=fake)
-        assert history.call_count == prstate.HISTORY_BATCH
-        assert sum(r["observation"] == "unknown" for r in payload["branches"]) == 230
-        prstate.persist_local_pull_requests(repo, payload)
-        history.reset_mock()
-        second = prstate.poll_local_pull_requests(repo, forge=fake)
-        assert history.call_count == prstate.HISTORY_BATCH
-        assert sum(r["observation"] == "unknown" for r in second["branches"]) == 210
 
 
-def test_disappeared_open_pr_requires_positive_terminal_read():
-    repo, _, _ = _fixture("missing_open_observation")
-    head = _git_out(repo, "rev-parse", "HEAD")
-    pr = PullRequest(1, state="open", source_branch="main", sha=head)
-    fake = _FakeForge([pr])
-    assert prstate.refresh_local_pull_requests(repo, forge=fake)
-    old = store.load_segment(repo, "local_pull_requests")
-    with patch.object(fake, "open_pull_requests", return_value=[]), \
-         patch.object(fake, "get", side_effect=ForgeError("unavailable")):
-        assert not prstate.refresh_local_pull_requests(repo, forge=fake)
-    assert store.load_segment(repo, "local_pull_requests") == old
 
 
-def test_reused_branch_is_not_removed_from_cached_terminal_pr():
-    repo, _, _ = _fixture("reused_observation")
-    target = _add_worktree(repo, "reused")
-    head = _git_out(target, "rev-parse", "HEAD")
-    old = PullRequest(1, state="merged", source_branch="worktree-reused", sha=head)
-    fake = _FakeForge([old])
-    assert prstate.refresh_local_pull_requests(repo, forge=fake)
-    fake._prs[2] = PullRequest(2, state="open", source_branch="worktree-reused", sha=head)
-    actions = pull_request_lifecycle.reconcile(repo, forge=fake)
-    assert actions[0].status == "deferred"
-    assert Path(target).is_dir()
 
 
 def test_executor_lease_and_cadence_cover_all_triggers():
@@ -113,55 +61,119 @@ def test_local_branch_change_invalidates_idle_cadence():
         assert sweep.call_count == 2
 
 
-def test_live_branch_gate_does_not_fetch_comments_or_reuse_failed_observation():
-    repo, _, _ = _fixture("live_observation_gate")
-    fake = _FakeForge([])
-    with patch.object(prstate, "forge_for_repo", return_value=fake), \
-         patch.object(fake, "comments", side_effect=AssertionError("auxiliary read")), \
-         patch.object(fake, "recent", side_effect=AssertionError("window read")):
-        gate.evaluate(repo, live_refresh=True)
-        with patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
-            try:
-                gate.evaluate(repo, live_refresh=True)
-            except ForgeError:
-                pass
-            else:
-                raise AssertionError("failed live lookup must not accept cached state")
 
 
-def test_detail_failure_preserves_its_own_success_time():
-    repo, _, _ = _fixture("detail_observation")
-    fake = _FakeForge([])
-    assert prstate.refresh_pr(repo, forge=fake)
-    assert prstate.refresh_pr_details(repo, fake, force=True)
-    before = store.load_segment(repo, "pr")
-    with patch.object(fake, "recent", side_effect=ForgeError("offline")):
-        assert not prstate.refresh_pr_details(repo, fake, force=True)
-    assert store.load_segment(repo, "pr") == before
 
 
-def test_current_projection_keeps_historical_verification_time():
-    repo, _, _ = _fixture("historical_current_time")
-    inventory = {"branches": [{"branch": "main", "checked_at": 123,
-                                "pull_request": None}]}
-    payload = prstate.poll_pr(repo, forge=_FakeForge([]), inventory=inventory)
-    assert payload["checked_at"] == 123
 
 
-def test_slow_details_cannot_overwrite_new_core_observation():
-    repo, _, _ = _fixture("concurrent_detail_observation")
-    fake = _FakeForge([])
-    assert prstate.refresh_pr(repo, forge=fake)
-    old = store.load_segment(repo, "pr")
-    newer = dict(old, checked_at=old["checked_at"] + 1, branch="new-work", pr_number=None)
 
-    def refresh_during_read(limit):
-        prstate.persist_pr(repo, newer)
-        return []
 
-    with patch.object(fake, "recent", side_effect=refresh_during_read):
-        assert prstate.refresh_pr_details(repo, fake, force=True)
-    assert store.load_segment(repo, "pr") == newer
+
+def test_reused_branch_is_reverified_before_removal():
+    repo, _, _ = _fixture("query_reuse")
+    target = _add_worktree(repo, "reused")
+    head = _git_out(target, "rev-parse", "HEAD")
+    fake = _FakeForge([PullRequest(1, state="merged", source_branch="worktree-reused", sha=head)])
+    context = _pr_context(repo, fake)
+    inventory = context.local_branches()
+    from dataclasses import replace
+    fake._prs[2] = replace(fake._prs[1], number=2, state="open")
+    actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
+    assert actions[0].status == "deferred" and Path(target).is_dir()
+    assert store.load_segment(repo, "pr") is None
+    assert store.load_segment(repo, "local_pull_requests") is None
+
+
+def test_gate_reports_unavailable_queries():
+    repo, _, _ = _fixture("query_gate")
+    fake = _FakeForge([PullRequest(1, state="open", source_branch="main")])
+    context = _pr_context(repo, fake)
+    with patch.object(prstate, "pr_context_for_repo", return_value=context):
+        assert gate.evaluate(repo).in_flight()
+    # A new resource lifetime reuses library-owned state, not a .devloop projection.
+    context = _pr_context(repo, fake)
+    context.observer.now = lambda: 4000000000
+    with patch.object(prstate, "pr_context_for_repo", return_value=context), \
+         patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
+        try:
+            gate.evaluate(repo)
+        except ForgeError:
+            pass
+        else:
+            raise AssertionError("failed query must not authorize a decision")
+
+
+def test_query_view_isolates_one_branch_failure():
+    repo, _, _ = _fixture("query_isolation")
+    _git(repo, "branch", "healthy")
+    fake = _FakeForge([PullRequest(1, state="open", source_branch="main"),
+                       PullRequest(2, state="open", source_branch="healthy")])
+    context = _pr_context(repo, fake)
+    get = fake.get
+    def read(number):
+        if number == 1:
+            raise ForgeError("offline")
+        return get(number)
+    with patch.object(fake, "get", side_effect=read):
+        rows = {row.branch: row for row in context.local_branches()}
+    assert rows["main"].error
+    assert rows["healthy"].selected.number == 2
+
+
+def test_gate_distinguishes_missing_credentials_from_no_forge_origin():
+    # +case=`Missing credentials cannot authorize a commit; an absent Forge origin is inapplicable`
+    from contextlib import redirect_stderr
+    from io import StringIO
+    from lib import config
+    from domain.forge import ForgeAuthError
+
+    repo, _, _ = _fixture("gate_credentials")
+    _git(repo, "switch", "-qc", "feature")
+    assert gate.evaluate(repo).active_pr is None  # Local filesystem origin.
+    _git(repo, "remote", "set-url", "origin", "https://github.com/example/repo.git")
+    command = _load_script("commit_flow")
+    with patch.object(config, "forge_token", return_value=None):
+        try:
+            gate.evaluate(repo)
+        except ForgeAuthError as exc:
+            assert "no credential for github.com/example/repo" in str(exc)
+        else:
+            raise AssertionError("missing credentials must not authorize a gate")
+        assert prstate.checkout_pr(repo) == ("", None)  # Presentation remains best-effort.
+        with patch.object(command, "prepare_branch") as mutation, redirect_stderr(StringIO()) as error:
+            assert command.main(["commit", "--repo", repo, "-m", "blocked"]) == 1
+        mutation.assert_not_called()
+        assert "no credential" in error.getvalue()
+
+
+def test_commit_only_rejects_unavailable_and_ambiguous_pr_queries():
+    # +case=`Commit-only still requires an unambiguous PR lifecycle observation`
+    from contextlib import redirect_stderr
+    from io import StringIO
+
+    for failure in ("offline", "ambiguous"):
+        repo, _, _ = _fixture(f"commit_query_{failure}")
+        _git(repo, "switch", "-qc", "feature")
+        fake = _FakeForge([PullRequest(n, state="open", source_branch="feature") for n in (1, 2)])
+        if failure == "offline":
+            def unavailable(*args, **kwargs):
+                raise ForgeError("offline")
+            fake.prs_for_branch = unavailable
+        context = _pr_context(repo, fake)
+        command = _load_script("commit_flow")
+        with patch.object(prstate, "pr_context_for_repo", return_value=context), \
+             patch.object(command, "prepare_branch") as mutation, redirect_stderr(StringIO()) as error:
+            assert command.main(["commit", "--repo", repo, "-m", "blocked"]) == 1
+        mutation.assert_not_called()
+        expected = "offline" if failure == "offline" else "multiple PRs match"
+        assert expected in error.getvalue()
+
+
+def test_gate_accepts_verified_absence_of_pr():
+    repo, _, _ = _fixture("gate_no_pr")
+    with patch.object(prstate, "pr_context_for_repo", return_value=_pr_context(repo, _FakeForge([]))):
+        assert gate.evaluate(repo).active_pr is None
 
 
 if __name__ == "__main__":

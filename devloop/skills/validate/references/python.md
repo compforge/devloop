@@ -1,6 +1,6 @@
 # Python validation guidance
 
-## Fix and lint
+## Format and lint
 
 Ruff lint fixes may change imports before formatting. Keep writers ordered, then parallelize independent
 Ruff and mypy checks:
@@ -8,8 +8,8 @@ Ruff and mypy checks:
 ```make
 LINT_JOBS ?= 2
 
-.PHONY: fix lint lint-ci lint-ruff lint-mypy
-fix:
+.PHONY: format lint lint-ci lint-ruff lint-mypy
+format:
 	uv run ruff check --fix .
 	uv run ruff format .
 lint:
@@ -22,7 +22,7 @@ lint-mypy:
 	uv run mypy .
 ```
 
-For file-scoped feedback, a project can adopt `LINT_FILES` in both fix and lint. Filter the supplied
+For file-scoped feedback, a project can adopt `LINT_FILES` in both format and lint. Filter the supplied
 list to Python files before passing it to Ruff/mypy, retain full behavior for an empty list, and expand
 configuration or dependency changes to the necessary scope. Mypy may still report errors in imported
 modules; file arguments do not guarantee isolation from dependencies. Keep those diagnostics visible.

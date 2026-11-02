@@ -76,7 +76,9 @@ def test_task_exit_status_exposes_refresh_and_cleanup_failures():
     runner = _load_script("run_task")
     for row in [
         {"repo": "/repo", "error": "ForgeError"},
-        {"repo": "/repo", "updated": {"local_pull_requests": False}},
+        {"repo": "/repo", "errors": ["no usable forge"], "actions": [], "pull_requests": []},
+        {"repo": "/repo", "errors": ["offline"], "updated": {"remote_branches": True}},
+        {"repo": "/repo", "updated": {"remote_branches": False}},
         {"repo": "/repo", "actions": [{"status": "deferred", "reason": "git_error"}]},
     ]:
         with patch.object(runner.registry, "run", return_value=[row]) as run:
@@ -88,36 +90,35 @@ def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory()
     from unittest.mock import patch
     from pathlib import Path
     from test_worktree import _fixture, _add_worktree, _add_submodule
-    from _testkit import _FakeForge, _git, _git_out
-    from domain.context import PullRequest, prstate, store
+    from _testkit import _pr_context, _FakeForge, _git, _git_out
+    from domain.context import PullRequest, store
     from domain.forge import ForgeError
     repo, _, _ = _fixture("task_submodule")
     _add_submodule(repo)
     linked = _add_worktree(repo, "finished")
     ongoing = _add_worktree(repo, "ongoing")
-    without_pr = _add_worktree(repo, "without-pr")
     _git(linked, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "-q")
     (Path(linked) / "doctor" / "module.txt").write_text("child edit\n")
-    (Path(linked) / "doctor" / "scratch.txt").write_text("child scratch\n")
     fake = _FakeForge([
         PullRequest(number=1, state="merged", source_branch="worktree-finished", sha=_git_out(linked, "rev-parse", "HEAD")),
         PullRequest(number=2, state="open", source_branch="worktree-ongoing", sha=_git_out(ongoing, "rev-parse", "HEAD")),
     ])
-    with patch.object(prstate, "forge_for_repo", return_value=fake):
-        # Seed an old terminal snapshot, then make the live refresh fail.
-        assert prstate.refresh_local_pull_requests(repo)
-        with patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
-            report = pr_lifecycle.sweep_repo(repo, force=True)
-        assert report["updated"]["local_pull_requests"] is False
-        assert report["actions"] == [] and Path(linked).exists()
+    context = _pr_context(repo, fake)
+    with patch.object(pr_lifecycle, "pr_context_for_repo", return_value=context), \
+         patch.object(fake, "prs_for_branch", side_effect=ForgeError("offline")):
         report = pr_lifecycle.sweep_repo(repo, force=True)
-        assert report["updated"]["local_pull_requests"] is True
+    assert report["errors"] and report["actions"] == [] and Path(linked).exists()
+    def query(_repo):
+        context = _pr_context(repo, fake)
+        context.observer.now = lambda: 4000000000
+        return context
+    with patch.object(pr_lifecycle, "pr_context_for_repo", side_effect=query):
+        report = pr_lifecycle.sweep_repo(repo, force=True)
         assert report["actions"][0]["status"] == "completed"
-        assert not Path(linked).exists()
-        assert Path(ongoing).is_dir() and Path(without_pr).is_dir()
+        assert not Path(linked).exists() and Path(ongoing).is_dir()
         assert _git_out(repo, "branch", "--list", "worktree-finished") == "worktree-finished"
         assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []
-        assert store.load_segment(repo, "local_pull_requests")["actions"] == []
+    assert store.load_segment(repo, "local_pull_requests") is None
 
 
 def test_sweep_defers_when_checkout_changes_during_forge_lookup():
@@ -125,7 +126,7 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
     from unittest.mock import patch
     from pathlib import Path
     from test_worktree import _fixture, _add_worktree
-    from _testkit import _FakeForge, _git, _git_out
+    from _testkit import _pr_context, _FakeForge, _git, _git_out
     from domain.context import PullRequest, prstate, store
 
     for change in ("branch", "head", "detached"):
@@ -136,7 +137,7 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
         lookup = fake.prs_for_branch
         changed = False
 
-        def change_during_lookup(branch):
+        def change_during_lookup(branch, **kwargs):
             nonlocal changed
             if branch == "worktree-finished" and not changed:
                 if change == "branch":
@@ -147,21 +148,80 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
                     _git(target, "switch", "--detach", "-q")
                 (Path(target) / "unsaved.txt").write_text("new work\n")
                 changed = True
-            return lookup(branch)
+            return lookup(branch, **kwargs)
 
         fake.prs_for_branch = change_during_lookup
-        with patch.object(prstate, "forge_for_repo", return_value=fake):
+        with patch.object(pr_lifecycle, "pr_context_for_repo", side_effect=lambda _: _pr_context(repo, fake)):
             report = pr_lifecycle.sweep_repo(repo, force=True)
-            assert report["updated"]["local_pull_requests"] is True
             assert changed and (Path(target) / "unsaved.txt").read_text() == "new work\n", change
-            assert [(a["status"], a["reason"]) for a in report["actions"]] == [("deferred", "identity_changed")]
-            snapshot = store.load_segment(repo, "local_pull_requests")
-            observed = next(row for row in snapshot["branches"] if row["branch"] == "worktree-finished")
-            assert observed["checkout"] is not None
+            assert [(a["status"], a["reason"]) for a in report["actions"]] == [("deferred", "forge_unverified")]
             if change == "branch":
                 # A fresh sweep observes the new PR-less branch and retains it.
                 assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []
                 assert (Path(target) / "unsaved.txt").is_file()
+
+
+def test_idle_cadence_ignores_terminal_pr_on_primary_checkout():
+    from unittest.mock import patch
+    from test_worktree import _fixture
+    from domain.context import store
+
+    repo, _, _ = _fixture("idle_primary")
+    discovery = pr_lifecycle.discover()["pr-lifecycle-reconcile"].interval_seconds
+    for state, linked, errors, observation, expected in [
+        ("merged", False, [], "known", pr_lifecycle.IDLE_INTERVAL),
+        ("closed", False, [], "known", pr_lifecycle.IDLE_INTERVAL),
+        ("open", False, [], "known", discovery),
+        ("merged", True, [], "known", discovery),
+        ("merged", False, ["offline"], "unknown", discovery),
+        ("merged", False, [], "ambiguous", discovery),
+    ]:
+        report = {"errors": errors, "has_linked_checkouts": linked,
+                  "associations": [{"observation": observation}],
+                  "pull_requests": [{"state": state, "checkout": {"primary": True, "path": repo}}]}
+        with patch.object(pr_lifecycle, "_sweep_repo", return_value=report), \
+             patch.object(pr_lifecycle.time, "time", return_value=1000):
+            pr_lifecycle.sweep_repo(repo, force=True)
+        assert store.load_segment(repo, "pr_task_attempt")["next_attempt_at"] == 1000 + expected
+
+
+def test_removal_rechecks_identity_after_successful_association_verification():
+    # +case=`A checkout change after Forge verification is rejected at the deletion boundary`
+    from unittest.mock import patch
+    from pathlib import Path
+    from test_worktree import _fixture, _add_worktree
+    from _testkit import _pr_context, _FakeForge, _git, _git_out
+    from domain import pull_request_lifecycle, worktree
+    from domain.context import PullRequest
+
+    for change in ("branch", "head", "detached"):
+        repo, _, _ = _fixture(f"final_identity_{change}")
+        target = _add_worktree(repo, "finished")
+        fake = _FakeForge([PullRequest(1, state="merged", source_branch="worktree-finished",
+                                      sha=_git_out(target, "rev-parse", "HEAD"))])
+        context = _pr_context(repo, fake)
+        inventory = context.local_branches()
+        verify = context.verify
+        def change_after_verification(row):
+            verified = verify(row)
+            assert verified.selected and verified.selected.inactive and not verified.error
+            if change == "branch":
+                _git(target, "switch", "-qc", "new-work")
+            elif change == "head":
+                _git(target, "commit", "--allow-empty", "-qm", "new work")
+            else:
+                _git(target, "switch", "--detach", "-q")
+            (Path(target) / "unsaved.txt").write_text("new work")
+            return verified
+        try:
+            with patch.object(context, "verify", side_effect=change_after_verification), \
+                 patch.object(worktree.operations, "remove_worktree") as remove:
+                actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
+            remove.assert_not_called()
+            assert [(a.status, a.reason) for a in actions] == [("deferred", "identity_changed")]
+            assert (Path(target) / "unsaved.txt").read_text() == "new work"
+        finally:
+            context.observer.close()
 
 
 if __name__ == "__main__":

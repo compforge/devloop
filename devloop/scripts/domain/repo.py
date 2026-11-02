@@ -87,7 +87,7 @@ class WorkSet:
     """
     components: tuple[repo_layout.Component, ...]
     reason: str
-    # Preparation shares one observation; post-fix planning gets fresh facts from impact.
+    # Preparation shares one observation; post-format planning gets fresh facts from impact.
     catalog: repo_layout.Catalog | None = field(default=None, compare=False, repr=False)
 
 

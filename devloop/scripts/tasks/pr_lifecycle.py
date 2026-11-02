@@ -6,6 +6,8 @@ process; Codex Scheduled tasks invoke the same task once per scheduled run.
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import asdict
+from lib.forge import pr_context_for_repo
 import fcntl
 import hashlib
 import json
@@ -50,19 +52,9 @@ def sweep_repo(repo: str, *, force: bool = False) -> dict:
         started = time.time()
         report = _sweep_repo(control)
         interval = discover()["pr-lifecycle-reconcile"].interval_seconds
-        inventory = store.load_segment(control, "local_pull_requests") or {}
-        if report.get("updated", {}).get("local_pull_requests") and not any(
-            (row.get("pull_request") or {}).get("state") == "open"
-            or (row.get("checkout") or {}).get("kind") in {"managed", "external"}
-            or (row.get("checkout") and not prstate.git_state.is_protected_branch(row["branch"]))
-            or row.get("observation") == "unknown"
-            for row in inventory.get("branches", [])
-        ):
+        if not report.get("errors") and not report.get("has_linked_checkouts") and all(row["observation"] == "known" for row in report.get("associations", [])) and not any(pr["state"] == "open" for pr in report.get("pull_requests", [])):
             interval = IDLE_INTERVAL
-        failure = store.load_segment(control, "pr_observation_attempt") or {}
-        if failure.get("attempted_at", 0) >= started:
-            report["observation_error"] = failure
-        next_at = max(time.time() + interval, failure.get("retry_at", 0))
+        next_at = time.time() + interval
         store.save_segment(control, "pr_task_attempt", {"attempted_at": started,
                            "next_attempt_at": next_at, "local_identity": identity})
         logger.info("PR observation repo=%s report=%s", control, json.dumps(report))
@@ -73,58 +65,26 @@ def sweep_repo(repo: str, *, force: bool = False) -> dict:
 
 def _sweep_repo(repo: str) -> dict:
     """Refresh one repo, reconcile it, and return a compact execution report."""
-    control_repo = worktree.primary(repo)
-    forge = prstate.forge_for_repo(repo)
-    counts = forge.request_counts() if forge else {}
-    by_purpose = {}
-
-    def record_requests(purpose: str) -> None:
-        nonlocal counts
-        current = forge.request_counts() if forge else {}
-        by_purpose[purpose] = {key: value - counts.get(key, 0) for key, value in current.items()}
-        counts = current
-
-    inventory_updated = prstate.refresh_local_pull_requests(repo, forge=forge)
-    record_requests("inventory")
-    current_updated = False
-    details_updated = False
-    if inventory_updated:
-        inventory = store.load_segment(control_repo, "local_pull_requests")
-        current_updated = prstate.refresh_pr(repo, forge=forge, inventory=inventory)
-        record_requests("current")
-        pull_request_lifecycle.reconcile(repo, forge=forge)
-        record_requests("lifecycle")
-        if current_updated:
-            details_updated = prstate.refresh_pr_details(repo, forge)
-            record_requests("details")
-    remote_updated = prstate.refresh_remote_branches(control_repo)
-    inventory = store.load_segment(control_repo, "local_pull_requests") or {}
-    pull_requests = []
-    for local_branch in inventory.get("branches") or []:
-        pr = local_branch.get("pull_request") or {}
-        if not pr:
-            continue
-        checkout = local_branch.get("checkout") or {}
-        pull_requests.append({
-            "branch": local_branch.get("branch") or "",
-            "number": pr.get("number"),
-            "state": pr.get("state") or "",
-            "checkout": checkout.get("kind"),
-        })
-    return {
-        "repo": repo,
-        "updated": {
-            "current_pull_request": current_updated,
-            "local_pull_requests": inventory_updated,
-            "remote_branches": remote_updated,
-            "pull_request_details": details_updated,
-        },
-        "pull_requests": pull_requests,
-        "changes": (inventory.get("changes") or []) if inventory_updated else [],
-        "actions": (inventory.get("actions") or []) if inventory_updated else [],
-        "http": forge.request_counts() if forge else {},
-        "http_by_purpose": by_purpose,
-    }
+    context = pr_context_for_repo(repo)
+    if context is None:
+        return {"repo": repo, "errors": ["no usable forge"], "actions": [], "pull_requests": []}
+    try:
+        issues = list(context.observer.maintain())
+        inventory = context.local_branches()
+        actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
+        rows = inventory
+        issues.extend(row.error for row in rows if row.error)
+        return {"repo": repo, "errors": issues,
+                "has_linked_checkouts": any(not checkout.primary for row in rows for checkout in row.checkouts),
+                "pull_requests": [{"branch": row.branch, "number": row.selected.number,
+                                   "state": row.selected.state, "checkout": asdict(checkout) if checkout else None}
+                                  for row in rows if row.selected for checkout in row.checkouts or (None,)],
+                "associations": [{"branch": row.branch, "observation": "unknown" if row.error else "ambiguous" if row.ambiguous else "known"} for row in rows],
+                "actions": [asdict(action) for action in actions],
+                "updated": {"remote_branches": prstate.refresh_remote_branches(repo)},
+                "http": context.observer.reader.request_counts()}
+    finally:
+        context.observer.close()
 
 
 def repos_for_target(target: str) -> list[str]:
@@ -158,5 +118,6 @@ def run(target: str, *, repo_only: bool = False) -> list[dict]:
         try:
             results.append(sweep_repo(repo))
         except Exception as exc:
+            logger.warning("PR observation failed repo=%s error=%s: %s", repo, type(exc).__name__, exc)
             results.append({"repo": repo, "error": type(exc).__name__})
     return results

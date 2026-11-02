@@ -1,34 +1,8 @@
-"""`RepoContext` — per-repo state, persisted as per-owner segment files under
-`<git_root>/.devloop/` (`meta.json` / `branch.json` / `remote_branches.json` / `pr.json` /
-`local_pull_requests.json` /
-plus branch-domain `branches/<b>/{branch,lint,test,review}.json`).
-`RepoContext` is the in-memory *view* that `load()` assembles by merging them; each mutator
-writes back only its own segment.
+"""Query-time repository view over workflow-owned segments and repocli observations.
 
-Why one file per owner: the state has several independent writer-roles (the refresh, the MR
-monitor, **the lint handler**, and **the test handler**) running in different
-processes — and lint/test additionally run CONCURRENTLY inside one `lifecycle.dispatch`.
-That is why they own separate segments: "validation marks" was one entry in this list while
-being two concurrent writers on one file, which is exactly the lost update this layout exists
-to prevent (see `Validation`). A single shared
-file would force a read-modify-write that can lose a concurrent writer's update; one file per
-owner makes every write touch a disjoint file, so that whole class is structurally impossible
-— no lock, atomic per-file writes (see base.py `_write_atomic`).
-
-Branch model — three freshness tiers (see docs/branch-state.md):
-- **identity** (`branch.local`: name + HEAD sha): cheap, volatile, owned by the *refresh*
-  (local git events). This is the DISPLAY copy; write-gates re-derive identity LIVE
-  (`domain.context.gate`) instead of trusting this snapshot.
-- **read-freshness** (`branch.remotes`: the server's trunk tips + `remotes_fetched_at`): trunk
-  moves under you when a colleague pushes — an unobservable channel — so it is owned by the
-  *monitor* (`remote_branches.json`), never written by a refresh/script. ahead/behind is a
-  *relationship*, derived on read against these tips, never stored.
-- **write-gate** (`branch.pr_number` joined from `pr.json`): the current branch's PR/MR, also
-  monitor-owned. "inactive"/"in-flight" are *derived* by joining number → prs, never stored.
-
-`branch.local.fork_from` is the one fact git does not durably record: known exactly only when
-devloop cut the branch (gcampr writes it), so the refresh PRESERVES it across rebuilds (like
-pr_number) rather than recomputing it from git.
+meta, branch provenance, remote trunk tips and validation/review evidence belong to devloop.
+PR lifecycle state and generic associations belong to repocli; they are never copied into
+.devloop. The selected pull_request exists only in this transient view.
 """
 from __future__ import annotations
 
@@ -132,20 +106,19 @@ class BranchTopology:
     """The repo's branch topology across vantages — assembled by `RepoContext.load()` from
     owner-disjoint segments (see module docstring). `local` is the working checkout
     (refresh-owned, the DISPLAY copy); `remotes` are the server trunk tips (monitor-owned);
-    `worktrees` are the local linked worktrees (refresh-owned). `pr_number` / `remotes_fetched_at`
+    `worktrees` are the local linked worktrees (refresh-owned). `remotes_fetched_at`
     carry from their owning segments at load time."""
     local: Branch = field(default_factory=Branch)
     remotes: list[Branch] = field(default_factory=list)        # monitor-owned (remote_branches.json)
     worktrees: list[Branch] = field(default_factory=list)
     target: str = ""                                           # this checkout's trunk; derived from RepoMeta.default_branch at refresh
-    pr_number: int | None = None                               # joined from pr.json (monitor-owned)
     remotes_fetched_at: float | None = None                    # provenance of `remotes`
 
     @classmethod
     def from_local_dict(cls, d: dict | None) -> "BranchTopology":
         """Build the refresh-owned half (local + worktrees) from branch.json. `target` is derived
         from RepoMeta.default_branch by `load` (single source — not stored here); remotes /
-        remotes_fetched_at / pr_number are merged in from their own segments."""
+        remotes_fetched_at are merged in from their own segments."""
         d = d or {}
         return cls(
             local=Branch.from_dict(d.get("local")),
@@ -219,13 +192,8 @@ class RepoContext:
     agents_md: AgentsMd = field(default_factory=AgentsMd)
     branch: BranchTopology = field(default_factory=BranchTopology)
     validation: Validation = field(default_factory=Validation)
-    prs: list[PullRequest] = field(default_factory=list)   # monitor-owned recent-PR window
-    provider: str = ""   # repo-level forge ("github"/"gitlab"); drives display vocabulary
-    merge_readiness: str | None = None   # current branch's open-MR readiness — a pr.json hint
-                                         # (MergeReadiness value); re-checked live before a merge
-    pending_review_verdicts: int | None = None  # open MR's Findings awaiting a Verdict;
-                                                # pr.json hint, None = no open MR / poll failed
-    pending_review_verdicts_key: str = ""       # identity of that pending set — nudge decay key
+    pull_request: PullRequest | None = None
+    provider: str = ""
     updated_at: float = 0.0
 
     # ── load (merge segments) ──────────────────────────────────────────────────
@@ -255,12 +223,10 @@ class RepoContext:
         rb = store.load_segment(repo_dir, "remote_branches") or {}
         branch.remotes = [Branch.from_dict(r) for r in (rb.get("remotes") or [])]
         branch.remotes_fetched_at = rb.get("fetched_at")
-        # Join the monitor-owned pr_number only when it was computed for the CURRENT branch —
-        # DISPLAY-grade; write-gates re-derive against LIVE branch (domain.context.gate).
-        # pr.json is branch-keyed, so a branch switch self-invalidates the stale number.
-        pr = store.load_segment(repo_dir, "pr") or {}
-        on_branch = pr.get("branch") == branch.local.name   # pr.json is branch-keyed; only join if current
-        branch.pr_number = pr.get("pr_number") if on_branch else None
+        # Query the library for the live checkout; display availability is independent of gates.
+        from .prstate import checkout_pr
+        provider, association = checkout_pr(str(repo_dir))
+        selected = association.selected if association and association.branch == live else None
         ctx = cls(
             repo=RepoMeta.from_dict(meta.get("repo")),
             agents_md=AgentsMd.from_dict(meta.get("agents_md") or {}),
@@ -268,15 +234,8 @@ class RepoContext:
             validation=Validation.from_dict(
                 full_projection(str(repo_dir), live, "lint"),
                 full_projection(str(repo_dir), live, "test")),
-            prs=[PullRequest.from_dict(p) for p in (pr.get("prs") or []) if p.get("number") is not None],
-            provider=pr.get("provider", ""),
-            merge_readiness=(pr.get("merge_readiness") if on_branch else None),
-            pending_review_verdicts=(
-                pr.get("pending_review_verdicts") if on_branch else None
-            ),
-            pending_review_verdicts_key=(
-                (pr.get("pending_review_verdicts_key") or "") if on_branch else ""
-            ),
+            pull_request=selected,
+            provider=provider,
             updated_at=float(meta.get("updated_at", 0) or 0),
         )
         if not ctx.repo.repo_dir:
@@ -308,7 +267,7 @@ class RepoContext:
 
     def _save_branch(self) -> None:
         """Refresh-owned: the LOCAL half only (local + worktrees + target). `remotes` is the
-        monitor's (remote_branches.json) and `pr_number` is pr.json's — never written here."""
+        monitor's (remote_branches.json); PR association is queried, never written here."""
         if not self._root():
             return
         store.save_segment(self._root(), self._branch_seg("branch"), {
@@ -316,20 +275,6 @@ class RepoContext:
             "worktrees": [asdict(w) for w in self.branch.worktrees],
         })   # target not persisted here — derived from meta.default_branch (single source)
 
-    def _save_pr(self) -> None:
-        """Monitor's write surface (also used by gcampr via a one-shot poll). Branch-keyed
-        so a later branch switch invalidates pr_number on read without anyone clearing it.
-        `provider` is repo-level (the forge backing this repo) — stored once in the header,
-        not on every PR."""
-        if not self._root():
-            return
-        store.save_segment(self._root(), "pr", {
-            "branch": self.branch.local.name,
-            "provider": self.provider,
-            "pr_number": self.branch.pr_number,
-            "merge_readiness": self.merge_readiness,
-            "prs": [asdict(p) for p in self.prs],
-        })
 
     # ── refresh (re-derive from authoritative sources) ─────────────────────────
     @classmethod
@@ -337,7 +282,7 @@ class RepoContext:
         """Full rebuild (normal-impl boundary: SessionStart / enter / TTL).
 
         Writes only the refresher-owned segments (meta + branch). validation /
-        pr / remote_branches live in their own files and are left untouched — their values
+        review / remote_branches live in their own files and are left untouched — their values
         are merged in (via prev) only to keep the *returned* object complete."""
         repo_dir_in = str(Path(repo_dir))
         repo_dir_abs = str(Path(repo_dir).resolve())
@@ -378,7 +323,7 @@ class RepoContext:
             ),
             branch=branch,
             validation=validation,
-            prs=prev.prs,
+            pull_request=prev.current_pr(),
             provider=prev.provider,
         )
         ctx._save_meta()
@@ -406,15 +351,7 @@ class RepoContext:
         return base.is_stale(meta.get("updated_at"), ttl)
 
     # ── mutators (each touches exactly one segment) ─────────────────────────────
-    def set_branch_pr_number(self, number: int | None) -> None:
-        """Write surface for the current branch's PR/MR number (monitor + create flow)."""
-        self.branch.pr_number = number
-        self._save_pr()
 
-    def set_prs(self, prs: list[PullRequest]) -> None:
-        """Monitor's sole write surface for the recent-PR window."""
-        self.prs = list(prs)
-        self._save_pr()
 
     def set_fork_from(self, fork_from: str | None) -> None:
         """gcampr's surface: record where the (just-cut) current branch forked from — the one
@@ -425,9 +362,8 @@ class RepoContext:
 
     # ── PR derivation (DISPLAY-grade; write-gates use domain.context.gate) ─────────
     def current_pr(self) -> PullRequest | None:
-        if self.branch.pr_number is None:
-            return None
-        return next((p for p in self.prs if p.number == self.branch.pr_number), None)
+        pr = self.pull_request
+        return pr if pr and pr.source_branch == self.branch.local.name else None
 
     def branch_pr_inactive(self) -> bool:
         """True if the current branch's PR/MR is merged/closed (derived, not stored).
@@ -487,7 +423,7 @@ def _build_topology(repo_dir: str, target: str, prev: BranchTopology | None) -> 
 
     `fork_from` is git-unrecorded → carried from `prev` ONLY when the branch name is unchanged
     (a switch drops the old branch's fork point; gcampr re-records on the next cut). remotes /
-    remotes_fetched_at / pr_number are merged from prev (load re-reads them from disk anyway)."""
+    remotes_fetched_at are merged from prev (load re-reads them from disk anyway)."""
     name = git_state.get_current_branch(repo_dir)
     commit = git_state.get_head_sha(repo_dir)
     fork_from = prev.local.fork_from if (prev is not None and prev.local.name == name) else None
@@ -500,5 +436,4 @@ def _build_topology(repo_dir: str, target: str, prev: BranchTopology | None) -> 
     if prev is not None:
         topo.remotes = prev.remotes
         topo.remotes_fetched_at = prev.remotes_fetched_at
-        topo.pr_number = prev.pr_number
     return topo

@@ -1,6 +1,6 @@
 PYTHON := scripts/python
-.PHONY: fix lint lint-ci test build
-fix:
+.PHONY: format lint lint-ci test build
+format:
 	# Prepare tracked artifacts before lint/test run concurrently.
 	npm run build
 	uvx --from ruff==0.16.10 ruff check --fix --select E9,F63,F7,F82 scripts

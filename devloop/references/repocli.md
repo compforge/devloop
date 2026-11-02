@@ -46,7 +46,7 @@ state is still displayed. Environment preparation reports an inspection warning.
 
 ## Validation
 
-Use `repocli fix/lint/test` independently or `repocli validate --check fix,lint,test`
+Use `repocli format/lint/test` independently or `repocli validate --check format,lint,test`
 for a combined round. `--base` selects impact-based checks; without it selected
 Components run full checks. `--plan` is read-only. The Go toolkit owns Makefile
 parsing, plans, bounded execution, Component/check fingerprints and result reuse.
@@ -70,8 +70,8 @@ Warm the environment before offline work:
 <PLUGIN_ROOT>/scripts/python -c 'import repocli'
 ```
 
-Refresh within the declared range with
-`uv lock --script devloop/scripts/_python.py --upgrade-package compforge-repocli`.
+Update the pinned PyPI version in `devloop/scripts/_python.py`, then run
+`uv lock --script devloop/scripts/_python.py`.
 For the TypeScript library, use `npm update @compforge/repocli` in the plugin directory.
 Validate the resulting dependencies before committing either lockfile. Keep the Python
 lockfile in both Git and the npm package.
@@ -83,7 +83,7 @@ outside validation, verify its published SHA-256 checksum, and put its binary on
 Python validation workflows and diff analysis; native organization inspection does not use this setting.
 No validation workflow downloads, upgrades or compiles the repocli CLI.
 
-Use repocli CLI 0.44.0 or later with fix/lint/test composition and ValidationReport
+Use repocli CLI 0.47.0 or later with format/lint/test composition and ValidationReport
 schema 1. The Python native toolkit remains independently locked for repository,
 Git/Forge and dependency operations. Validation never downloads or builds the CLI.
 

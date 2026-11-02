@@ -31,7 +31,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 
 ## 快速开始
 
-运行时要求：共享核心与 Harness adapter 使用 **Node.js 22.19+**；Python 工作流使用 **uv 与 Python 3.11+**。`scripts/python` 通过 uv 准备隔离的 Python 环境和锁定依赖，首次准备需要联网；`DEVLOOP_PYTHON` 可指定兼容解释器。两种 runtime 的组件识别都直接使用原生 repocli toolkit。变更分析与验证戳仍需预先安装 **repocli CLI 0.11.0+**，详见 [repocli 接入](references/repocli.md)。
+运行时要求：共享核心与 Harness adapter 使用 **Node.js 22.19+**；Python 工作流使用 **uv 与 Python 3.11+**。`scripts/python` 通过 uv 准备隔离的 Python 环境和锁定依赖，首次准备需要联网；`DEVLOOP_PYTHON` 可指定兼容解释器。两种 runtime 的组件识别都直接使用原生 repocli toolkit。变更分析与验证戳仍需预先安装 **repocli CLI 0.47.0+**，详见 [repocli 接入](references/repocli.md)。
 
 ### Claude Code
 
@@ -75,14 +75,14 @@ devloop 会选择当前仓库和受影响的 Component，完成验证、提交�
 验证不是 lint/test 两种模式，而是对同一份稳定代码执行的多个质量检查：
 
 ```text
-normalize: make fix
+normalize: make format
         ↓
 stable Component content
    ├─ static quality: make lint-ci | make lint
    └─ behavior:       make test
 ```
 
-- `make fix` 是可选的 normalize 步骤，也是唯一允许自动改写源码的验证命令；缺失时不阻断后续检查，结果明确记录为 unavailable。
+- `make format` 是可选的 normalize 步骤，也是唯一允许自动改写源码的验证命令；缺失时不阻断后续检查，结果明确记录为 unavailable。
 - repocli 在 fix 完成后重新规划，lint 与 test 可以有界并发执行。
 - 完整验证同时检查静态质量和行为；单独要求 lint 或 test 属于部分验证，devloop 会分别报告结果。
 - lifecycle 中 lint 失败会阻止 commit/MR；test 失败目前只提示、不阻塞，因为坏测可能来自基线或环境，是否与本次 diff 相关仍需 CI 或人判断。
@@ -93,7 +93,7 @@ stable Component content
 
 | Target | 要求 |
 |---|---|
-| `make fix` | 可选；执行 formatter/fixer，可以修改源码 |
+| `make format` | 可选；执行 formatter/fixer，可以修改源码 |
 | `make lint-ci` 或 `make lint` | 非交互、只读，所有静态检查通过时返回 0；优先使用 `lint-ci` |
 | `make test` | 非交互、只读，默认运行完整测试套件，通过时返回 0 |
 
@@ -107,7 +107,7 @@ make test TEST_FILES="tests/a.py tests/b.py"
 devloop 仅在 `affectedFileCounts` 的 `source/test/config/manifest/lockfile` 任一计数大于 0 时执行 lint/test；其余标签全部跳过。
 多标签任一命中即执行，`complete=false` 和诊断只展示、不额外触发检查。选中后按文件列表及项目契约决定 focused/full；跳过不写成功戳。
 `--full` 跳过影响筛选，验证全部指定组件；`TEST_FILES` 保留为显式收窄测试的手动覆盖，不能授予完整组件验证戳。
-缺少 `make test` 时报告 unavailable，不盖通过戳。标签选择要求 repocli CLI 0.39.0+；旧 schema 或缺少、损坏 `affectedFileCounts` 的报告直接报错并终止验证。
+组件缺少 lint/test target 时按检查项回退到根 Component；根也缺失时报告 unavailable，不盖通过戳。验证要求 repocli CLI 0.47.0+；旧 schema 或缺少、损坏 `affectedFileCounts` 的报告直接报错并终止验证。
 
 Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 package 或 test-name 选择。完整契约见 [`spec.md`](./skills/validate/references/spec.md)，并发和 Makefile 示例按语言查看 [Python](./skills/validate/references/python.md)、[Go](./skills/validate/references/go.md) 或 [Node.js](./skills/validate/references/node.md)。devloop 不会擅自为项目新增工具、依赖或 Make target。
 

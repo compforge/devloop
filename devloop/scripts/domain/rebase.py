@@ -16,7 +16,7 @@ from pathlib import Path
 
 from lib import git_state, gitcmd
 
-from .context import RepoContext, gate, prstate
+from .context import RepoContext, gate
 
 
 class RebaseError(Exception):
@@ -116,7 +116,6 @@ def _check_branch_name(repo: str, branch: str, label: str) -> None:
 
 def _refresh(repo: str) -> None:
     RepoContext.refresh_branch(repo)
-    prstate.refresh_pr(repo)
 
 
 def start(repo: str, target: str | None = None) -> list[str]:
@@ -132,7 +131,7 @@ def start(repo: str, target: str | None = None) -> list[str]:
         raise RebaseError("Git already has a rebase in progress that devloop did not start")
     _require_clean(repo, "starting rebase")
 
-    view = gate.evaluate(repo, live_refresh=True)
+    view = gate.evaluate(repo)
     branch = view.branch
     if not branch:
         raise RebaseError("current checkout is detached; start from the source branch")

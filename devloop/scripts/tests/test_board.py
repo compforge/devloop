@@ -82,9 +82,8 @@ def test_board_compaction_replays_state_not_review_event():
     assert "Review:" not in replay
 
 
-def test_board_injects_current_pr_not_unrelated_recent_window():
-    """Prompt Board follows relevance: current PR context is actionable; unrelated recent PRs
-    remain available in the fact source for the future UI but do not spend prompt tokens."""
+def test_board_projects_selected_pr():
+    """Board projects the selected native proposal without maintaining a recent-PR window."""
     from domain.board import (
         BoardItemType,
         BoardItemKind,
@@ -99,16 +98,14 @@ def test_board_injects_current_pr_not_unrelated_recent_window():
     _repo(root)
     ctx = RepoContext.load(root)
     ctx.provider = "github"
-    ctx.branch.pr_number = 7
-    ctx.merge_readiness = MergeReadiness.CI_BLOCKED.value
-    ctx.prs = [
-        PullRequest(number=7, state="open", source_branch="feat/board"),
-        PullRequest(number=6, state="merged", source_branch="unrelated"),
-    ]
-    board = BoardRuntime.from_facts(root, "session-a", repo=ctx)
+    ctx.pull_request = PullRequest(number=7, state="open", source_branch="feat/board")
+    from unittest.mock import patch
+    from domain.context import prstate
+    with patch.object(prstate, "review_details", return_value=prstate.ReviewDetails(readiness=MergeReadiness.CI_BLOCKED.value)):
+        board = BoardRuntime.from_facts(root, "session-a", repo=ctx)
     history = next(item for item in board.view.items if item.type is BoardItemType.REPO_PR_HISTORY)
     assert DeliveryPolicy.rule_for(history.type).channels == frozenset({DeliveryChannel.UI})
-    assert len(history.payload.pull_requests) == 2
+    assert len(history.payload.pull_requests) == 1
     blocked = next(item for item in board.view.items if item.type is BoardItemType.REPO_PR_BLOCKED)
     assert blocked.kind is BoardItemKind.EVENT
 

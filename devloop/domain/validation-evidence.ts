@@ -23,9 +23,9 @@ export function fullEvidence(repo: string, component: string, check: string, ref
       || typeof record.checked_at !== "string" || record.checked_at !== ref.checked_at) return undefined;
   for (const raw of Array.isArray(report.components) ? report.components : []) {
     const group = object(raw);
-    if (object(group.component).root !== component) continue;
     for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
       const result = object(rawCheck);
+      if (object(group.component).root !== component && !(Array.isArray(result.requestedComponents) && result.requestedComponents.includes(component))) continue;
       if (result.check === check && result.scope === "full" && result.status === "passed" && result.checkedAt === record.checked_at) return record;
     }
   }
@@ -67,9 +67,9 @@ export function observedCheck(repo: string, component: string, check: string): J
   if (report.schemaVersion !== 1 || report.checkout !== realpathSync(repo)) return undefined;
   for (const raw of Array.isArray(report.components) ? report.components : []) {
     const group = object(raw);
-    if (object(group.component).root !== component) continue;
     for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
       const result = object(rawCheck);
+      if (object(group.component).root !== component && !(Array.isArray(result.requestedComponents) && result.requestedComponents.includes(component))) continue;
       if (result.check === check) return result;
     }
   }

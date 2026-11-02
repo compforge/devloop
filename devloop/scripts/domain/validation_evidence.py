@@ -25,8 +25,8 @@ def full_evidence(repo: str, component: str, check: str, reference: dict) -> dic
             or not report.get("snapshot") or record.get("checked_at") != reference.get("checked_at")):
         return None
     for group in report.get("components", []):
-        if group["component"]["root"] == component:
-            for result in group["checks"]:
+        for result in group["checks"]:
+            if group["component"]["root"] == component or component in result.get("requestedComponents", []):
                 if (result["check"] == check and result["scope"] == "full" and result["status"] == "passed"
                         and result["checkedAt"] == record.get("checked_at")):
                     return record

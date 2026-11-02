@@ -35,7 +35,7 @@ from domain.forge import Comment, Forge, ForgeError, ForgeNotFound, Release  # n
 
 
 class _FakeForge(Forge):
-    """In-memory Forge for testing the domain composition (build_window) + orchestration
+    """In-memory Forge for testing the workflow orchestration
     (reuse_or_create_pr) without HTTP — the port is small enough that this is trivial."""
     provider = "github"
 
@@ -43,6 +43,9 @@ class _FakeForge(Forge):
         self._prs = {p.number: p for p in prs}
         self._bodies = dict(bodies or {})   # number → description text
         self.created = None
+
+    def for_repository(self, path):
+        return self
 
     def repository(self):
         return Repository(ForgeIdentity("github"), "fork/repo")
@@ -157,3 +160,17 @@ def run_main(g: dict) -> None:
     """单测试文件的 standalone 入口。"""
     _, failed = run_all(g)
     sys.exit(1 if failed else 0)
+
+
+def _pr_context(repo, reader):
+    """Isolated repocli state used by workflow composition tests."""
+    from repocli.forge import PullRequestContext, PullRequestObserver
+    from domain import worktree
+    primary = worktree.primary(repo)
+    source = reader.repository()
+    reader._prs = {number: replace(pr, source_repository=pr.source_repository or source.path,
+                                  target_repository=pr.target_repository or source.path)
+                   for number, pr in reader._prs.items()}
+    observer = PullRequestObserver(reader, forge=source.forge.name,
+                                   state_dir=Path(primary).parent / "repocli", connection="test")
+    return PullRequestContext(observer, primary, source=source, targets=(source,))

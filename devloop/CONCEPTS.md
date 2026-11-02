@@ -25,19 +25,15 @@ devloop 内多个 skill / 脚本共用的术语。架构理念见 [`AGENTS.md`](
 
 ## PR 模型（PR/MR 统一概念）
 
-评审提案在 devloop 里是 `scripts/domain/forge.py` 定义的**中立领域对象 `PullRequest`**（GitHub PR / GitLab MR 同一概念），由 `scripts/lib/forge/` 按 repo 的 origin 解析出对应 adapter 产出；context 状态源只持久化与 join，不重定义，Board 再选择与当前工作相关的投影视图。`PullRequest` **不带 provider**——provider 是 **repo 级事实**（一个仓要么 GitHub 要么 GitLab），存在 `pr.json` 段头；展示时用 `pr_label(provider, number)` / `vocab(provider)` 贴回词汇（GitHub `PR #`、GitLab `MR !`）。
+PR 以目标 Repository + number 标识，生命周期为 open / closed / merged。repocli 拥有状态观察
+与源仓分支、目标仓、local branch、checkout 的关联查询；devloop 不维护第二份 PR 缓存。
+`RepoContext`、Gate、Board 在查询时构造视图，错误和歧义不等价于无 PR。
 
-- **`number`**：PR/MR 在 repo 内的编号（URL 里那个号；GitLab 的 `iid`、GitHub 的 PR number 统一为 `number`）。
-- **`state`**：归一为 `open` / `merged` / `closed`（GitHub 的 open/closed + `merged` 布尔在 adapter 里收敛为这三态）。
-- **`branch.pr_number`**：当前分支那条 PR 的编号（只存编号，整对象 join `prs`）。
-- **`prs`**：近期 PR 窗口，monitor 周期 sweep 写入，定长 cap（数值在 `domain/context/base.ts`）。窗口策略是**领域层** `build_window`（最新 cap + 确保当前分支 anchor 在内），组合在 port 的 `recent()` + `get()` 原语之上——**对两家一致**，adapter 不各写一份；adapter 只管协议差异。
-- **本地 PR/MR inventory**：`local_pull_requests.json` 以全部 local branch 为主轴，关联 Forge PR/MR 与可选 checkout（primary / managed / external / 无 checkout），并记录本轮权威状态变化和 reconciliation action。它与 `pr.json` 分开：gate 刷新当前分支时保持单次查询低延迟，周期 task 才对全部本地分支对账。worktree 回收后 branch / PR 记录仍保留，只把 checkout 投影置空。
-- **状态 reconciliation**：Forge 当前状态是事实，`pull_request_lifecycle` 把它映射为幂等动作，不依赖捕获某次边沿事件。`state∈{merged,closed} + linked worktree` 直接触发强制回收；dirty、任意 harness 的活跃 owner、当前 checkout、worktree lock、managed / external 分类、已初始化 submodule 或嵌套 registered worktree 均不构成保留依据。这里的取舍是非对称的：linked checkout 是可重建的 agent workspace，误删只有重新 checkout / 恢复环境的有界成本，持续保留依赖、submodule 与构建产物却会累积占用磁盘。primary checkout 是仓库元数据锚点，不是 linked-worktree 回收目标；branch ref 始终保留，需要时可重建 checkout。创建或复用 checkout 不触发数量淘汰；只有 PR/MR 终态对账拥有回收决策，gitlink 作为父仓条目不引入子仓保留策略。
-- **branch 归属**：`pr.json` 记录其写入时的 branch + provider；`RepoContext.load` 的名字相等 join（`pr.json.branch == branch.local.name`）是**展示级**——切分支时自失效，供 Board 提示够用。
-- **分支失活（inactive）**：派生，不单独存。但**硬 gate 不读展示级 join**：`branch_merged_guard` / gcampr 走 `domain.context.gate.evaluate()`，按 **live 分支 + live HEAD** 在缓存窗口上做 SHA 祖先校验（`pick_branch_pr`），归属键是 `(branch, head_sha)` 而非分支名——观测不到的 checkout 后缓存陈旧也不会误判。详见 [`docs/branch-state.md`](./docs/branch-state.md)〈三态 freshness 模型〉。
-- **远端 tip**：`remote_branches.json` 由 monitor `ls-remote` 拉服务端 trunk tips（同事 push 后本地 fetch 前就可见），带 `fetched_at`；Board 据此给 ahead/behind 加"as of"限定，避免把落后的本地 checkout 读成"最新"。
-- **在途（in-flight）**：同样按 join 派生（`state = open`，`branch_pr_in_flight`）——PR 已建、等人工 merge。与 inactive 互斥，二者加 protected / healthy 构成下面的四态。
-- **title / description**：commit message 首行是 PR/MR title，body（首行之后）是 description——给细节一个出口，title 才不会被挤成超长单行。创建时直填；往在途 PR 续传 commit（gcamp / gcampr 复用路径）时 **append-only + 包含性去重**：人工编辑过的 description 不被覆盖，重试不重复；同步失败仅记 PLAN 注记（commit/push 已落地，description 是装饰性的，不因它失败）。
+merged 停止普通状态轮询，closed 可重新打开。分支关联仍会更新，防止历史 merged PR 覆盖复用
+分支上的新工作。回收前核验远端关联与即时 Git 身份，primary checkout 始终保留；已完成 PR 的
+linked checkout 沿用既有回收策略，branch ref 独立保留。
+
+详细 owner、查询和副作用契约见 [PR 对账](docs/pr-observation.md) 与 [分支门禁](docs/branch-state.md)。
 
 ## 分支状态流转
 
@@ -100,7 +96,7 @@ Board 展示历史执行事实，提交门禁负责实时有效性。旧记录�
 AGENTS.md 是文字知识源；`.devloop/*.json` 是由 hooks / scripts / monitors 维护的结构化运行态，不保存 AGENTS.md 正文。
 
 - Workspace 级：`<workspace_root>/.devloop/context.json`，保存 workspace AGENTS.md 的 References + 文件系统自发现的 subproject 清单（叠加 AGENTS.md 表润色，symlink 子项目附 canonical 路径映射）；`active/<session_id>.json` **一 session 一文件**保存该 session 绑定的最近活跃 repo（脚本在 workspace 根被调用时的解析兜底）——这是 session 态而非 workspace 态，owner 即 session，按 writer-owner 铁律落盘零例外；多 session 各干各的仓互不劫持。语义与生命周期见〈Session 运行态〉。
-- Repo 级（按**三域**布局；linked worktree 的 repo / branch 域解析到**主仓** `.devloop`，working-tree 域例外）：**repo 域**根下 `meta.json` / `remote_branches.json` / `pr.json` / `local_pull_requests.json` + ledgers（`friction.jsonl` / `review-history.jsonl`，均只作 observability）；**branch 域** `branches/<branch>/` 下 `branch.json` / `lint.json` / `test.json` / `review.json`，`RepoContext.load()` 按 **live 分支**取段后合并成内存视图；**working-tree 域** owner 锁与一次性提交输入 `commit_msg` 留各 worktree 自己的 `.devloop`（并行 worktree 互不干扰，`commit_msg` 成功消费后清理、失败时留作重试）；主仓 `tmp/` 收进程间日志（如 review.log），随时可删。连续 review history 从 Forge comments 派生，不落 `.devloop`。`branch.json`（local + worktrees，refresh owned）与 `remote_branches.json`（远端 trunk tips，monitor owned）是同一分支拓扑的两个 owner——见 [`docs/branch-state.md`](./docs/branch-state.md)〈落盘:按 writer-owner 拆段〉。
+- Repo 级（按**三域**布局；linked worktree 的 repo / branch 域解析到**主仓** `.devloop`，working-tree 域例外）：**repo 域**根下 `meta.json` / `remote_branches.json` + ledgers（`friction.jsonl` / `review-history.jsonl`，均只作 observability）；**branch 域** `branches/<branch>/` 下 `branch.json` / `lint.json` / `test.json` / `review.json`，`RepoContext.load()` 按 **live 分支**取段后合并成内存视图；**working-tree 域** owner 锁与一次性提交输入 `commit_msg` 留各 worktree 自己的 `.devloop`（并行 worktree 互不干扰，`commit_msg` 成功消费后清理、失败时留作重试）；主仓 `tmp/` 收进程间日志（如 review.log），随时可删。连续 review history 从 Forge comments 派生，不落 `.devloop`。`branch.json`（local + worktrees，refresh owned）与 `remote_branches.json`（远端 trunk tips，monitor owned）是同一分支拓扑的两个 owner——见 [`docs/branch-state.md`](./docs/branch-state.md)〈落盘:按 writer-owner 拆段〉。
 
 ### Board 投递游标
 

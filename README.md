@@ -30,7 +30,7 @@ devloop turns those boundaries into a reusable development loop: live context te
 
 - **Controlled Git/PR transactions** — `gcam`, `gcamp`, and `gcampr` perform commit, commit + push, and commit + push + PR/MR respectively. New work starts from the intended target branch instead of inheriting accidental commits from the current HEAD.
 - **Affected-Component validation** — a repository may contain independent Components such as `server/`, `cli/`, or `packages/*`. devloop selects the Components touched by the change and records lint/test results at the same granularity.
-- **One validation model** — complete validation normalizes with `make fix`, then runs static-quality and behavioral checks concurrently through canonical Make targets. Lint or test alone is reported as partial validation.
+- **One validation model** — complete validation normalizes with `make format`, then runs static-quality and behavioral checks concurrently through canonical Make targets. Lint or test alone is reported as partial validation.
 - **Current repository context** — branch, working tree, PR/MR, and validation facts are surfaced to the active session and refreshed as the development state changes.
 - **Execution-level guardrails** — high-confidence risks such as protected-branch commits, inactive-branch edits, broad staging, and unmanaged worktree creation are denied before they mutate the repository.
 - **Concurrent-session isolation** — checkout ownership prevents one session from changing another session's branch or tracked files and routes parallel work to a managed worktree.
@@ -88,7 +88,7 @@ unknown language; repositories without either have no Components and skip valida
 passing stamps. Each Component exposes stable, non-interactive Make targets:
 
 ```text
-make fix                  # optional normalization; may rewrite source
+make format                  # optional normalization; may rewrite source
 make lint-ci | make lint  # read-only static-quality check
 make test                 # read-only full behavioral suite
 ```

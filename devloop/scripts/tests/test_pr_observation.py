@@ -76,7 +76,7 @@ def test_reused_branch_is_reverified_before_removal():
     head = _git_out(target, "rev-parse", "HEAD")
     fake = _FakeForge([PullRequest(1, state="merged", source_branch="worktree-reused", sha=head)])
     context = _pr_context(repo, fake)
-    inventory = prstate.inventory_view(context)
+    inventory = context.local_branches()
     from dataclasses import replace
     fake._prs[2] = replace(fake._prs[1], number=2, state="open")
     actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
@@ -116,9 +116,9 @@ def test_query_view_isolates_one_branch_failure():
             raise ForgeError("offline")
         return get(number)
     with patch.object(fake, "get", side_effect=read):
-        rows = {row["branch"]: row for row in prstate.inventory_view(context)["branches"]}
-    assert rows["main"]["observation"] == "unknown"
-    assert rows["healthy"]["pull_request"]["number"] == 2
+        rows = {row.branch: row for row in context.local_branches()}
+    assert rows["main"].error
+    assert rows["healthy"].selected.number == 2
 
 
 if __name__ == "__main__":

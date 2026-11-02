@@ -35,7 +35,7 @@ from domain.forge import Comment, Forge, ForgeError, ForgeNotFound, Release  # n
 
 
 class _FakeForge(Forge):
-    """In-memory Forge for testing the domain composition (build_window) + orchestration
+    """In-memory Forge for testing the workflow orchestration
     (reuse_or_create_pr) without HTTP — the port is small enough that this is trivial."""
     provider = "github"
 

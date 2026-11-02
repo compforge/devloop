@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
+from dataclasses import dataclass
 from pathlib import Path
 
-from repocli.forge import PullRequestContext
+from repocli.forge import BranchPullRequests
 from lib import git_state
 from lib.forge import forge_for_repo, pr_context_for_repo
-from domain.forge import Forge, ForgeError
+from domain.forge import Forge, ForgeError, PullRequest
 from . import base, store
 
 TRUNK_CANDIDATES = ("main", "master", "release")
@@ -32,42 +32,23 @@ def _baseline_branches(repo: str) -> tuple[str, ...]:
     return tuple(out)
 
 
-def poll_pr(repo: str, *, forge: Forge | None = None, required: bool = False) -> dict | None:
-    """Build a current view; no PR snapshot is written into .devloop."""
+def checkout_pr(repo: str, *, forge: Forge | None = None, required: bool = False) -> tuple[str, BranchPullRequests | None]:
+    """Query native associations; workflow gates reject unavailable or ambiguous results."""
     context = pr_context_for_repo(repo, forge=forge)
     if context is None:
-        return None
+        return "", None
     try:
         current = context.get_checkout()
-        if current and current.error:
-            raise ForgeError(current.error)
-        if current and current.ambiguous:
-            raise ForgeError("multiple PRs match this branch; select a proposal explicitly")
-        return {"branch": current.branch if current else None, "head_sha": current.head if current else "",
-                "provider": context.observer.reader.provider,
-                "pr_number": current.selected.number if current and current.selected else None,
-                "prs": [asdict(current.selected)] if current and current.selected else [],
-                "checked_at": base.now()}
+        if current and (current.error or current.ambiguous):
+            raise ForgeError(current.error or "multiple PRs match this branch; select a proposal explicitly")
+        return context.observer.reader.provider, current
     except (ForgeError, OSError) as exc:
         if required:
             raise
         logger.warning("PR view unavailable repo=%s error=%s", repo, exc)
-        return None
+        return context.observer.reader.provider, None
     finally:
         context.observer.close()
-
-
-def inventory_view(context: PullRequestContext) -> dict:
-    """Keep each branch's availability and ambiguity visible to workflow policy."""
-    rows = []
-    for item in context.local_branches():
-        for checkout in item.checkouts or (None,):
-            rows.append({"branch": item.branch, "head_sha": item.head,
-                         "checkout": {"path": checkout.path, "kind": "primary" if checkout.primary else "external"} if checkout else None,
-                         "pull_request": asdict(item.selected) if item.selected else None,
-                         "observation": "unknown" if item.error else "ambiguous" if item.ambiguous else "known",
-                         "error": item.error, "context": item})
-    return {"provider": context.observer.reader.provider, "branches": rows}
 
 
 # ── remote_branches.json (the server's trunk tips; read-freshness baseline) ────
@@ -104,27 +85,31 @@ def refresh_remote_branches(repo: str, branches: tuple[str, ...] | None = None) 
     return True
 
 
-def review_details(repo: str, proposal: dict) -> dict:
-    """Review findings are workflow facts, queried separately from lifecycle gates."""
+@dataclass
+class ReviewDetails:
+    pending: int | None = None
+    pending_key: str = ""
+    readiness: str | None = None
+
+
+def review_details(repo: str, pr: PullRequest | None) -> ReviewDetails:
+    """Read workflow review facts only when projecting an open proposal onto Board."""
     from domain import review_feedback
-    if not proposal.get("pr_number"):
-        return {}
+    result = ReviewDetails()
+    if pr is None or not pr.is_open:
+        return result
     forge = forge_for_repo(repo)
     if forge is None:
-        return {}
-    pr = next((row for row in proposal.get("prs", []) if row["number"] == proposal["pr_number"]), None)
-    if not pr or pr["state"] != "open":
-        return {}
-    target = forge.for_repository(pr["target_repository"])
-    result = {}
+        return result
+    target = forge.for_repository(pr.target_repository)
     try:
-        findings = review_feedback.pending(target.comments(pr["number"]))
-        result.update(pending_review_verdicts=len(findings),
-                      pending_review_verdicts_key=review_feedback.pending_key(findings))
+        findings = review_feedback.pending(target.comments(pr.number))
+        result.pending = len(findings)
+        result.pending_key = review_feedback.pending_key(findings)
     except ForgeError as exc:
-        logger.warning("PR review view unavailable repo=%s pr=%s error=%s", repo, pr["number"], exc)
+        logger.warning("PR review view unavailable repo=%s pr=%s error=%s", repo, pr.number, exc)
     try:
-        result["merge_readiness"] = target.merge_readiness(pr["number"]).value
+        result.readiness = target.merge_readiness(pr.number).value
     except ForgeError as exc:
-        logger.warning("PR readiness unavailable repo=%s pr=%s error=%s", repo, pr["number"], exc)
+        logger.warning("PR readiness unavailable repo=%s pr=%s error=%s", repo, pr.number, exc)
     return result

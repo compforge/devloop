@@ -1,7 +1,7 @@
 """Unified forge facade — provider-neutral access to GitHub / GitLab, picked per-repo.
 
     from lib.forge import forge_for_repo
-    from domain.forge import ForgeError, build_window
+    from domain.forge import ForgeError
     f = forge_for_repo(repo_dir)              # None if no token / unsupported remote
     if f:
         pr = f.create(source_branch="feat/x", target_branch="main", title="...")
@@ -9,7 +9,7 @@
 `forge_for_repo` resolves the repo's origin → (provider, host, token) in one place
 (`resolve_forge`), then builds the matching adapter. The aggregate-workspace case is
 first-class: each repo resolves its own provider, so a GitHub subproject and a GitLab one
-coexist. Cross-provider window *policy* is `build_window` (domain-level), not per-adapter.
+coexist. Workflow presentation policy stays in the domain layer.
 """
 from __future__ import annotations
 
@@ -28,7 +28,6 @@ from domain.forge import (
     PullRequest,
     PullRequestIdentity,
     Release,
-    build_window,
     parse_pr_number,
     pr_label,
     vocab,

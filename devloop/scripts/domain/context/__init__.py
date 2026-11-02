@@ -13,7 +13,7 @@ two storage domains to present one cohesive view. Families:
   into collaboration context and owns prompt delivery receipts.
 - truth seams — `gate.py`: `GateView` / `evaluate()`, what hard gates read (LIVE branch +
   SHA-validated PR state, never the cached view; see docs/branch-state.md);
-  `prstate.py`: the monitor's & gcampr's shared writer of the monitor-owned segments.
+  `prstate.py`: native PR query adapter, on-demand review facts and remote trunk-tip policy.
 - session runtime — `session.py`: active-repo binding + the checkout owner lock.
 
 Usage (DISPLAY facts; Board owns prompt delivery, gates use `gate.evaluate`):
@@ -25,7 +25,6 @@ Usage (DISPLAY facts; Board owns prompt delivery, gates use `gate.evaluate`):
 from __future__ import annotations
 
 from .base import (
-    PRS_CAP,
     REPO_STALE_SEC,
     SESSION_TTL_SEC,
     TURN_TTL_SEC,

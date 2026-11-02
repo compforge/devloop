@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from domain.forge import MergeReadiness, blocks_merge, pr_label
 from lib import git_state
 
-from domain.context import base, store
+from domain.context import base, store, prstate
 
 from .model import (
     Board,
@@ -123,24 +123,25 @@ def _repo_items(root: str, repo: RepoContext, stale_binding_hours: float | None)
         ),
     ))
 
-    blocked = _blocked_pr(repo, scope)
+    details = prstate.review_details(repo.repo.repo_dir, repo.current_pr())
+    blocked = _blocked_pr(repo, scope, details.readiness)
     if blocked:
         items.append(blocked)
     review = _review(repo, scope)
     if review:
         items.append(review)
-    if repo.pending_review_verdicts:
+    if details.pending:
         items.append(BoardItem(
             type=BoardItemType.REPO_REVIEW_FINDINGS,
             kind=BoardItemKind.EVENT,
             scope=scope,
             payload=PendingReviewFindingsCard(
-                repo.pending_review_verdicts,
-                repo.pending_review_verdicts_key,
+                details.pending,
+                details.pending_key,
             ),
         ))
 
-    if repo.prs:
+    if current := repo.current_pr():
         items.append(BoardItem(
             type=BoardItemType.REPO_PR_HISTORY,
             kind=BoardItemKind.DETAIL,
@@ -156,7 +157,7 @@ def _repo_items(root: str, repo: RepoContext, stale_binding_hours: float | None)
                         title=pr.title,
                         web_url=pr.web_url,
                     )
-                    for pr in repo.prs
+                    for pr in (current,)
                 ),
             ),
         ))
@@ -221,12 +222,12 @@ def _repo_identity(repo: RepoContext, stale_binding_hours: float | None) -> Repo
     )
 
 
-def _blocked_pr(repo: RepoContext, scope: BoardScope) -> BoardItem | None:
+def _blocked_pr(repo: RepoContext, scope: BoardScope, readiness_value: str | None) -> BoardItem | None:
     current_pr = repo.current_pr()
-    if not current_pr or not current_pr.is_open or not repo.merge_readiness:
+    if not current_pr or not current_pr.is_open or not readiness_value:
         return None
     try:
-        readiness = MergeReadiness(repo.merge_readiness)
+        readiness = MergeReadiness(readiness_value)
     except ValueError:
         return None
     if not blocks_merge(readiness):

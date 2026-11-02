@@ -9,11 +9,10 @@ Nothing here is persisted as a source of truth, on purpose. The join key (`fp`) 
 the comment bodies, so the pair is recoverable from the API alone — from any machine, any
 worktree, any session, including ones that never saw the review run. A local fp→comment-id
 table would only be a staler copy of what `comments()` already returns, and would silently
-break the join when it's lost. Callers may CACHE a derived count (see `context.prstate`), which
-is safe precisely because it can always be re-derived here.
+break the join when it's lost. Board requests the derived count when presenting an open PR.
 
 Pure over a `list[Comment]` — the caller does the fetching. That keeps the forge round-trip at
-the poll boundary and makes this testable without HTTP.
+the presentation or review workflow boundary and makes this testable without HTTP.
 
 The same boundary serves re-review: finding comments carry hidden `ccr:history` metadata, and
 `history_feed()` projects the current Forge comments into ccr's one-shot input. The generated

@@ -770,7 +770,7 @@ def test_explicit_repository_pr_target_does_not_change_local_git_baseline_or_per
         forge = _ForkForge()
         with patch.object(flow, "forge_for_repo", return_value=forge), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")) as push, \
-             patch.object(flow.RepoContext, "refresh_branch"), patch.object(flow.prstate, "poll_pr"):
+             patch.object(flow.RepoContext, "refresh_branch"):
             flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
         push.assert_called_once_with(str(Path(repo).resolve()), "fix", upstream=True)
         assert forge.destination.created.target_branch == "release"
@@ -816,7 +816,7 @@ def test_publish_current_repository_preserves_existing_nondefault_base():
         with patch.object(flow, "forge_for_repo", return_value=forge), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")), \
              patch.object(flow, "run", return_value=""), \
-             patch.object(flow.RepoContext, "refresh_branch"), patch.object(flow.prstate, "poll_pr"):
+             patch.object(flow.RepoContext, "refresh_branch"):
             flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
         assert (forge.created is None) == (requested != "main")
         if forge.created:

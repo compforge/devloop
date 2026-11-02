@@ -35,9 +35,8 @@ def evaluate(git_root: str) -> GateView:
     """Unavailable and ambiguous PR queries cannot authorize a workflow decision."""
     branch = git_state.get_current_branch(git_root)
     head = git_state.get_head_sha(git_root)
-    pr_seg = prstate.poll_pr(git_root, required=True) or {}
-    active_pr = next((PullRequest.from_dict(p) for p in pr_seg.get("prs", [])
-                      if p["number"] == pr_seg.get("pr_number")), None)
+    provider, association = prstate.checkout_pr(git_root, required=True)
+    active_pr = association.selected if association else None
 
     if git_state.get_current_branch(git_root) != branch or git_state.get_head_sha(git_root) != head:
         raise OSError("checkout changed during PR decision")
@@ -52,6 +51,6 @@ def evaluate(git_root: str) -> GateView:
         branch=branch,
         head_sha=head,
         target=target,
-        provider=pr_seg.get("provider", ""),
+        provider=provider,
         active_pr=active_pr,
     )

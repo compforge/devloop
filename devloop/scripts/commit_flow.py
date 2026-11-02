@@ -38,7 +38,7 @@ from harness_common import Repository
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from domain import branch as branch_domain, lifecycle, repo as repo_model, staging  # noqa: E402
-from domain.context import RepoContext, gate, prstate, record_active_repo, store
+from domain.context import RepoContext, gate, record_active_repo, store
 from domain.forge import Forge, ForgeError, PullRequest, pr_label  # noqa: E402
 from lib import cli, git_state, gitcmd  # noqa: E402
 from lib.forge import forge_for_repo  # noqa: E402
@@ -434,10 +434,7 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
             intent.title, intent.description, plan, target_repository=intent.target_repository,
         )
         RepoContext.refresh_branch(repo)
-        # Don't write pr_number here — keep the `pr` segment single-owner. Trigger one
-        # authoritative poll so it (the sole writer) populates number + window for the new
-        # branch — and this one PERSISTS (the old refresh_pr_state discarded the poll).
-        prstate.poll_pr(repo)
+
 
 
 # The failure that bites gcampr callers most: a --message whose quotes/specials broke shell

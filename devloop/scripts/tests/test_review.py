@@ -504,89 +504,69 @@ def test_review_line_told_once_per_result():
 
 
 def test_pending_review_verdict_nudge_is_forge_derived():
-    """待判定 nudge 的数来自 pr.json（forge 派生的 pending），不是 review.json 的 finding 数。
-    两个关键性质：(1) review.json 说有 2 条 finding、但都判定了(pending=0) → 不再喊;
-    (2) review.json 整个没了 / 被下轮覆盖 → nudge 照样在,因为 pending 锚在 forge 上。"""
-    from domain.context import RepoContext, store
-    G = "/tmp/dlut_labelnudge"; shutil.rmtree(G, ignore_errors=True); os.makedirs(G)
-    _git(G, "init", "-q"); _git(G, "config", "user.email", "t@t.t"); _git(G, "config", "user.name", "t")
-    Path(f"{G}/a.txt").write_text("x"); _git(G, "add", "-A"); _git(G, "commit", "-q", "-m", "init")
-    ctx = RepoContext.refresh_all(G)
-    R, branch = ctx.repo.repo_dir, ctx.branch.local.name
-
+    """Native proposal queries and real comment parsing drive the Board nudge."""
     from unittest.mock import patch
-    from domain.context import prstate
-    proposal = {"branch": branch, "provider": "github"}
-    def prseg(**kw):
-        proposal.clear()
-        proposal.update(branch=branch, provider="github", **kw)
-    original_load = RepoContext.load
-    def load(root):
-        with patch.object(prstate, "poll_pr", return_value=proposal.copy()):
-            return original_load(root)
-    _rseg = store.branch_segment(branch, "review")
-    def revseg(**kw): store.save_segment(R, _rseg, {"reviewed_sha": "abcdef1234567", "comments": [],
-                                                    "generated_at": 1.0, **kw})
-
-    revseg(status="success", count=2)
-    prseg(pending_review_verdicts=2); assert "2 条待判定" in load(R).turn_text()
-    prseg(pending_review_verdicts=0); assert "待判定" not in load(R).turn_text()
-    prseg(pending_review_verdicts=None); assert "待判定" not in load(R).turn_text()
-
-    # review.json 没了（下轮覆盖 / 换机器 / worktree 删了）→ nudge 仍在：MR 上没标的还挂着
-    store.save_segment(R, _rseg, {})
-    prseg(pending_review_verdicts=3); t = load(R).turn_text()
-    assert "3 条待判定" in t and "Review:" not in t
-
-    # pr.json 是 branch-keyed：切走后不认（与 pr_number / merge_readiness 同一条约定）
-    prseg(pending_review_verdicts=3)
-    proposal.update(branch="other", pending_review_verdicts=3)
-    assert "待判定" not in load(R).turn_text()
+    from _testkit import _FakeForge, _pr_context
+    from test_worktree import _fixture
+    from domain.context import RepoContext, prstate, store
+    from domain.forge import Comment, PullRequest, MergeReadiness, ForgeError
+    root, _, _ = _fixture("review_nudge_native")
+    reader = _FakeForge([PullRequest(7, state="open", source_branch="main")])
+    comments = [Comment(id="1", reply_ref="1", path="a.py", body="finding ccr:fp=one")]
+    with patch.object(prstate, "pr_context_for_repo", side_effect=lambda repo, forge=None: _pr_context(repo, reader)), \
+         patch.object(prstate, "forge_for_repo", return_value=reader), \
+         patch.object(reader, "comments", side_effect=lambda number: comments) as fetch, \
+         patch.object(reader, "merge_readiness", return_value=MergeReadiness.CI_BLOCKED):
+        RepoContext.refresh_all(root)
+        ctx = RepoContext.load(root)
+        fetch.assert_not_called()  # Generic context refresh must not query review details.
+        assert ctx.current_pr().number == 7
+        assert "1 条待判定" in ctx.turn_text()
+        fetch.assert_called_once_with(7)
+        assert "MERGE-BLOCKED" in ctx.turn_text()
+        comments[0].replies.append(Comment(body="ccr:label=important — confirmed"))
+        assert "待判定" not in RepoContext.load(root).turn_text()
+        comments[0].replies.clear()
+        store.save_segment(root, store.branch_segment("main", "review"), {})
+        assert "1 条待判定" in RepoContext.load(root).turn_text()
+        with patch.object(reader, "merge_readiness", side_effect=ForgeError("offline")):
+            assert "1 条待判定" in RepoContext.load(root).turn_text()
+        with patch.object(reader, "comments", side_effect=ForgeError("offline")):
+            text = RepoContext.load(root).turn_text()
+            assert "待判定" not in text and "MERGE-BLOCKED" in text
+        _git(root, "checkout", "-b", "other")
+        fetch.reset_mock()
+        assert "待判定" not in RepoContext.load(root).turn_text()
+        fetch.assert_not_called()
 
 
 def test_review_finding_nudge_decays_then_reopens_on_new_findings():
-    """待判定是**要人干活**的行，不是状态行：同一批 finding 问满 cap 次就闭嘴
-    （不理也是一种回答）；来了新的一批（pending set 变了）才重新开口。turn Cadence 顶不了
-    这件事——它按整块 hash 去重，随便哪行状态一动就整块重发，chore 行会永远跟着喊。"""
-    from domain.board import BoardRuntime
-    from domain.context import RepoContext, store
-    from domain.context.base import REVIEW_FINDING_NUDGE_CAP
-    G = "/tmp/dlut_nudgedecay"; shutil.rmtree(G, ignore_errors=True); os.makedirs(G)
-    _git(G, "init", "-q"); _git(G, "config", "user.email", "t@t.t"); _git(G, "config", "user.name", "t")
-    Path(f"{G}/a.txt").write_text("x"); _git(G, "add", "-A"); _git(G, "commit", "-q", "-m", "init")
-    ctx = RepoContext.refresh_all(G)
-    R, branch = ctx.repo.repo_dir, ctx.branch.local.name
-
     from unittest.mock import patch
-    from domain.context import prstate
-    proposal = {"branch": branch, "provider": "github"}
-    def prseg(**kw):
-        proposal.clear()
-        proposal.update(branch=branch, provider="github", **kw)
-    original_load = RepoContext.load
-    def load(root):
-        with patch.object(prstate, "poll_pr", return_value=proposal.copy()):
-            return original_load(root)
+    from _testkit import _FakeForge, _pr_context
+    from test_worktree import _fixture
+    from domain.context import RepoContext, prstate
+    from domain.context.base import REVIEW_FINDING_NUDGE_CAP
+    from domain.board import BoardRuntime
+    from domain.forge import Comment, PullRequest, MergeReadiness
+    root, _, _ = _fixture("review_nudge_decay_native")
+    reader = _FakeForge([PullRequest(7, state="open", source_branch="main")])
+    comments = [Comment(id="1", reply_ref="1", path="a.py", body="finding ccr:fp=one")]
+    with patch.object(prstate, "pr_context_for_repo", side_effect=lambda repo, forge=None: _pr_context(repo, reader)), \
+         patch.object(prstate, "forge_for_repo", return_value=reader), \
+         patch.object(reader, "comments", side_effect=lambda number: comments), \
+         patch.object(reader, "merge_readiness", return_value=MergeReadiness.CI_BLOCKED):
+        RepoContext.refresh_all(root)
+        def ask():
+            text = BoardRuntime.from_facts(root, "label-test", repo=RepoContext.load(root)).deliver_prompt()
+            return bool(text and "待判定" in text)
+        assert [ask() for _ in range(REVIEW_FINDING_NUDGE_CAP)] == [True] * REVIEW_FINDING_NUDGE_CAP
+        assert not ask() and not ask()
+        comments.append(Comment(id="2", reply_ref="2", path="b.py", body="finding ccr:fp=two"))
+        assert [ask() for _ in range(REVIEW_FINDING_NUDGE_CAP)] == [True] * REVIEW_FINDING_NUDGE_CAP
+        assert not ask()
+        comments[0].replies.append(Comment(body="ccr:label=important — confirmed"))
+        assert ask()
 
-    def ask() -> bool:
-        """一个 emit→mark 回合，返回这轮有没有喊。"""
-        text = BoardRuntime.from_facts(
-            R, "label-test", repo=load(R)
-        ).deliver_prompt()
-        return bool(text and "待判定" in text)
-
-    prseg(pending_review_verdicts=3, pending_review_verdicts_key="setA")
-    assert [ask() for _ in range(REVIEW_FINDING_NUDGE_CAP)] == [True] * REVIEW_FINDING_NUDGE_CAP
-    assert ask() is False and ask() is False                                     # 之后闭嘴
-
-    # 新一轮 review 带来新 finding → set 变了 → 重新开口，且计数重来
-    prseg(pending_review_verdicts=5, pending_review_verdicts_key="setB")
-    assert [ask() for _ in range(REVIEW_FINDING_NUDGE_CAP)] == [True] * REVIEW_FINDING_NUDGE_CAP
-    assert ask() is False
-
-    # 标掉一条 → set 又变了 → 继续喊：agent 在推进，值得跟；闭嘴只针对「原地不动」
-    prseg(pending_review_verdicts=4, pending_review_verdicts_key="setC")
-    assert ask() is True
 
 def test_launch_background_relays():
     """detach 起后台 relay：不抛、写 PLAN 行；空列表 no-op。"""

@@ -14,7 +14,9 @@ Gate、Board 与脚本查询 repocli，库决定本地状态是否可用、何�
 终态，持久保存后停止普通轮询；closed 仍可重新打开。branch 可能被新 PR 复用，因此 merged
 不冻结 branch 关联。多个候选保留歧义，读取失败不能当作无 PR 或已完成。
 
-评论、finding verdict 和 merge readiness 按需独立读取。评论读取失败不会撤回已确认的生命周期，
+RepoContext 直接持有选中的原生 PR；生命周期对账直接消费 BranchPullRequests，
+不再维护 recent window 或字典形式的中间库存。评论、finding verdict 和 merge readiness
+由 Board 展示按需独立读取，普通 RepoContext.load / 分支刷新不触发这些请求。评论读取失败不会撤回已确认的生命周期，
 readiness 失败也不会擦掉已取得的 finding 视图。devloop 只持久化验证证据、review 工作流记录、
 开发基线、任务执行租约与 Board 投递游标，不复制通用 PR 缓存。
 

@@ -16,30 +16,10 @@ from dataclasses import replace
 from _testkit import _FakeForge, _git, _load_script, run_main  # noqa: E402  (bootstrap first)
 from domain.context import Cadence, PullRequest  # noqa: E402
 from lib.forge import detect_provider, parse_origin  # noqa: E402
-from domain.forge import build_window, parse_pr_number, pr_label  # noqa: E402
+from domain.forge import parse_pr_number, pr_label  # noqa: E402
 from repocli.forge.github import GitHubForge  # noqa: E402
 from repocli.forge.gitlab import GitLabForge  # noqa: E402
 from repocli.forge._rest import RestClient  # noqa: E402
-
-
-def test_build_window():
-    """Provider-agnostic window policy over the port's recent+get: newest `cap`, with the
-    anchor PR always present (fetched via get if it fell off the recent list)."""
-    prs = [PullRequest(number=n, state="open", source_branch=f"b{n}") for n in range(1, 21)]
-    f = _FakeForge(prs)
-    # anchor near latest → just the newest cap
-    nums = [p.number for p in build_window(f, 20, cap=5)]
-    assert nums == [20, 19, 18, 17, 16]
-    # anchor older than the newest cap → newest cap-1 + the anchor (anchor always present)
-    nums = [p.number for p in build_window(f, 3, cap=5)]
-    assert 3 in nums and nums[:4] == [20, 19, 18, 17] and len(nums) == 5
-    # no anchor → newest cap
-    assert [p.number for p in build_window(f, None, cap=5)] == [20, 19, 18, 17, 16]
-    # anchor that doesn't exist (404 on get) → silently dropped, still returns newest cap
-    nums = [p.number for p in build_window(f, 999, cap=5)]
-    assert nums == [20, 19, 18, 17, 16]
-
-
 
 
 def test_pr_label():
@@ -307,15 +287,13 @@ def test_reuse_or_create_pr_over_narrowed_port():
     finally:
         sgo.forge_for_repo = orig
 
-def test_refresh_pr_failopen():
-    """prstate.refresh_pr (gcampr's authoritative live-PR preflight, via gate.evaluate
-    live_refresh) is best-effort: a repo with no forge remote/token returns False rather than
-    raising — and crucially it now PERSISTS its poll (the old refresh_pr_state discarded it)."""
+def test_checkout_pr_without_forge():
+    """Repositories without a Forge have no remote PR context."""
     from domain.context import prstate
     R = "/tmp/dlut_refresh"
     shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
     _git(R, "init", "-q")
-    assert prstate.poll_pr(R) is None   # no forge → no-op, no exception, nothing written
+    assert prstate.checkout_pr(R) == ("", None)
 
 
 def test_pullrequest_and_cadence():

@@ -67,7 +67,7 @@ def validation_report(repo: str, args: list[str]) -> dict:
                 raise ValueError("invalid or duplicate ValidationReport check")
             seen.add((root, name))
             sources = check.get("requestedComponents")
-            if not isinstance(sources, list) or not sources or len(set(sources)) != len(sources):
+            if not isinstance(sources, list) or not sources or any(not isinstance(source, str) for source in sources) or len(set(sources)) != len(sources):
                 raise ValueError("ValidationReport requestedComponents missing or duplicated")
             for source in sources:
                 if not isinstance(source, str) or not (Path(repo) / source).resolve().is_relative_to(Path(repo).resolve()):

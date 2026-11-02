@@ -181,5 +181,20 @@ def test_root_fallback_accepts_partial_groups_and_binds_requested_component():
         assert "child" in full_projection(str(repo), get_current_branch(repo), "test")
 
 
+def test_requested_components_rejects_non_string_entries():
+    with TemporaryDirectory() as tmp:
+        repo = make_repo(tmp)
+        for sources in ([["child"]], [{"root": "."}], [1], [".", "."]):
+            data = report(repo)
+            data["components"][0]["checks"][0]["requestedComponents"] = sources
+            with patch.object(repocli.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(data), "")):
+                try:
+                    repocli.validation_report(str(repo), ["--check", "lint,test"])
+                except ValueError as exc:
+                    assert "requestedComponents" in str(exc)
+                else:
+                    raise AssertionError("malformed requestedComponents was accepted")
+
+
 if __name__ == "__main__":
     run_main(globals())

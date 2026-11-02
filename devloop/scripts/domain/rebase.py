@@ -16,7 +16,7 @@ from pathlib import Path
 
 from lib import git_state, gitcmd
 
-from .context import RepoContext, gate, prstate
+from .context import RepoContext, gate
 
 
 class RebaseError(Exception):
@@ -116,7 +116,6 @@ def _check_branch_name(repo: str, branch: str, label: str) -> None:
 
 def _refresh(repo: str) -> None:
     RepoContext.refresh_branch(repo)
-    prstate.poll_pr(repo)
 
 
 def start(repo: str, target: str | None = None) -> list[str]:

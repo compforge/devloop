@@ -104,16 +104,20 @@ def _reconcile_observed(repo):
            for row in rows if row.get("pull_request")]
     context = _pr_context(primary, _FakeForge(prs))
     _contexts[primary] = context
-    inventory = prstate.inventory_view(context)
     # Fixture ordering remains explicit; local topology and PR observations come from repocli.
     order = {row["branch"]: i for i, row in enumerate(rows)}
-    inventory["branches"].sort(key=lambda row: order.get(row["branch"], len(rows)))
+    inventory = tuple(sorted(context.local_branches(), key=lambda row: order.get(row.branch, len(rows))))
     return pull_request_lifecycle.reconcile(primary, context=context, inventory=inventory)
 
 
 def _view(repo):
     repo = worktree.primary(repo)
-    inventory = prstate.inventory_view(_contexts[repo])
+    from dataclasses import asdict
+    inventory = {"branches": [
+        {"branch": row.branch, "head_sha": row.head,
+         "pull_request": asdict(row.selected) if row.selected else None,
+         "checkout": {"path": checkout.path, "kind": "primary" if checkout.primary else "external"} if checkout else None}
+        for row in _contexts[repo].local_branches() for checkout in row.checkouts or (None,)]}
     selected = {row["branch"] for row in _inventories[repo]["branches"]}
     inventory["branches"] = [row for row in inventory["branches"] if row["branch"] in selected]
     assert store.load_segment(repo, "local_pull_requests") is None

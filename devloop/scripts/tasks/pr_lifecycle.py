@@ -70,16 +70,16 @@ def _sweep_repo(repo: str) -> dict:
         return {"repo": repo, "errors": ["no usable forge"], "actions": [], "pull_requests": []}
     try:
         issues = list(context.observer.maintain())
-        inventory = prstate.inventory_view(context)
+        inventory = context.local_branches()
         actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
-        rows = inventory["branches"]
-        issues.extend(row["error"] for row in rows if row.get("error"))
+        rows = inventory
+        issues.extend(row.error for row in rows if row.error)
         return {"repo": repo, "errors": issues,
-                "has_linked_checkouts": any(row.get("checkout") and row["checkout"]["kind"] != "primary" for row in rows),
-                "pull_requests": [{"branch": row["branch"], "number": row["pull_request"]["number"],
-                                   "state": row["pull_request"]["state"], "checkout": row.get("checkout")}
-                                  for row in rows if row.get("pull_request")],
-                "associations": [{"branch": row["branch"], "observation": row["observation"]} for row in rows],
+                "has_linked_checkouts": any(not checkout.primary for row in rows for checkout in row.checkouts),
+                "pull_requests": [{"branch": row.branch, "number": row.selected.number,
+                                   "state": row.selected.state, "checkout": asdict(checkout) if checkout else None}
+                                  for row in rows if row.selected for checkout in row.checkouts or (None,)],
+                "associations": [{"branch": row.branch, "observation": "unknown" if row.error else "ambiguous" if row.ambiguous else "known"} for row in rows],
                 "actions": [asdict(action) for action in actions],
                 "updated": {"remote_branches": prstate.refresh_remote_branches(repo)},
                 "http": context.observer.reader.request_counts()}

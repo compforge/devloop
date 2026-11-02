@@ -15,9 +15,9 @@ export async function prContextForRepo(repo) {
     if (!token)
         return undefined;
     const forge = origin.host === "github.com" ? "github" : origin.host === "gitlab.com" ? "gitlab" : origin.host;
-    const host = typeof entry.api_host === "string" ? entry.api_host : origin.host;
+    const host = typeof entry.api_host === "string" && entry.api_host ? entry.api_host : origin.host;
     const source = { forge: { name: forge }, path: origin.path };
-    const target = { forge: source.forge, path: typeof entry.target_repository === "string" ? entry.target_repository : source.path };
+    const target = { forge: source.forge, path: typeof entry.target_repository === "string" && entry.target_repository ? entry.target_repository : source.path };
     const reader = createForgeReader({ forge, provider, host, token });
     const connection = createHash("sha256").update(JSON.stringify([provider, forge, host, token])).digest("hex");
     return new PullRequestContext(reader, { checkout: repo, source, targets: [target], stateDir: join(homedir(), ".repocli"), connection });

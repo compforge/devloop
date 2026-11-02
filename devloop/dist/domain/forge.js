@@ -1,5 +1,4 @@
 export { ForgeError, ForgeAuthError, ForgeNotFound, parsePullRequestNumber } from "@compforge/repocli";
-export const PRS_CAP = 5;
 export function blocksMerge(readiness) {
     return readiness === "conflict" || readiness === "discussions_unresolved" || readiness === "ci_blocked";
 }

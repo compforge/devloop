@@ -1,12 +1,11 @@
 """Development policy over repocli's checkout-local dependency operations."""
 from __future__ import annotations
 
-import hashlib
 import logging
 import subprocess
 from pathlib import Path
 
-from repokit import inspect_dependencies, prepare_dependencies
+from repokit import dependency_witnesses, inspect_dependencies, prepare_dependencies
 
 _LOG = logging.getLogger(__name__)
 
@@ -49,12 +48,7 @@ def reuse_inputs(path: str | Path) -> tuple[tuple[str, str], ...] | None:
     every installed byte. Unmanaged installations still enter real project checks.
     """
     try:
-        inputs: dict[str, str] = {}
-        for environment in inspect_dependencies(path):
-            if environment.status != "ready":
-                return None
-            for source in (*environment.inputs, environment.directory / ".repocli-dependencies.json"):
-                inputs[str(source.resolve())] = hashlib.sha256(source.read_bytes()).hexdigest()
-        return tuple(sorted(inputs.items()))
+        witnesses = dependency_witnesses(path)
+        return tuple(witnesses.items()) if witnesses is not None else None
     except (OSError, ValueError, subprocess.SubprocessError, InterruptedError):
         return None

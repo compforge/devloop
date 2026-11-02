@@ -114,7 +114,7 @@ Forge 提供平台合并状态；哪些状态应成为 Board 提醒由 devloop �
 RepoKit 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect 描述零个、一个或多个 Component。
 无 Component 时跳过验证，不运行 impact 或 make，也不写入通过戳；读取失败仍按失败处理。
 单组件可以位于根或子目录；普通目录可以有组件归属，也可以没有。devloop 不再补隐式根组件，
-明确执行目标仍可由用户选择。manifest 优先、Makefile 次级的发现、目录排除与 owner 由工具包提供，Makefile 验证入口选择与跨组件执行范围归 RepoKit；devloop lib 校验外部报告协议，domain 执行流程策略。
+明确执行目标仍可由用户选择。manifest 优先、Makefile 次级的发现、目录排除与 owner 由工具包提供，Makefile 验证入口选择与跨组件执行范围归 RepoKit；RepoKit 解码并校验报告协议，devloop domain 执行流程策略。
 
 原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
 父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
@@ -142,3 +142,14 @@ PR 正文组织、review 和清理授权。事实失败时由流程决定停止�
 默认分支由 `repokit.repository.default_branch` 查询，持久缓存、TTL 和远端刷新归 RepoKit。
 devloop 的 meta 只保留开发目标投影，不再存观察时间或实现查询 fallback；确实缺少事实时，
 由开发流程选择本地 main/master 基线。
+
+
+## 消费边界
+
+依赖复用凭据直接来自 RepoKit `dependency_witnesses`。devloop 不读取准备回执文件或重算摘要；
+它把证据路径传给验证引擎，无法取得证据时禁止复用，但仍允许按工作流策略执行真实检查。
+ValidationReport 的 wire schema 由 RepoKit `decode_validation_report` 校验，devloop 的 CLI adapter
+仅管理命令、退出码和超时。failed report 仍是有效事实，是否阻断由生命周期策略决定。
+
+Python/TypeScript 使用 RepoKit `ForgeConnection` 构造 client 和 PR context。devloop 只装配自己的
+配置、凭据与显式目标仓；连接标识、Forge 身份规范化、观察目录与 HTTP 协调状态由工具包维护。

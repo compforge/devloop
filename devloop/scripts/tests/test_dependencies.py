@@ -112,5 +112,23 @@ def test_unlocked_environment_with_invalid_directory_still_blocks():
         assert dependencies.preparation_problem(root) is not None
 
 
+def test_receipt_evidence_is_supplied_by_toolkit_and_controls_reuse():
+    """@case Workflow forwards native evidence without knowing receipt filenames."""
+    with TemporaryDirectory() as tmp:
+        root = make_repo(tmp)
+        witness = str(root / "toolkit-owned-evidence")
+        for native, disabled in (({witness: "digest"}, False), (None, True)):
+            def invoke(repo, args):
+                values = json.loads(Path(args[args.index("--inputs") + 1]).read_text())
+                check = values["."]["lint"]
+                assert check["disableReuse"] is disabled
+                assert check["witnesses"] == ([] if disabled else [witness])
+                return report(root)
+            with patch.object(dependencies, "dependency_witnesses", return_value=native), patch.object(repokit, "validation_report", side_effect=invoke):
+                run_validation(str(root), full=True)
+        with patch.object(dependencies, "dependency_witnesses", side_effect=OSError("unreadable")):
+            assert dependencies.reuse_inputs(root) is None
+
+
 if __name__ == "__main__":
     run_main(globals())

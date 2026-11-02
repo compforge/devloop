@@ -145,18 +145,6 @@ def test_initial_history_uses_full_selection_and_skips_preserve_evidence():
         assert load_segment(str(repo), evidence_segment(str(repo), ".", "lint")) == original
 
 
-def test_cli_rejects_omitted_requested_check():
-    with TemporaryDirectory() as tmp:
-        repo = make_repo(tmp)
-        data = report(repo)
-        data["components"][0]["checks"].pop()
-        with patch.object(subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(data), "")):
-            try:
-                repokit.validation_report(str(repo), ["--check", "lint,test"])
-                raise AssertionError("accepted missing test result")
-            except ValueError as error:
-                assert "omitted requested checks" in str(error)
-
 
 def test_root_fallback_accepts_partial_groups_and_binds_requested_component():
     from types import SimpleNamespace
@@ -180,20 +168,6 @@ def test_root_fallback_accepts_partial_groups_and_binds_requested_component():
         assert "child" in full_projection(str(repo), get_current_branch(repo), "lint")
         assert "child" in full_projection(str(repo), get_current_branch(repo), "test")
 
-
-def test_requested_components_rejects_non_string_entries():
-    with TemporaryDirectory() as tmp:
-        repo = make_repo(tmp)
-        for sources in ([["child"]], [{"root": "."}], [1], [".", "."]):
-            data = report(repo)
-            data["components"][0]["checks"][0]["requestedComponents"] = sources
-            with patch.object(repokit.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(data), "")):
-                try:
-                    repokit.validation_report(str(repo), ["--check", "lint,test"])
-                except ValueError as exc:
-                    assert "requestedComponents" in str(exc)
-                else:
-                    raise AssertionError("malformed requestedComponents was accepted")
 
 
 if __name__ == "__main__":

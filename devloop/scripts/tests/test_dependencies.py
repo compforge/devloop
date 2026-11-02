@@ -7,9 +7,9 @@ from unittest.mock import patch
 from _testkit import run_main
 from _validation_fixture import has_full_stamp, make_repo, report
 from domain.validation import run_validation
-from lib import repocli
+from lib import repokit
 from lib import dependencies
-from repocli import DependencyPreparation, inspect_dependencies
+from repokit import DependencyPreparation, inspect_dependencies
 
 
 def test_existing_bun_installation_can_enter_validation_without_auto_prepare():
@@ -70,7 +70,7 @@ def test_unlocked_distribution_manifest_runs_project_checks_and_preserves_their_
             if not passes:
                 (root / "test_b.py").write_text("BAD\n")
             data = report(root, test="passed" if passes else "failed")
-            with patch.object(dependencies, "prepare_dependencies", side_effect=AssertionError("no locked installer")), patch.object(repocli, "validation_report", return_value=data):
+            with patch.object(dependencies, "prepare_dependencies", side_effect=AssertionError("no locked installer")), patch.object(repokit, "validation_report", return_value=data):
                 result = run_validation(str(root), names=("test",), full=True).results[0]
             assert result.ok == passes, result.summary
             assert has_full_stamp(root) == passes

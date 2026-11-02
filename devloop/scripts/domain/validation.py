@@ -12,12 +12,12 @@ import subprocess
 import tempfile
 import time
 
-from repocli import snapshot
+from repokit import snapshot
 from domain.context.store import branch_segment, load_segment, save_segment
 from domain.repo_layout import Catalog, inspect_catalog
 from domain.lifecycle.base import HookResult
 from domain.validation_evidence import evidence_segment, bind_full
-from lib import config, dependencies, git_state, repocli
+from lib import config, dependencies, git_state, repokit
 
 
 @dataclass(frozen=True)
@@ -196,7 +196,7 @@ def run_validation(repo: str, *, names: tuple[str, ...] = ("lint", "test"),
         previous_path.write_text(json.dumps(previous))
         args += ["--inputs", str(inputs_path), "--reuse", str(previous_path)]
         print(f"[validate] repocli: checks={','.join(names)}, concurrency={concurrency}, base={comparison.reason or (comparison.base if not full else 'full')}", flush=True)
-        report = repocli.validation_report(repo, args)
+        report = repokit.validation_report(repo, args)
     eligible = report["inputsConsistent"] and policy == _policy(repo)
     _record(repo, report, eligible, comparison)
     return ValidationOutcome(_results(report, names, eligible), report["snapshot"] if eligible else "")

@@ -1,5 +1,5 @@
-"""Git process results supplied by repocli."""
-from repocli.git import GitResult as GitResult, git as git, git_global as git_global
+"""Git process results supplied by repokit."""
+from repokit.git import GitResult as GitResult
 
 
 def operation_detail(result: GitResult) -> str:

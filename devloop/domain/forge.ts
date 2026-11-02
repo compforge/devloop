@@ -1,6 +1,6 @@
-export { ForgeError, ForgeAuthError, ForgeNotFound, parsePullRequestNumber } from "@compforge/repocli";
-export type { PullRequestKey, PullRequestState, PullRequestSnapshot } from "@compforge/repocli";
-import type { PullRequestSnapshot, PullRequestMergeReadiness } from "@compforge/repocli";
+export { ForgeError, ForgeAuthError, ForgeNotFound, parsePullRequestNumber } from "@compforge/repokit";
+export type { PullRequestKey, PullRequestState, PullRequestSnapshot } from "@compforge/repokit";
+import type { PullRequestSnapshot, PullRequestMergeReadiness } from "@compforge/repokit";
 export function blocksMerge(readiness: PullRequestMergeReadiness): boolean {
   return readiness === "conflict" || readiness === "discussions_unresolved" || readiness === "ci_blocked";
 }

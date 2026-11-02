@@ -1,3 +1,4 @@
+import { checkoutAt } from "@compforge/repokit";
 import { existsSync, lstatSync, readdirSync, realpathSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { ensureGitExclude } from "../../lib/git-state.js";
@@ -6,7 +7,7 @@ import { now, referenceFrom, stale, WORKSPACE_STALE_SECONDS } from "./base.js";
 import { loadWorkspace, saveWorkspace } from "./store.js";
 const DISCOVERY_SKIP = new Set(["docs", "worktrees", "worktree", "node_modules"]);
 function isGitRepository(path) {
-    return existsSync(join(path, ".git"));
+    return checkoutAt(path) !== undefined;
 }
 export function discoverSubprojectNames(root) {
     try {
@@ -97,7 +98,7 @@ export class WorkspaceContext {
             })),
             parsed_at: this.parsedAt,
         });
-        if (existsSync(join(this.workspaceRoot, ".git")))
+        if (checkoutAt(this.workspaceRoot) !== undefined)
             ensureGitExclude(this.workspaceRoot);
     }
     isStale(ttl = WORKSPACE_STALE_SECONDS) { return stale(this.parsedAt || undefined, ttl); }

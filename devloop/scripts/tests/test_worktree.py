@@ -104,7 +104,7 @@ def _reconcile_observed(repo):
            for row in rows if row.get("pull_request")]
     context = _pr_context(primary, _FakeForge(prs))
     _contexts[primary] = context
-    # Fixture ordering remains explicit; local topology and PR observations come from repocli.
+    # Fixture ordering remains explicit; local topology and PR observations come from repokit.
     order = {row["branch"]: i for i, row in enumerate(rows)}
     inventory = tuple(sorted(context.local_branches(), key=lambda row: order.get(row.branch, len(rows))))
     return pull_request_lifecycle.reconcile(primary, context=context, inventory=inventory)

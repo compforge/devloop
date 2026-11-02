@@ -7,17 +7,17 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as toolkit from "@compforge/repocli";
+import * as toolkit from "@compforge/repokit";
 import { inspectCatalog, findGitRoot } from "../domain/repo-layout.js";
 import { selectComponents } from "../domain/repo.js";
 import { PolicyContext } from "../hooks/core/context.js";
 import { evaluate } from "../hooks/core/engine.js";
-import { InspectionError } from "../lib/repocli.js";
+import { InspectionError } from "../lib/repokit.js";
 import { endSession } from "../adapters/process-hooks.js";
 import { acquireOwner, anyActiveOwner } from "../domain/context/session.js";
 import type { Rule } from "../hooks/core/rule.js";
 
-vi.mock("@compforge/repocli", { spy: true });
+vi.mock("@compforge/repokit", { spy: true });
 
 const roots: string[] = [];
 afterEach(() => { vi.mocked(toolkit.inspect).mockClear(); vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

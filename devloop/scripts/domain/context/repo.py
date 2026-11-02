@@ -11,47 +11,18 @@ from pathlib import Path
 
 import logging
 
-from lib import git_state, parsers, repocli
-from domain.forge import ForgeError
+from lib import git_state, parsers, repokit
+from repokit.repository import default_branch as repository_default_branch
 from lib.forge import forge_for_repo
 
 from .. import repo_layout
 from . import base, store
 from .base import (
-    DEFAULT_BRANCH_TTL_SEC,
     REPO_STALE_SEC,
     AgentsMd,
     PullRequest,
     Reference,
 )
-
-
-def _resolve_default_branch(repo_dir: str, prev_branch: str, prev_at: float) -> tuple[str, float]:
-    """The repo's default branch + when it was fetched. TTL-gated: a fresh cache is returned
-    as-is (zero network); only when stale do we hit the forge (the authoritative source,
-    fresher than the local origin/HEAD cache that `git fetch` never updates).
-
-    Fail-open: a forge error / missing token falls back to refreshing the local origin/HEAD
-    (git `set-head --auto`) then reading it; if even that yields nothing, the previous cached
-    value is kept (and `at` left stale so the next refresh retries). The timestamp only
-    advances on a successful authoritative fetch.
-    """
-    if prev_branch and not base.is_stale(prev_at, DEFAULT_BRANCH_TTL_SEC):
-        return prev_branch, prev_at                          # fresh cache → no network
-    forge = forge_for_repo(repo_dir)
-    if forge is not None:
-        try:
-            db = (forge.default_branch() or "").strip()
-            if db:
-                git_state.set_local_default_head(repo_dir, db)  # sync git cache so local_default_target agrees
-                return db, base.now()
-        except ForgeError:
-            pass
-    refreshed = git_state.refresh_remote_head(repo_dir)      # network set-head (syncs origin/HEAD); True if it succeeded
-    db = git_state.local_default_target(repo_dir)
-    if refreshed and db:
-        return db, base.now()                                # remote HEAD synced → authoritative → stamp (TTL now applies)
-    return (db or prev_branch or "main"), prev_at            # offline/forge-down → best available, leave at stale to retry
 
 
 # ── segment dataclasses ──────────────────────────────────────────────────────
@@ -62,7 +33,6 @@ class RepoMeta:
     code_dir: str = ""        # where make/uv run (repo root or server/ backend/)
     language: str | None = None
     default_branch: str = ""        # repo characteristic: the forge's default branch (canonical trunk).
-    default_branch_at: float = 0.0  # when it was last fetched from the forge (TTL freshness gate)
 
     @classmethod
     def from_dict(cls, d: dict | None) -> "RepoMeta":
@@ -73,7 +43,6 @@ class RepoMeta:
             code_dir=d.get("code_dir", ""),
             language=d.get("language"),
             default_branch=d.get("default_branch", ""),
-            default_branch_at=d.get("default_branch_at", 0.0),
         )
 
 
@@ -292,16 +261,15 @@ class RepoContext:
             if catalog.components:
                 component = catalog.default()
                 code_dir, language = component.path, component.language
-        except repocli.InspectionError as exc:
+        except repokit.InspectionError as exc:
             # Optional context metadata must not turn a completed Git action into failure.
             logging.getLogger(__name__).warning("Component context unavailable for %s: %s", repo_dir_abs, exc)
         agents_md_path = repo_layout.find_agents_md(repo_dir_abs, code_dir)
 
         prev = cls.load(repo_dir_abs) or cls()
-        # refresh_all is the TTL boundary (docstring): resolve the repo's default branch here,
-        # gated so the forge is hit at most once per DEFAULT_BRANCH_TTL_SEC despite frequent rebuilds.
-        default_branch, default_branch_at = _resolve_default_branch(
-            repo_dir_abs, prev.repo.default_branch, prev.repo.default_branch_at)
+        # RepoKit owns observation freshness; this is only the development target projection.
+        observed = repository_default_branch(repo_dir_abs, forge=forge_for_repo(repo_dir_abs))
+        default_branch = observed.branch or git_state.local_default_target(repo_dir_abs)
         target = default_branch
         items = parsers.parse_references_section(agents_md_path) if agents_md_path else []
         from domain.validation_evidence import full_projection
@@ -315,7 +283,7 @@ class RepoContext:
         ctx = cls(
             repo=RepoMeta(repo_dir=repo_dir_in, real_repo_dir=repo_dir_abs,
                           code_dir=code_dir, language=language,
-                          default_branch=default_branch, default_branch_at=default_branch_at),
+                          default_branch=default_branch),
             agents_md=AgentsMd(
                 path=agents_md_path,
                 references=[Reference(title=r.get("title", ""), path=r.get("path", ""),

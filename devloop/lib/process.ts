@@ -34,5 +34,3 @@ export function runCommand(command: string, args: readonly string[], options: Ru
     ok: code === 0,
   };
 }
-
-export { runGit } from "@compforge/repocli";

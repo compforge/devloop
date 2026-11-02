@@ -1,4 +1,4 @@
-import { snapshot, changedPaths as toolkitChangedPaths, committedPaths as toolkitCommittedPaths, rangePaths as toolkitRangePaths } from "@compforge/repocli";
+import { snapshot, changedPaths as toolkitChangedPaths, committedPaths as toolkitCommittedPaths, rangePaths as toolkitRangePaths } from "@compforge/repokit";
 import { realpathSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { Component, ComponentCatalog, enclosingComponent } from "./repo-layout.js";

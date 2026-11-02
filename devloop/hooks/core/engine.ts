@@ -1,4 +1,4 @@
-import { InspectionError } from "../../lib/repocli.js";
+import { InspectionError } from "../../lib/repokit.js";
 import type { PolicyContext } from "./context.js";
 import { decision, type Change, type Decision, type Finding } from "./domain.js";
 import type { Rule } from "./rule.js";

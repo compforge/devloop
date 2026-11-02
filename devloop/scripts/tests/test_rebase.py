@@ -113,7 +113,7 @@ def test_rebase_abort_restores_branch_and_clears_state():
 
 def test_uncertain_rebase_retains_transaction_for_inspection():
     from unittest.mock import patch
-    from repocli.git import GitResult
+    from repokit.git import GitResult
 
     repo, _ = _fixture("uncertain")
     with patch.object(rebase.operations, "rebase", return_value=GitResult(-1, "", "timeout", uncertain=True)):
@@ -144,7 +144,7 @@ def test_linked_rebase_has_independent_transaction_and_abort():
 
 def test_continue_and_abort_uncertainty_preserve_lease():
     from unittest.mock import patch
-    from repocli.git import GitResult
+    from repokit.git import GitResult
 
     repo, _ = _fixture("resume_uncertain", conflict=True)
     rebase.start(repo, "main")

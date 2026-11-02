@@ -1,4 +1,4 @@
-export { ForgeError, ForgeAuthError, ForgeNotFound, parsePullRequestNumber } from "@compforge/repocli";
+export { ForgeError, ForgeAuthError, ForgeNotFound, parsePullRequestNumber } from "@compforge/repokit";
 export function blocksMerge(readiness) {
     return readiness === "conflict" || readiness === "discussions_unresolved" || readiness === "ci_blocked";
 }

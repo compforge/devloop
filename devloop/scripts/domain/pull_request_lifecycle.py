@@ -7,7 +7,7 @@ from pathlib import Path
 from . import worktree
 from .forge import Forge, ForgeError
 from lib.forge import pr_context_for_repo
-from repocli.forge import PullRequestContext, BranchPullRequests
+from repokit.forge import PullRequestContext, BranchPullRequests
 import logging
 
 logger = logging.getLogger(__name__)

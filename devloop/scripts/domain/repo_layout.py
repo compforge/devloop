@@ -1,6 +1,6 @@
 """repo_dir / repo_code_dir / language / AGENTS.md location helpers.
 
-Repository discovery and organization come from repocli.
+Repository discovery and organization come from repokit.
 """
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from repocli import Layout
+from repokit import Layout
 
-from lib import repocli
-from repocli.git_state import find_checkout
+from lib import repokit
+from repokit.git_state import find_checkout
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class Component:
     """Repocli Component metadata used by the development workflow.
 
     id is the checkout-relative root used by validation stamps; name is the
-    repository identity supplied by repocli. Neither discovery nor language
+    repository identity supplied by repokit. Neither discovery nor language
     inference belongs to this wrapper. at() constructs an explicit test/task
     target; inspect_catalog() constructs discovered components.
     """
@@ -27,7 +27,7 @@ class Component:
     id: str
     language: str | None = None
     name: str = ""
-    package_tools: tuple[repocli.PackageTool, ...] = ()
+    package_tools: tuple[repokit.PackageTool, ...] = ()
 
     @classmethod
     def at(cls, path: str | Path, git_root: str | Path) -> "Component":
@@ -70,7 +70,7 @@ class Catalog:
         path = Path(os.path.abspath(target))
         if not path.is_relative_to(self.root):
             return None
-        binding = repocli.owner(self.report, path.relative_to(self.root).as_posix())
+        binding = repokit.owner(self.report, path.relative_to(self.root).as_posix())
         return next((c for c in self.components if binding and c.id == binding.root), None)
 
     def default(self) -> Component:
@@ -80,12 +80,12 @@ class Catalog:
                 return component
         if len(self.components) == 1:
             return self.components[0]
-        raise repocli.InspectionError("no default Component; select a discovered component explicitly")
+        raise repokit.InspectionError("no default Component; select a discovered component explicitly")
 
 
 def inspect_catalog(git_root: str | Path) -> Catalog:
     root = Path(git_root).resolve()
-    report = repocli.inspect(str(root))
+    report = repokit.inspect(str(root))
     return Catalog.from_layout(root, report)
 
 

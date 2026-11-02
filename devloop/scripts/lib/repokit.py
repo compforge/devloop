@@ -6,8 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
-import repocli as toolkit
-from repocli import InspectReport, PackageTool as PackageTool, owner as owner
+import repokit as toolkit
+from repokit import InspectReport, PackageTool as PackageTool, owner as owner
 
 
 class InspectionError(ValueError):

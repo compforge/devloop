@@ -1,7 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
-import { inspectRepository, InspectionError } from "../lib/repocli.js";
-import { findCheckout, owner, type ComponentBinding, type InspectReport, type PackageTool } from "@compforge/repocli";
+import { inspectRepository, InspectionError } from "../lib/repokit.js";
+import { findCheckout, owner, type ComponentBinding, type InspectReport, type PackageTool } from "@compforge/repokit";
 
 /** Repository directory used as the granularity for engineering operations. */
 export class Component {

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkoutInfo, remote } from "@compforge/repocli";
+import { checkoutInfo, remote } from "@compforge/repokit";
 import { appendLedger, temporaryDirectory } from "./context/store.js";
 
 const TASK = "pr-lifecycle-reconcile";

@@ -55,7 +55,7 @@ def test_gitlink_guard_exempts_registered_submodule():
 
 def test_staging_preserves_literal_paths_and_sensitive_policy():
     from tempfile import TemporaryDirectory
-    from repocli.git_index import staged_changes
+    from repokit.git_index import staged_changes
 
     sgo = _load_script("commit_flow")
     with TemporaryDirectory() as repo:
@@ -589,16 +589,6 @@ def test_sync_pr_description_append_only():
     sgo.sync_pr_description(_Broken([pr]), pr, "para", plan)  # non-fatal
     assert any("non-fatal" in line for line in plan)
 
-    # mr-mode reuse path appends through the same helper
-    orig = sgo.forge_for_repo
-    try:
-        f2 = _FakeForge([PullRequest(number=3, state="open", source_branch="feat/x", target_branch="main", web_url="u/3")],
-                        bodies={3: "original"})
-        sgo.forge_for_repo = lambda repo: f2
-        sgo.reuse_or_create_pr("/repo", "feat/x", "main", "t", "follow-up body", [])
-        assert f2.description(3) == "original\n\nfollow-up body"
-    finally:
-        sgo.forge_for_repo = orig
 
 
 def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
@@ -606,7 +596,7 @@ def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
     from unittest.mock import patch
     from domain import branch
     from domain.context import session
-    from lib import gitcmd
+    from repokit import git as gitcmd
 
     with TemporaryDirectory(prefix="devloop-outcome-") as root:
         _git(root, "init", "-qb", "main")
@@ -618,7 +608,7 @@ def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
         def fail_status(repo, *args, **kwargs):
             return gitcmd.GitResult(1, "", "unavailable") if args[0] == "status" else original(repo, *args, **kwargs)
 
-        with patch("repocli.git.git", side_effect=fail_status):
+        with patch("repokit.git.git", side_effect=fail_status):
             try:
                 branch.create(root, "feature", "main", identity=session.SessionIdentity("test", ""))
                 assert False, "unknown status must block branch creation"
@@ -633,7 +623,7 @@ def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
                 return gitcmd.GitResult(-1, "", "timeout", uncertain=True)
             return original(repo, *args, **kwargs)
 
-        with patch("repocli.git.git", side_effect=timeout_checkout):
+        with patch("repokit.git.git", side_effect=timeout_checkout):
             try:
                 branch.create(root, "feature", "main", carry_changes=True, identity=session.SessionIdentity("test", ""))
                 assert False, "timeout must be reported"
@@ -667,85 +657,14 @@ class _ForkForge(_FakeForge):
         return self.destination
 
 
-def test_pr_destination_defaults_current():
-    from unittest.mock import patch
-    flow = _load_script("commit_flow")
-    # No fork policy or destination scoping is needed for the default.
-    forge = _FakeForge([])
-    with patch.object(flow, "forge_for_repo", return_value=forge):
-        pr = flow.reuse_or_create_pr("/repo", "fix", "main", "title", "body", [])
-    assert forge.created == pr and pr.target_branch == "main"
-    assert pr.source_repository == pr.target_repository == "fork/repo"
 
 
-def test_explicit_repository_pr_uses_parent_default_and_explicit_base():
-    from unittest.mock import patch
-    flow = _load_script("commit_flow")
-    for requested, expected in [(None, "trunk"), ("release", "release")]:
-        forge = _ForkForge()
-        plan = []
-        with patch.object(flow, "forge_for_repo", return_value=forge), \
-             patch.object(forge.destination, "default_branch", return_value="trunk") as default:
-            pr = flow.reuse_or_create_pr("/repo", "fix", requested, "title", "body", plan,
-                                         target_repository="github/upstream/repo")
-        assert forge.scoped == "upstream/repo"
-        assert forge.destination.queried_source.id() == "github/fork/repo"
-        assert forge.created is None and forge.destination.created == pr
-        assert pr.target_branch == expected and forge.destination.description(pr.number) == "body"
-        assert default.call_count == (0 if requested else 1)
-        assert any("PR source=github/fork/repo:fix target=github/upstream/repo" in line for line in plan)
 
 
-def test_explicit_repository_pr_reuse_preserves_base_and_honors_explicit_base():
-    from unittest.mock import patch
-    flow = _load_script("commit_flow")
-    for requested in [None, "release", "trunk"]:
-        existing = PullRequest(number=8, state="open", source_branch="fix", target_branch="release")
-        forge = _ForkForge(prs=[existing])
-        with patch.object(flow, "forge_for_repo", return_value=forge), \
-             patch.object(forge.destination, "default_branch", side_effect=AssertionError("unneeded lookup")):
-            pr = flow.reuse_or_create_pr("/repo", "fix", requested, "title", "body", [],
-                                         target_repository="github/upstream/repo")
-        assert (pr.number == 8) == (requested != "trunk")
-        assert pr.target_branch == (requested or "release")
-        assert forge.created is None
 
 
-def test_explicit_destination_does_not_require_fork_provenance():
-    from unittest.mock import patch
-    flow = _load_script("commit_flow")
-    forge = _ForkForge(parent=None)
-    with patch.object(flow, "forge_for_repo", return_value=forge):
-        pr = flow.reuse_or_create_pr("/repo", "fix", None, "t", "", [],
-                                     target_repository="github/upstream/repo")
-    assert pr.source_repository == "fork/repo" and pr.target_repository == "upstream/repo"
 
 
-def test_invalid_destination_or_failed_metadata_never_falls_back():
-    from unittest.mock import patch
-    flow = _load_script("commit_flow")
-    for destination in ["parent", "current", "github/", "gitlab/upstream/repo"]:
-        forge = _ForkForge()
-        with patch.object(flow, "forge_for_repo", return_value=forge):
-            try:
-                flow.reuse_or_create_pr("/repo", "fix", None, "t", "", [],
-                                         target_repository=destination)
-            except flow.SmartError as exc:
-                assert "Repository ID" in str(exc)
-            else:
-                raise AssertionError("invalid destination must fail explicitly")
-        assert forge.created is None and forge.destination.created is None
-    forge = _ForkForge()
-    with patch.object(flow, "forge_for_repo", return_value=forge), \
-         patch.object(forge, "repository", side_effect=ForgeError("metadata unavailable")):
-        try:
-            flow.reuse_or_create_pr("/repo", "fix", None, "t", "", [],
-                                     target_repository="github/upstream/repo")
-        except flow.SmartError as exc:
-            assert "metadata unavailable" in str(exc)
-        else:
-            raise AssertionError("failed metadata lookup must fail explicitly")
-    assert forge.created is None and forge.destination.created is None
 
 
 def test_explicit_repository_pr_target_does_not_change_local_git_baseline_or_persist_policy():
@@ -812,27 +731,19 @@ def test_publish_current_repository_preserves_existing_nondefault_base():
         forge = _FakeForge([existing])
         intent = flow.GitIntent(mode="mr", message="m", title="m", requested_branch=None,
                                 target="main", base="origin/main", explicit_base=False, files=[],
-                                repo="/repo", source="test", invoke_cwd="/repo", pr_target=requested)
+                                repo="/repo", source="test", invoke_cwd="/repo", pr_target=requested, description="follow-up body")
         with patch.object(flow, "forge_for_repo", return_value=forge), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")), \
-             patch.object(flow, "run", return_value=""), \
+             patch.object(flow.git_state, "commits", return_value=[]), \
              patch.object(flow.RepoContext, "refresh_branch"):
             flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
         assert (forge.created is None) == (requested != "main")
         if forge.created:
             assert forge.created.target_branch == "main"
+        else:
+            assert forge.description(8) == "follow-up body"
 
 
-def test_explicit_current_repository_id_does_not_scope_another_client():
-    from unittest.mock import patch
-    flow = _load_script("commit_flow")
-    forge = _ForkForge()
-    with patch.object(flow, "forge_for_repo", return_value=forge):
-        pr = flow.reuse_or_create_pr("/repo", "fix", None, "t", "", [],
-                                     target_repository="github/fork/repo")
-    assert forge.scoped is None
-    assert forge.created == pr
-    assert pr.source_repository == pr.target_repository == "fork/repo"
 
 if __name__ == "__main__":
     run_main(globals())

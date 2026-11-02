@@ -32,8 +32,8 @@ def test_locked_launcher_is_isolated_readonly_and_reusable_offline():
         env = dict(os.environ, VIRTUAL_ENV=str(active), UV_PROJECT_ENVIRONMENT=str(target / "trap"), UV_OFFLINE="1")
         code = """import json, os, sys
 from importlib.metadata import version
-import repocli
-print(json.dumps(dict(version=version('compforge-repocli'), cwd=os.getcwd(),
+import repokit
+print(json.dumps(dict(version=version('compforge-repokit'), cwd=os.getcwd(),
     args=sys.argv[1:], stdin=sys.stdin.read(), prefix=sys.prefix, executable=sys.executable)))
 """
         before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
@@ -49,14 +49,14 @@ print(json.dumps(dict(version=version('compforge-repocli'), cwd=os.getcwd(),
             assert {k: v for k, v in first.items() if k != 'executable'} == {
                 k: v for k, v in observations[1].items() if k != 'executable'}
             locked = tomllib.loads((SCRIPTS / '_python.py.lock').read_text())
-            expected = next(p['version'] for p in locked['package'] if p['name'] == 'compforge-repocli')
+            expected = next(p['version'] for p in locked['package'] if p['name'] == 'compforge-repokit')
             assert first['version'] == expected
             assert Path(first['cwd']).resolve() == target.resolve()
             assert first['args'] == ['space argument', '--flag'] and first['stdin'] == 'payload'
             executable = Path(first['executable'])
             assert executable.is_file() and not executable.is_relative_to(target)
             # Detached jobs must still import their dependencies after the launcher exits.
-            subprocess.run([str(executable), '-c', 'import repocli'], check=True)
+            subprocess.run([str(executable), '-c', 'import repokit'], check=True)
             failure = subprocess.run([str(plugin / 'python'), '-c', 'raise SystemExit(7)'], cwd=target, env=env)
             assert failure.returncode == 7
             after = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}

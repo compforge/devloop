@@ -38,8 +38,6 @@ REMOTE_VIEW_STALE_SEC = 120   # remote_branches snapshot older than this → re-
 ACTIVE_REPO_TTL_SEC = 21600   # workspace last-active repo validity (~6 h); stale → don't guess
 REVIEW_STALE_SEC = 1800       # review.json stuck at "running" longer than this (~30 min) → run_review
                               # almost certainly died mid-flight (sleep/OOM/kill); surface as stale, not running
-DEFAULT_BRANCH_TTL_SEC = 86400  # repo default branch is near-immutable → only re-fetch from the forge
-                                # once a day (refresh_all runs far more often; this gates the network call)
 REVIEW_FINDING_NUDGE_CAP = 3  # Board asks for Verdicts on the SAME pending Finding set, then
                               # goes quiet. Not ignoring you: 3 asks is enough to have
                               # been heard, and adjudication is advisory (ground truth, never a blocker).

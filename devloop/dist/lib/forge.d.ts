@@ -1,4 +1,4 @@
-import { PullRequestContext } from "@compforge/repocli";
+import { PullRequestContext } from "@compforge/repokit";
 /**
  * @spec A Forge origin without credentials is unavailable, never known to have no PR.
  * @see {@link component://docs/pr-observation.md}

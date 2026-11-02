@@ -1,4 +1,4 @@
-import { type ComponentBinding, type InspectReport, type PackageTool } from "@compforge/repocli";
+import { type ComponentBinding, type InspectReport, type PackageTool } from "@compforge/repokit";
 /** Repository directory used as the granularity for engineering operations. */
 export declare class Component {
     readonly name: string;

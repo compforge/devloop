@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .. import config
-from repocli.remote import remote
+from repokit.remote import remote
 from domain.forge import (
     Comment,
     Forge,
@@ -32,8 +32,8 @@ from domain.forge import (
     pr_label,
     vocab,
 )
-from repocli.forge import GitHubForge
-from repocli.forge import GitLabForge
+from repokit.forge import GitHubForge
+from repokit.forge import GitLabForge
 
 
 def parse_origin(repo_dir: str | Path) -> tuple[str, str] | None:
@@ -118,7 +118,7 @@ def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
     import hashlib
     import json
     from harness_common import Forge as ForgeIdentity, Repository
-    from repocli.forge import PullRequestContext, PullRequestObserver
+    from repokit.forge import PullRequestContext, PullRequestObserver
     r = resolve_forge(repo_dir)
     if r is None:
         return None

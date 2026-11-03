@@ -21,7 +21,8 @@ const event = (text = "request", id = "s1", delivery = "steer") => ({ sessionID:
 beforeEach(async () => {
   vi.stubEnv("OPENAI_API_KEY", "test");
   vi.spyOn(console, "error").mockImplementation(() => {});
-  request = vi.fn<typeof fetch>().mockResolvedValue(answer("simple"));
+  // Response bodies are single-use; every fetch must exercise a fresh classification.
+  request = vi.fn<typeof fetch>().mockImplementation(async () => answer("simple"));
   vi.stubGlobal("fetch", request);
   selected = new Map([["s1", ref("model-router")]]);
   stored = new Map(); history = [];
@@ -75,6 +76,8 @@ describe("OpenCode routing ownership", () => {
     selected.set("s1", ref("model-router"));
     await prompt(event("auto"));
     expect(request).toHaveBeenCalledTimes(2);
+    expect(selected.get("s1")).toEqual(ref("gpt-6.1-terra"));
+    expect(console.error).toHaveBeenLastCalledWith(expect.stringContaining('"reason":"classified"'));
   });
   it("preserves a manual selection made while classification is pending", async () => {
     let finish!: (value: Response) => void;
@@ -129,8 +132,10 @@ it("does not route attachment-only or truncated tasks to Terra", async () => {
   attached.prompt.files = [{}] as SessionPrompt["prompt"]["files"];
   await prompt(attached);
   expect(selected.get("s1")).toEqual(ref("gpt-6.1-sol"));
+  expect(console.error).toHaveBeenLastCalledWith(expect.stringContaining('"reason":"conservative_floor"'));
   await prompt(event("x".repeat(30_000)));
   expect(selected.get("s1")).toEqual(ref("gpt-6.1-sol"));
+  expect(console.error).toHaveBeenLastCalledWith(expect.stringContaining('"reason":"conservative_floor"'));
   expect(JSON.parse(String(request.mock.calls[1]?.[1]?.body)).input.length).toBeLessThanOrEqual(24_000);
 });
 it("does not switch after plugin unload", async () => {

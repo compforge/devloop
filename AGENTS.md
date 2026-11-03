@@ -135,6 +135,7 @@ Codex 与 Claude 的 command hook 都使用 stdin/stdout JSON，但支持事件�
 
 ## References
 
+- `model-router/`：独立的 OpenCode V2 模型路由插件；Decisions 分类与三档模型映射，入口和边界见 `model-router/AGENTS.md`。
 - 各 plugin 使用 / 安装 / 配置：`<plugin>/README.md`
 - 各 plugin 设计与开发：`<plugin>/AGENTS.md`
 - 各 plugin 内跨 skill 共享术语：`<plugin>/CONCEPTS.md`（若有）

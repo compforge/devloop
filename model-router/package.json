@@ -1,0 +1,16 @@
+{
+  "name": "@compforge/model-router",
+  "version": "0.1.0",
+  "description": "OpenCode V2 model routing with the OpenAI Decisions API.",
+  "type": "module",
+  "engines": { "node": "^22.19.0 || >=24.0.0" },
+  "exports": { "./server": { "types": "./dist/adapters/opencode/index.d.ts", "default": "./server.js" } },
+  "files": ["dist/", "server.js", "README.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "peerDependencies": { "@opencode/plugin": "^2.1.2" },
+  "devDependencies": { "@opencode/plugin": "^2.1.2", "@types/node": "^24.7.0", "typescript": "^6.0.3", "vitest": "^4.1.8" }
+}

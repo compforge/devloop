@@ -2,5 +2,5 @@
  * The shared claim covers its whole process lifetime, including uv startup, so slow
  * Forge sweeps cannot pile up when several sessions keep emitting tool events.
  */
-export declare function triggerReconciliation(repo: string): boolean;
+export declare function triggerReconciliation(repo: string, pluginRoot?: string): boolean;
 //# sourceMappingURL=task-trigger.d.ts.map

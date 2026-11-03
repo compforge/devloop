@@ -7,7 +7,7 @@ Use devloop's managed scripts for Git and Forge operations; read-only Git inspec
 Do not replace these workflows with raw Git mutations or provider-specific API calls.
 
 `<PLUGIN_ROOT>` is the installed plugin directory: `${CLAUDE_PLUGIN_ROOT}` on Claude Code,
-`${PLUGIN_ROOT}` on Codex. Run Python entrypoints through
+`${PLUGIN_ROOT}` on Codex and OpenCode V2. Run Python entrypoints through
 `<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/<name>.py` for their locked dependencies.
 
 ## Task boundaries

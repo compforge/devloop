@@ -18,7 +18,7 @@ function running(pid) {
  * The shared claim covers its whole process lifetime, including uv startup, so slow
  * Forge sweeps cannot pile up when several sessions keep emitting tool events.
  */
-export function triggerReconciliation(repo) {
+export function triggerReconciliation(repo, pluginRoot) {
     let control = repo;
     let claim;
     let claimed = false;
@@ -28,7 +28,7 @@ export function triggerReconciliation(repo) {
         control = info.mainRoot ?? info.root;
         if (!remote(control))
             return false;
-        const plugin = process.env.PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT
+        const plugin = pluginRoot ?? process.env.PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT
             ?? fileURLToPath(new URL("../../", import.meta.url));
         const catalog = JSON.parse(readFileSync(join(plugin, "tasks/tasks.json"), "utf8"));
         const task = catalog.find((entry) => entry.name === TASK);

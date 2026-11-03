@@ -13,7 +13,7 @@ import { projectTool } from "../hooks/core/project.js";
 import type { HookHarness, HookPayload } from "./hook-payload.js";
 import { codexToolFailed } from "./codex.js";
 
-export type RuntimeHarness = HookHarness | "dsh";
+export type RuntimeHarness = HookHarness | "dsh" | "opencode";
 
 function string(value: unknown): string { return typeof value === "string" ? value : ""; }
 function cwd(payload: HookPayload): string { return string(payload.cwd) || process.cwd(); }
@@ -75,7 +75,7 @@ export function afterCwdChanged(payload: HookPayload): void {
 }
 
 const STATE_SUBCOMMANDS = new Set(["commit", "push", "checkout", "switch", "reset", "merge", "rebase", "pull", "fetch"]);
-export function afterTool(payload: HookPayload, harness: RuntimeHarness): void {
+export function afterTool(payload: HookPayload, harness: RuntimeHarness, pluginRoot?: string): void {
   const input = payload.tool_input;
   const toolInput: Record<string, unknown> = input !== null && typeof input === "object" && !Array.isArray(input) ? { ...input } : { input: string(input) };
   if (sessionId(payload)) toolInput.session_id = sessionId(payload);
@@ -92,7 +92,7 @@ export function afterTool(payload: HookPayload, harness: RuntimeHarness): void {
     const workspace = findContainingWorkspace(repo); if (workspace) recordActiveRepo(workspace, repo, sessionId(payload));
     if (target.subcommand !== "fetch") acquireOwner(repo, identity(payload, harness), currentBranch(repo) ?? "");
   }
-  if (harness === "codex") for (const repo of repositories) triggerReconciliation(repo);
+  if (harness === "codex" || harness === "opencode") for (const repo of repositories) triggerReconciliation(repo, pluginRoot);
 }
 
 export function afterFileChanged(payload: HookPayload): void {

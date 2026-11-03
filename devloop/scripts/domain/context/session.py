@@ -49,6 +49,8 @@ class SessionIdentity:
 
     @classmethod
     def from_env(cls) -> SessionIdentity:
+        if os.environ.get("DEVLOOP_HARNESS") == "opencode" and os.environ.get("DEVLOOP_SESSION_ID"):
+            return cls("opencode", os.environ["DEVLOOP_SESSION_ID"])
         # Codex exports the stable thread id to model-run commands. Keep
         # CODEX_SESSION_ID as a compatibility fallback for older runtimes.
         codex_id = (

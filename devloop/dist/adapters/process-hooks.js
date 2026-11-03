@@ -73,7 +73,7 @@ export function afterCwdChanged(payload) {
         recordActiveRepo(workspace, repo, sessionId(payload));
 }
 const STATE_SUBCOMMANDS = new Set(["commit", "push", "checkout", "switch", "reset", "merge", "rebase", "pull", "fetch"]);
-export function afterTool(payload, harness) {
+export function afterTool(payload, harness, pluginRoot) {
     const input = payload.tool_input;
     const toolInput = input !== null && typeof input === "object" && !Array.isArray(input) ? { ...input } : { input: string(input) };
     if (sessionId(payload))
@@ -99,9 +99,9 @@ export function afterTool(payload, harness) {
         if (target.subcommand !== "fetch")
             acquireOwner(repo, identity(payload, harness), currentBranch(repo) ?? "");
     }
-    if (harness === "codex")
+    if (harness === "codex" || harness === "opencode")
         for (const repo of repositories)
-            triggerReconciliation(repo);
+            triggerReconciliation(repo, pluginRoot);
 }
 export function afterFileChanged(payload) {
     const path = string(payload.file_path);

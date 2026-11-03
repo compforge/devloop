@@ -10,6 +10,18 @@ export interface ModelRef {
     variant?: string;
 }
 export type ModelRoutes = Record<Complexity, ModelRef>;
+export type RoutingMode = "auto" | "auto-fast";
+export interface RoutingOwnership {
+    mode: RoutingMode;
+    lastModel: ModelRef;
+}
+export declare function fastModel(ref: ModelRef): {
+    variant: string;
+    providerID: string;
+    id: string;
+};
+/** @spec Pre-mode ownership records resume ordinary Auto, never opt users into Fast billing. */
+export declare function routingOwnership(value: unknown): RoutingOwnership | undefined;
 /** @spec Uncertain simple classifications cannot downgrade a task below the medium route. */
 export declare function routeFor(answer: Classification, minimumConfidence: number): Complexity;
 export declare function sameModel(left: ModelRef | undefined, right: ModelRef | undefined): boolean;

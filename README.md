@@ -10,6 +10,9 @@ The marketplace also distributes `code-taste`, a skill-only plugin for architect
 naming, maintainability, documentation, and code review, plus `quality`, a skill-only plugin for
 evidence-driven project quality evaluation.
 
+[model-router](./model-router/README.md) is an independent OpenCode V2 plugin that uses
+the OpenAI Decisions API to route simple, medium and complex tasks to Terra, Sol and Astra.
+
 ```text
 enter repo → start branch → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
 ```

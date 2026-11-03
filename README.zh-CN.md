@@ -139,3 +139,7 @@ opencode 仍是占位，等其 plugin / hook 协议接入后再启用。
 ## 新增 plugin
 
 见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+
+## Model router
+
+[model-router](./model-router/README.md) 是独立的 OpenCode V2 插件，通过 OpenAI Decisions API 按任务复杂度选择 Terra、Sol、Astra。选择 Auto 后启用路由，配置与验证方式见插件文档。

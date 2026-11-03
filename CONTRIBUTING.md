@@ -37,9 +37,9 @@
 ## 注册到 marketplace
 
 新 plugin 加好后：
-1. 在 `.claude-plugin/marketplace.json` 的 `plugins` 数组追加一项
-2. 在 Codex 标准索引 `.agents/plugins/marketplace.json` 的 `plugins` 数组追加一项
-3. OpenCode V2 通过 npm `./server` export 与 `plugins` 配置分发，无需额外的 marketplace 索引。本地目录同时提供 `server.js` 入口。
+1. 支持 Claude 时，在 `.claude-plugin/marketplace.json` 的 `plugins` 数组追加一项
+2. 支持 Codex 时，在 Codex 标准索引 `.agents/plugins/marketplace.json` 的 `plugins` 数组追加一项
+3. OpenCode V2 通过 npm `./server` export 与 `plugins` 配置分发，无需额外的 marketplace 索引。仅支持 OpenCode 的 plugin（如 `model-router`）不注册到 Claude/Codex 索引。本地目录同时提供 `server.js` 入口。
 4. 更新仓库根 `README.md` 的 plugin 清单
 
 ## Hook 编写规范

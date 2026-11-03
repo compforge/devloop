@@ -8,7 +8,7 @@ import type { ShellCreateBefore } from "@opencode/plugin/promise/shell";
 import type { Info, ToolContext } from "@opencode/plugin/promise/tool";
 import type { Skill } from "@opencode/schema/skill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import plugin from "../adapters/opencode.js";
+import plugin from "../adapters/opencode/index.js";
 import * as lifecycle from "../adapters/process-hooks.js";
 import { evaluateTool } from "../hooks/core/policy.js";
 import { acquireOwner, readOwner } from "../domain/context/session.js";

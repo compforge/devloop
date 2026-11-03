@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { afterCompact, afterCwdChanged, afterFileChanged, afterTool, endSession, recordToolCall, sessionStartOutput, userPromptOutput } from "../adapters/process-hooks.js";
-import { claudeProcessAdapter } from "../adapters/claude.js";
-import { codexProcessAdapter } from "../adapters/codex.js";
+import { claudeProcessAdapter } from "../adapters/claude/index.js";
+import { codexProcessAdapter } from "../adapters/codex/index.js";
 import type { HookPayload, ProcessHookAdapter } from "../adapters/hook-payload.js";
 
 function readPayload(): HookPayload {

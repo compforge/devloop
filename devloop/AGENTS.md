@@ -45,10 +45,12 @@ devloop/
 ├── cordis.patch.yml               # DSH bundle layer：挂载 adapter + 暴露 skills
 ├── index.ts                        # npm 公共 API
 ├── adapters/                       # Harness 薄适配层
-│   ├── opencode.ts                #   OpenCode V2 hooks、skills 与调用级身份桥接
-│   ├── claude.ts  codex.ts        #   stdin/stdout hook dialect
-│   ├── process-hooks.ts           #   Claude/Codex lifecycle translation
-│   └── dsh.ts                     #   原生 Cordis plugin（ctx.on）
+│   ├── claude/index.ts             #   Claude stdin/stdout hook dialect
+│   ├── codex/index.ts              #   Codex stdin/stdout hook dialect
+│   ├── opencode/index.ts           #   OpenCode V2 hooks、skills 与调用级身份桥接
+│   ├── dsh/index.ts                #   原生 Cordis plugin（ctx.on）
+│   ├── process-hooks.ts           #   共享 lifecycle translation
+│   └── hook-payload.ts            #   共享进程 hook payload 与输出契约
 ├── domain/                         # TypeScript 领域 owner
 │   ├── repo.ts                    #   ★Repo/Component WorkSet 与验证范围策略
 │   ├── workspace.ts               #   ★Workspace 注册、发现与归属

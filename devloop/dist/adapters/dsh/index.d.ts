@@ -13,4 +13,4 @@ export declare const Config: Schema<Config>;
  * @spec Board context preserves downstream step admission and request-series boundaries.
  */
 export declare function apply(ctx: Context, config?: Config): void;
-//# sourceMappingURL=dsh.d.ts.map
+//# sourceMappingURL=index.d.ts.map

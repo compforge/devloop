@@ -10,7 +10,7 @@ import { PromptDelivery } from "../domain/board/delivery.js";
 import { projectBoard } from "../domain/board/projection.js";
 import { currentBranch, listCheckouts } from "../lib/git-state.js";
 import { projectTool } from "../hooks/core/project.js";
-import { codexToolFailed } from "./codex.js";
+import { codexToolFailed } from "./codex/index.js";
 function string(value) { return typeof value === "string" ? value : ""; }
 function cwd(payload) { return string(payload.cwd) || process.cwd(); }
 function sessionId(payload) { return string(payload.session_id); }

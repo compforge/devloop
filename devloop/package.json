@@ -1,6 +1,6 @@
 {
   "name": "@compforge/devloop",
-  "version": "0.4.61",
+  "version": "0.4.62",
   "description": "Shared dev-loop runtime with Claude Code, Codex, DeepSeek Harness, and OpenCode V2 adapters.",
   "type": "module",
   "engines": {
@@ -14,12 +14,12 @@
       "default": "./dist/index.js"
     },
     "./dsh": {
-      "types": "./dist/adapters/dsh.d.ts",
-      "default": "./dist/adapters/dsh.js"
+      "types": "./dist/adapters/dsh/index.d.ts",
+      "default": "./dist/adapters/dsh/index.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./server": {
-      "types": "./dist/adapters/opencode.d.ts",
+      "types": "./dist/adapters/opencode/index.d.ts",
       "default": "./server.js"
     }
   },

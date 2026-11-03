@@ -1,9 +1,9 @@
 import { Context } from "@deepseek-ai/cordis";
 import type { PreToolDecision } from "@deepseek-ai/dsh-tools";
 import { describe, expect, it, vi } from "vitest";
-import * as dshPlugin from "../adapters/dsh.js";
-import { claudeProcessAdapter, evaluateClaudePreTool } from "../adapters/claude.js";
-import { codexProcessAdapter } from "../adapters/codex.js";
+import * as dshPlugin from "../adapters/dsh/index.js";
+import { claudeProcessAdapter, evaluateClaudePreTool } from "../adapters/claude/index.js";
+import { codexProcessAdapter } from "../adapters/codex/index.js";
 import { afterTool, sessionStartOutput } from "../adapters/process-hooks.js";
 
 vi.mock("../domain/task-trigger.js", () => ({ triggerReconciliation: vi.fn() }));

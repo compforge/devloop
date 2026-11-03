@@ -1,1 +1,1 @@
-export { default } from "./dist/adapters/opencode.js";
+export { default } from "./dist/adapters/opencode/index.js";

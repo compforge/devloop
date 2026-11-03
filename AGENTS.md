@@ -117,7 +117,7 @@ devloop/                              # ← 仓库根（marketplace）
 - `<plugin>/hooks/`：TypeScript 事件 adapter，依赖 `domain/lib`
 - `<plugin>/scripts/`：skill-owned workflow；允许保留 Python 及其私有辅助包，但 Harness runtime 不得依赖它
 
-Codex 与 Claude 的 command hook 都使用 stdin/stdout JSON，但支持事件和 payload 细节不能靠猜测合并；manifest 显式设置 Harness 身份，adapter 再映射到共享 TypeScript core。OpenCode V2 使用 `adapters/opencode.ts` 隔离原生 hooks 与请求级上下文协议。
+Codex 与 Claude 的 command hook 都使用 stdin/stdout JSON，但支持事件和 payload 细节不能靠猜测合并；manifest 显式设置 Harness 身份，adapter 再映射到共享 TypeScript core。OpenCode V2 使用 `adapters/opencode/index.ts` 隔离原生 hooks 与请求级上下文协议。
 
 ### 加新 plugin 的流程
 

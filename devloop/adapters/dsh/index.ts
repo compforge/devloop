@@ -3,10 +3,10 @@ import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { PostToolDecision, PreToolDecision } from "@deepseek-ai/dsh-tools";
 import Schema from "@deepseek-ai/schemastery";
-import { BoardRuntime } from "../domain/board/runtime.js";
-import { afterTool, endSession, initializeBoard, recordToolCall } from "./process-hooks.js";
-import { decisionMessage } from "../hooks/core/domain.js";
-import { evaluateTool } from "../hooks/core/policy.js";
+import { BoardRuntime } from "../../domain/board/runtime.js";
+import { afterTool, endSession, initializeBoard, recordToolCall } from "../process-hooks.js";
+import { decisionMessage } from "../../hooks/core/domain.js";
+import { evaluateTool } from "../../hooks/core/policy.js";
 
 export const name = "devloop";
 // The adapter only registers listeners, but those listeners belong to the agent/tool

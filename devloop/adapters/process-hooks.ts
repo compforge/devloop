@@ -11,7 +11,7 @@ import { projectBoard } from "../domain/board/projection.js";
 import { currentBranch, listCheckouts } from "../lib/git-state.js";
 import { projectTool } from "../hooks/core/project.js";
 import type { HookHarness, HookPayload } from "./hook-payload.js";
-import { codexToolFailed } from "./codex.js";
+import { codexToolFailed } from "./codex/index.js";
 
 export type RuntimeHarness = HookHarness | "dsh" | "opencode";
 

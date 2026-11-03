@@ -6329,7 +6329,7 @@ async function preToolDecision(payload, configured) {
   };
 }
 
-// adapters/codex.ts
+// adapters/codex/index.ts
 function evaluateCodexPreTool(payload) {
   return preToolDecision(payload, "codex");
 }
@@ -6513,7 +6513,7 @@ function endSession(payload, harness) {
   for (const repo of candidates) releaseOwner(repo, identity(payload, harness));
 }
 
-// adapters/claude.ts
+// adapters/claude/index.ts
 function evaluateClaudePreTool(payload) {
   return preToolDecision(payload, "claude");
 }

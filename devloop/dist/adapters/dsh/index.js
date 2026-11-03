@@ -1,9 +1,9 @@
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import Schema from "@deepseek-ai/schemastery";
-import { BoardRuntime } from "../domain/board/runtime.js";
-import { afterTool, endSession, initializeBoard, recordToolCall } from "./process-hooks.js";
-import { decisionMessage } from "../hooks/core/domain.js";
-import { evaluateTool } from "../hooks/core/policy.js";
+import { BoardRuntime } from "../../domain/board/runtime.js";
+import { afterTool, endSession, initializeBoard, recordToolCall } from "../process-hooks.js";
+import { decisionMessage } from "../../hooks/core/domain.js";
+import { evaluateTool } from "../../hooks/core/policy.js";
 export const name = "devloop";
 // The adapter only registers listeners, but those listeners belong to the agent/tool
 // runtimes. Declaring both owners keeps Cordis from activating this plugin while the
@@ -91,4 +91,4 @@ export function apply(ctx, config = {}) {
         }, "dsh");
     });
 }
-//# sourceMappingURL=dsh.js.map
+//# sourceMappingURL=index.js.map

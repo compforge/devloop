@@ -17,8 +17,9 @@ Board / state store <───────────────────�
 
 - `domain/`：Workspace、Repo、Component、Board、session/state 与 forge 中立模型。
 - `hooks/core/`、`hooks/rules/`：工具投影、策略上下文、规则评估和 Decision。
-- `adapters/claude.ts`、`adapters/codex.ts`：stdin/stdout hook dialect。
-- `adapters/dsh.ts`：原生 Cordis plugin，导出 `name`、`inject`、`Config`、`apply`，直接监听 DSH lifecycle/tool events。
+- `adapters/<cli>/`：各 CLI 的协议接入；共享 lifecycle 与 payload 契约保留在 `adapters/process-hooks.ts`、`adapters/hook-payload.ts`。构建产物 `dist/adapters/` 镜像源码目录，不手工维护。
+- `adapters/claude/index.ts`、`adapters/codex/index.ts`：stdin/stdout hook dialect。
+- `adapters/dsh/index.ts`：原生 Cordis plugin，导出 `name`、`inject`、`Config`、`apply`，直接监听 DSH lifecycle/tool events。
 - `cordis.patch.yml`：可安装 DSH bundle layer；profile 安装包后由 `dsh.bundle.patch` 自动挂载 adapter。
 - `scripts/`：由 skill 调用的 Git、release、validation、review Python workflow，包含其私有辅助包；Harness runtime 不得导入该子树，也不得在其中新增另一份 Board 或 policy 语义。
 
@@ -71,7 +72,7 @@ fail-closed 策略产生 warning / deny，Board 保留 Git/review 状态并显�
 
 ## OpenCode V2
 
-`adapters/opencode.ts` default-exports the native V2 definition; npm `./server` and the local
+`adapters/opencode/index.ts` default-exports the native V2 definition; npm `./server` and the local
 `server.js` entrypoint load it without changing the public library entrypoint. The supported
 baseline is `@opencode/plugin` / OpenCode `2.1.2`; V1 hooks are a different protocol.
 

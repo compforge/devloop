@@ -3,18 +3,18 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
-import { initializeBoard, afterTool, endSession, recordToolCall } from "./process-hooks.js";
-import { BoardRuntime } from "../domain/board/runtime.js";
-import { itemsFor, promptFactsFor, PromptDelivery } from "../domain/board/delivery.js";
-import { renderPrompt } from "../domain/board/render.js";
-import { findGitRoot } from "../domain/repo-layout.js";
-import { triggerReconciliation } from "../domain/task-trigger.js";
-import { decisionMessage } from "../hooks/core/domain.js";
-import { projectTool } from "../hooks/core/project.js";
-import { releaseOwner } from "../domain/context/session.js";
-import { evaluateTool } from "../hooks/core/policy.js";
-const parent = fileURLToPath(new URL("../", import.meta.url));
-const pluginRoot = existsSync(join(parent, "package.json")) ? parent : fileURLToPath(new URL("../../", import.meta.url));
+import { initializeBoard, afterTool, endSession, recordToolCall } from "../process-hooks.js";
+import { BoardRuntime } from "../../domain/board/runtime.js";
+import { itemsFor, promptFactsFor, PromptDelivery } from "../../domain/board/delivery.js";
+import { renderPrompt } from "../../domain/board/render.js";
+import { findGitRoot } from "../../domain/repo-layout.js";
+import { triggerReconciliation } from "../../domain/task-trigger.js";
+import { decisionMessage } from "../../hooks/core/domain.js";
+import { projectTool } from "../../hooks/core/project.js";
+import { releaseOwner } from "../../domain/context/session.js";
+import { evaluateTool } from "../../hooks/core/policy.js";
+const parent = fileURLToPath(new URL("../../", import.meta.url));
+const pluginRoot = existsSync(join(parent, "package.json")) ? parent : fileURLToPath(new URL("../../../", import.meta.url));
 function log(event, error, sessionId, cwd) {
     console.error(JSON.stringify({ plugin: "devloop", event, session_id: sessionId, cwd, error: error instanceof Error ? error.message : String(error) }));
 }
@@ -44,8 +44,8 @@ function bundledSkills() {
 /**
  * @spec OpenCode request-local Board context remains visible throughout a user turn.
  * @why Context hooks are not durable history; delivery receipts alone cannot replay them.
- * @link ../docs/harness-adapters.md
- * @case ../tests/opencode.spec.ts
+ * @link ../../docs/harness-adapters.md
+ * @case ../../tests/opencode.spec.ts
  */
 async function setup(ctx) {
     const sessions = new Map();
@@ -153,7 +153,7 @@ async function setup(ctx) {
     });
     /**
      * @spec Auxiliary Board, checkout tracking and ledger failures cannot bypass policy admission.
-     * @case ../tests/opencode.spec.ts
+     * @case ../../tests/opencode.spec.ts
      */
     const beforeTool = async (event) => {
         let state;
@@ -235,7 +235,7 @@ async function setup(ctx) {
     });
     /**
      * @spec An unavailable checkout must not prevent cleanup of other checkouts or sessions.
-     * @case ../tests/opencode.spec.ts
+     * @case ../../tests/opencode.spec.ts
      */
     const close = (sessionId) => {
         const state = sessions.get(sessionId);
@@ -276,4 +276,4 @@ async function setup(ctx) {
         close(sessionId); };
 }
 export default { id: "devloop", setup };
-//# sourceMappingURL=opencode.js.map
+//# sourceMappingURL=index.js.map

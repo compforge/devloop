@@ -39,7 +39,8 @@ RepoKit 决定证据是否适用，devloop 只保存本次报告用于分支门�
 手动开发流程入口与 gcampr 都调用 `scripts/domain/validation.py`；`run_validate.py --check lint|test`
 负责仓库定位和展示。Skill 的普通检查直接调用 CLI，不需要纯转发脚本。
 
-CLI 默认在 `~/.repocli/checkouts` 保存执行历史，开发验证与 gcampr 调用同一入口即可跨次复用。
+CLI 默认在 `~/.repocli/repositories/<name>/` 保存执行历史；同仓 checkout 共用存储和统计，复用仍限定同一 checkout。
+开发验证与 gcampr 调用同一入口即可跨次复用。
 `--force` 强制执行，`--history` 查询实际执行次数、耗时和复用统计。VersionTag 变化只在复用判断时忽略，
 分支门禁继续核对本轮完整 snapshot。记录的原 Run 时间不能替换为本次复用时间。
 

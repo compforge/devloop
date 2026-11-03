@@ -15,7 +15,7 @@ export function fullEvidence(repo, component, check, reference) {
         return undefined;
     const record = loadSegment(repo, segment) ?? {};
     const report = object(record.report);
-    if (record.eligible !== true || report.schemaVersion !== 1 || report.inputsConsistent !== true
+    if (record.eligible !== true || report.schemaVersion !== 2 || report.inputsConsistent !== true
         || report.checkout !== realpathSync(repo) || typeof report.snapshot !== "string" || !report.snapshot
         || typeof record.checked_at !== "string" || record.checked_at !== ref.checked_at)
         return undefined;
@@ -66,7 +66,7 @@ export function reusableFullEvidence(record, fingerprint) {
 /** Last observed check capability, for presentation only; absence means unknown. */
 export function observedCheck(repo, component, check) {
     const report = object((loadSegment(repo, evidenceSegment(repo, component, check)) ?? {}).report);
-    if (report.schemaVersion !== 1 || report.checkout !== realpathSync(repo))
+    if (report.schemaVersion !== 2 || report.checkout !== realpathSync(repo))
         return undefined;
     for (const raw of Array.isArray(report.components) ? report.components : []) {
         const group = object(raw);

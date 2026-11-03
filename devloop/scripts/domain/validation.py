@@ -13,7 +13,7 @@ import tempfile
 import time
 
 from repokit import snapshot
-from domain.context.store import branch_segment, load_segment, save_segment
+from domain.context.store import branch_segment, save_segment
 from domain.repo_layout import Catalog, inspect_catalog
 from domain.lifecycle.base import HookResult
 from domain.validation_evidence import evidence_segment, bind_full
@@ -75,27 +75,6 @@ def _inputs(repo: str, catalog: Catalog, policy: dict, names: tuple[str, ...]) -
             declaration["disableReuse"] = any(receipts[root] is None for root in related)
             result[unit.id][name] = declaration
     return result
-
-
-def _previous(repo: str, catalog: Catalog, names: tuple[str, ...]) -> dict:
-    groups = []
-    for unit in catalog.components:
-        checks = []
-        binding = None
-        for name in names:
-            record = load_segment(repo, evidence_segment(repo, unit.id, name)) or {}
-            report = record.get("report", {})
-            if not record.get("eligible") or report.get("schemaVersion") != 1 or not report.get("inputsConsistent"):
-                continue
-            if report.get("checkout") != str(Path(repo).resolve()):
-                continue
-            for group in report.get("components", []):
-                if group["component"]["root"] == unit.id:
-                    binding = group["component"]
-                    checks.extend(check for check in group["checks"] if check["check"] == name)
-        if binding:
-            groups.append({"component": binding, "checks": checks})
-    return {"schemaVersion": 1, "checkout": str(Path(repo).resolve()), "inputsConsistent": True, "components": groups}
 
 
 def _record(repo: str, report: dict, eligible: bool, comparison: Comparison) -> None:
@@ -162,7 +141,7 @@ def run_validation(repo: str, *, names: tuple[str, ...] = ("lint", "test"),
                    concurrency: int = 2, format: bool = True) -> ValidationOutcome:
     """One CLI round for all requested checks, shared by lifecycle and manual workflow.
 
-    +spec=`Repocli owns scope, command, fingerprints and reuse; devloop only supplies workflow context`
+    +spec=`Repocli owns scope, command, execution history and reuse; devloop only supplies workflow context`
     +spec=`Input inconsistency blocks lint even when unavailable checks are non-blocking`
     +why=`Harness host environment is not the environment in which checks executed`
     """
@@ -179,7 +158,6 @@ def run_validation(repo: str, *, names: tuple[str, ...] = ("lint", "test"),
             raise ValueError(f"{unit.id}: dependency preparation failed: {problem}")
     policy = _policy(repo)
     inputs = _inputs(repo, catalog, policy, names)
-    previous = _previous(repo, catalog, names)
     args = ["--check", ",".join(("format", *names) if format else names), "--concurrency", str(concurrency)]
     if components is not None:
         if not components:
@@ -191,10 +169,9 @@ def run_validation(repo: str, *, names: tuple[str, ...] = ("lint", "test"),
         for path in paths or []:
             args += ["--changed-file", path]
     with tempfile.TemporaryDirectory(prefix="devloop-validation-") as temporary:
-        inputs_path, previous_path = Path(temporary) / "inputs.json", Path(temporary) / "previous.json"
+        inputs_path = Path(temporary) / "inputs.json"
         inputs_path.write_text(json.dumps(inputs))
-        previous_path.write_text(json.dumps(previous))
-        args += ["--inputs", str(inputs_path), "--reuse", str(previous_path)]
+        args += ["--inputs", str(inputs_path)]
         print(f"[validate] repocli: checks={','.join(names)}, concurrency={concurrency}, base={comparison.reason or (comparison.base if not full else 'full')}", flush=True)
         report = repokit.validation_report(repo, args)
     eligible = report["inputsConsistent"] and policy == _policy(repo)

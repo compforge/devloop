@@ -23,7 +23,7 @@ afterEach(() => { vi.unstubAllEnvs(); rmSync(repo, { recursive: true, force: tru
 const checkedAt = "2026-11-01T12:00:00Z";
 function record(): JsonObject {
   return { eligible: true, checked_at: checkedAt, report: {
-    schemaVersion: 1, snapshot: "source", checkout: repo, inputsConsistent: true,
+    schemaVersion: 2, snapshot: "source", checkout: repo, inputsConsistent: true,
     components: [{ component: { root: "." }, checks: [{ check: "lint", status: "passed", scope: "full",
       checkedAt, environment: "frozen-check-environment", witnesses: {} }] }],
   } };

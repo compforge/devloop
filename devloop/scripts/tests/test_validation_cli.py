@@ -49,15 +49,14 @@ def test_focused_success_never_promotes_full_evidence():
         assert not has_full_stamp(repo)
 
 
-def test_prior_evidence_and_unmanaged_receipts_are_supplied_to_cli():
+def test_cli_owns_history_while_workflow_supplies_dependency_receipts():
     with TemporaryDirectory() as tmp:
         repo = make_repo(tmp)
         with patch.object(repokit, "validation_report", return_value=report(repo)):
             run_validation(str(repo), full=True)
         def invoke(root, args):
-            previous = json.loads(Path(args[args.index("--reuse") + 1]).read_text())
+            assert "--reuse" not in args
             inputs = json.loads(Path(args[args.index("--inputs") + 1]).read_text())
-            assert len(previous["components"][0]["checks"]) == 2
             assert inputs["."]["lint"]["disableReuse"] is True
             result = report(repo)
             return result

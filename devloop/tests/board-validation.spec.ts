@@ -27,7 +27,7 @@ it("delivers full fallback reason from persisted state to the prompt", async () 
 
 function observe(check: string, status: string): void {
   saveSegment(root, evidenceSegment(root, ".", check), { report: {
-    schemaVersion: 1, checkout: root, components: [{ component: { root: "." }, checks: [{ check, status }] }],
+    schemaVersion: 2, checkout: root, components: [{ component: { root: "." }, checks: [{ check, status }] }],
   } });
 }
 

@@ -20,7 +20,7 @@ def full_evidence(repo: str, component: str, check: str, reference: dict) -> dic
         return None
     record = load_segment(repo, segment) or {}
     report = record.get("report", {})
-    if (not record.get("eligible") or report.get("schemaVersion") != 1
+    if (not record.get("eligible") or report.get("schemaVersion") != 2
             or not report.get("inputsConsistent") or report.get("checkout") != str(Path(repo).resolve())
             or not report.get("snapshot") or record.get("checked_at") != reference.get("checked_at")):
         return None

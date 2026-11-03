@@ -9,7 +9,7 @@ TypeScript hook 与 Python workflow 直接调用对应语言的工具包，不�
 
 AI 可直接调用 `repocli format/lint/test/validate`。devloop 的 Python workflow 负责依赖准备、相位基线、
 分支关联与门禁策略，然后通过一次 `repocli validate --check format,lint,test --json` 执行整轮。
-Makefile 解析、影响分析、冻结计划、检查执行、输入指纹及复用判断均归 Go toolkit，CLI 只负责适配。
+Makefile 解析、影响分析、冻结计划、检查执行、执行历史及复用判断均归 Go toolkit，CLI 只负责适配。
 Python 原生验证 API 保留，但 devloop 不调用它作为第二套验证引擎。
 
 format 是允许修改源码的准备步骤；RepoKit 在 format 完成后重新观察内容和影响范围，再有界并发执行 lint/test。
@@ -32,12 +32,20 @@ Board 使用报告中的 unavailable 事实；没有观察记录时为未知，�
 ```
 
 components/paths 声明完整传递输入，自身 Component 自动包含，嵌套归属由 RepoKit 判定。声明与本次 affected
-选择无关；没有声明时使用整仓身份，非法声明直接报错。Python 依赖观察提供可信回执路径；没有可信回执时
+选择无关；没有声明时比较整仓输入，非法声明直接报错。Python 依赖观察提供可信回执路径；没有可信回执时
 禁止复用但仍可真实检查。RepoKit 在执行边界检查回执变化，devloop 另核对有效配置是否变化。
-RepoKit 决定证据是否适用，devloop 只存储和提供已有报告，不重复实现复用比较。
+RepoKit 决定证据是否适用，devloop 只保存本次报告用于分支门禁，不向 CLI 提供历史报告、不重复实现复用比较。
 
 手动开发流程入口与 gcampr 都调用 `scripts/domain/validation.py`；`run_validate.py --check lint|test`
 负责仓库定位和展示。Skill 的普通检查直接调用 CLI，不需要纯转发脚本。
+
+CLI 默认在 `~/.repocli/repositories/<name>/` 保存执行历史；同仓 checkout 共用存储和统计，复用仍限定同一 checkout。
+开发验证与 gcampr 调用同一入口即可跨次复用。
+`--force` 强制执行，`--history` 查询实际执行次数、耗时和复用统计。VersionTag 变化只在复用判断时忽略，
+分支门禁继续核对本轮完整 snapshot。记录的原 Run 时间不能替换为本次复用时间。
+
+Python workflow 锁定 `compforge-repokit==0.18.0`，使用 schema 2 解码器；依赖通过官方发布包解析，
+不依赖本地源码覆盖。执行端需要支持 schema 2 与历史复用的 repocli CLI 0.54.0 或后续版本。
 
 ## 操作与策略
 
@@ -118,7 +126,7 @@ RepoKit 的 tree 描述目录、文件、Manifest 和 gitlink 引用，inspect �
 
 原生库与 CLI 同步使用 snapshot v2；旧摘要自然失效，不迁移旧 stamp 为新通过结果。gitlink 只绑定
 父仓观察到的引用，子仓脏文件不改变父仓验证戳；对子仓的验证应在其自身 checkout 执行。
-验证需要支持组合步骤与 ValidationReport schema 1 的 repocli CLI；不兼容旧报告或旧验证脚本协议。
+验证需要支持组合步骤与 ValidationReport schema 2 的 repocli CLI；不兼容旧报告或旧验证脚本协议。
 
 仓库定位委托 find_checkout/findCheckout：无仓库是正常缺失，损坏元数据、权限与 Git 失败不能
 转换为“没有仓库”。必要 hook 事实读取失败继续走 fail_closed，不绕过保护分支规则。

@@ -65,7 +65,7 @@ npx --yes @deepseek-ai/dsh@0.1.6-alpha.1 plugin --profile headless add @compforg
 
 ```json
 {
-  "plugins": ["@compforge/devloop@0.4.60"]
+  "plugins": ["@compforge/devloop@0.4.61"]
 }
 ```
 

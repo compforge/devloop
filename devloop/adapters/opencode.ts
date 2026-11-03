@@ -20,8 +20,8 @@ import { evaluateTool } from "../hooks/core/policy.js";
 const parent = fileURLToPath(new URL("../", import.meta.url));
 const pluginRoot = existsSync(join(parent, "package.json")) ? parent : fileURLToPath(new URL("../../", import.meta.url));
 
-function log(event: string, error: unknown, sessionId?: string): void {
-  console.error(JSON.stringify({ plugin: "devloop", event, session_id: sessionId, error: error instanceof Error ? error.message : String(error) }));
+function log(event: string, error: unknown, sessionId?: string, cwd?: string): void {
+  console.error(JSON.stringify({ plugin: "devloop", event, session_id: sessionId, cwd, error: error instanceof Error ? error.message : String(error) }));
 }
 
 function inputRecord(value: unknown): Record<string, unknown> {
@@ -101,12 +101,15 @@ async function setup(ctx: Context): Promise<() => void> {
     if (!state) {
       state = { cwd, roots: new Set([cwd]) };
       sessions.set(sessionID, state);
-      await initializeBoard({ cwd, session_id: sessionID });
-      const repo = findGitRoot(cwd);
-      if (repo) triggerReconciliation(repo, pluginRoot);
+      try {
+        await initializeBoard({ cwd, session_id: sessionID });
+        const repo = findGitRoot(cwd);
+        if (repo) triggerReconciliation(repo, pluginRoot);
+      } catch (error) { log("board_initialization_failed", error, sessionID, cwd); }
     } else if (state.cwd !== cwd) {
       state.cwd = cwd; state.roots.add(cwd); delete state.selected;
-      await initializeBoard({ cwd, session_id: sessionID });
+      try { await initializeBoard({ cwd, session_id: sessionID }); }
+      catch (error) { log("board_initialization_failed", error, sessionID, cwd); }
     }
     return state;
   };
@@ -135,28 +138,41 @@ async function setup(ctx: Context): Promise<() => void> {
     } catch (error) { log("context_failed", error, event.sessionID); }
   });
 
-  await ctx.tool.hook("execute.before", async (event) => {
-    let denial: string | undefined;
+  /**
+   * @spec Auxiliary Board, checkout tracking and ledger failures cannot bypass policy admission.
+   * @case ../tests/opencode.spec.ts
+   */
+  const beforeTool: Parameters<typeof ctx.tool.hook<"execute.before">>[1] = async (event) => {
+    let state: SessionState;
+    try { state = await stateFor(event.sessionID); }
+    catch (error) { log("session_location_failed", error, event.sessionID); return; }
     const invocation = callId(event, true);
+    const toolInput = { ...inputRecord(event.input), session_id: event.sessionID };
+    const input = { harness: "opencode" as const, toolName: event.tool, toolInput, cwd: state.cwd };
+    const payload = { tool_name: event.tool, tool_input: toolInput, tool_use_id: invocation, cwd: state.cwd, session_id: event.sessionID };
+    try { recordToolCall({ ...payload, hook_event_name: "PreToolUse" }, "opencode"); }
+    catch (error) { log("tool_recording_failed", error, event.sessionID, state.cwd); }
+    let denial: string | undefined;
     try {
-      const state = await stateFor(event.sessionID);
-      const toolInput = { ...inputRecord(event.input), session_id: event.sessionID };
-      for (const target of projectTool({ harness: "opencode", toolName: event.tool, toolInput, cwd: state.cwd }).targets) {
-        const directory = target.kind === "file_change" ? dirname(resolve(state.cwd, target.path)) : target.workingDirectory.path;
-        if (directory) { const repo = findGitRoot(directory); if (repo) state.roots.add(repo); }
-      }
-      recordToolCall({ hook_event_name: "PreToolUse", tool_name: event.tool, tool_input: toolInput, tool_use_id: invocation, cwd: state.cwd, session_id: event.sessionID }, "opencode");
-      const decision = await evaluateTool({ harness: "opencode", toolName: event.tool, toolInput, cwd: state.cwd });
+      const decision = await evaluateTool(input);
       if (decision.action === "deny") {
         denial = decisionMessage(decision);
-        recordToolCall({ hook_event_name: "PostToolUseFailure", tool_name: event.tool, tool_input: toolInput, tool_use_id: invocation, cwd: state.cwd, session_id: event.sessionID }, "opencode");
         log("tool_denied", denial, event.sessionID);
       } else if (decision.action === "warn") log("tool_warning", decisionMessage(decision), event.sessionID);
     } catch (error) { log("admission_failed", error, event.sessionID); }
-    // Throw outside the fail-open boundary: the Promise host turns this into a
-    // Tool.Error and rejects only this call, including a CodeMode child call.
+    for (const target of projectTool(input).targets) {
+      const directory = target.kind === "file_change" ? dirname(resolve(state.cwd, target.path)) : target.workingDirectory.path;
+      if (!directory) continue;
+      try { const repo = findGitRoot(directory); if (repo) state.roots.add(repo); }
+      catch (error) { log("checkout_tracking_failed", error, event.sessionID, directory); }
+    }
+    try {
+      if (denial) recordToolCall({ ...payload, hook_event_name: "PostToolUseFailure" }, "opencode");
+    } catch (error) { log("tool_recording_failed", error, event.sessionID, state.cwd); }
+    // The Promise host turns this into a Tool.Error, including a CodeMode child call.
     if (denial) throw new Error(denial);
-  });
+  };
+  await ctx.tool.hook("execute.before", beforeTool);
   await ctx.tool.hook("execute.after", async (event) => {
     try {
       const state = await stateFor(event.sessionID);
@@ -173,10 +189,17 @@ async function setup(ctx: Context): Promise<() => void> {
     } catch (error) { log("after_tool_failed", error, event.sessionID); }
   });
 
+  /**
+   * @spec An unavailable checkout must not prevent cleanup of other checkouts or sessions.
+   * @case ../tests/opencode.spec.ts
+   */
   const close = (sessionId: string): void => {
     const state = sessions.get(sessionId);
     if (!state) return;
-    for (const cwd of state.roots) endSession({ cwd, session_id: sessionId }, "opencode");
+    for (const cwd of state.roots) {
+      try { endSession({ cwd, session_id: sessionId }, "opencode"); }
+      catch (error) { log("session_cleanup_failed", error, sessionId, cwd); }
+    }
     sessions.delete(sessionId);
   };
   const events = new AbortController();
@@ -186,8 +209,10 @@ async function setup(ctx: Context): Promise<() => void> {
       if (["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(event.type) && "sessionID" in event.data) {
         const sessionId = String(event.data.sessionID);
         for (const cwd of sessions.get(sessionId)?.roots ?? []) {
-          const repo = findGitRoot(cwd);
-          if (repo) releaseOwner(repo, { harness: "opencode", sessionId });
+          try {
+            const repo = findGitRoot(cwd);
+            if (repo) releaseOwner(repo, { harness: "opencode", sessionId });
+          } catch (error) { log("owner_release_failed", error, sessionId, cwd); }
         }
       }
     }

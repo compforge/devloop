@@ -9,6 +9,8 @@ import type { Info, ToolContext } from "@opencode/plugin/promise/tool";
 import type { Skill } from "@opencode/schema/skill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../adapters/opencode.js";
+import * as lifecycle from "../adapters/process-hooks.js";
+import { evaluateTool } from "../hooks/core/policy.js";
 import { acquireOwner, readOwner } from "../domain/context/session.js";
 
 type Callback = (event: never) => Promise<void> | void;
@@ -70,6 +72,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await cleanup?.();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   rmSync(root, { recursive: true, force: true });
 });
@@ -187,6 +190,48 @@ describe("OpenCode V2 adapter", () => {
     await invoke("tool.execute.before", toolEvent("write", { path: "a.ts" }));
     publish({ type: "session.deleted", data: { sessionID: "ses_a" } });
     await vi.waitFor(() => expect(readOwner(root)).toBeUndefined());
+  });
+
+
+  it("preserves the core denial when a target directory does not exist", async () => {
+    const input = { path: "missing/nested/a.ts", content: "test" };
+    const decision = await evaluateTool({ harness: "opencode", toolName: "write", toolInput: { ...input, session_id: "ses_a" }, cwd: root });
+    expect(decision.action).toBe("deny");
+    await expect(invoke("tool.execute.before", toolEvent("write", input))).rejects.toThrow(/fail-closed/i);
+  });
+
+  it.each(["initializeBoard", "recordToolCall"] as const)("preserves admission when %s fails", async (operation) => {
+    if (operation === "initializeBoard") vi.spyOn(lifecycle, operation).mockRejectedValue(new Error("Board unavailable"));
+    else vi.spyOn(lifecycle, operation).mockImplementation(() => { throw new Error("Ledger unavailable"); });
+    acquireOwner(root, { harness: "codex", sessionId: "another" }, "feature", undefined, process.pid);
+    await expect(invoke("tool.execute.before", toolEvent("write", { path: "a.ts" }))).rejects.toThrow(/owned/i);
+    await expect(invoke("tool.execute.before", toolEvent("shell", { command: "true" }))).resolves.toBeUndefined();
+  });
+
+  it.each(["session.execution.succeeded", "session.deleted", "unload"])("continues cleanup past missing checkouts on %s", async (eventType) => {
+    const removed = join(root, "removed");
+    const other = join(root, "other");
+    for (const path of [removed, other]) execFileSync("git", ["init", "-q", "-b", "feature", path]);
+    locations.set("ses_a", removed);
+    await invoke("tool.execute.before", toolEvent("write", { path: "a.ts" }));
+    // The same session subsequently owns a live checkout after the stale one.
+    locations.set("ses_a", root);
+    await invoke("tool.execute.before", toolEvent("write", { path: "a.ts" }));
+    locations.set("ses_b", other);
+    await invoke("tool.execute.before", toolEvent("write", { path: "b.ts" }, "ses_b"));
+    expect(readOwner(root)).toMatchObject({ session_id: "ses_a" });
+    expect(readOwner(other)).toMatchObject({ session_id: "ses_b" });
+    rmSync(removed, { recursive: true, force: true });
+    if (eventType === "unload") {
+      await cleanup?.(); cleanup = undefined;
+    } else {
+      publish({ type: eventType, data: { sessionID: "ses_a" } });
+      publish({ type: eventType, data: { sessionID: "ses_b" } });
+    }
+    await vi.waitFor(() => {
+      expect(readOwner(root)).toBeUndefined();
+      expect(readOwner(other)).toBeUndefined();
+    });
   });
 
   it("does not report a background shell as a successful completed mutation", async () => {

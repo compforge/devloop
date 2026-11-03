@@ -76,7 +76,7 @@ OpenCode `2.1.2+` loads the native plugin through its npm server entrypoint. Add
 
 ```json
 {
-  "plugins": ["@compforge/devloop@0.4.60"]
+  "plugins": ["@compforge/devloop@0.4.61"]
 }
 ```
 

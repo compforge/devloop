@@ -82,6 +82,8 @@ baseline is `@opencode/plugin` / OpenCode `2.1.2`; V1 hooks are a different prot
   and render current payloads. Uncapped facts (workspace/references, repo identity, and validation)
   remain visible in every request. This is request-local context, not durable chat history. Compaction resets replayable delivery marks.
 - Tool admission uses the session's current location/subpath, not the plugin's loading location.
+  Board initialization, checkout tracking, and tool-ledger failures are isolated from admission;
+  they cannot bypass policy evaluation or replace an explicit deny.
   Native `shell`, `edit`, `write`, and `patch(patchText)` project to shared policy. CodeMode child
   calls pass through the same hooks. Explicit deny throws a tool error outside the fail-open catch.
 - The native shell executor is wrapped with invocation-local AsyncLocalStorage. `shell.create.before`
@@ -94,6 +96,8 @@ baseline is `@opencode/plugin` / OpenCode `2.1.2`; V1 hooks are a different prot
   not success evidence;
   this adapter does not currently reconcile its later terminal result into the timing ledger.
 - Execution terminal events release touched checkout owners without clearing Board reminder budgets.
+  Cleanup isolates failures per checkout, so a removed directory cannot terminate the event
+  subscription or prevent other sessions from releasing ownership.
   Session deletion and plugin unload clear session state and ownership. Restored sessions initialize
   lazily on their first observed request or tool. Activity runs the existing bounded reconciliation;
   no idle-time scheduler or background polling loop is installed.

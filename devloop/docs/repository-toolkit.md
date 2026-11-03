@@ -44,9 +44,8 @@ CLI 默认在 `~/.repocli/repositories/<name>/` 保存执行历史；同仓 chec
 `--force` 强制执行，`--history` 查询实际执行次数、耗时和复用统计。VersionTag 变化只在复用判断时忽略，
 分支门禁继续核对本轮完整 snapshot。记录的原 Run 时间不能替换为本次复用时间。
 
-发布顺序：先发布支持 schema 2 的 RepoKit CLI 0.54.0 和 Python 0.18.0，再更新
-`devloop/scripts/_python.py` 的依赖并通过 `uv lock --script` 生成锁文件，最后发布插件。
-未发布的包使用本地源码做联调，不将本机路径或伪造的包摘要写入发行锁文件。
+Python workflow 锁定 `compforge-repokit==0.18.0`，使用 schema 2 解码器；依赖通过官方发布包解析，
+不依赖本地源码覆盖。执行端需要支持 schema 2 与历史复用的 repocli CLI 0.54.0 或后续版本。
 
 ## 操作与策略
 

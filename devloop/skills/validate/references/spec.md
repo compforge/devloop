@@ -29,7 +29,7 @@ The report distinguishes inputsConsistent, complete and passed. Missing targets 
 unavailable; failed commands remain failed. Input changes invalidate passing evidence
 independently of check availability. A focused pass does not grant full coverage.
 
-Repocli checks previous report eligibility using Component/check inputs, command,
+Repocli owns persistent execution history and checks reuse using Component/check inputs, command,
 scope, environment and dependency receipts. Devloop stores reports and branch references,
 then applies lifecycle policy. It never compares Python/Node host environments.
 

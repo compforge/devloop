@@ -5268,7 +5268,7 @@ function fullEvidence(repo, component, check, reference2) {
   if (ref.evidence !== segment) return void 0;
   const record2 = loadSegment(repo, segment) ?? {};
   const report = object3(record2.report);
-  if (record2.eligible !== true || report.schemaVersion !== 1 || report.inputsConsistent !== true || report.checkout !== realpathSync5(repo) || typeof report.snapshot !== "string" || !report.snapshot || typeof record2.checked_at !== "string" || record2.checked_at !== ref.checked_at) return void 0;
+  if (record2.eligible !== true || report.schemaVersion !== 2 || report.inputsConsistent !== true || report.checkout !== realpathSync5(repo) || typeof report.snapshot !== "string" || !report.snapshot || typeof record2.checked_at !== "string" || record2.checked_at !== ref.checked_at) return void 0;
   for (const raw of Array.isArray(report.components) ? report.components : []) {
     const group = object3(raw);
     for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
@@ -5305,7 +5305,7 @@ function reusableFullEvidence(record2, fingerprint) {
 }
 function observedCheck(repo, component, check) {
   const report = object3((loadSegment(repo, evidenceSegment(repo, component, check)) ?? {}).report);
-  if (report.schemaVersion !== 1 || report.checkout !== realpathSync5(repo)) return void 0;
+  if (report.schemaVersion !== 2 || report.checkout !== realpathSync5(repo)) return void 0;
   for (const raw of Array.isArray(report.components) ? report.components : []) {
     const group = object3(raw);
     for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {

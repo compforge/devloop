@@ -38,8 +38,8 @@ def report(repo, *, lint="passed", test="passed", consistent=True, scope="full")
         checks.append({"check": name, "requestedComponents": ["."], "status": status, "scope": "unavailable" if status == "unavailable" else scope,
                        "command": ["make", "-f", "Makefile", name, "LINT_FILES=", "TEST_FILES="],
                        "files": [], "reason": "fixture", "reused": False, "reuseReason": "no previous check",
-                       "checkedAt": "2026-11-01T12:00:00Z", "inputFingerprint": "sha256:inputs",
+                       "checkedAt": "2026-11-01T12:00:00Z", "runID": "run-1", "requestedAt": "2026-11-01T12:00:00Z", "inputFiles": [],
                        "environment": "frozen-check-env", "witnesses": {}, "stdout": "", "stderr": ""})
-    return {"schemaVersion": 1, "checkout": str(repo), "snapshot": content_identity(str(repo)).digest,
+    return {"schemaVersion": 2, "checkout": str(repo), "snapshot": content_identity(str(repo)).digest,
             "inputsConsistent": consistent, "complete": True, "passed": lint == test == "passed" and consistent,
             "components": [{"component": {"root": ".", "component": {"name": "."}}, "checks": checks}], "diagnostics": []}

@@ -28,8 +28,9 @@ validation. Missing Makefile targets are unavailable, not passing checks. Do not
 targets, install tools, or change dependencies merely to make a validation command work.
 
 For machine-readable results use `--json`; `--output <file>` saves the same report,
-including failed rounds. `--reuse <previous-report>` asks repocli to check reuse eligibility;
-never infer it from a timestamp or fingerprint alone. Reports may include project output;
+including failed rounds. Repocli automatically checks its own execution history before
+running checks. `--force` requests real execution; `--history` reads retained statistics.
+Do not assemble previous reports or decide execution reuse in the workflow. Reports may include project output;
 keep them in ignored local state. `--concurrency` bounds simultaneous checks.
 
 When branch evidence, managed dependency preparation or lifecycle gates are needed, use

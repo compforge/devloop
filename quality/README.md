@@ -46,12 +46,13 @@ invent a missing suite nor supply cross-skill execution orchestration.
 
 ## Agent trajectory analysis
 
-Job View, Session View and Context View are peer analysis entry points. Job View follows a business
-goal and its results; Session View follows agent execution; Context View makes prompt organization
-readable by actual message role and internal sections. Recorded identities connect results to
-decisions and the prompts behind them. Use the
-[Agent Good–Fast–Cheap triangle](skills/trajectory/SKILL.md#good-fast-cheap-for-agents) to assess
-effect, speed and cost together, then use the views to explain the observed behavior.
+The [trajectory operating model](skills/trajectory/SKILL.md#operating-model) organizes Execution,
+Observation and Improvement around recorded execution facts. Job, Session and Context views render business progress, execution and
+prompt organization for human observation and supervision. Good/Fast/Cheap evaluation identifies
+optimization candidates, followed by diagnosis, an authorized change and controlled re-evaluation.
+Evidence references connect scores to visible execution details; low scores are one selection method.
+The skill supplies guidance, Trajectory Harness supplies engineering mechanisms, and consuming
+projects such as CCR supply recordings, domain criteria and reproducible practice.
 
 In conversation or TUI, asking to see a SessionView produces a text presentation of actual model
 requests, responses and tool calls, making context organization and prompt issues inspectable.

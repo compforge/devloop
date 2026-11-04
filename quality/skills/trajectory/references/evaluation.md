@@ -5,6 +5,22 @@ fixed observations and the project's goals. The shared roles and result states a
 [Quality concepts](../../../CONCEPTS.md); subject and evidence identity are defined in
 [Observation](observation.md) and [Evidence](evidence.md).
 
+## Standardized trajectory to an optimization comparison
+
+For an ATIF-based project, the path is: native loop recordings → standardized Trajectory →
+multi-criterion evaluation → optimization-candidate selection → evidence-backed diagnosis → an
+authorized optimization → evaluation of new executions on the same tasks and criteria. ATIF owns
+the fact format; the project owns dimensions, rubrics, thresholds and any combined score.
+
+Store the trajectory snapshot separately from results. Each criterion records its evaluator/rubric
+version, score or verdict, applicability and source trajectory/step references. A low score selects
+an investigation target; it does not establish the cause. Low-scoring bad cases are one entry:
+regressions, intermittent failures, costly successful runs and issues observed through the views
+can also justify investigation. Select against the project's objectives, not a universal score cutoff. Missing evidence and not-applicable are
+not zero scores or passes. Inspect Session/Context/Job views without making the rendered view the
+replacement source dataset. Re-scoring old facts tests evaluator changes; proving an agent change
+requires new execution evidence under a controlled comparison.
+
 ## Measure Good, Fast, Cheap
 
 Apply the [Agent triangle](../SKILL.md#good-fast-cheap-for-agents) to a declared workload and scope.

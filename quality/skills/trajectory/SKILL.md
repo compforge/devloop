@@ -5,17 +5,63 @@ description: Present SessionView as text in conversation or TUI (including loop 
 
 # Trajectory Quality
 
-Evaluate how agents pursue goals through recorded observations, decisions and actions. Job View,
-Session View and Context View are peer analysis entry points: inspect business results, agent
-execution and prompt organization. Connect outcomes to the calls and context that explain them.
-Every diagnosis addresses failures, redundant overhead and execution evidence; optimization is a
-separate, requested activity.
+Make agent execution observable to people and improve it through evidence-backed evaluation.
+Use one operating model: recorded execution facts support both human supervision and a measured
+improvement loop. Every diagnosis addresses failures, redundant overhead and execution evidence;
+changing behavior remains a separate, requested activity.
 
-Read [Quality concepts](../../CONCEPTS.md) and [Observation](references/observation.md) to establish
-the subject and evidence model. Trajectory names the behavior under analysis; SessionView and
-JobView provide its shared observation structures. The project owns business goals, Job membership,
-annotations, evaluation criteria and its canonical commands. The skill operates those capabilities
-and explains their evidence.
+## Operating model
+
+Organize the work into **Execution / Observation / Improvement（执行 / 观察 / 改进）**:
+
+- **Execution:** business orchestration and the agent framework/harness run loops, model calls
+  and tool calls, producing recorded facts.
+- **Observation:** Job, Session and Context views make those facts visible to people for supervision.
+- **Improvement:** evaluate Good/Fast/Cheap, select candidates, diagnose, optimize and verify with
+  new execution evidence. Trajectory Harness supports this analysis; it is distinct from the
+  agent's execution framework/harness.
+
+```text
+agent execution -> recorded facts
+  |-> Job / Session / Context views -> human observation and supervision
+  |-> Good / Fast / Cheap evaluation -> candidates -> diagnosis
+        -> authorized optimization -> new execution -> controlled comparison
+```
+
+The views work primarily at the presentation layer: make business progress, agent actions and
+request context visible, understandable and traceable to people. SessionView and JobView are
+structured read models for rendering; text/TUI and Web are surfaces. Views and evaluation results
+connect through evidence references: a person can drill down from a score or notice an issue the
+evaluators do not yet cover. Viewing does not require scoring, and scoring does not require rendering.
+
+Trajectory names execution history; ATIF is an industry interchange standard for those facts, not
+the only format. In an ATIF-based project, Trajectory is the standardized fact and evaluation input.
+Store scores separately with their criteria and source evidence; do not write judgments into facts.
+
+- Actual model-request message list → Context View, including tool definitions outside messages.
+- Loop execution → ATIF Trajectory → SessionView, for projects using ATIF.
+- Business work across one or more loops and deterministic operations → JobView.
+
+A Session may contain several loop trajectories; a Job may use only part of a shared loop. Preserve
+explicit identities and call attribution rather than assuming one-to-one relationships. Read
+[Quality concepts](../../CONCEPTS.md) and [facts and views](references/observation.md#facts-and-view-projections)
+for the subject and evidence boundaries.
+
+Good, Fast and Cheap mean quality/effect, speed and cost. Low-scoring bad cases are one way to
+select candidates; regressions, intermittent failures, expensive successful runs and human
+observations can also reveal useful targets. High usage or a low score alone does not establish a
+cause. Diagnose before selecting a mechanism, then compare new executions on the same workload
+and criteria, keeping completion and evidence coverage visible.
+
+| Responsibility | What it contributes |
+|---|---|
+| This skill | Overall guidance: observe, evaluate, select, diagnose, optimize and verify. |
+| Trajectory Harness | Engineering support: standardization, fixed datasets, repeatable evaluators, evidence-linked results, view exports and reports. |
+| A consuming project, such as CCR | Real recordings, domain criteria, adapters and reproducible cases demonstrating whether a change worked. |
+
+Existing sufficient evidence can support analysis without a particular SDK. Keep business criteria
+and tool names in the project. Promote mechanisms into Harness and methods into this skill when
+practice establishes their reuse; do not generalize an unverified case into a universal rule.
 
 ## Good, Fast, Cheap for agents
 

@@ -3,10 +3,53 @@
 Use this reference to identify an evaluation subject, inspect its execution or connect task results
 to agent behavior. The shared data contract is Agent Ledger's
 [Observation](https://github.com/compforge/agent-ledger/blob/main/docs/observation.md).
-Job View, Session View and Context View are peer entry points for human analysis. SessionView and
+Job View, Session View and Context View primarily serve presentation and human supervision.
+They are peer entry points for understanding business progress, execution and context. SessionView and
 JobView are structured observation snapshots; Context View organizes a prompt for reading using
 recorded requests or explicitly labeled source reconstruction. Text and HTML are reading surfaces.
 “Loop view” and “agent view” requests select SessionView presentation.
+
+Views expose facts for people; evaluators consume canonical evidence to produce separate results.
+Evidence references let people inspect the execution behind a score and report problems outside
+current evaluator coverage. Neither branch depends on running the other. Human interpretation is
+an observation or diagnosis until recorded under an explicit evaluation criterion.
+
+## Facts and view projections
+
+Keep the recorded subject, standardized facts, view model and rendering surface distinct:
+
+```text
+actual model request messages --------------------------> Context View
+loop execution -> ATIF Trajectory -----------------------> SessionView -> text/TUI/Web
+                       └-> evaluators -> separate scores
+business work across loops and deterministic operations -> JobView
+```
+
+ATIF defines a trajectory interchange format. It does not define SessionView or the project's
+rubric. A project adopting ATIF stores canonical execution facts in Trajectory and evaluates those
+facts; it may choose one actual loop execution per document. For example, CCR can standardize R1
+and R2 loop recordings as ATIF before scoring them. This is an evaluation-grain decision, not a rule
+that every ATIF document or every Session must contain exactly one loop.
+
+SessionView organizes observations for one Agent Session. Several trajectory documents may share
+that Session and contribute to its view. `trajectory_id` identifies a document; `session_id`
+identifies its declared run/session context under the source contract. Preserve source-defined
+inheritance for embedded trajectories, but do not infer Session ownership from business IDs.
+SessionView can also come directly from Trace or native recordings. Do not require ATIF conversion
+for an already usable view, or assume the view can reconstruct all source trajectory fields.
+
+Context View organizes the actual request's message list in order, by role and internal sections.
+Tool definitions and other request inputs can live outside messages. An output transcript is not
+proof of the exact prompt; label reconstruction or missing requests explicitly.
+
+JobView organizes the recorded progress and outcome of one business goal. Its work may span
+multiple loops/Sessions, or select a subset of calls from a shared loop. One loop may contribute
+to several Jobs. Follow explicit business/call references instead of copying whole Sessions into
+each Job, double-counting shared work, or interpreting business stages as agent delegation.
+
+Evaluate the project's canonical evidence, keep criterion versions and score/evidence references
+in separate results, and use these views to inspect the decisions behind a score. View rendering
+must not silently recollect evidence, rerun evaluation or rewrite recorded facts.
 
 ## Three analysis views
 

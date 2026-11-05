@@ -67,9 +67,11 @@ describe("native repocli organization", () => {
     const { root } = fixture();
     mkdirSync(join(root, "service/testdata/corpus"), { recursive: true });
     writeFileSync(join(root, "service/testdata/corpus/go.mod"), "module corpus");
+    writeFileSync(join(root, "client/package.json"), "{}");
     const catalog = await inspectCatalog(root);
     expect(selectComponents(root, { paths: ["service/old.go", "client/new.ts", "service/testdata/corpus/go.mod"], catalog }).components.map((c) => c.id)).toEqual(["service", "client"]);
-    expect(catalog.owner(join(root, "service/deleted.go"))).toMatchObject({ id: "service", name: "service", language: "go", packageTools: [{ name: "go", evidence: ["service/go.mod"] }] });
+    expect(catalog.owner(join(root, "service/deleted.go"))).toMatchObject({ id: "service", name: "service", language: "go", tools: [{ name: "go" }], toolEvidence: { go: ["service/go.mod"] } });
+    expect(catalog.owner(join(root, "client/new.ts"))?.depot).toEqual({ bins: [{ path: "client/node_modules", kind: "dependencies" }] });
     expect(catalog.owner(join(root, "service2/other.go"))?.id).toBe(".");
     expect(catalog.owner(join(root, "../outside"))).toBeUndefined();
   });

@@ -5,13 +5,17 @@ import { findCheckout, owner } from "@compforge/repokit";
 /** Repository directory used as the granularity for engineering operations. */
 export class Component {
     name;
-    packageTools;
+    tools;
+    depot;
+    toolEvidence;
     path;
     id;
     language;
-    constructor(path, id, language, name = "", packageTools = []) {
+    constructor(path, id, language, name = "", tools = [], depot, toolEvidence = {}) {
         this.name = name;
-        this.packageTools = packageTools;
+        this.tools = tools;
+        this.depot = depot;
+        this.toolEvidence = toolEvidence;
         this.path = path;
         this.id = id;
         this.language = language;
@@ -23,7 +27,7 @@ export class Component {
         return new Component(pathValue, id.startsWith("../") ? path.replaceAll("\\", "/") : id, undefined);
     }
     static fromInfo(root, info) {
-        return new Component(join(root, info.root), info.root, info.language, info.name, info.packageTools ?? []);
+        return new Component(join(root, info.root), info.root, info.language, info.name, info.tools ?? [], info.depot, info.toolEvidence ?? {});
     }
 }
 export function findGitRoot(path) {

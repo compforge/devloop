@@ -25,3 +25,13 @@ API 为准。Go 等无需本地安装视图的 Component 不会被强加依赖�
 
 `scripts/python` 通过 uv 锁定脚本环境安装 devloop 自身依赖，位于 uv 缓存；它与被检查项目的依赖环境分开。
 它不借用项目 .venv，也不让被检查仓库决定 devloop 的运行依赖。
+
+## Component 的资源声明
+
+Component 直接投影 RepoKit 提供的 `tools`、`depot` 和独立 `toolEvidence`，Python 使用
+`tool_evidence`。Tool/Depot/Bin 类型来自 common；devloop 不保留旧 PackageTool 字段或兼容别名。
+一个 Component 至多对应一个逻辑 Depot，Bin 的路径是 checkout 相对路径，workspace 成员可共享
+同一物理 Bin。目录回收后逻辑声明仍存在；发现、安装根解析、准备回执和验证复用归 RepoKit。
+
+依赖 Bin 的自动 witness 由 repocli 0.58.0 起提供。依赖缺失时执行真实检查，devloop 不维护第二份
+reuse 缓存，也不在 Component 投影中解释回执或自行决定目录是否可删除。

@@ -5,10 +5,10 @@ Repository discovery and organization come from repokit.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from repokit import Layout
+from repokit import Layout, Tool, Depot
 
 from lib import repokit
 from repokit.git.state import find_checkout
@@ -27,7 +27,9 @@ class Component:
     id: str
     language: str | None = None
     name: str = ""
-    package_tools: tuple[repokit.PackageTool, ...] = ()
+    tools: tuple[Tool, ...] = ()
+    depot: Depot | None = None
+    tool_evidence: dict[str, tuple[str, ...]] = field(default_factory=dict, compare=False)
 
     @classmethod
     def at(cls, path: str | Path, git_root: str | Path) -> "Component":
@@ -62,7 +64,7 @@ class Catalog:
     @classmethod
     def from_layout(cls, root: str | Path, report: Layout) -> "Catalog":
         root = Path(root).resolve()
-        components = tuple(Component(str(root / item.root), item.root, item.language, item.name, item.package_tools)
+        components = tuple(Component(str(root / item.root), item.root, item.language, item.name, item.tools or (), item.depot, item.tool_evidence)
                            for item in report.components)
         return cls(root, components, report)
 

@@ -1,24 +1,19 @@
 #!/usr/bin/env python3
-"""release — cut a versioned release over the forge facade (GitHub Release / GitLab Release).
+"""Managed release creation and immutable tags.
 
-The tag is created SERVER-SIDE by the forge (`create_release`), so releasing needs no working
-tree, no `git push --tags`, and trips no push guard — the failure this replaces is hand-rolling
-`gh release create --target <sha>` (a mistyped sha shipped a broken release in practice) or a
-raw tag push that the protected-branch guard then blocks. Provider-neutral and config-driven:
-the token comes from `lib.config.forge_token` (env < ~/.devloop/config.json < nearest .devloop),
-same as `pr`.
+`create` uses the forge facade to create a Release and its tag server-side. It defaults the
+release target to the remote trunk branch, checks version progression, and requires notes.
+Forge credentials come from lib.config.forge_token.
 
-  release create <version> [--target ref] [--title T] [--notes … | --notes-file F] [--repo R]
-  release latest  [--repo R]                        the current published release
+`tag` publishes version tags at one explicitly resolved commit for repositories whose CI owns
+Release creation. It supports Go module tag prefixes, refuses to move existing tags, and
+verifies the remote result before reporting success.
 
-`create` defaults `--target` to the repo's trunk BRANCH NAME (not a sha): the forge tags that
-branch's remote tip, so there is no sha to mistype. Version must be semver (vX.Y.Z) and greater
-than the last release. Release notes are required because their product meaning belongs to the
-caller; the deterministic transaction does not pretend a raw merged-PR/MR list is a summary.
+  release create <version> [--target ref] [--title T] [--notes ... | --notes-file F] [--repo R]
+  release tag <tags...> --target ref [--remote origin] [--repo R]
+  release latest [--repo R]
 
-Deliberately NOT in gcampr: releasing is a low-frequency, working-tree-free action with its own
-preconditions (increment check, notes), not a commit+push+MR transaction — folding it in would
-tangle two unrelated flows. It's a peer of `pr` (forge-only), hence its own script.
+Release publication remains separate from the commit, push, and PR transaction.
 """
 from __future__ import annotations
 
@@ -31,6 +26,7 @@ sys.path.insert(0, str(_SCRIPTS.parent))
 
 from lib import cli, git_state  # noqa: E402
 from domain.forge import ForgeError  # noqa: E402
+from repokit import git
 from lib.config import forge_client  # noqa: E402
 
 # Release version must be semver (optional leading v): the tag the forge cuts and the key the
@@ -121,6 +117,55 @@ def cmd_create(ns) -> int:
     return 0
 
 
+def publish_tags(repo: str, tags: list[str], target: str, remote: str = "origin") -> None:
+    """Publish immutable tags at one resolved commit; the repository's CI owns Release creation.
+
+    @spec Existing tags are idempotent only at the requested commit; never move a published tag.
+    @link component://skills/git-ops/references/release.md
+    """
+    remotes = git.git(repo, "remote")
+    if not remotes.ok or remote not in remotes.out.splitlines() or remote.startswith("-"):
+        raise ValueError(f"release remote must be a configured remote name: {remote!r}")
+    for tag in tags:
+        if _parse_version(tag.rsplit("/", 1)[-1]) is None or not git.git(repo, "check-ref-format", f"refs/tags/{tag}").ok:
+            raise ValueError(f"invalid version tag: {tag!r}")
+    commit = git.git(repo, "rev-parse", "--verify", "--end-of-options", f"{target}^{{commit}}")
+    if not commit.ok:
+        raise ValueError(f"cannot resolve release target {target!r}: {commit.err}")
+    refs = [f"refs/tags/{tag}" for tag in dict.fromkeys(tags)]
+
+    def observed() -> dict[str, str]:
+        result = git.git(repo, "ls-remote", remote, *[item for ref in refs for item in (ref, ref + "^{}")], timeout=30)
+        if not result.ok:
+            raise ValueError(f"cannot read remote tags: {result.err}")
+        return {ref: sha for sha, ref in (line.split("\t", 1) for line in result.out.splitlines())}
+
+    current = observed()
+    missing = []
+    for ref in refs:
+        existing = current.get(ref + "^{}", current.get(ref))
+        if existing and existing != commit.out:
+            raise ValueError(f"refusing to move {ref}: {existing} != {commit.out}")
+        if not existing:
+            missing.append(ref)
+    if missing:
+        result = git.git(repo, "push", "--atomic", remote, *[f"{commit.out}:{ref}" for ref in missing], timeout=120)
+        current = observed()  # A timed-out push may already have succeeded.
+        if any(current.get(ref + "^{}", current.get(ref)) != commit.out for ref in refs):
+            raise ValueError(f"release tags not confirmed at {commit.out}: {result.err or result.out}")
+    print(f"published {', '.join(tags)} @ {commit.out}")
+
+
+def cmd_tag(ns) -> int:
+    resolved, _ = cli.resolve_repo_or_exit(ns, "release tag")
+    try:
+        publish_tags(resolved.git_root, ns.tags, ns.target, ns.remote)
+    except ValueError as error:
+        print(f"release tag: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_latest(ns) -> int:
     forge, _ = _forge_or_exit(ns, "release latest")
     try:
@@ -157,6 +202,13 @@ def main(argv: list[str]) -> int:
                        help="read notes from a file ('-' = stdin); no shell escaping")
     cli.add_repo_arg(p_create)
     p_create.set_defaults(fn=cmd_create)
+
+    p_tag = sub.add_parser("tag", help="publish immutable version tags for a repository-owned release workflow")
+    p_tag.add_argument("tags", nargs="+")
+    p_tag.add_argument("--target", required=True, help="explicit commit/ref to resolve once")
+    p_tag.add_argument("--remote", default="origin")
+    cli.add_repo_arg(p_tag)
+    p_tag.set_defaults(fn=cmd_tag)
 
     p_latest = sub.add_parser("latest", help="show the current published release")
     cli.add_repo_arg(p_latest)

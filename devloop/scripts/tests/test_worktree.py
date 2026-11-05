@@ -3,15 +3,11 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 from pathlib import Path
 
-from _testkit import _pr_context, _FakeForge, _git, _git_out, run_main  # noqa: E402  (bootstrap first)
+from _testkit import _git, _git_out, run_main  # noqa: E402  (bootstrap first)
 from domain import worktree  # noqa: E402
-from domain.context import PullRequest, prstate, session, store  # noqa: E402
-from domain.forge import ForgeError  # noqa: E402
-from lib import git_state  # noqa: E402
 
 
 def _fixture(name: str) -> tuple[str, str, str]:
@@ -66,29 +62,6 @@ def _add_external_worktree(repo: str, tag: str) -> str:
     return str(path)
 
 
-def _add_submodule(repo: str) -> None:
-    source = Path(repo).parent / "submodule-source"
-    source.mkdir()
-    _git(str(source), "init", "-q", "-b", "main")
-    _git(str(source), "config", "user.email", "t@t.t")
-    _git(str(source), "config", "user.name", "t")
-    (source / "module.txt").write_text("module\n")
-    _git(str(source), "add", "module.txt")
-    _git(str(source), "commit", "-qm", "submodule base")
-    _git(
-        repo,
-        "-c",
-        "protocol.file.allow=always",
-        "submodule",
-        "add",
-        "-q",
-        str(source),
-        "doctor",
-    )
-    _git(repo, "commit", "-qam", "add submodule")
-
-
-
 def test_new_worktree_fetches_latest_target_tip():
     repo, _, actor = _fixture("fresh")
     stale_tip = _git_out(repo, "rev-parse", "origin/main")
@@ -141,8 +114,6 @@ def test_create_and_reuse_leave_reclamation_to_pr_lifecycle():
     assert reused == created and Path(old).is_dir()
 
 
-
-
 def test_repo_context_topology_uses_checkout_locations():
     from domain.context.repo import _build_topology
     repo, _, _ = _fixture("context_checkout_locations")
@@ -154,13 +125,6 @@ def test_repo_context_topology_uses_checkout_locations():
     observed = _build_topology(linked, "main", None)
     assert next(b.path for b in observed.worktrees if b.name == "main") is None
     assert str(metadata) not in [b.path for b in observed.worktrees]
-
-
-
-
-
-
-
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 import repokit as toolkit
-from repokit import InspectReport, PackageTool as PackageTool, owner as owner
+from repokit import InspectReport, owner as owner
 
 
 class InspectionError(ValueError):

@@ -1,8 +1,10 @@
-import { type ComponentBinding, type InspectReport, type PackageTool } from "@compforge/repokit";
+import { type ComponentBinding, type InspectReport, type Tool, type Depot } from "@compforge/repokit";
 /** Repository directory used as the granularity for engineering operations. */
 export declare class Component {
     readonly name: string;
-    readonly packageTools: readonly PackageTool[];
+    readonly tools: readonly Tool[];
+    readonly depot?: Depot | undefined;
+    readonly toolEvidence: Readonly<Record<string, readonly string[]>>;
     readonly path: string;
     readonly id: string;
     readonly language: string | undefined;

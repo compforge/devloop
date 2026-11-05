@@ -77,7 +77,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.57.1 or later. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.58.0 or later. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 
@@ -94,4 +94,4 @@ JSON report; protocol/launch failures remain errors. Repocli decides reuse eligi
 The AI reports the CLI result; devloop does not import it into a commit gate. Repository snapshots used by Git
 staging still come from the native toolkit and share the CLI's content contract.
 
-PR operations require repocli >= 0.57.1; Python RepoKit no longer provides a CLI runtime.
+PR operations require repocli >= 0.58.0; Python RepoKit no longer provides a CLI runtime.

@@ -39,7 +39,8 @@ def test_catalog_is_authoritative_and_one_inspection_serves_many_paths():
                 assert catalog.owner(corpus / "go.mod").id == "service"
                 api = catalog.owner(root / "service/deleted.go")
                 assert api.language == "go"
-                assert api.package_tools[0].evidence == ("service/go.mod",)
+                assert catalog.owner(root / "client/new.ts").depot.bins[0].path == "client/node_modules"
+                assert api.tool_evidence[api.tools[0].name] == ("service/go.mod",)
                 assert query.call_count > 1
                 assert read.call_count == 1
         # A new operation observes metadata again, not a process-wide cache.

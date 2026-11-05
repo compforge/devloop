@@ -1,7 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { inspectRepository, InspectionError } from "../lib/repokit.js";
-import { findCheckout, owner, type ComponentBinding, type InspectReport, type PackageTool } from "@compforge/repokit";
+import { findCheckout, owner, type ComponentBinding, type InspectReport, type Tool, type Depot } from "@compforge/repokit";
 
 /** Repository directory used as the granularity for engineering operations. */
 export class Component {
@@ -9,7 +9,7 @@ export class Component {
   readonly id: string;
   readonly language: string | undefined;
 
-  private constructor(path: string, id: string, language: string | undefined, readonly name = "", readonly packageTools: readonly PackageTool[] = []) {
+  private constructor(path: string, id: string, language: string | undefined, readonly name = "", readonly tools: readonly Tool[] = [], readonly depot?: Depot, readonly toolEvidence: Readonly<Record<string, readonly string[]>> = {}) {
     this.path = path; this.id = id; this.language = language;
   }
 
@@ -21,7 +21,7 @@ export class Component {
   }
 
   static fromInfo(root: string, info: ComponentBinding): Component {
-    return new Component(join(root, info.root), info.root, info.language, info.name, info.packageTools ?? []);
+    return new Component(join(root, info.root), info.root, info.language, info.name, info.tools ?? [], info.depot, info.toolEvidence ?? {});
   }
 
 

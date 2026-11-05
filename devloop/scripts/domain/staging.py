@@ -84,7 +84,7 @@ def select(repo: str, files: list[str], plan: list[str] | None = None) -> Select
     return Selection(tuple(scope), tuple(dict.fromkeys(paths)), tuple(dict.fromkeys(to_add)))
 
 
-def stage(repo: str, files: list[str], plan: list[str], *, validated_identity: str = "") -> git.GitResult:
+def stage(repo: str, files: list[str], plan: list[str]) -> git.GitResult:
     selection = select(repo, files, plan)
     scope, to_add = selection.scope, selection.to_add
 
@@ -112,9 +112,6 @@ def stage(repo: str, files: list[str], plan: list[str], *, validated_identity: s
             if unregistered:
                 raise StagingError(f"unregistered gitlink: {unregistered!r}; index unchanged")
 
-        if validated_identity:
-            require_validated_candidate(repo, index, validated_identity)
-
     # spec: only a validated full index may replace the user's original staging,
     # including partial hunks. Rejecting any candidate never requires reset/rollback.
     result = git.stage(repo, list(to_add), validate=validate)
@@ -122,27 +119,3 @@ def stage(repo: str, files: list[str], plan: list[str], *, validated_identity: s
         shown = ", ".join(to_add[:8]) + (" …" if len(to_add) > 8 else "")
         plan.append(f"staged {len(to_add)} file(s): {shown}" if to_add else "validated existing index")
     return result
-
-
-def require_validated_candidate(repo: str, index: git_index.IndexView, identity: str) -> None:
-    """Accept only the exact bytes checked in the working tree, without moving user edits.
-
-    This runs inside repocli's index transaction: observe only, never execute project
-    commands under Git's writer lock. Filters that transform source bytes are rejected
-    conservatively because those committed bytes were not the validation subject.
-    """
-    from domain.validation import content_identity
-
-    def require_identity() -> None:
-        observed = content_identity(repo)
-        if not observed.digest or observed.digest != identity:
-            raise StagingError("contents changed since validation; rerun checks; index unchanged")
-
-    require_identity()
-    different = git_index.working_tree_differences(repo, index)
-    require_identity()
-    if different:
-        raise StagingError(
-            f"commit candidate differs from validated working tree: {sorted(different)!r}; "
-            "include these paths or validate a clean candidate checkout; index unchanged"
-        )

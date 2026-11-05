@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Inspect owns organization; devloop projects it to execution targets."""
 from dataclasses import replace
-from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import os
@@ -10,10 +9,8 @@ import subprocess
 from _testkit import run_main
 from domain import repo as repo_model
 from domain.repo_layout import inspect_catalog
-from domain.lifecycle.base import dispatch
-from domain.validation import content_identity
 from lib import repokit
-from _validation_fixture import make_repo
+from _repo_fixture import make_repo
 
 def native_components(root):
     for name, marker, contents in (("service", "go.mod", "module api\n"), ("client", "package.json", '{"devDependencies":{"typescript":"*"}}')):
@@ -67,8 +64,11 @@ def test_incomplete_observation_and_git_failures_are_unavailable():
         root = make_repo(tmp)
         report = repokit.toolkit.inspect(root)
         with patch.object(repokit.toolkit, "inspect", return_value=replace(report, complete=False)):
-            result = dispatch("pre_commit", str(root), names=["lint", "test"])
-            assert not result.proceed
+            try:
+                inspect_catalog(root)
+                raise AssertionError("incomplete observation accepted")
+            except repokit.InspectionError:
+                pass
         for failure in (TimeoutError("deadline"), subprocess.CalledProcessError(1, ["git"])):
             with patch.object(repokit.toolkit, "inspect", side_effect=failure):
                 try:
@@ -95,11 +95,11 @@ def test_execution_containment_rejects_symlinked_component_roots():
 def test_snapshot_is_native_and_separate_from_organization():
     with TemporaryDirectory() as tmp:
         root = make_repo(tmp)
-        with patch.object(repokit, "validation_report", side_effect=AssertionError("CLI called")):
-            first = content_identity(str(root))
+        with patch.dict(os.environ, {"DEVLOOP_REPOCLI": "/missing/repocli"}):
+            first = repokit.toolkit.snapshot(root)
             assert first.digest.startswith("sha256:")
             (root / "source.py").write_text("changed")
-            assert content_identity(str(root)).digest != first.digest
+            assert repokit.toolkit.snapshot(root).digest != first.digest
 
 
 def test_organization_works_without_repocli_binary():
@@ -107,7 +107,7 @@ def test_organization_works_without_repocli_binary():
         root = make_repo(tmp)
         selected = repo_model.select_components(root)
         assert len(selected.components) == 1 and selected.components[0].language == "python"
-        assert content_identity(str(root)).digest
+        assert repokit.toolkit.snapshot(root).digest
 
 
 def test_manifest_language_is_retained_without_makefile():

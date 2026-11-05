@@ -1,6 +1,6 @@
 {
   "name": "@compforge/devloop",
-  "version": "0.4.63",
+  "version": "0.4.67",
   "description": "Shared dev-loop runtime with Claude Code, Codex, DeepSeek Harness, and OpenCode V2 adapters.",
   "type": "module",
   "engines": {
@@ -29,8 +29,6 @@
     "commands/",
     "config/",
     "hooks/*.json",
-    "monitors/",
-    "tasks/",
     "scripts/",
     "!scripts/tests/",
     "!scripts/**/__pycache__/",

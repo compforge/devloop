@@ -27,7 +27,7 @@ def _repository():
         with patch.dict(os.environ, {"DEVLOOP_CONFIG_DIR": str(root / "config")}):
             config.save({
                 "lifecycle": {
-                    "default": {"pre_commit": ["lint", "test"], "post_mr": ["review"]},
+                    "default": {"pre_commit": ["review", "custom"], "post_commit": ["review"]},
                     "repos": {str(repo): {"pre_commit": []}},
                 },
                 "arch": {"repos": {str(repo): {"enabled": True, "layers": {"/domain/": "domain"}}}},
@@ -42,7 +42,7 @@ def test_worktrees_inherit_repository_policy():
             _git(repo, "worktree", "add", "-qb", "fix", str(checkout))
             assert config.lifecycle(checkout) == config.lifecycle(repo)
             assert config.lifecycle(checkout)["pre_commit"] == []
-            assert config.lifecycle(checkout)["post_mr"] == ["review"]
+            assert config.lifecycle(checkout)["post_commit"] == ["review"]
             assert config.arch(checkout) == config.arch(repo)
 
 
@@ -82,12 +82,12 @@ def test_closer_source_defaults_override_global_repo_policy():
         _local_config(repo, {"lifecycle": {"default": {"pre_commit": ["test"]}},
                              "arch": {"default": {"enabled": False}}})
         assert config.lifecycle(checkout)["pre_commit"] == ["test"]
-        assert config.lifecycle(checkout)["post_mr"] == ["review"]
+        assert config.lifecycle(checkout)["post_commit"] == ["review"]
         assert config.arch(checkout)["enabled"] is False
         _local_config(checkout, {"lifecycle": {"default": {"pre_commit": []}},
                                  "arch": {"default": {"order": []}}})
         assert config.lifecycle(checkout)["pre_commit"] == []
-        assert config.lifecycle(checkout)["post_mr"] == ["review"]
+        assert config.lifecycle(checkout)["post_commit"] == ["review"]
         assert config.arch(checkout)["order"] == []
         assert config.load(checkout)["lifecycle"]["default"] == config.lifecycle(checkout)
 
@@ -97,13 +97,13 @@ def test_default_and_repo_overrides_are_resolved_once_per_source():
         checkout = root / "external"
         _git(repo, "worktree", "add", "-qb", "fix", str(checkout))
         config.save({"lifecycle": {
-            "default": {"pre_commit": ["lint"], "post_mr": ["review"]},
+            "default": {"pre_commit": ["review"], "post_commit": ["review"]},
             "repos": {str(repo): {"pre_commit": []}, str(checkout): {"pre_commit": ["test"]}},
         }})
         assert config.lifecycle(checkout)["pre_commit"] == ["test"]
         _local_config(checkout, {"lifecycle": {"default": {"pre_commit": []}}})
         assert config.lifecycle(checkout)["pre_commit"] == []
-        assert config.lifecycle(checkout)["post_mr"] == ["review"]
+        assert config.lifecycle(checkout)["post_commit"] == ["review"]
 
 
 def test_global_workspace_registration_and_environment_token_override():
@@ -139,7 +139,7 @@ def test_explicit_checkout_policy_overrides_inherited_fields():
             "arch": {"repos": {str(checkout): {"enabled": False}}},
         }), encoding="utf-8")
         assert config.lifecycle(checkout)["pre_commit"] == ["test"]
-        assert config.lifecycle(checkout)["post_mr"] == ["review"]
+        assert config.lifecycle(checkout)["post_commit"] == ["review"]
         assert config.lifecycle(repo)["pre_commit"] == []
         assert config.arch(checkout)["enabled"] is False
         assert config.arch(checkout)["layers"]["/domain/"] == "domain"
@@ -157,7 +157,7 @@ def test_dispatch_preserves_review_and_checkout_execution_context():
 
         registry = {"review": review}
         assert dispatch("pre_commit", str(checkout), registry=registry).results == []
-        result = dispatch("post_mr", str(checkout), paths=["file.go"], registry=registry)
+        result = dispatch("post_commit", str(checkout), paths=["file.go"], registry=registry)
         assert result.proceed and len(result.results) == 1
         assert seen == [(str(checkout), ["file.go"])]
 
@@ -167,7 +167,7 @@ def test_submodule_does_not_inherit_superproject_policy():
         source = root / "source"
         _git(root, "clone", "-q", str(repo), str(source))
         _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", str(source), "child")
-        assert config.lifecycle(repo / "child")["pre_commit"] == ["lint", "test"]
+        assert config.lifecycle(repo / "child")["pre_commit"] == ["review", "custom"]
 
 
 def test_worktree_with_separate_git_directory():
@@ -181,15 +181,18 @@ def test_worktree_with_separate_git_directory():
 
 def test_defaults_and_exact_path_override_without_git_identity():
     with _repository() as (root, _):
-        assert config.lifecycle()["pre_commit"] == ["lint", "test"]
-        assert config.lifecycle(root / "missing")["pre_commit"] == ["lint", "test"]
+        assert config.lifecycle()["pre_commit"] == ["review", "custom"]
+        assert config.lifecycle(root / "missing")["pre_commit"] == ["review", "custom"]
         config.save({"lifecycle": {"repos": {str(root): {"pre_commit": []}}}})
         assert config.lifecycle(root)["pre_commit"] == []
 
 
 def test_separate_git_directory_shares_state_and_remote_identity():
     from domain.context.store import state_dir
-    from lib.forge import parse_origin
+    from repokit.git.remote import remote
+    def parse_origin(repo):
+        observed = remote(repo)
+        return (observed.host, observed.path) if observed else None
     from domain.repo import committed_paths, range_paths
 
     with _repository() as (root, repo):

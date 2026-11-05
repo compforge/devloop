@@ -1,26 +1,11 @@
 #!/usr/bin/env python3
-"""gcam / gcamp / gcampr orchestrator — the one place the commit→push→MR flow lives.
+"""Managed commit/push transactions; the AI invokes PR and validation CLI commands.
 
-Repository operations come from repokit; Forge configuration is assembled by `lib.forge`.
-This workflow owns scope, gates and lifecycle decisions. Skills call this
-(via smart_gcamp.sh / smart_gcampr.sh)
-rather than raw git, so the AI never issues raw `git commit/push` (which the PreToolUse
-guards would otherwise intercept), and the decision logic lives here, not in markdown.
++spec=`This workflow does not create/update PRs or execute project validation.`
++link=`component://docs/repository-toolkit.md`
 
-Modes:
-  commit  → stage + commit (gcam)
-  push    → stage + commit + push (gcamp)
-  mr      → stage + commit + push + create/reuse PR/MR (gcampr)
-
-Branch positioning is decided from explicit intent, NOT from whichever branch HEAD happens
-to sit on (a prior gcampr leaves us on the branch it just created — building the next branch
-off that would silently bleed its commits into the new MR):
-  --branch <name>  → cut a FRESH branch off origin/<target> (or off --base for intentional
-                     stacking); outcome is the same no matter where HEAD currently is.
-  no --branch      → commit onto the current branch (continue its MR); refused if that branch
-                     is protected or its MR is merged/closed (stale) — pass --branch instead.
-A fresh-cut branch is then asserted to carry only this run's commit(s) before push/MR, so a
-mis-based branch is caught at creation rather than at merge. Emits a self-narrating PLAN banner.
+Branch protection, checkout ownership and exact staging selection remain live checks.
+Fresh branches use an explicit base, and pushes reject unintended foreign commits.
 """
 from __future__ import annotations
 from repokit import git as operations
@@ -34,15 +19,13 @@ import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from repokit.forge import ensure_pull_request
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from domain import branch as branch_domain, lifecycle, repo as repo_model, staging  # noqa: E402
 from domain.context import RepoContext, gate, record_active_repo, store
-from domain.forge import Forge, ForgeError, PullRequest, pr_label  # noqa: E402
+from domain.forge import ForgeError, PullRequest, pr_label  # noqa: E402
 from lib import cli, git_state, gitcmd  # noqa: E402
-from lib.forge import forge_for_repo  # noqa: E402
 
 
 class SmartError(Exception):
@@ -53,7 +36,7 @@ class SmartError(Exception):
 # main() = resolve_intent → prepare_branch → stage_and_commit → publish.
 # Each phase is a function of (intent, plan) + its predecessor's result — no phase
 # re-reads argv/cwd/git defaults, and no cross-phase mutable locals (the old
-# `current = ns.branch` style). New flow steps (amend-MR, validation gate…) slot in
+# `current = ns.branch` style). New flow steps (amend-MR…) slot in
 # as new phases instead of growing main().
 
 
@@ -66,7 +49,6 @@ class GitIntent:
     """
     mode: str
     message: str
-    title: str
     requested_branch: str | None
     target: str
     base: str
@@ -75,20 +57,13 @@ class GitIntent:
     repo: str
     source: str       # repo resolution self-narration, goes into the PLAN banner
     invoke_cwd: str
-    # The message's body (everything after the first line). It becomes the PR/MR
-    # description: title alone is the "cram everything into one line" pressure that
-    # produced 150-char MR titles over empty descriptions.
-    description: str = ""
-    target_repository: str | None = None
-    pr_target: str | None = None
 
 
 @dataclass(frozen=True)
 class BranchResult:
     branch: str   # the branch this run commits on, after positioning
     cut: bool     # freshly cut this run → foreign-commit guard applies
-    # The branch's in-flight (open) PR when continuing onto it — carried from the gate's
-    # SHA-validated view so publish() can sync its description without a second forge poll.
+    # Verified open PR from the gate, retained for user-facing branch context.
     active_pr: PullRequest | None = None
 
 
@@ -175,9 +150,9 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
     return out
 
 
-def stage(repo: str, files: list[str], plan: list[str], *, validated_identity: str = "") -> None:
+def stage(repo: str, files: list[str], plan: list[str]) -> None:
     try:
-        check_operation(staging.stage(repo, files, plan, validated_identity=validated_identity))
+        check_operation(staging.stage(repo, files, plan))
     except staging.StagingError as exc:
         raise SmartError(str(exc)) from exc
 
@@ -208,28 +183,6 @@ def warn_mixed_version_bump(repo: str, plan: list[str]) -> None:
         )
 
 
-def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: list[str]) -> None:
-    """Append this run's commit body to an existing PR/MR description (creation passes it
-    directly; this covers follow-up commits onto an in-flight PR).
-
-    Append-only with a containment guard: a human-edited description survives, and a
-    retried run doesn't duplicate its paragraph. Non-fatal by design — by the time this
-    runs the commit/push already landed, so a description miss is cosmetic and becomes a
-    PLAN note instead of failing the whole run."""
-    if not description:
-        return
-    label = pr_label(forge.provider, pr.number)
-    try:
-        existing = forge.description(pr.number)
-        if description in existing:
-            return
-        merged = f"{existing.rstrip()}\n\n{description}" if existing.strip() else description
-        forge.update(pr.number, body=merged)
-        plan.append(f"appended commit body to {label} description")
-    except ForgeError as e:
-        plan.append(f"⚠ could not sync {label} description (non-fatal): {e}")
-
-
 def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
     """Phase 1: argv + state → one immutable intent.
 
@@ -241,8 +194,7 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
     if not resolved:
         raise SmartError(how)
     record_active_repo(resolved.git_root)
-    # An explicit destination's --target is PR-only; local Git keeps its own baseline.
-    target = (ns.target if ns.target_repository is None else None) or git_state.local_default_target(resolved.git_root)
+    target = ns.target or git_state.local_default_target(resolved.git_root)
     files: list[str] = []
     for path in ns.file or []:
         if path not in files:
@@ -250,11 +202,7 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
     return GitIntent(
         mode=ns.mode,
         message=ns.message,
-        title=ns.title or (ns.message.splitlines()[0] if ns.message else ""),
-        description=(ns.message.split("\n", 1)[1].strip() if ns.message and "\n" in ns.message else ""),
         requested_branch=ns.branch,
-        target_repository=ns.target_repository,
-        pr_target=ns.target,
         target=target,
         base=ns.base or f"origin/{target}",
         explicit_base=bool(ns.base),
@@ -326,28 +274,23 @@ def prepare_branch(intent: GitIntent, gv: gate.GateView, plan: list[str]) -> Bra
     return BranchResult(branch=gv.branch or "", cut=False)
 
 
-def stage_and_commit(intent: GitIntent, plan: list[str], *, validated_identity: str = "") -> StageResult:
+def stage_and_commit(intent: GitIntent, plan: list[str]) -> StageResult:
     """Phase 3: stage (sensitive blocklist + gitlink guard), commit when anything is staged.
     `intent.files` 已在 main() 归一过（仓根相对）——这里不再自己归一，否则 gate 与 staging
     会各拿一份、且 PLAN 重复报 rebase。"""
-    stage(intent.repo, intent.files, plan, validated_identity=validated_identity)
+    stage(intent.repo, intent.files, plan)
     warn_mixed_version_bump(intent.repo, plan)
     staged = git_index.staged_changes(intent.repo)
     if not staged:
         plan.append("nothing staged — skipped commit")
         return StageResult(committed=False)
-    if validated_identity:
-        try:
-            staging.require_validated_candidate(intent.repo, git_index.index_view(intent.repo), validated_identity)
-        except staging.StagingError as exc:
-            raise SmartError(str(exc)) from exc
     check_operation(operations.commit(intent.repo, intent.message))
     plan.append("committed")
     return StageResult(committed=True)
 
 
 def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: list[str]) -> None:
-    """Phase 4: foreign-commit self-check, then push / MR according to mode."""
+    """Phase 4: foreign-commit self-check, then push according to mode."""
     repo, target, current = intent.repo, intent.target, branch.branch
 
     # Foreign-commit guard: a branch cut fresh off origin/<target> (no --base stacking)
@@ -365,41 +308,9 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
                 f"it carries foreign commits (cut off a non-{target} base?). Re-cut off origin/{target}:\n{subjects}"
             )
 
-    if intent.mode in ("push", "mr"):
+    if intent.mode == "push":
         check_operation(operations.push(repo, current, upstream=True))
         plan.append(f"pushed origin/{current}")
-
-    if intent.mode == "push" and staged.committed and intent.description and branch.active_pr:
-        # gcamp is the natural way to add commits to an in-flight PR — keep its description
-        # in step with the new commit's body, same as the mr-mode reuse path does.
-        forge = forge_for_repo(repo)
-        if forge is not None:
-            sync_pr_description(forge, branch.active_pr, intent.description, plan)
-
-    if intent.mode == "mr":
-        commits = git_state.commits(repo, f"origin/{target}", current)
-        plan.append(f"branch carries {len(commits)} commit(s) vs origin/{target}")
-        forge = forge_for_repo(repo)
-        if forge is None:
-            raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
-        try:
-            result = ensure_pull_request(forge, source_branch=current, title=intent.title,
-                                         body=intent.description, target_branch=intent.pr_target,
-                                         target_repository=intent.target_repository)
-            pr = result.pull_request
-            plan.append(f"PR source={result.source_repository.id()}:{current} "
-                        f"target={result.target_repository.id()}")
-            plan.append(f"{'created' if result.created else 'reused open'} "
-                        f"{pr_label(forge.provider, pr.number)}: {pr.web_url}")
-            if not result.created:
-                client = (forge if result.source_repository.id() == result.target_repository.id()
-                          else forge.for_repository(result.target_repository.path))
-                sync_pr_description(client, pr, intent.description, plan)
-        except (ForgeError, ValueError) as error:
-            raise SmartError(f"branch pushed, but PR/MR create/reuse failed: {error}") from error
-        RepoContext.refresh_branch(repo)
-
-
 
 # The failure that bites gcampr callers most: a --message whose quotes/specials broke shell
 # parsing, so its tail leaks as stray argv → "unrecognized arguments". Handed to cli.ArgParser
@@ -466,7 +377,7 @@ def _build_parser() -> cli.ArgParser:
     `--message` (inline) and `--message-file` are alternatives; exactly one is required, enforced
     in `_resolve_message` rather than by argparse, so the error can carry the quoting hint."""
     ap = cli.ArgParser(extra_hints=[MESSAGE_HINT])
-    ap.add_argument("mode", choices=["commit", "push", "mr"])
+    ap.add_argument("mode", choices=["commit", "push"])
     ap.add_argument("--message", "-m", default=None, help="inline commit message (single-quote it)")
     ap.add_argument(
         "--message-file", "-F", default=None,
@@ -476,8 +387,6 @@ def _build_parser() -> cli.ArgParser:
     )
     ap.add_argument("--branch", "-b", default=None, help="branch name to cut when on a protected/stale branch")
     ap.add_argument("--target", "-t", default=None)
-    ap.add_argument("--target-repository", default=None, metavar="FORGE/PATH",
-                    help="mr mode only: explicit destination Repository ID (default: current repository)")
     ap.add_argument(
         "--base",
         default=None,
@@ -487,7 +396,6 @@ def _build_parser() -> cli.ArgParser:
         "--file", "-f", action="append", default=[], metavar="PATH",
         help="explicit file to stage; repeat for multiple paths",
     )
-    ap.add_argument("--title", default=None, help="MR title (defaults to the message's first line)")
     cli.add_repo_arg(ap, positional=False)  # --repo/-r only; gcampr takes no positional repo
     return ap
 
@@ -495,25 +403,20 @@ def _build_parser() -> cli.ArgParser:
 def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
     """本相位的「本次改动」是哪些文件（仓相对）——**每个相位的答案不同**，且只有这里知道。
 
-    handler 手里只有 `repo`，要范围只能读工作树；那个答案只在 pre_commit（改动尚未提交）成立。
-    commit 之后工作树是干净的，读出来是「什么都没改」→ 被 `select_components` 读成「不知道范围」→
-    退化成 repo-wide 跑**全部** component：一个你根本没碰的 component 有存量 lint 错误，就会在 commit 已
-    落地之后拦掉 push 和 MR。所以范围必须在相位边界由这里算好、冻结下传。
+    工作树、刚提交的 commit 和 PR 分支对应不同范围；工作流在相位边界冻结路径，
+    action 不重新猜测这次操作涉及哪些文件。
 
     - `pre_commit`：**将要提交的**那些文件。`--file` 给了则把同一 staging scope 展开成其中真实
       改动的叶子文件——不是「工作树里所有脏文件」：后者是超集，会把你压根不打算提交的 component
-      拖进 gate（它有存量 lint 错误就拦掉 commit），还会让 normalize 改到不进本次 commit 的文件。
-      没给 `--file` → 冻结当前工作树改动，让 normalize 和 lint 使用同一范围。
+      交给当前 action。文件选择与 staging 保持一致。
+      没给 `--file` → 冻结当前工作树改动。
     - `post_commit`：刚落地的那个 commit 自身。
-    - `pre_mr` / `post_mr`：整条分支 vs target——MR 承载的是整条分支，不是最后那个 commit。
     """
     if phase == "pre_commit":
         paths = repo_model.changed_paths_in_scope(intent.repo, intent.files)
         return paths if intent.files else (paths or None)
     if phase == "post_commit":
         return repo_model.committed_paths(intent.repo)
-    if phase in ("pre_mr", "post_mr"):
-        return repo_model.range_paths(intent.repo, f"origin/{intent.target}")
     # 新相位必须在上面显式选一种取法。**不 fallthrough 到分支范围**：那会让一个未来的相位
     # （如 pre_push）悄悄拿到「整条分支」的语义而看不出问题——而「每个相位的答案不同」正是本
     # 函数存在的全部理由，默认值一填就把这个约定架空了。None = 不知道 → handler 保守全跑。
@@ -521,25 +424,8 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
 
 
 def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecycle.DispatchResult:
-    """跑某相位的 lifecycle validation checks / signal hooks，写进 PLAN，返回 DispatchResult。
-
-    配置为空 → 静默 no-op（opt-in，零行为变化）。inline gate 失败 → 抛 SmartError 中止本次
-    git 动作。pre_commit 故意排在 staging 之前：normalize 的 `make format` 改的文件要被随后的 stage
-    收进同一个 commit。signal hook（如 code-review）不挡、把后台下游放进 `res.to_launch`，由
-    调用方在 git 动作完成后用 launch_background_relays detach 起。
-
-    范围（`phase_paths`）在**跑 hook 之前**算好：既让 post_commit / pre_mr 不退化成跑全仓，也让
-    normalize 与同相位并发的 lint/test 看到同一个集合（format 会改工作树，各自现算会分叉）。
-    """
-    from domain.validation import Comparison
-    comparison = Comparison()
-    if phase == "post_commit":
-        comparison = Comparison(base="HEAD^", head="HEAD")
-    elif phase in ("pre_mr", "post_mr"):
-        base = git_state.merge_base(intent.repo, "HEAD", f"origin/{intent.target}")
-        comparison = (Comparison(base=base, head="HEAD") if base
-                      else Comparison(reason="branch merge base unavailable"))
-    res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase), comparison=comparison)
+    """Run lifecycle actions; skill instructions own validation before publication."""
+    res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase))
     if not res.results:
         return res
 
@@ -554,11 +440,11 @@ def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecy
     for result in res.results:
         for guidance in result.guidance:
             plan.append(f"  - {result.name}: {guidance}")
-    for r in res.advisory_failures:         # 软提示：本轮通报、不阻断（如 test 挂常因基线/环境）
+    for r in res.advisory_failures:         # 软提示：本轮通报、不阻断
         plan.append(f"  ⚠ {r.name} failed (advisory, not blocking): {r.summary.splitlines()[0] if r.summary else ''}")
     if not res.proceed:
         detail = "\n".join(f"    [{r.name}] {r.summary}" for r in res.blocking_failures)
-        step = "commit" if phase == "pre_commit" else "MR"
+        step = "commit" if phase == "pre_commit" else "push"
         raise SmartError(f"{phase} gate failed — aborting before {step}:\n{detail}")
     return res
 
@@ -586,8 +472,6 @@ def launch_background_relays(specs: list[lifecycle.BackgroundSpec], repo: str, p
 def main(argv: list[str]) -> int:
     ap = _build_parser()
     ns = ap.parse_args(argv)
-    if ns.target_repository is not None and ns.mode != "mr":
-        ap.error("--target-repository is only supported when creating a PR/MR (mr mode)")
     ns.message = _resolve_message(ns, ap)   # file/stdin or inline; exits with a hint if neither
 
     try:
@@ -608,7 +492,7 @@ def main(argv: list[str]) -> int:
         f"mode={intent.mode} repo={Path(intent.repo).name} ({intent.source}) "
         f"branch={gv.branch} target={intent.target}"
     ]
-    # `--file` 在这里归一**一次**（仓根相对）：pre_commit gate 拿它当验证范围、staging 拿它
+    # `--file` 在这里归一**一次**（仓根相对）：pre_commit action 拿它当操作范围、staging 拿它
     # 当 `git add` 目标——两处必须是同一份，各自归一必然漂。`GitIntent` 的契约本就是
     # 「resolved ONCE from argv + state」，`files` 此前是唯一一个还生着的字段（原地归一在
     # stage_and_commit 里，gate 比它早跑，压根看不到）。
@@ -616,19 +500,15 @@ def main(argv: list[str]) -> int:
         if intent.files:
             intent = replace(intent, files=normalize_files(intent.repo, intent.files, intent.invoke_cwd, plan))
         # signal hook（如 review）可配在任意相位（由 config 决定）；每相位的 relay 在它所「裹」的
-        # git 动作完成后 detach 起：pre/post_commit 在 commit 后、pre/post_mr 在 publish 后。
+        # git 动作完成后 detach 起：pre/post_commit 在 commit 后。
         # review 的 MR 评论是机会性的——relay 跑时查到分支有开放 MR 就发，没有就只落 review.json。
         branch = prepare_branch(intent, gv, plan)
-        pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # 必在 commit 前（normalize 可能改源码）
-        staged = stage_and_commit(intent, plan, validated_identity=pre_c.execution_identity)
+        pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # configured lifecycle actions
+        staged = stage_and_commit(intent, plan)
         if staged.committed:
             post_c = run_lifecycle_gate(intent, "post_commit", plan)
             launch_background_relays(pre_c.to_launch + post_c.to_launch, intent.repo, plan)
-        pre_m = run_lifecycle_gate(intent, "pre_mr", plan) if intent.mode == "mr" else None  # 在 publish 前（阻塞门禁）
         publish(intent, branch, staged, plan)
-        if intent.mode == "mr":
-            post_m = run_lifecycle_gate(intent, "post_mr", plan)   # MR 此刻已建好
-            launch_background_relays((pre_m.to_launch if pre_m else []) + post_m.to_launch, intent.repo, plan)
         RepoContext.refresh_branch(intent.repo)
     except (SmartError, OSError) as e:
         _banner(plan)
@@ -644,7 +524,6 @@ def _banner(plan: list[str]) -> None:
     print("PLAN:")
     for line in plan:
         print(f"  - {line}")
-
 
 
 def check_operation(result: operations.GitResult) -> str:

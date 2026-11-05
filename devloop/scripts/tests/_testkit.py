@@ -4,7 +4,7 @@ import 本模块的副作用即完成两件 bootstrap（必须发生在任何 `d
 所以每个测试文件的第一条 import 都应是 _testkit）：
 1. 把 skill scripts 目录加进 sys.path，使私有 `domain` / `lib` package 可导入；
 2. 把 DEVLOOP_CONFIG_DIR 指向空临时目录——测试绝不读开发机真实 ~/.devloop/config.json
-   （否则一个全局 lifecycle.pre_commit 会让 precommit-gate 在每个测试 repo 上生效、拦住 commit）。
+   （否则全局 lifecycle 动作会在测试 repo 上运行）。
    需要 config 的测试各自写自己的。
 
 各测试文件独立可跑（`devloop/scripts/python devloop/scripts/tests/test_xxx.py`，也 pytest-collectable）；

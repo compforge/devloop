@@ -4,19 +4,14 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from importlib import import_module
-from typing import Callable, TYPE_CHECKING
+from typing import Callable
 
-if TYPE_CHECKING:
-    from domain.validation import Comparison
-
-PHASES = ("pre_commit", "post_commit", "pre_mr", "post_mr")
+PHASES = ("pre_commit", "post_commit")
 
 # 内置 hook 注册表：name → "module:function"。**惰性**解析（dispatch 时才 import）：handler
-# 模块（domain.lifecycle.checks）要 `from domain.lifecycle.base import HookResult`，模块级直接引用会
+# 模块（domain.lifecycle.review）要 `from domain.lifecycle.base import HookResult`，模块级直接引用会
 # 成 import 环。
 _BUILTIN: dict[str, str] = {
-    "lint": "domain.lifecycle.checks:lint",
-    "test": "domain.lifecycle.checks:test",
     "review": "domain.lifecycle.review:review",   # signal hook：后台审全量改动、写 review.json + 有开放 MR 时发评论（挂哪相位由 config 决定）
 }
 
@@ -38,8 +33,8 @@ class BackgroundSpec:
 class HookResult:
     """一次 hook 执行的结果。三种 hook 模式由两个字段编码（见 docs/lifecycle-hooks.md）：
 
-    - **硬拦截**（gate，如 lint）：`relay=None, advisory=False`——`ok=False` 阻断 commit/MR。
-    - **软提示**（advisory，如 test）：`relay=None, advisory=True`——同步跑、本轮可见，但 `ok=False`
+    - **硬拦截**（gate）：`relay=None, advisory=False`——`ok=False` 阻断 commit/MR。
+    - **软提示**（advisory）：`relay=None, advisory=True`——同步跑、本轮可见，但 `ok=False`
       只**通报不阻断**（失败常因基线坏测 / 环境，与本次 diff 无关；真正的判断 CI / 人来做）。
     - **异步信号**（signal，如 review）：`relay=BackgroundSpec`——detach 起后台、永不阻断、下轮浮现。
 
@@ -62,7 +57,6 @@ class HookResult:
 class DispatchResult:
     phase: str
     results: list[HookResult]
-    execution_identity: str = ""
 
     @property
     def proceed(self) -> bool:
@@ -107,26 +101,10 @@ def dispatch(
     names: list[str] | None = None,
     registry: dict[str, Callable[..., HookResult]] | None = None,
     max_workers: int = 4,
-    comparison: Comparison | None = None,
 ) -> DispatchResult:
-    """跑 `phase` 上配置的全部 hook（并发 join），聚合成 DispatchResult。
+    """Dispatch configured lifecycle actions; validation checks are explicit CLI operations.
 
-    `paths` = **本相位「本次改动」涉及的文件**（仓相对），由调用方在相位边界算好后**冻结**下传。
-    这是 handler 拿不到、也猜不出来的那半上下文：每个相位的答案不同（pre_commit 是将提交的脏
-    文件、post_commit 是刚落地那个 commit、pre_mr 是整条分支 vs target），而 handler 手里只有
-    `repo`，只能去读工作树——commit 之后工作树是干净的，那个答案会被读成「不知道范围」进而退化
-    成跑全仓。冻结还让 normalize 与同相位的 lint/test checks 看到**同一个**范围；否则 fixer 改过
-    工作树后，各自现算可能得到两个不同集合。
-    `None` = 调用方也不知道范围，由 handler 自行判定（保持 CLI 语境的老行为）。
-
-    `names` 省略时从 `config.lifecycle(repo)[phase]` 读（opt-in，默认空 → no-op）。
-    `registry` 仅测试用：注入 name→handler，绕过内置惰性解析。
-
-    两条 fail 语义：
-    - **未知 hook 名** → 一条 `ok=False` 的 HookResult（配置写错要看得见，不静默吞）。
-    - **handler 抛异常** → 收敛成 `ok=False`（**gate fail-closed**：把关出错按未通过处理，
-      宁可挡不可漏）。signal hook 要保证「永不挡」须自己 catch 内部异常、恒返回 `ok=True`——
-      这是 handler 的契约，不是 dispatcher 的事。
+    Only registered actions execute. Validation belongs to the explicit repocli CLI.
     """
     if phase not in PHASES:
         raise ValueError(f"unknown lifecycle phase: {phase!r} (one of {PHASES})")
@@ -136,21 +114,7 @@ def dispatch(
     if not names:
         return DispatchResult(phase=phase, results=[])
 
-    validation = {}
-    identity = ""
-    check_names = tuple(dict.fromkeys(name for name in names if name in ("lint", "test")))
-    if registry is None and check_names:
-        from domain.validation import run_validation
-        try:
-            outcome = run_validation(repo, names=check_names, paths=paths, comparison=comparison, concurrency=max_workers)
-            validation = {result.name: result for result in outcome.results}
-            identity = outcome.execution_identity
-        except Exception as exc:
-            validation = {name: HookResult(name, False, advisory=name == "test", summary=f"validation failed: {exc}") for name in check_names}
-
     def _run(name: str) -> HookResult:
-        if name in validation:
-            return validation[name]
         handler = (registry or {}).get(name) or resolve_handler(name)
         if handler is None:
             return HookResult(name, False, summary=f"unknown lifecycle hook {name!r}")
@@ -161,4 +125,4 @@ def dispatch(
 
     with ThreadPoolExecutor(max_workers=max(1, min(max_workers, len(names)))) as executor:
         results = list(executor.map(_run, names))
-    return DispatchResult(phase=phase, results=results, execution_identity=identity)
+    return DispatchResult(phase=phase, results=results)

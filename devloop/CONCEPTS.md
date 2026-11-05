@@ -93,7 +93,7 @@ Board 展示历史执行事实，提交门禁负责实时有效性。旧记录�
 
 ## 状态文件 `.devloop/`
 
-AGENTS.md 是文字知识源；`.devloop/*.json` 是由 hooks / scripts / monitors 维护的结构化运行态，不保存 AGENTS.md 正文。
+AGENTS.md 是文字知识源；`.devloop/*.json` 是由 hooks / scripts 维护的结构化运行态，不保存 AGENTS.md 正文。
 
 - Workspace 级：`<workspace_root>/.devloop/context.json`，保存 workspace AGENTS.md 的 References + 文件系统自发现的 subproject 清单（叠加 AGENTS.md 表润色，symlink 子项目附 canonical 路径映射）；`active/<session_id>.json` **一 session 一文件**保存该 session 绑定的最近活跃 repo（脚本在 workspace 根被调用时的解析兜底）——这是 session 态而非 workspace 态，owner 即 session，按 writer-owner 铁律落盘零例外；多 session 各干各的仓互不劫持。语义与生命周期见〈Session 运行态〉。
 - Repo 级（按**三域**布局；linked worktree 的 repo / branch 域解析到**主仓** `.devloop`，working-tree 域例外）：**repo 域**根下 `meta.json` / `remote_branches.json` + ledgers（`friction.jsonl` / `review-history.jsonl`，均只作 observability）；**branch 域** `branches/<branch>/` 下 `branch.json` / `lint.json` / `test.json` / `review.json`，`RepoContext.load()` 按 **live 分支**取段后合并成内存视图；**working-tree 域** owner 锁与一次性提交输入 `commit_msg` 留各 worktree 自己的 `.devloop`（并行 worktree 互不干扰，`commit_msg` 成功消费后清理、失败时留作重试）；主仓 `tmp/` 收进程间日志（如 review.log），随时可删。连续 review history 从 Forge comments 派生，不落 `.devloop`。`branch.json`（local + worktrees，refresh owned）与 `remote_branches.json`（远端 trunk tips，monitor owned）是同一分支拓扑的两个 owner——见 [`docs/branch-state.md`](./docs/branch-state.md)〈落盘:按 writer-owner 拆段〉。
@@ -114,7 +114,7 @@ schema / TTL / cap 数值在 `domain/context/base.ts`，不在文档复述。
 
 ## 脚本的 repo 解析
 
-commit_flow / run_validate 与 cwd 解耦（session cwd 在聚合工作区常驻 workspace 根）：repo 按"显式参数（`--repo` 名/路径）→ cwd 所在仓库 → 本 session 绑定的最近活跃仓（`active/<sid>.json`，见〈Session 运行态〉）"解析，解析来源自述在输出/PLAN 里。本 session 无绑定即拒绝兜底，报错附其它 session 的活跃仓做候选提示。名字统一走 `scripts/domain/repo.py` 的模糊匹配。
+commit_flow 与 cwd 解耦（session cwd 在聚合工作区常驻 workspace 根）：repo 按"显式参数（`--repo` 名/路径）→ cwd 所在仓库 → 本 session 绑定的最近活跃仓（`active/<sid>.json`，见〈Session 运行态〉）"解析，解析来源自述在输出/PLAN 里。本 session 无绑定即拒绝兜底，报错附其它 session 的活跃仓做候选提示。名字统一走 `scripts/domain/repo.py` 的模糊匹配。
 
 ## 占位符 `<PLUGIN_ROOT>`
 

@@ -10,7 +10,7 @@ export type JsonObject = { [key: string]: JsonValue };
 const DEFAULTS: JsonObject = {
   workspaces: [],
   forges: {},
-  lifecycle: { default: { pre_commit: [], post_commit: [], pre_mr: [], post_mr: [] }, repos: {} },
+  lifecycle: { default: { pre_commit: [], post_commit: [] }, repos: {} },
   arch: {
     default: {
       enabled: false,

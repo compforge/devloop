@@ -1,17 +1,14 @@
 import { isProtectedBranch } from "../../lib/git-state.js";
-import { fullEvidence, reusableFullEvidence, observedCheck } from "../../domain/validation-evidence.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { evaluateGate } from "../../domain/context/gate.js";
-import { branchSegment, loadSegment } from "../../domain/context/store.js";
 import { acquireOwner, foreignOwner, ownerDescription, repositoryName } from "../../domain/context/session.js";
 import { pullRequestLabel } from "../../domain/forge.js";
 import { enclosingComponent, findGitRoot } from "../../domain/repo-layout.js";
-import { componentFingerprint, selectComponents } from "../../domain/repo.js";
 import { workspaces } from "../../lib/config.js";
-import { lifecycleConfig } from "../../lib/config.js";
+import {} from "../../lib/config.js";
 import { currentBranch, listCheckouts } from "../../lib/git-state.js";
-import { refExists, isIgnored, hasUnstagedChanges } from "@compforge/repokit";
+import { refExists, isIgnored } from "@compforge/repokit";
 import { WorkspaceContext } from "../../domain/context/workspace.js";
 function command(target) { return target; }
 function file(target) { return target; }
@@ -120,30 +117,6 @@ const pipInstall = {
         return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
     },
 };
-function pytestInvocation(argv) {
-    let args = [...argv];
-    if (args[0] === "uv" && args[1] === "run")
-        args = args.slice(2);
-    const base = basename(args[0] ?? "");
-    return base === "pytest" || base.startsWith("python") && args[1] === "-m" && args[2] === "pytest";
-}
-const pytestNaked = {
-    name: "pytest-naked", targetKind: "command",
-    applies: (target) => command(target).environment.length === 0 && pytestInvocation(command(target).argv),
-    check: async (target, context) => {
-        const value = command(target);
-        const runDirectory = value.workingDirectory.path;
-        const repo = runDirectory ? findGitRoot(runDirectory) : undefined;
-        if (!repo)
-            return [];
-        const catalog = await context.catalog(repo);
-        if (catalog.components.length === 0)
-            return [];
-        const component = enclosingComponent(runDirectory, catalog);
-        return observedCheck(repo, component.id, "test")?.scope === "full"
-            ? finding("pytest-naked", `Use repocli test --repo ${repo} --component ${component.id} to run the project test contract`, commandLine(value)) : [];
-    },
-};
 const PROJECT_COMMANDS = {
     npm: new Set(["ci", "install", "run", "start", "test", "publish"]),
     pnpm: new Set(["add", "build", "check", "install", "lint", "run", "test"]),
@@ -216,56 +189,6 @@ const requirementsEdit = {
 function stringArray(value) {
     return Array.isArray(value) ? value.filter((item) => typeof item === "string") : [];
 }
-// Only commands that consume the current index can use its validation evidence.
-// Path operands and unknown options go through the managed candidate transaction.
-function commitsExistingIndex(args) {
-    const values = new Set(["-m", "--message", "-F", "--file", "-C", "--reuse-message", "-c", "--reedit-message", "--author", "--date", "--cleanup"]);
-    const flags = new Set(["--amend", "--no-edit", "--edit", "-e", "--signoff", "-s", "--no-verify", "-n", "--quiet", "-q", "--verbose", "-v", "--allow-empty", "--allow-empty-message", "--no-gpg-sign", "--no-post-rewrite"]);
-    for (let index = 0; index < args.length; index += 1) {
-        const arg = args[index];
-        if (values.has(arg)) {
-            if (++index >= args.length)
-                return false;
-            continue;
-        }
-        if (flags.has(arg) || [...values].some((option) => option.startsWith("--") && arg.startsWith(`${option}=`)))
-            continue;
-        return false;
-    }
-    return true;
-}
-const precommitGate = {
-    name: "precommit-gate", targetKind: "command", failurePolicy: "fail_closed",
-    applies: (target) => command(target).subcommand === "commit",
-    check: async (target, context) => {
-        const value = command(target);
-        const directory = value.workingDirectory.path;
-        const repo = directory ? findGitRoot(directory) : undefined;
-        if (!repo || !stringArray(lifecycleConfig(repo).pre_commit).includes("lint"))
-            return [];
-        const branch = currentBranch(repo);
-        const lint = loadSegment(repo, branchSegment(branch, "lint")) ?? {};
-        const catalog = await context.catalog(repo);
-        const required = selectComponents(repo, { catalog }).components;
-        const fingerprint = required.length ? await componentFingerprint(repo, required[0], catalog) : undefined;
-        const stale = required.flatMap((component) => {
-            const evidence = fullEvidence(repo, component.id, "lint", lint[component.id]);
-            if (!evidence)
-                return [`  ${component.id}: lint has no full-check evidence for this branch.`];
-            return reusableFullEvidence(evidence, fingerprint)
-                ? [] : [`  ${component.id}: contents, command or dependency environment require validation.`];
-        });
-        if (!commitsExistingIndex(value.args) || hasUnstagedChanges(repo)) {
-            stale.push("  index differs from the checked working tree; use the devloop commit flow.");
-        }
-        return stale.length === 0 ? [] : finding("precommit-gate", [
-            "Refusing `git commit`: lint is in the pre_commit gate and is stale.",
-            ...stale,
-            "Commit via gcam/gcampr instead, or run the validate skill, then retry.",
-            "Adjust the gate under `lifecycle` in ~/.devloop/config.json.",
-        ].join("\n"), commandLine(value));
-    },
-};
 function resultingText(target) {
     const input = target.toolInput;
     if (!input)
@@ -334,5 +257,5 @@ const layerDeps = {
         });
     },
 };
-export const RULES = [protectBranch, checkoutOwner, worktreeAdd, addAll, workspaceCwd, pytestNaked, pipInstall, precommitGate, editOwner, branchMerged, requirementsEdit, layerDeps];
+export const RULES = [protectBranch, checkoutOwner, worktreeAdd, addAll, workspaceCwd, pipInstall, editOwner, branchMerged, requirementsEdit, layerDeps];
 //# sourceMappingURL=index.js.map

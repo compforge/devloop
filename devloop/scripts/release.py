@@ -31,7 +31,7 @@ sys.path.insert(0, str(_SCRIPTS.parent))
 
 from lib import cli, git_state  # noqa: E402
 from domain.forge import ForgeError  # noqa: E402
-from lib.forge import forge_for_repo  # noqa: E402
+from lib.config import forge_client  # noqa: E402
 
 # Release version must be semver (optional leading v): the tag the forge cuts and the key the
 # increment check compares on. Anything else is rejected before a call is made.
@@ -48,7 +48,7 @@ def _forge_or_exit(ns, prog):
     clean exit(0) — the same not-an-error treatment `pr` gives (devloop runs in repos with no
     forge, and asking about a release there isn't a failure)."""
     resolved, _ = cli.resolve_repo_or_exit(ns, prog)
-    forge = forge_for_repo(resolved.git_root)
+    forge = forge_client(resolved.git_root)
     if forge is None:
         print(f"{prog}: no token or unsupported remote", file=sys.stderr)
         raise SystemExit(0)

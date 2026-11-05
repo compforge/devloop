@@ -7,7 +7,8 @@ from pathlib import Path
 
 from repokit.forge import BranchPullRequests
 from lib import git_state
-from lib.forge import forge_for_repo, pr_context_for_repo
+from lib import config
+from lib.config import forge_client
 from domain.forge import Forge, ForgeError, PullRequest
 from . import base, store
 
@@ -102,7 +103,7 @@ def review_details(repo: str, pr: PullRequest | None) -> ReviewDetails:
     result = ReviewDetails()
     if pr is None or not pr.is_open:
         return result
-    forge = forge_for_repo(repo)
+    forge = forge_client(repo)
     if forge is None:
         return result
     target = forge.for_repository(pr.target_repository)
@@ -117,3 +118,25 @@ def review_details(repo: str, pr: PullRequest | None) -> ReviewDetails:
     except ForgeError as exc:
         logger.warning("PR readiness unavailable repo=%s pr=%s error=%s", repo, pr.number, exc)
     return result
+
+
+def pr_context_for_repo(
+    repo_dir: str | Path, *, forge: Forge | None = None, target_repository: str | None = None,
+):
+    """Assemble access policy; repocli owns observation and local associations.
+
+    +spec=`Only an absent Forge origin means PR queries are inapplicable;
+    a configured origin without credentials is unavailable, never known to have no PR.`
+    +link=`component://docs/pr-observation.md`
+    """
+    r = config.resolve_forge(repo_dir)
+    if r is None:
+        return None
+    connection = r.connection()
+    # Target selection belongs to the workflow; RepoKit never infers a fork parent.
+    target = config.forge_entry(r.host, repo_dir).get("target_repository") or r.path
+    if target_repository:
+        name, separator, target = target_repository.partition("/")
+        if not separator or not target or name != connection.name:
+            raise ValueError("target repository must be an ID within the configured Forge")
+    return connection.pull_request_context(repo_dir, source=r.path, targets=(target,), reader=forge)

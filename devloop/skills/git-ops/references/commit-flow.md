@@ -1,39 +1,48 @@
 # Commit flow
 
-| Requested outcome | Entry point |
+| Requested outcome | Execution |
 |---|---|
 | Commit | `bash <PLUGIN_ROOT>/scripts/smart_gcam.sh` |
 | Commit + push | `bash <PLUGIN_ROOT>/scripts/smart_gcamp.sh` |
-| Commit + push + create/reuse PR/MR | `bash <PLUGIN_ROOT>/scripts/smart_gcampr.sh` |
+| Commit + push + PR/MR | AI runs the commit-and-push transaction, then `repocli pr create` |
 
-Pass `--message '<subject>'` or `--message-file <path>`; use `--help` for the full options.
-The subject becomes the PR/MR title and the body supplies its description. Follow-up commit bodies
-are appended to an existing description; use [pr update](pr-management.md) when it needs rewriting
-to describe the final change. Report the resulting commit/push state and PR/MR URL when applicable.
+Before publishing code, run `repocli validate --repo <repo> --base <baseline> --check format,lint,test`.
+Use HEAD for uncommitted edits, or the target baseline for a committed branch. Inspect results and
+fix relevant failures. These commands are issued by the AI following the skill; the Git transaction
+neither launches repocli nor requires validation records.
 
-For multiline messages, fully overwrite the one-shot `<repo>/.devloop/commit_msg` and pass it with
-`--message-file`. It is removed on success and retained on failure; previous contents are not input.
+Select the actual repository with `--repo <path>`. Repeat `--file <path>` for explicit, repo-relative
+commit scope, including untracked files. Existing staged files outside that scope cause refusal.
+Without `--file`, only tracked modifications are selected. Preserve unrelated staging.
 
-## Scope
+Pass `--message` or `--message-file`; fully overwrite the one-shot `<repo>/.devloop/commit_msg`
+for multiline text and pass that path. It is removed after success and retained after failure.
+The commit message is separate from the PR title/body. The workflow does not append commit bodies
+to PR descriptions; the AI updates a PR description to explain the final implementation when needed.
 
-- `--repo <name|path>` selects the repository; use it when cwd is ambiguous.
-- Repeat `--file <path>` for explicit task scope, including untracked files. Without it, staging
-  includes tracked modifications only. Paths are repo-relative; staged files outside an explicit
-  scope cause refusal. Preserve unrelated staging.
-- Prefer [branch creation](branch.md) before editing. `--branch <name>` supports changes already
-  made for a new branch, including retry after an inactive-branch refusal.
-- `--target <branch>` overrides the repository's default target; `--base <ref>` chooses an explicit
-  local branch start.
+New work starts through [branch creation](branch.md). `--branch <name>` handles edits already made
+on a protected/inactive branch. `--base <ref>` selects a local start explicitly; `--target <branch>`
+selects the Git baseline and defaults to the repository's local default target.
 
-## Contributing to another repository
+## Create or reuse the PR/MR
 
-Only gcampr accepts `--target-repository <forge/path>`, a concrete Repository ID such as
-`github/owner/repo`. Omission targets the current repository; being a fork does not imply an upstream
-PR. Resolve the intended destination from the task, using `forked_from` as metadata when relevant.
-Ask only if that destination remains ambiguous.
+After a successful push, the AI invokes [native PR commands](pr-management.md) directly:
 
-Source and push remain on the current repository's origin; the destination must be on the same
-Forge instance. With an explicit destination, `--target` selects the PR base without changing the
-local baseline. Without `--target`, an existing PR keeps its base and a new PR uses the destination's
-default branch. Repeat the destination ID on later invocations; branch/worktree state does not
-retain it.
+```bash
+repocli pr list --repo <repo> --head <branch> --state open --json
+repocli pr create --repo <repo> --head <branch> --base <target> --title '<title>' --body-file <file> --json
+```
+
+Resolve the destination and base before creation. Reuse an existing proposal's base unless the
+user requests another target. Multiple candidates need an explicit selection. The CLI owns
+create/reuse identity and post-success maintenance. Report a PR failure separately from a
+successful commit/push, so retrying does not duplicate Git work.
+
+For a fork, pass `--target-repository owner/repo` to each PR query/write. Omission means the origin
+repository; fork metadata does not authorize publishing upstream. The PR base is independent of
+the commit transaction's local Git baseline. Author the body in an ignored local file and preserve
+user-authored content when updating an existing proposal.
+
+After PR creation/update, use [review](../../review/SKILL.md) to check the current run. Do not start
+a duplicate review for the same revision. Otherwise start review through its managed entrypoint.
+Merge remains a human action. Report the commit, push and PR outcomes separately.

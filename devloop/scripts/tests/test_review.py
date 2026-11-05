@@ -514,7 +514,7 @@ def test_pending_review_verdict_nudge_is_forge_derived():
     reader = _FakeForge([PullRequest(7, state="open", source_branch="main")])
     comments = [Comment(id="1", reply_ref="1", path="a.py", body="finding ccr:fp=one")]
     with patch.object(prstate, "pr_context_for_repo", side_effect=lambda repo, forge=None: _pr_context(repo, reader)), \
-         patch.object(prstate, "forge_for_repo", return_value=reader), \
+         patch.object(prstate, "forge_client", return_value=reader), \
          patch.object(reader, "comments", side_effect=lambda number: comments) as fetch, \
          patch.object(reader, "merge_readiness", return_value=MergeReadiness.CI_BLOCKED):
         RepoContext.refresh_all(root)
@@ -552,7 +552,7 @@ def test_review_finding_nudge_decays_then_reopens_on_new_findings():
     reader = _FakeForge([PullRequest(7, state="open", source_branch="main")])
     comments = [Comment(id="1", reply_ref="1", path="a.py", body="finding ccr:fp=one")]
     with patch.object(prstate, "pr_context_for_repo", side_effect=lambda repo, forge=None: _pr_context(repo, reader)), \
-         patch.object(prstate, "forge_for_repo", return_value=reader), \
+         patch.object(prstate, "forge_client", return_value=reader), \
          patch.object(reader, "comments", side_effect=lambda number: comments), \
          patch.object(reader, "merge_readiness", return_value=MergeReadiness.CI_BLOCKED):
         RepoContext.refresh_all(root)
@@ -629,7 +629,7 @@ def test_run_review_append_history():
 def test_pull_request_identity_uses_origin_source_and_repository():
     """Review 对外携带完整 identity；source 是 forges 配置 key，不是 provider 名。"""
     from types import SimpleNamespace
-    from lib.forge import ForgeResolution
+    from lib.config import ForgeResolution
     rr = _load_script("run_review")
     original = rr.resolve_forge
     resolution = ForgeResolution(

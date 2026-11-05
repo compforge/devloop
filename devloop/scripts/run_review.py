@@ -2,7 +2,7 @@
 """code-review hook 的后台执行体：跑配置的 review 引擎（默认 `ccr`，可切 `ocr`）审整条 MR 的全量改动，结果写 `.devloop/review.json`
 并把成熟 finding 逐条发到该分支的 MR 上——让 review 历史挂在 MR 上、可跟踪对比。
 
-由 lifecycle 的 `review` signal hook（挂 `post_mr`）经 detach 起（见 docs/code-review.md）。审
+由显式 review 命令或 lifecycle 的 `review` signal hook 经 detach 起（见 docs/code-review.md）。审
 `origin/<target>..HEAD`（整条分支 vs target）；查到分支的开放 MR 且有 finding（或有文件审失败）
 才发评论——失败或警告也发，clean 不发，结论留 review.json；没有开放 MR 就只落 review.json。
 
@@ -29,7 +29,7 @@ from lib import cli, config, git_state, review_engine  # noqa: E402
 from domain import review_feedback  # noqa: E402
 from domain.context import base, record_active_repo, store  # noqa: E402
 from domain.forge import ForgeError, pr_label  # noqa: E402
-from lib.forge import forge_for_repo, resolve_forge  # noqa: E402
+from lib.config import forge_client, resolve_forge  # noqa: E402
 
 _MAX_COMMENT_FINDINGS = 30   # 评论里最多列几条，避免超长 MR 评论
 
@@ -224,7 +224,7 @@ def _open_mr(repo: str, branch: str):
     """(forge, 该分支的开放 MR)——找一次，给 background 取标题/描述 + 发评论复用。无则补 None。"""
     if not branch:
         return None, None
-    forge = forge_for_repo(repo)
+    forge = forge_client(repo)
     if forge is None:
         return None, None
     try:

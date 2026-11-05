@@ -3,7 +3,7 @@
 **devloop 为 AI 编码 agent 提供一条受控的 PR/MR 开发闭环**：进入仓库、在正确分支开发、验证受影响的 Component、提交并推送、创建或复用 PR/MR，最终由人完成 merge。
 
 ```text
-enter repo → start branch → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
+enter repo → start branch → develop → explicit validate → commit → push → PR/MR → human merge
 ```
 
 它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code、Codex、DeepSeek Harness（DSH）与 OpenCode V2。
@@ -21,11 +21,11 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 ## 核心保证
 
 - **Git/PR 事务**：独立的 branch-create 事务在编辑前从目标分支建立干净基线；`gcam`、`gcamp`、`gcampr` 分别完成 commit、commit + push、commit + push + PR/MR。已有 PR/MR 可安全追加提交或进行可恢复 rebase。
-- **Component 感知验证**：一个仓库可包含多个独立 Component，例如 `server/`、`cli/` 或 `packages/*`。devloop 根据本次改动选择 Component，并分别记录 lint/test 结果，不会用一个 Component 的通过状态覆盖另一个。
+- **Component 感知验证**：一个仓库可包含多个独立 Component，例如 `server/`、`cli/` 或 `packages/*`。repocli 根据本次改动选择 Component，并分别记录 lint/test 结果，不会用一个 Component 的通过状态覆盖另一个。
 - **运行态上下文**：Board 向当前 session 投递相关仓库的 branch、working tree、PR/MR 和验证状态；进入项目或上下文压缩后会自动刷新。
 - **执行级守卫**：在原生 PreToolUse 路径上拒绝保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
 - **并发隔离**：checkout 被一个 session 占用后，其它 session 的分支切换和源码编辑会被引导到独立 worktree。
-- **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；PR/MR merged / closed 后自动强制回收对应的 linked worktree。
+- **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；通过 RepoKit repository lifecycle API 更新观察与本地资源状态。
 
 领域主链是 **`PR/MR → Repo → Component`**。Repo 是 git、branch 和 forge 状态的边界；Component 是 lint/test 的验证单位；workspace 只是可选的多仓聚合上下文，单仓库同样完整支持。
 
@@ -86,44 +86,24 @@ devloop 会选择当前仓库和受影响的 Component，完成验证、提交�
 
 ## Component 验证
 
-验证不是 lint/test 两种模式，而是对同一份稳定代码执行的多个质量检查：
-
-```text
-normalize: make format
-        ↓
-stable Component content
-   ├─ static quality: make lint-ci | make lint
-   └─ behavior:       make test
-```
-
-- `make format` 是可选的 normalize 步骤，也是唯一允许自动改写源码的验证命令；缺失时不阻断后续检查，结果明确记录为 unavailable。
-- repocli 在 fix 完成后重新规划，lint 与 test 可以有界并发执行。
-- 完整验证同时检查静态质量和行为；单独要求 lint 或 test 属于部分验证，devloop 会分别报告结果。
-- lifecycle 中 lint 失败会阻止 commit/MR；test 失败目前只提示、不阻塞，因为坏测可能来自基线或环境，是否与本次 diff 相关仍需 CI 或人判断。
-
-### 项目接入契约
-
-每个 Component 通过 Makefile 暴露稳定入口：
-
-| Target | 要求 |
-|---|---|
-| `make format` | 可选；执行 formatter/fixer，可以修改源码 |
-| `make lint-ci` 或 `make lint` | 非交互、只读，所有静态检查通过时返回 0；优先使用 `lint-ci` |
-| `make test` | 非交互、只读，默认运行完整测试套件，通过时返回 0 |
-
-项目可以额外支持 Component 相对路径组成的 `TEST_FILES`：
+AI 按 validate skill 直接执行 repocli，由 RepoKit 选择 Component、规划检查、执行并记录历史：
 
 ```console
-make test TEST_FILES="tests/a.py tests/b.py"
+repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m
 ```
 
-`TEST_FILES` 缺失或为空时必须保持全量测试语义。自动验证由 repocli 计算受影响的 Component，
-devloop 仅在 `affectedFileCounts` 的 `source/test/config/manifest/lockfile` 任一计数大于 0 时执行 lint/test；其余标签全部跳过。
-多标签任一命中即执行，`complete=false` 和诊断只展示、不额外触发检查。选中后按文件列表及项目契约决定 focused/full；跳过不写成功戳。
-`--full` 跳过影响筛选，验证全部指定组件；`TEST_FILES` 保留为显式收窄测试的手动覆盖，不能授予完整组件验证戳。
-组件缺少 lint/test target 时按检查项回退到根 Component；根也缺失时报告 unavailable，不盖通过戳。验证要求 repocli CLI 0.47.0+；旧 schema 或缺少、损坏 `affectedFileCounts` 的报告直接报错并终止验证。
+format 可选且允许修改源码；完成后重新规划，再有界并发执行 lint/test。
+AI 在提交代码和提交 PR 前检查 scope、diagnostics、inputsConsistent 和各检查结果。
+commit/push 脚本不自动执行验证，也不以历史记录作为门禁。
 
-Go 不应为了统一接口传单个 `_test.go` 文件；应由项目暴露 package 或 test-name 选择。完整契约见 [`spec.md`](./skills/validate/references/spec.md)，并发和 Makefile 示例按语言查看 [Python](./skills/validate/references/python.md)、[Go](./skills/validate/references/go.md) 或 [Node.js](./skills/validate/references/node.md)。devloop 不会擅自为项目新增工具、依赖或 Make target。
+项目通过 Component 的 Makefile 暴露 `format`、`lint-ci` / `lint` 和 `test` 等检查。
+可选的 `LINT_FILES` / `TEST_FILES` 用于 focused checks，空值必须保持全量语义。
+未传 `--base` 时执行所选 Component 的完整检查；缺少入口显示 unavailable，不能解释为通过。
+
+完整契约见 [spec.md](./skills/validate/references/spec.md)，语言示例见
+[Python](./skills/validate/references/python.md)、[Go](./skills/validate/references/go.md)
+或 [Node.js](./skills/validate/references/node.md)。devloop 不擅自新增项目工具、依赖或 Make target。
+CLI 最低版本与安装说明见 [repocli](./references/repocli.md)。
 
 ## 日常操作
 
@@ -159,16 +139,14 @@ push 始终发往 origin；branch、worktree、commit、review 和巡检仍以�
 普通配置遵循 **全局默认 < 主仓库 < 当前 worktree**：逐字段就近取值，缺失才向上补全，显式的
 `[]`、`false` 不回退。worktree 放在主仓库目录外也能继承；来源顺序和明确例外见[配置继承](./docs/configuration.md)。
 
-所有 lifecycle hook 默认关闭。一个常见配置是提交前验证，并在 PR/MR 创建后异步 review：
+所有 lifecycle hook 默认关闭。验证由 skill 提醒 AI 显式执行；可选的提交后 review 配置如下：
 
 ```jsonc
 {
   "lifecycle": {
     "default": {
-      "pre_commit": ["lint", "test"],
-      "post_commit": [],
-      "pre_mr": [],
-      "post_mr": ["review"]
+      "pre_commit": [],
+      "post_commit": ["review"]
     },
     "repos": {}
   },
@@ -178,22 +156,16 @@ push 始终发往 origin；branch、worktree、commit、review 和巡检仍以�
 
 `review` 是异步 signal hook，不阻塞 commit 或 PR/MR；默认引擎是 [CCR](https://github.com/compforge/case-code-review)，也可以配置为 `ocr`。结果会在后续 session 中浮现；已有开放 PR/MR 时还会尝试发布 review comment。
 
-Worktree 回收只走 `pr-lifecycle-reconcile`：Forge 确认 PR/MR 已 merged / closed 后，除作为仓库锚点的 primary checkout 外，对应 linked worktree 被强制回收，branch ref 保留。删除前重新核对仓库内的 checkout 路径、branch 和 HEAD；若与查询时不同则延期，下一轮重新对账。gitlink 按父仓的普通版本化条目处理，子模块 checkout 内容不增加保留条件。创建或复用 worktree 只准备当前 checkout；open 或没有 PR/MR 的 worktree 不按数量淘汰。旧 `worktree.keep_recent` 配置不再生效。
+Worktree 的保留数量、依赖环境与清理保护由 RepoKit 管理。AI 直接执行原生 PR 写操作或显式 clean，RepoKit 自行维护本地资源。RepoKit 以 merged 为终态，保留 branch refs；超出数量时清理旧 checkout 或环境，未知创建时间视为最旧。配置与手工 `repocli worktree clean` 见 RepoKit 文档。
 
 完整配置结构和 forge host 配置见 [`config/config.example.json`](./config/config.example.json)。token 建议使用环境变量；如果写入配置文件，不要提交仓库内的 `.devloop/config.json`。
 
-## PR/MR 周期对账
+## PR/MR 查询与清理
 
-devloop 只定义一个 `pr-lifecycle-reconcile` task：它枚举本地 branch（包含无 checkout 的 branch），对账 Forge 状态，并强制回收 PR/MR 已 merged / closed 的 linked worktree。Claude native monitor 会循环执行该 task；Codex 可用 Scheduled task 周期调用同一个单次入口。
+PR 和 worktree 清理由 skill 指导 AI 直接执行 `repocli pr` 与 `repocli worktree clean`。
+PR 写操作成功后的维护由 RepoKit 执行；devloop 不安装定期扫描任务，也不在会话/工具事件后启动清理进程。
+需要周期检查时，用户可让 Harness 原生调度能力按指定频率调用 monitor skill。
 
-Codex 会在会话开始和工具执行后，对实际访问的仓库非阻塞触发一次对账；同一主仓库及其 worktree 共用触发频率，上一轮未结束时不会重复启动。这只能覆盖活跃使用期间：空闲时仍需在 ChatGPT desktop 创建能访问本地项目的 Scheduled task；Codex CLI 不提供 Scheduled 管理界面。参见 OpenAI 的 [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) 与 [plugin packaging](https://developers.openai.com/plugins/build/plugins) 文档。
-
-在 ChatGPT desktop 中说“为当前项目安排 `$devloop:monitor`”即可按 task 默认周期创建 Scheduled task，也可在请求中指定周期。单次手动执行时：
-
-```console
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py list
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py run pr-lifecycle-reconcile . --report
-```
 
 ## 更新与手工初始化
 
@@ -233,7 +205,7 @@ codex plugin add devloop@devloop
 
 - [`CONCEPTS.md`](./CONCEPTS.md)：Workspace、Repo、Component、PR/MR 等稳定术语
 - [`docs/loop.md`](./docs/loop.md)：完整开发生命周期
-- [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)：normalize、lint/test checks 与 lifecycle hook
+- [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)：显式验证与 lifecycle action
 - [`docs/code-review.md`](./docs/code-review.md)：异步 review 与 comment 交付
 - [`docs/board.md`](./docs/board.md)：状态组织和上下文投递
 - [`AGENTS.md`](./AGENTS.md)：架构边界与开发约定

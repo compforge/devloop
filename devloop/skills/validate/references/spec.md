@@ -30,9 +30,9 @@ unavailable; failed commands remain failed. Input changes invalidate passing evi
 independently of check availability. A focused pass does not grant full coverage.
 
 Repocli owns persistent execution history and checks reuse using Component/check inputs, command,
-scope, environment and dependency receipts. Devloop stores reports and branch references,
-then applies lifecycle policy. It never compares Python/Node host environments.
+scope, environment and dependency receipts. The AI inspects this report before publishing code;
+devloop does not import it into a commit gate or maintain a second reuse cache.
 
-See [repository-toolkit](../../../docs/repository-toolkit.md) for input declarations,
-report association and gate ownership. An unsupported CLI contract stops validation;
+See [repository-toolkit](../../../docs/repository-toolkit.md) for CLI/toolkit ownership
+and skill-led validation. An unsupported CLI contract stops validation;
 it does not trigger a second Make runner or a historical-protocol fallback.

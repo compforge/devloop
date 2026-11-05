@@ -9,13 +9,13 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 
 // Exercise the artifact used by Git marketplace installations, which have no node_modules.
 describe("standalone process hook", () => {
-  it.each(["claude", "codex"])("awaits native inspection and preserves %s gate decisions without npm dependencies", (harness) => {
+  it.each(["claude", "codex"])("preserves %s protection decisions without validation gates or npm dependencies", (harness) => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), "devloop-hook-bundle-"))); roots.push(root);
     const entry = join(root, "runtime.mjs");
     copyFileSync(new URL("../dist/hooks/runtime.js", import.meta.url), entry);
     execFileSync("git", ["init", "-q", "-b", "feature", root]);
     mkdirSync(join(root, ".devloop"));
-    writeFileSync(join(root, ".devloop/config.json"), JSON.stringify({ lifecycle: { default: { pre_commit: ["lint"] } } }));
+    writeFileSync(join(root, ".devloop/config.json"), JSON.stringify({ lifecycle: { default: { pre_commit: [] } } }));
     writeFileSync(join(root, "go.mod"), "module example.com/service\n");
     writeFileSync(join(root, "Makefile"), "lint:\n\t@true\n");
     const run = (command = "git commit -m test", extraInput: Record<string, string> = {}) => {
@@ -27,12 +27,14 @@ describe("standalone process hook", () => {
       expect(result.status, result.stderr).toBe(0);
       return JSON.parse(result.stdout);
     };
-    expect(run()).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has no full-check evidence") } });
-    // Observability may probe unusable paths, but must still reach the commit gate.
-    expect(run(undefined, { path: join(root, "missing", "file.ts") })).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("lint has no full-check evidence") } });
+    expect(run().hookSpecificOutput?.permissionDecision).not.toBe("deny");
+    // Missing observation paths do not introduce a validation evidence gate.
+    expect(run(undefined, { path: join(root, "missing", "file.ts") }).hookSpecificOutput?.permissionDecision).not.toBe("deny");
     // A failed lookup for the actual command target must reach fail-closed rules.
     expect(run(`git -C "${join(root, "missing")}" commit -m test`)).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("fail-closed") } });
     symlinkSync("go.mod", join(root, "package.json"));
-    expect(run()).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("inspection unavailable") } });
+    expect(run().hookSpecificOutput?.permissionDecision).not.toBe("deny");
+    execFileSync("git", ["-C", root, "symbolic-ref", "HEAD", "refs/heads/main"]);
+    expect(run()).toMatchObject({ hookSpecificOutput: { permissionDecision: "deny", permissionDecisionReason: expect.stringContaining("protected branch") } });
   });
 });

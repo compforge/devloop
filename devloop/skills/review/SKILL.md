@@ -17,7 +17,7 @@ and durable Verdict replies; do not hand-write `ccr:label=` or edit local ground
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/review.py run [--background '<context>']
 ```
 
-Lifecycle hooks already launch reviews. Do not duplicate a running run. Surfaced context is
+Configured commit hooks may already have launched a review. Check status first and do not duplicate a running run for the same revision. Surfaced context is
 advisory: report verified findings or incomplete coverage without taking over the current task.
 An error or failed-file result is not clean; a stale run may need rerunning. Code changes require
 a request to fix/process findings.

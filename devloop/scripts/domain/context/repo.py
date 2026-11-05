@@ -13,7 +13,7 @@ import logging
 
 from lib import git_state, parsers, repokit
 from repokit.repository import default_branch as repository_default_branch
-from lib.forge import forge_for_repo
+from lib.config import forge_client
 
 from .. import repo_layout
 from . import base, store
@@ -268,7 +268,7 @@ class RepoContext:
 
         prev = cls.load(repo_dir_abs) or cls()
         # RepoKit owns observation freshness; this is only the development target projection.
-        observed = repository_default_branch(repo_dir_abs, forge=forge_for_repo(repo_dir_abs))
+        observed = repository_default_branch(repo_dir_abs, forge=forge_client(repo_dir_abs))
         default_branch = observed.branch or git_state.local_default_target(repo_dir_abs)
         target = default_branch
         items = parsers.parse_references_section(agents_md_path) if agents_md_path else []

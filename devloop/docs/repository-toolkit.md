@@ -44,7 +44,7 @@ CLI 默认在 `~/.repocli/repositories/<name>/` 保存执行历史；同仓 chec
 `--force` 强制执行，`--history` 查询实际执行次数、耗时和复用统计。VersionTag 变化只在复用判断时忽略，
 分支门禁继续核对本轮完整 snapshot。记录的原 Run 时间不能替换为本次复用时间。
 
-Python workflow 锁定 `compforge-repokit==0.19.0`，使用 schema 2 解码器及 repository lifecycle API；依赖通过官方发布包解析，
+Python workflow 锁定 `compforge-repokit==0.20.1`，使用 schema 2 解码器及 repository lifecycle API；依赖通过官方发布包解析，
 不依赖本地源码覆盖。执行端需要支持 schema 2 与历史复用的 repocli CLI 0.54.0 或后续版本。
 
 ## 操作与策略
@@ -162,5 +162,5 @@ ValidationReport 的 wire schema 由 RepoKit `decode_validation_report` 校验�
 Python/TypeScript 使用 RepoKit `ForgeConnection` 构造 client 和 PR context。devloop 只装配自己的
 配置、凭据与显式目标仓；连接标识、Forge 身份规范化、观察目录与 HTTP 协调状态由工具包维护。
 
-PR 写操作统一调用原生 `repocli pr`（最低 0.57.0）。Python RepoKit 依赖为 0.20.0，
+PR 写操作统一调用原生 `repocli pr`（最低 0.57.1）。Python RepoKit 依赖为 0.20.1，
 只作为 toolkit 使用；验证执行和提交前时机由 skill 指导 AI，workflow 不自动运行验证或消费其记录作为门禁。

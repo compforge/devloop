@@ -1,6 +1,6 @@
 # PR/MR management
 
-Use the native provider-neutral CLI (repocli >= 0.57.0):
+Use the native provider-neutral CLI (repocli >= 0.57.1):
 
 ```bash
 repocli pr show <number> --repo <path> --json

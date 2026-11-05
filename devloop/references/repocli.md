@@ -101,4 +101,4 @@ Devloop records branch evidence and checks it before committing; it does not reb
 command scope or hash the Harness environment. Repository snapshots used by Git
 staging still come from the native toolkit and share the CLI's content contract.
 
-PR operations require repocli >= 0.57.0; Python RepoKit no longer provides a CLI runtime.
+PR operations require repocli >= 0.57.1; Python RepoKit no longer provides a CLI runtime.

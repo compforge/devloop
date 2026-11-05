@@ -17,6 +17,7 @@ MODULES = [
     "test_config",
     "test_forge",
     "test_pr",
+    "test_pr_cli",
     "test_git_ops",
     "test_git_policy",
     "test_staging",

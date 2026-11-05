@@ -10,7 +10,7 @@ import subprocess
 from _testkit import run_main
 from domain import repo as repo_model
 from domain.repo_layout import inspect_catalog
-from domain.lifecycle.base import dispatch
+from domain.validation import run_validation
 from domain.validation import content_identity
 from lib import repokit
 from _validation_fixture import make_repo
@@ -67,8 +67,11 @@ def test_incomplete_observation_and_git_failures_are_unavailable():
         root = make_repo(tmp)
         report = repokit.toolkit.inspect(root)
         with patch.object(repokit.toolkit, "inspect", return_value=replace(report, complete=False)):
-            result = dispatch("pre_commit", str(root), names=["lint", "test"])
-            assert not result.proceed
+            try:
+                run_validation(str(root), full=True)
+                raise AssertionError("incomplete observation accepted")
+            except repokit.InspectionError:
+                pass
         for failure in (TimeoutError("deadline"), subprocess.CalledProcessError(1, ["git"])):
             with patch.object(repokit.toolkit, "inspect", side_effect=failure):
                 try:

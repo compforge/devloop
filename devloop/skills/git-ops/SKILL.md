@@ -3,7 +3,7 @@ name: git-ops
 description: Commit, push, rebase, manage GitHub PRs or GitLab MRs, create/resume branches and worktrees, or publish releases. Use for gcam / gcamp / gcampr / rebase / 解决冲突 / 提 PR / 提 MR / 看 PR / 看 MR / 关 PR / 关 MR / checkout / worktree / 切新分支 / 发版.
 ---
 
-Use devloop's managed scripts for Git and Forge operations; read-only Git inspection is unrestricted.
+Use devloop's managed scripts for Git transactions and `repocli pr` for PR operations; read-only Git inspection is unrestricted.
 Do not replace these workflows with raw Git mutations or provider-specific API calls.
 
 `<PLUGIN_ROOT>` is the installed plugin directory: `${CLAUDE_PLUGIN_ROOT}` on Claude Code,
@@ -17,7 +17,7 @@ Do not replace these workflows with raw Git mutations or provider-specific API c
 - Preserve other work and session-owned checkouts. Rebase is a separate requested operation.
 - Select the actual repository and task files explicitly when the workspace contains other work.
 - Follow the script's `PLAN:` and live checks. Repair failures within the authorized task and retry
-  the owning entrypoint; preserve validation gates and report any remaining blocker.
+  the owning entrypoint; report any remaining blocker.
 - Stop at the requested commit, push, PR/MR, or release outcome. Merge remains a human action.
 
 ## Routes
@@ -31,6 +31,9 @@ Do not replace these workflows with raw Git mutations or provider-specific API c
 | Show/list/update/close/reply on PR/MR | [PR management](references/pr-management.md) |
 | Publish or inspect a release | [Release](references/release.md) |
 
-Validation scope and reuse are managed by the workflow; use [validate](../validate/SKILL.md) for
-standalone checks. Commit-triggered review is automatic and advisory; use
+Before committing or pushing code, or submitting its PR, run `repocli validate` using
+[validate](../validate/SKILL.md). Inspect the result and fix failures relevant to the change;
+report unavailable checks and unresolved failures accurately. Validation timing and acceptance
+are your responsibility; neither commit scripts nor PR operations run validation automatically.
+PR title/body/label-only updates do not need code validation. Repocli owns check scope and reuse. Commit-triggered review is automatic and advisory; use
 [review](../review/SKILL.md) to inspect or handle its findings.

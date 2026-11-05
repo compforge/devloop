@@ -33,7 +33,8 @@ from domain.forge import (  # noqa: E402
     pr_label,
 )
 from lib import cli  # noqa: E402
-from lib.forge import forge_for_repo, pr_context_for_repo  # noqa: E402
+from lib.forge import forge_for_repo
+from lib.pr_cli import pr_commands_for_repo  # noqa: E402
 from repokit.forge import PullRequestKey
 
 _READINESS_LABEL = {
@@ -61,7 +62,7 @@ def _forge_or_exit(ns, prog):
 
 
 def _context_or_exit(ns, forge):
-    context = pr_context_for_repo(
+    context = pr_commands_for_repo(
         ns.repo_root, forge=forge, target_repository=forge.repository().id(),
     )
     if context is None:
@@ -84,7 +85,7 @@ def cmd_show(ns) -> int:
         pr = forge.get(number)
         comments = forge.comments(number)
         readiness = forge.merge_readiness(number)
-    except ForgeError as e:
+    except (ForgeError, ValueError) as e:
         print(f"pr show: {e}", file=sys.stderr)
         return 1
     print(f"{pr_label(forge.provider, pr.number)}: {pr.title}  [{pr.state}]")
@@ -138,7 +139,7 @@ def cmd_list(ns) -> int:
     forge = _forge_or_exit(ns, "pr list")
     try:
         prs = forge.prs_for_branch(ns.branch) if ns.branch else forge.recent(ns.limit)
-    except ForgeError as e:
+    except (ForgeError, ValueError) as e:
         print(f"pr list: {e}", file=sys.stderr)
         return 1
     if not prs:
@@ -161,11 +162,8 @@ def cmd_update(ns) -> int:
         return 1
     try:
         context = _context_or_exit(ns, forge)
-        try:
-            pr = context.update(PullRequestKey(forge.repository(), number), **fields)
-        finally:
-            context.observer.close()
-    except ForgeError as e:
+        pr = context.update(PullRequestKey(forge.repository(), number), **fields)
+    except (ForgeError, ValueError) as e:
         print(f"pr update: {e}", file=sys.stderr)
         return 1
     print(f"updated {pr_label(forge.provider, pr.number)}: {pr.title} [{pr.state}] → {pr.web_url}")
@@ -177,11 +175,8 @@ def cmd_close(ns) -> int:
     number = _number_or_exit(ns.number, "pr close")
     try:
         context = _context_or_exit(ns, forge)
-        try:
-            pr = context.close(PullRequestKey(forge.repository(), number))
-        finally:
-            context.observer.close()
-    except ForgeError as e:
+        pr = context.close(PullRequestKey(forge.repository(), number))
+    except (ForgeError, ValueError) as e:
         print(f"pr close: {e}", file=sys.stderr)
         return 1
     print(f"closed {pr_label(forge.provider, pr.number)}: {pr.title} [{pr.state}] → {pr.web_url}")
@@ -199,7 +194,7 @@ def cmd_reply(ns) -> int:
                   f"{pr_label(forge.provider, number)}", file=sys.stderr)
             return 1
         forge.reply(number, target, ns.body)
-    except ForgeError as e:
+    except (ForgeError, ValueError) as e:
         print(f"pr reply: {e}", file=sys.stderr)
         return 1
     print(f"replied to {ns.comment_id} on {pr_label(forge.provider, number)}")

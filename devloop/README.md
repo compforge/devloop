@@ -3,7 +3,7 @@
 **devloop 为 AI 编码 agent 提供一条受控的 PR/MR 开发闭环**：进入仓库、在正确分支开发、验证受影响的 Component、提交并推送、创建或复用 PR/MR，最终由人完成 merge。
 
 ```text
-enter repo → start branch → develop → normalize → lint ∥ test → commit → push → PR/MR → human merge
+enter repo → start branch → develop → explicit validate → commit → push → PR/MR → human merge
 ```
 
 它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code、Codex、DeepSeek Harness（DSH）与 OpenCode V2。
@@ -117,7 +117,7 @@ stable Component content
 make test TEST_FILES="tests/a.py tests/b.py"
 ```
 
-`TEST_FILES` 缺失或为空时必须保持全量测试语义。自动验证由 repocli 计算受影响的 Component，
+`TEST_FILES` 缺失或为空时必须保持全量测试语义。显式验证由 repocli 计算受影响的 Component，
 devloop 仅在 `affectedFileCounts` 的 `source/test/config/manifest/lockfile` 任一计数大于 0 时执行 lint/test；其余标签全部跳过。
 多标签任一命中即执行，`complete=false` 和诊断只展示、不额外触发检查。选中后按文件列表及项目契约决定 focused/full；跳过不写成功戳。
 `--full` 跳过影响筛选，验证全部指定组件；`TEST_FILES` 保留为显式收窄测试的手动覆盖，不能授予完整组件验证戳。
@@ -165,7 +165,7 @@ push 始终发往 origin；branch、worktree、commit、review 和巡检仍以�
 {
   "lifecycle": {
     "default": {
-      "pre_commit": ["lint", "test"],
+      "pre_commit": [],
       "post_commit": [],
       "pre_mr": [],
       "post_mr": ["review"]
@@ -233,7 +233,7 @@ codex plugin add devloop@devloop
 
 - [`CONCEPTS.md`](./CONCEPTS.md)：Workspace、Repo、Component、PR/MR 等稳定术语
 - [`docs/loop.md`](./docs/loop.md)：完整开发生命周期
-- [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)：normalize、lint/test checks 与 lifecycle hook
+- [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)：显式验证与 lifecycle action
 - [`docs/code-review.md`](./docs/code-review.md)：异步 review 与 comment 交付
 - [`docs/board.md`](./docs/board.md)：状态组织和上下文投递
 - [`AGENTS.md`](./AGENTS.md)：架构边界与开发约定

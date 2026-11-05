@@ -33,8 +33,8 @@ running checks. `--force` requests real execution; `--history` reads retained st
 Do not assemble previous reports or decide execution reuse in the workflow. Reports may include project output;
 keep them in ignored local state. `--concurrency` bounds simultaneous checks.
 
-When branch evidence, managed dependency preparation or lifecycle gates are needed, use
-the development workflow adapter shared by gcam/gcamp/gcampr:
+For explicit managed dependency preparation and recording results in the branch Board, use
+the optional workflow adapter:
 
 ```bash
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_validate.py <repo-or-component>
@@ -43,7 +43,7 @@ the development workflow adapter shared by gcam/gcamp/gcampr:
 
 `<PLUGIN_ROOT>` is `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex and OpenCode V2.
 The adapter submits one repocli round, stores the original report and associates it with
-the branch. It does not implement a second validation engine.
+the branch. Commit/PR operations do not call it or require its records.
 
 Report Components, focused/full scope, executed/reused checks, failures and unavailable
 checks. `inputsConsistent: false` invalidates passing evidence independently of check

@@ -703,12 +703,45 @@ def test_explicit_repository_pr_target_does_not_change_local_git_baseline_or_per
         assert intent.pr_target == "release"
         forge = _ForkForge()
         with patch.object(flow, "forge_for_repo", return_value=forge), \
-             patch.object(flow, "pr_context_for_repo", side_effect=_operation_context), \
+             patch.object(flow, "pr_commands_for_repo", side_effect=_operation_context), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")) as push, \
              patch.object(flow.RepoContext, "refresh_branch"):
             flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
         push.assert_called_once_with(str(Path(repo).resolve()), "fix", upstream=True)
         assert forge.destination.created.target_branch == "release"
+        assert _git_out(repo, "config", "--local", "--list") == config_before
+
+
+def test_invalid_pr_destination_reports_pushed_branch_without_traceback():
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+    from lib.gitcmd import GitResult
+    flow = _load_script("commit_flow")
+    with TemporaryDirectory() as repo:
+        _git(repo, "init", "-qb", "main")
+        _git(repo, "config", "user.name", "Fixture")
+        _git(repo, "config", "user.email", "test@example.invalid")
+        _git(repo, "commit", "--allow-empty", "-qm", "base")
+        _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+        _git(repo, "checkout", "-qb", "fix")
+        config_before = _git_out(repo, "config", "--local", "--list")
+        ns = flow._build_parser().parse_args(["mr", "--repo", repo, "-m", "title",
+                                               "--target-repository", "gitlab/upstream/repo", "--target", "release"])
+        with patch.object(flow, "forge_for_repo", side_effect=AssertionError("unneeded API")):
+            intent = flow.resolve_intent(ns, repo)
+        assert intent.target == "main" and intent.base == "origin/main"
+        assert intent.pr_target == "release"
+        forge = _ForkForge()
+        plan = []
+        with patch.object(flow, "forge_for_repo", return_value=forge), \
+             patch.object(flow.operations, "push", return_value=GitResult(0, "", "")):
+            try:
+                flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), plan)
+                raise AssertionError("invalid destination accepted")
+            except flow.SmartError as error:
+                assert "branch pushed, but PR/MR create/reuse failed" in str(error)
+                assert "configured Forge" in str(error)
+        assert "pushed origin/fix" in plan
         assert _git_out(repo, "config", "--local", "--list") == config_before
 
 
@@ -749,7 +782,7 @@ def test_publish_current_repository_preserves_existing_nondefault_base():
                                 target="main", base="origin/main", explicit_base=False, files=[],
                                 repo="/repo", source="test", invoke_cwd="/repo", pr_target=requested, description="follow-up body")
         with patch.object(flow, "forge_for_repo", return_value=forge), \
-             patch.object(flow, "pr_context_for_repo", side_effect=_operation_context), \
+             patch.object(flow, "pr_commands_for_repo", side_effect=_operation_context), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")), \
              patch.object(flow.git_state, "commits", return_value=[]), \
              patch.object(flow.RepoContext, "refresh_branch"):

@@ -57,12 +57,14 @@ def test_pr_cli_dispatch():
     class _R:
         git_root = "/x"
 
-    orig_context = prcli.pr_context_for_repo
-    from types import SimpleNamespace
-    prcli.pr_context_for_repo = lambda *a, **kw: SimpleNamespace(
-        update=lambda key, **fields: fake.update(key.number, **fields),
-        close=lambda key: fake.close(key.number),
-        observer=SimpleNamespace(close=lambda: None))
+    from unittest.mock import Mock, patch
+    from lib.pr_cli import PullRequestCommands
+    from repokit.forge import PullRequestKey
+    commands = Mock(spec=PullRequestCommands)
+    commands.update.return_value = fake.get(5)
+    commands.close.return_value = PullRequest(number=5, state="closed")
+    constructor = patch.object(prcli, "pr_commands_for_repo", return_value=commands)
+    factory = constructor.start()
     orig_forge = prcli.forge_for_repo
     orig_resolve = prcli.cli.resolve_repo_or_exit
     try:
@@ -73,7 +75,11 @@ def test_pr_cli_dispatch():
         assert prcli.main(["list", "--branch", "feat/x"]) == 0
         assert prcli.main(["update", "5", "--title", "New"]) == 0
         assert prcli.main(["close", "5"]) == 0
-        assert fake.get(5).state == "closed"   # close flipped state via the facade
+        expected = PullRequestKey(fake.repository(), 5)
+        commands.update.assert_called_once_with(expected, title="New")
+        commands.close.assert_called_once_with(expected)
+        factory.assert_called_with("/x", forge=fake, target_repository=fake.repository().id())
+        assert fake.get(5).state == "open"  # Direct Python Forge mutation must not run.
         assert prcli.main(["update", "5"]) == 1   # nothing to update → error
         try:                                       # no create verb → argparse "invalid choice" → exit(2)
             prcli.main(["create", "--message", "m"])
@@ -83,7 +89,7 @@ def test_pr_cli_dispatch():
         assert raised
     finally:
         prcli.forge_for_repo = orig_forge
-        prcli.pr_context_for_repo = orig_context
+        constructor.stop()
         prcli.cli.resolve_repo_or_exit = orig_resolve
 
 

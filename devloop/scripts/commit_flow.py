@@ -34,7 +34,7 @@ import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from repokit.forge import PullRequestContext, PullRequestKey
+from repokit.forge import PullRequestKey
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -42,7 +42,8 @@ from domain import branch as branch_domain, lifecycle, repo as repo_model, stagi
 from domain.context import RepoContext, gate, record_active_repo, store
 from domain.forge import Forge, ForgeError, PullRequest, pr_label  # noqa: E402
 from lib import cli, git_state, gitcmd  # noqa: E402
-from lib.forge import forge_for_repo, pr_context_for_repo  # noqa: E402
+from lib.forge import forge_for_repo
+from lib.pr_cli import PullRequestCommands, pr_commands_for_repo  # noqa: E402
 
 
 class SmartError(Exception):
@@ -53,7 +54,7 @@ class SmartError(Exception):
 # main() = resolve_intent → prepare_branch → stage_and_commit → publish.
 # Each phase is a function of (intent, plan) + its predecessor's result — no phase
 # re-reads argv/cwd/git defaults, and no cross-phase mutable locals (the old
-# `current = ns.branch` style). New flow steps (amend-MR, validation gate…) slot in
+# `current = ns.branch` style). New flow steps (amend-MR…) slot in
 # as new phases instead of growing main().
 
 
@@ -175,9 +176,9 @@ def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: l
     return out
 
 
-def stage(repo: str, files: list[str], plan: list[str], *, validated_identity: str = "") -> None:
+def stage(repo: str, files: list[str], plan: list[str]) -> None:
     try:
-        check_operation(staging.stage(repo, files, plan, validated_identity=validated_identity))
+        check_operation(staging.stage(repo, files, plan))
     except staging.StagingError as exc:
         raise SmartError(str(exc)) from exc
 
@@ -208,7 +209,7 @@ def warn_mixed_version_bump(repo: str, plan: list[str]) -> None:
         )
 
 
-def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: list[str], *, context: PullRequestContext) -> None:
+def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: list[str], *, context: PullRequestCommands) -> None:
     """Append this run's commit body to an existing PR/MR description (creation passes it
     directly; this covers follow-up commits onto an in-flight PR).
 
@@ -226,7 +227,7 @@ def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: l
         merged = f"{existing.rstrip()}\n\n{description}" if existing.strip() else description
         context.update(PullRequestKey(forge.repository(), pr.number), body=merged)
         plan.append(f"appended commit body to {label} description")
-    except ForgeError as e:
+    except (ForgeError, ValueError) as e:
         plan.append(f"⚠ could not sync {label} description (non-fatal): {e}")
 
 
@@ -326,21 +327,16 @@ def prepare_branch(intent: GitIntent, gv: gate.GateView, plan: list[str]) -> Bra
     return BranchResult(branch=gv.branch or "", cut=False)
 
 
-def stage_and_commit(intent: GitIntent, plan: list[str], *, validated_identity: str = "") -> StageResult:
+def stage_and_commit(intent: GitIntent, plan: list[str]) -> StageResult:
     """Phase 3: stage (sensitive blocklist + gitlink guard), commit when anything is staged.
     `intent.files` 已在 main() 归一过（仓根相对）——这里不再自己归一，否则 gate 与 staging
     会各拿一份、且 PLAN 重复报 rebase。"""
-    stage(intent.repo, intent.files, plan, validated_identity=validated_identity)
+    stage(intent.repo, intent.files, plan)
     warn_mixed_version_bump(intent.repo, plan)
     staged = git_index.staged_changes(intent.repo)
     if not staged:
         plan.append("nothing staged — skipped commit")
         return StageResult(committed=False)
-    if validated_identity:
-        try:
-            staging.require_validated_candidate(intent.repo, git_index.index_view(intent.repo), validated_identity)
-        except staging.StagingError as exc:
-            raise SmartError(str(exc)) from exc
     check_operation(operations.commit(intent.repo, intent.message))
     plan.append("committed")
     return StageResult(committed=True)
@@ -374,12 +370,8 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
         # in step with the new commit's body, same as the mr-mode reuse path does.
         forge = forge_for_repo(repo)
         if forge is not None:
-            context = pr_context_for_repo(repo, forge=forge)
-            if context is not None:
-                try:
-                    sync_pr_description(forge, branch.active_pr, intent.description, plan, context=context)
-                finally:
-                    context.observer.close()
+            context = pr_commands_for_repo(repo, forge=forge)
+            sync_pr_description(forge, branch.active_pr, intent.description, plan, context=context)
 
     if intent.mode == "mr":
         commits = git_state.commits(repo, f"origin/{target}", current)
@@ -387,13 +379,11 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
         forge = forge_for_repo(repo)
         if forge is None:
             raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
-        context = pr_context_for_repo(
-            repo, forge=forge,
-            target_repository=intent.target_repository or forge.repository().id(),
-        )
-        if context is None:
-            raise SmartError("PR context unavailable")
         try:
+            context = pr_commands_for_repo(
+                repo, forge=forge,
+                target_repository=intent.target_repository or forge.repository().id(),
+            )
             result = context.ensure_pull_request(
                 source_branch=current, title=intent.title, body=intent.description,
                 target_branch=intent.pr_target, target_repository=intent.target_repository,
@@ -409,8 +399,6 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
                 sync_pr_description(client, pr, intent.description, plan, context=context)
         except (ForgeError, ValueError) as error:
             raise SmartError(f"branch pushed, but PR/MR create/reuse failed: {error}") from error
-        finally:
-            context.observer.close()
         RepoContext.refresh_branch(repo)
 
 
@@ -509,15 +497,13 @@ def _build_parser() -> cli.ArgParser:
 def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
     """本相位的「本次改动」是哪些文件（仓相对）——**每个相位的答案不同**，且只有这里知道。
 
-    handler 手里只有 `repo`，要范围只能读工作树；那个答案只在 pre_commit（改动尚未提交）成立。
-    commit 之后工作树是干净的，读出来是「什么都没改」→ 被 `select_components` 读成「不知道范围」→
-    退化成 repo-wide 跑**全部** component：一个你根本没碰的 component 有存量 lint 错误，就会在 commit 已
-    落地之后拦掉 push 和 MR。所以范围必须在相位边界由这里算好、冻结下传。
+    工作树、刚提交的 commit 和 PR 分支对应不同范围；工作流在相位边界冻结路径，
+    action 不重新猜测这次操作涉及哪些文件。
 
     - `pre_commit`：**将要提交的**那些文件。`--file` 给了则把同一 staging scope 展开成其中真实
       改动的叶子文件——不是「工作树里所有脏文件」：后者是超集，会把你压根不打算提交的 component
-      拖进 gate（它有存量 lint 错误就拦掉 commit），还会让 normalize 改到不进本次 commit 的文件。
-      没给 `--file` → 冻结当前工作树改动，让 normalize 和 lint 使用同一范围。
+      交给当前 action。文件选择与 staging 保持一致。
+      没给 `--file` → 冻结当前工作树改动。
     - `post_commit`：刚落地的那个 commit 自身。
     - `pre_mr` / `post_mr`：整条分支 vs target——MR 承载的是整条分支，不是最后那个 commit。
     """
@@ -535,25 +521,8 @@ def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
 
 
 def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecycle.DispatchResult:
-    """跑某相位的 lifecycle validation checks / signal hooks，写进 PLAN，返回 DispatchResult。
-
-    配置为空 → 静默 no-op（opt-in，零行为变化）。inline gate 失败 → 抛 SmartError 中止本次
-    git 动作。pre_commit 故意排在 staging 之前：normalize 的 `make format` 改的文件要被随后的 stage
-    收进同一个 commit。signal hook（如 code-review）不挡、把后台下游放进 `res.to_launch`，由
-    调用方在 git 动作完成后用 launch_background_relays detach 起。
-
-    范围（`phase_paths`）在**跑 hook 之前**算好：既让 post_commit / pre_mr 不退化成跑全仓，也让
-    normalize 与同相位并发的 lint/test 看到同一个集合（format 会改工作树，各自现算会分叉）。
-    """
-    from domain.validation import Comparison
-    comparison = Comparison()
-    if phase == "post_commit":
-        comparison = Comparison(base="HEAD^", head="HEAD")
-    elif phase in ("pre_mr", "post_mr"):
-        base = git_state.merge_base(intent.repo, "HEAD", f"origin/{intent.target}")
-        comparison = (Comparison(base=base, head="HEAD") if base
-                      else Comparison(reason="branch merge base unavailable"))
-    res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase), comparison=comparison)
+    """Run lifecycle actions; skill instructions own validation before publication."""
+    res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase))
     if not res.results:
         return res
 
@@ -568,7 +537,7 @@ def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecy
     for result in res.results:
         for guidance in result.guidance:
             plan.append(f"  - {result.name}: {guidance}")
-    for r in res.advisory_failures:         # 软提示：本轮通报、不阻断（如 test 挂常因基线/环境）
+    for r in res.advisory_failures:         # 软提示：本轮通报、不阻断
         plan.append(f"  ⚠ {r.name} failed (advisory, not blocking): {r.summary.splitlines()[0] if r.summary else ''}")
     if not res.proceed:
         detail = "\n".join(f"    [{r.name}] {r.summary}" for r in res.blocking_failures)
@@ -633,12 +602,12 @@ def main(argv: list[str]) -> int:
         # git 动作完成后 detach 起：pre/post_commit 在 commit 后、pre/post_mr 在 publish 后。
         # review 的 MR 评论是机会性的——relay 跑时查到分支有开放 MR 就发，没有就只落 review.json。
         branch = prepare_branch(intent, gv, plan)
-        pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # 必在 commit 前（normalize 可能改源码）
-        staged = stage_and_commit(intent, plan, validated_identity=pre_c.execution_identity)
+        pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # configured lifecycle actions
+        staged = stage_and_commit(intent, plan)
         if staged.committed:
             post_c = run_lifecycle_gate(intent, "post_commit", plan)
             launch_background_relays(pre_c.to_launch + post_c.to_launch, intent.repo, plan)
-        pre_m = run_lifecycle_gate(intent, "pre_mr", plan) if intent.mode == "mr" else None  # 在 publish 前（阻塞门禁）
+        pre_m = run_lifecycle_gate(intent, "pre_mr", plan) if intent.mode == "mr" else None  # configured lifecycle actions
         publish(intent, branch, staged, plan)
         if intent.mode == "mr":
             post_m = run_lifecycle_gate(intent, "post_mr", plan)   # MR 此刻已建好

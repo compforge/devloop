@@ -135,7 +135,7 @@ HEAD 是谁」**：
 
 ```jsonc
 "lifecycle": { "repos": { "/abs/repo": {
-  "pre_commit": ["lint", "test"],   // 阻塞门禁
+  "pre_commit": [],   // validation is explicit
   "post_mr":    ["review"]           // code-review：审全量 + （此相位有 MR）发评论到 MR 做历史
 } } }
 ```

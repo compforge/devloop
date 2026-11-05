@@ -14,6 +14,12 @@ to describe the final change. Report the resulting commit/push state and PR/MR U
 For multiline messages, fully overwrite the one-shot `<repo>/.devloop/commit_msg` and pass it with
 `--message-file`. It is removed on success and retained on failure; previous contents are not input.
 
+Before the transaction, run `repocli validate --repo <repo> --base <baseline> --check format,lint,test`.
+Use HEAD for uncommitted edits, or the intended target baseline for a committed PR range.
+Inspect results and address relevant failures before publishing. Do not expect the transaction
+to run checks or enforce validation records. PR creation/reuse calls native `repocli pr create`;
+repository maintenance happens inside RepoKit without a devloop cleanup callback.
+
 ## Scope
 
 - `--repo <name|path>` selects the repository; use it when cwd is ambiguous.

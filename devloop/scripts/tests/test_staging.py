@@ -320,50 +320,17 @@ def test_removing_registration_requires_removing_its_gitlink():
 
 
 
-def test_candidate_cannot_borrow_unselected_worktree_dependency():
-    from domain.validation import content_identity
-    flow = _load_script("commit_flow")
-    with repository() as root:
-        (root / "a.py").write_text("from b import new\n")
-        (root / "b.py").write_text("new = 1\n")
-        identity = content_identity(str(root)).digest
-        index = git_path(root, "index")
-        before = index.read_bytes()
-        try:
-            flow.stage(str(root), ["a.py"], [], validated_identity=identity)
-        except flow.SmartError as error:
-            assert "differs from validated working tree" in str(error)
-            assert "b.py" in str(error)
-        else:
-            raise AssertionError("unchecked candidate accepted")
-        assert index.read_bytes() == before
-        flow.stage(str(root), ["a.py", "b.py"], [], validated_identity=identity)
-        assert _git_out(str(root), "show", ":b.py") == "new = 1"
-
-
-def test_candidate_rejects_omitted_new_input_and_late_changes_preserving_index():
-    from domain.validation import content_identity
+def test_staging_does_not_require_validation_identity():
     flow = _load_script("commit_flow")
     with repository() as root:
         (root / "a.py").write_text("selected\n")
-        (root / "new.py").write_text("dependency\n")
-        identity = content_identity(str(root)).digest
-        index = git_path(root, "index")
-        before = index.read_bytes()
-        for files, expected in [(["a.py"], "new.py"), (["a.py", "new.py"], "contents changed")]:
-            if len(files) == 2:
-                (root / "b.py").write_text("late edit\n")
-            try:
-                flow.stage(str(root), files, [], validated_identity=identity)
-            except flow.SmartError as error:
-                assert expected in str(error), error
-            else:
-                raise AssertionError("candidate accepted")
-            assert index.read_bytes() == before
+        (root / "b.py").write_text("independent edit\n")
+        flow.stage(str(root), ["a.py"], [])
+        assert _git_out(str(root), "show", ":a.py") == "selected"
+        assert (root / "b.py").read_text() == "independent edit\n"
 
 
-def test_validated_candidate_handles_deletion_symlink_and_gitlink_without_child_dirt():
-    from domain.validation import content_identity
+def test_candidate_handles_deletion_symlink_and_gitlink_without_child_dirt():
     flow = _load_script("commit_flow")
     with repository() as root:
         (root / "a.py").unlink()
@@ -379,9 +346,7 @@ def test_validated_candidate_handles_deletion_symlink_and_gitlink_without_child_
         (root / ".gitmodules").write_text('[submodule "child"]\n path = child\n url = fixture\n')
         _git(str(root), "add", "child", ".gitmodules")
         (nested / "source").write_text("child dirt is not a parent input")
-        identity = content_identity(str(root)).digest
-        assert identity
-        flow.stage(str(root), ["a.py", "link", "child", ".gitmodules"], [], validated_identity=identity)
+        flow.stage(str(root), ["a.py", "link", "child", ".gitmodules"], [])
         assert _git_out(str(root), "show", ":link") == "b.py"
 
 

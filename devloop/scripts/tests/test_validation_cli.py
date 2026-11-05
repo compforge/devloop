@@ -14,20 +14,15 @@ from domain.context.store import branch_segment, load_segment, save_segment
 from lib import repokit, dependencies
 
 
-def test_one_round_for_lifecycle_checks_and_original_report_storage():
+def test_lifecycle_has_no_validation_handlers():
     with TemporaryDirectory() as tmp:
         repo = make_repo(tmp)
-        data = report(repo)
-        with patch.object(repokit, "validation_report", return_value=data) as invoke:
-            result = dispatch("pre_mr", str(repo), paths=["source.py"], names=["lint", "test"], comparison=Comparison("main"))
-        assert result.proceed and all(item.ok for item in result.results)
-        assert invoke.call_count == 1
-        args = invoke.call_args.args[1]
-        assert args[args.index("--check") + 1] == "format,lint,test"
-        assert args[args.index("--base") + 1] == "main"
-        assert args[args.index("--changed-file") + 1] == "source.py"
-        assert load_segment(str(repo), branch_segment("main", "validation"))["report"] == data
-        assert has_full_stamp(repo)
+        from domain.lifecycle.base import resolve_handler
+        assert all(resolve_handler(name) is None for name in ("format", "lint", "test"))
+        with patch.object(repokit, "validation_report") as invoke:
+            result = dispatch("pre_commit", str(repo), names=[])
+        assert result.proceed and not result.results
+        invoke.assert_not_called()
 
 
 def test_unavailable_test_does_not_block_lint_but_inconsistency_does():
@@ -68,10 +63,18 @@ def test_preparation_failure_and_invalid_protocol_never_fall_back_to_make():
     with TemporaryDirectory() as tmp:
         repo = make_repo(tmp)
         with patch.object(dependencies, "preparation_problem", return_value="install failed"), patch.object(repokit, "validation_report") as invoke:
-            result = dispatch("pre_commit", str(repo), names=["lint", "test"])
-            assert not result.proceed and invoke.call_count == 0
+            try:
+                run_validation(str(repo), full=True)
+                raise AssertionError("preparation failure ignored")
+            except ValueError as error:
+                assert "install failed" in str(error)
+            invoke.assert_not_called()
         with patch.object(repokit, "validation_report", side_effect=ValueError("unsupported schema")):
-            assert not dispatch("pre_commit", str(repo), names=["lint", "test"]).proceed
+            try:
+                run_validation(str(repo), full=True)
+                raise AssertionError("invalid protocol ignored")
+            except ValueError as error:
+                assert "unsupported schema" in str(error)
 
 
 def test_cli_exit_one_report_is_preserved_and_wrong_checkout_rejected():

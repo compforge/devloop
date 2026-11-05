@@ -143,7 +143,7 @@ Repository 的信息获取和操作统一属于 RepoKit：布局与身份、Git/
 解析 Git 输出、实现 Forge 创建/复用，或自行解释 `.git` 拓扑；原始命令入口不作为 workflow 扩展口。
 Python 消费 `compforge-repokit`，TypeScript 消费 `@compforge/repokit`；Go CLI 命令仍叫 `repocli`。
 
-devloop 负责触发时机和开发策略：任务文件范围、敏感路径、session owner、保护分支、验证门禁、
+devloop 负责触发时机和开发策略：任务文件范围、敏感路径、session owner、保护分支、skill 中的验证提示、
 PR 正文组织、review 和清理授权。事实失败时由流程决定停止或显示缺口，不能把失败改写成 clean、
 无 PR 或缺失分支。机制回归测试归 RepoKit；devloop 保留上述流程组合与门禁的集成测试。
 
@@ -161,3 +161,6 @@ ValidationReport 的 wire schema 由 RepoKit `decode_validation_report` 校验�
 
 Python/TypeScript 使用 RepoKit `ForgeConnection` 构造 client 和 PR context。devloop 只装配自己的
 配置、凭据与显式目标仓；连接标识、Forge 身份规范化、观察目录与 HTTP 协调状态由工具包维护。
+
+PR 写操作统一调用原生 `repocli pr`（最低 0.57.0）。Python RepoKit 依赖为 0.20.0，
+只作为 toolkit 使用；验证执行和提交前时机由 skill 指导 AI，workflow 不自动运行验证或消费其记录作为门禁。

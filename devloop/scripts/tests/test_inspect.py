@@ -7,7 +7,6 @@ import os
 import subprocess
 
 from _testkit import run_main
-from domain import repo as repo_model
 from domain.repo_layout import inspect_catalog
 from lib import repokit
 from _repo_fixture import make_repo
@@ -30,8 +29,6 @@ def test_catalog_is_authoritative_and_one_inspection_serves_many_paths():
         with patch.object(repokit.toolkit, "inspect", wraps=repokit.toolkit.inspect) as read:
             with patch.object(repokit, "owner", wraps=repokit.owner) as query:
                 catalog = inspect_catalog(root)
-                selected = repo_model.select_components(root, paths=["service/old.go", "client/new.ts", "service/testdata/corpus/go.mod"], catalog=catalog)
-                assert [c.id for c in selected.components] == ["service", "client"]
                 assert catalog.owner(root / "service/deleted.go").name == "service"
                 assert catalog.owner(root / "service2/a.go").id == "."
                 assert catalog.owner(root.parent / "outside") is None
@@ -57,7 +54,7 @@ def test_makefile_only_and_empty_repository_organization():
         (root / "Makefile").write_text("fix lint test:\n\t@true\n")
         assert inspect_catalog(root).components[0].language is None
         (root / "Makefile").unlink()
-        assert not repo_model.select_components(root).components
+        assert not inspect_catalog(root).components
 
 
 def test_incomplete_observation_and_git_failures_are_unavailable():
@@ -106,7 +103,7 @@ def test_snapshot_is_native_and_separate_from_organization():
 def test_organization_works_without_repocli_binary():
     with TemporaryDirectory() as tmp, patch.dict(os.environ, {"DEVLOOP_REPOCLI": "/missing/repocli"}):
         root = make_repo(tmp)
-        selected = repo_model.select_components(root)
+        selected = inspect_catalog(root)
         assert len(selected.components) == 1 and selected.components[0].language == "python"
         assert repokit.toolkit.snapshot(root).digest
 

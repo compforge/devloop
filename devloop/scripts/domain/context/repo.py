@@ -1,6 +1,6 @@
 """Query-time repository view over workflow-owned segments and repocli observations.
 
-meta, branch provenance, remote trunk tips and validation/review evidence belong to devloop.
+meta, branch provenance, remote trunk tips and review evidence belong to devloop.
 PR lifecycle state and generic associations belong to repocli; they are never copied into
 .devloop. The selected pull_request exists only in this transient view.
 """
@@ -104,63 +104,10 @@ class BranchTopology:
 
 
 @dataclass
-class ComponentValidation:
-    """One Component's historical full-check projection, resolved from execution evidence.
-
-    Guards read current evidence and inputs directly; this display view grants no permission.
-    """
-    last_lint_at: float | None = None
-    lint_fingerprint: str = ""
-    last_test_at: float | None = None
-
-    @classmethod
-    def from_dict(cls, d: dict | None) -> "ComponentValidation":
-        d = d or {}
-        return cls(
-            last_lint_at=d.get("last_lint_at"),
-            lint_fingerprint=d.get("lint_fingerprint", "") or "",
-            last_test_at=d.get("last_test_at"),
-        )
-
-
-@dataclass
-class Validation:
-    """Full-check projections keyed by Component, assembled from branch references.
-
-    Check coordinators own separate branch reference segments; Component workers own
-    separate execution records. This view neither writes evidence nor issues pass stamps.
-    """
-    components: dict[str, ComponentValidation] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, lint: dict | None, test: dict | None) -> "Validation":
-        """两个 check 段 → 一个视图。段形状 `{unit_id: {...}}`（component 是 key，不是目录）。"""
-        out = cls()
-        for cid, v in (lint or {}).items():
-            if isinstance(v, dict):
-                u = out.of(cid)
-                u.last_lint_at = v.get("passed_at")
-                u.lint_fingerprint = v.get("fingerprint", "") or ""
-        for cid, v in (test or {}).items():
-            if isinstance(v, dict):
-                out.of(cid).last_test_at = v.get("passed_at")
-        return out
-
-    def component(self, cid: str) -> ComponentValidation:
-        """`cid` 的戳，只读；从未验过 → 全空默认值（无戳即未验，fail-closed）。"""
-        return self.components.get(cid) or ComponentValidation()
-
-    def of(self, cid: str) -> ComponentValidation:
-        """`cid` 的戳，可写（缺则建）——mutator 专用。"""
-        return self.components.setdefault(cid, ComponentValidation())
-
-
-@dataclass
 class RepoContext:
     repo: RepoMeta = field(default_factory=RepoMeta)
     agents_md: AgentsMd = field(default_factory=AgentsMd)
     branch: BranchTopology = field(default_factory=BranchTopology)
-    validation: Validation = field(default_factory=Validation)
     pull_request: PullRequest | None = None
     provider: str = ""
     updated_at: float = 0.0
@@ -180,7 +127,6 @@ class RepoContext:
         # rev-parse), not by whatever some cached file last observed. This kills the whole
         # "stale branch.json after an unobserved checkout fools the display" class structurally:
         # switching branches switches which segment directory is read.
-        from domain.validation_evidence import full_projection
 
         live = git_state.get_current_branch(repo_dir)
         branch = BranchTopology.from_local_dict(
@@ -200,9 +146,6 @@ class RepoContext:
             repo=RepoMeta.from_dict(meta.get("repo")),
             agents_md=AgentsMd.from_dict(meta.get("agents_md") or {}),
             branch=branch,
-            validation=Validation.from_dict(
-                full_projection(str(repo_dir), live, "lint"),
-                full_projection(str(repo_dir), live, "test")),
             pull_request=selected,
             provider=provider,
             updated_at=float(meta.get("updated_at", 0) or 0),
@@ -250,7 +193,7 @@ class RepoContext:
     def refresh_all(cls, repo_dir: str | Path) -> "RepoContext":
         """Full rebuild (normal-impl boundary: SessionStart / enter / TTL).
 
-        Writes only the refresher-owned segments (meta + branch). validation /
+        Writes only the refresher-owned segments (meta + branch).
         review / remote_branches live in their own files and are left untouched — their values
         are merged in (via prev) only to keep the *returned* object complete."""
         repo_dir_in = str(Path(repo_dir))
@@ -272,14 +215,8 @@ class RepoContext:
         default_branch = observed.branch or git_state.local_default_target(repo_dir_abs)
         target = default_branch
         items = parsers.parse_references_section(agents_md_path) if agents_md_path else []
-        from domain.validation_evidence import full_projection
 
         branch = _build_topology(repo_dir_abs, target, prev.branch)
-        # A check can produce evidence before repo metadata has ever been refreshed.
-        # Resolve that evidence directly rather than inheriting an empty previous view.
-        validation = Validation.from_dict(
-            full_projection(repo_dir_abs, branch.local.name, "lint"),
-            full_projection(repo_dir_abs, branch.local.name, "test"))
         ctx = cls(
             repo=RepoMeta(repo_dir=repo_dir_in, real_repo_dir=repo_dir_abs,
                           code_dir=code_dir, language=language,
@@ -290,7 +227,6 @@ class RepoContext:
                                       hook=r.get("description")) for r in items],
             ),
             branch=branch,
-            validation=validation,
             pull_request=prev.current_pr(),
             provider=prev.provider,
         )

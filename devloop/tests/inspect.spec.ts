@@ -9,7 +9,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as toolkit from "@compforge/repokit";
 import { inspectCatalog, findGitRoot } from "../domain/repo-layout.js";
-import { selectComponents } from "../domain/repo.js";
 import { PolicyContext } from "../hooks/core/context.js";
 import { evaluate } from "../hooks/core/engine.js";
 import { InspectionError } from "../lib/repokit.js";
@@ -52,7 +51,7 @@ describe("native repocli organization", () => {
     saveSegment(root, branchSegment(undefined, "review"), { status: "success", reviewed_sha: "old-head" });
     vi.mocked(toolkit.currentBranch).mockImplementationOnce(() => { throw new Error("read failed"); });
     const board = await projectBoard(root, undefined, root);
-    expect(board.items.some(item => item.type === "repo.review" || item.type === "repo.validation")).toBe(false);
+    expect(board.items.some(item => item.type === "repo.review")).toBe(false);
     expect(renderItem(board.items.find(item => item.type === "repo.identity")!)).toContain("Branch: ?");
   });
 
@@ -69,7 +68,6 @@ describe("native repocli organization", () => {
     writeFileSync(join(root, "service/testdata/corpus/go.mod"), "module corpus");
     writeFileSync(join(root, "client/package.json"), "{}");
     const catalog = await inspectCatalog(root);
-    expect(selectComponents(root, { paths: ["service/old.go", "client/new.ts", "service/testdata/corpus/go.mod"], catalog }).components.map((c) => c.id)).toEqual(["service", "client"]);
     expect(catalog.owner(join(root, "service/deleted.go"))).toMatchObject({ id: "service", name: "service", language: "go", tools: [{ name: "go" }], toolEvidence: { go: ["service/go.mod"] } });
     expect(catalog.owner(join(root, "client/new.ts"))?.depot).toEqual({ bins: [{ path: "client/node_modules", kind: "dependencies" }] });
     expect(catalog.owner(join(root, "service2/other.go"))?.id).toBe(".");
@@ -160,25 +158,23 @@ describe("native repocli organization", () => {
 
 
 describe("repository contract consumption", () => {
-  it("accepts a repository without markers and skips Component validation", async () => {
+  it("accepts a repository without Component markers", async () => {
     const { root } = fixture();
     rmSync(join(root, "Makefile"));
     rmSync(join(root, "service/go.mod"));
     rmSync(join(root, "client/Makefile"));
     const catalog = await inspectCatalog(root);
     expect(catalog.components).toEqual([]);
-    expect(selectComponents(root, { catalog })).toMatchObject({ components: [], reason: expect.stringContaining("no recognized Components") });
     const board = await projectBoard(root, undefined, root);
     expect(board.items.find(item => item.type === "repo.identity")!.payload).toMatchObject({ inspectionProblem: "" });
     expect(catalog.owner(join(root, "service/go.mod"))).toBeUndefined();
   });
 
-  it("runs Makefile-only targets without language inference", async () => {
+  it("discovers Makefile-only Components without language inference", async () => {
     const { root } = fixture();
     const catalog = await inspectCatalog(root);
     const child = catalog.owner(join(root, "client/task.py"))!;
     expect(child.language).toBeUndefined();
-    expect(selectComponents(root, { catalog, paths: ["client/task.py"] }).components.map(c => c.id)).toEqual(["client"]);
   });
 
   it("preserves locator failures for hard guards", async () => {

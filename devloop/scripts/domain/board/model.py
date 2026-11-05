@@ -11,7 +11,6 @@ class BoardItemType(str, Enum):
     WORKSPACE = "workspace"
     REPO_REFERENCES = "repo.references"
     REPO_IDENTITY = "repo.identity"
-    REPO_VALIDATION = "repo.validation"
     REPO_PR_BLOCKED = "repo.pr-blocked"
     REPO_REVIEW = "repo.review"
     REPO_REVIEW_FINDINGS = "repo.review-findings"
@@ -83,18 +82,6 @@ class RepoIdentityCard:
 
 
 @dataclass(frozen=True)
-class ComponentValidationCard:
-    component: str
-    lint_at: float | None
-    test_at: float | None
-
-
-@dataclass(frozen=True)
-class ValidationCard:
-    components: tuple[ComponentValidationCard, ...]
-
-
-@dataclass(frozen=True)
 class PrBlockedCard:
     label: str
     readiness: str
@@ -135,7 +122,6 @@ BoardPayload = (
     WorkspaceCard
     | RepoReferencesCard
     | RepoIdentityCard
-    | ValidationCard
     | PrBlockedCard
     | ReviewCard
     | PendingReviewFindingsCard

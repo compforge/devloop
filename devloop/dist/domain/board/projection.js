@@ -1,5 +1,4 @@
 import { prContextForRepo } from "../../lib/forge.js";
-import { fullProjection, observedCheck } from "../validation-evidence.js";
 import { aheadBehind, currentBranch, isProtectedBranch, localDefaultTarget, workspaceStatus, checkoutInfo } from "../../lib/git-state.js";
 import { findAgentsDocument, inspectCatalog } from "../repo-layout.js";
 import { InspectionError } from "../../lib/repokit.js";
@@ -7,6 +6,10 @@ import { parseReferencesSection } from "../../lib/parsers.js";
 import { branchSegment, loadSegment, segmentFile } from "../context/store.js";
 import { REVIEW_STALE_SECONDS, now } from "../context/base.js";
 import { Board, boardItem } from "./model.js";
+/**
+ * @spec Board only projects facts with an authoritative reader; legacy validation stamps are not evidence.
+ * @see {@link component://docs/repository-toolkit.md}
+ */
 export async function projectBoard(root, workspace, repo, staleBindingHours) {
     const items = [];
     if (workspace && (workspace.agentsDocument.references.length > 0 || workspace.subprojects.length > 0)) {
@@ -22,12 +25,8 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
         return new Board(root, items);
     const scope = { workspaceRoot: root, repoRoot: repo };
     let component, inspectionProblem = "";
-    let unavailableLintComponents = [];
-    let unavailableTestComponents = [];
     try {
         const catalog = await inspectCatalog(repo);
-        unavailableLintComponents = catalog.components.filter((item) => observedCheck(repo, item.id, "lint")?.status === "unavailable").map((item) => item.id);
-        unavailableTestComponents = catalog.components.filter((item) => observedCheck(repo, item.id, "test")?.status === "unavailable").map((item) => item.id);
         if (catalog.components.length > 0)
             component = catalog.default();
     }
@@ -100,19 +99,6 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
     finally {
         prContext?.close();
     }
-    const lint = fullProjection(repo, branch || undefined, "lint");
-    const test = fullProjection(repo, branch || undefined, "test");
-    const componentIds = [...new Set([...Object.keys(lint), ...Object.keys(test)])].sort();
-    items.push(boardItem("repo.validation", "state", scope, {
-        analysis: loadSegment(repo, branchSegment(branch || undefined, "validation_scope")) ?? {},
-        unavailableLintComponents,
-        unavailableTestComponents,
-        components: componentIds.map((component) => ({
-            component,
-            lintAt: typeof lint[component] === "object" && lint[component] !== null && !Array.isArray(lint[component]) ? lint[component].passed_at ?? null : null,
-            testAt: typeof test[component] === "object" && test[component] !== null && !Array.isArray(test[component]) ? test[component].passed_at ?? null : null,
-        })),
-    }));
     const reviewSegment = branchSegment(branch || undefined, "review");
     const review = loadSegment(repo, reviewSegment);
     if (review && typeof review.status === "string" && review.status && review.status !== "skipped"

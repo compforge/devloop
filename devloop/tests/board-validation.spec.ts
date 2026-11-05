@@ -1,11 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { userPromptOutput } from "../adapters/process-hooks.js";
-import { evidenceSegment } from "../domain/validation-evidence.js";
-import { branchSegment, saveSegment } from "../domain/context/store.js";
+import { branchSegment, loadSegment, saveSegment } from "../domain/context/store.js";
 
 let root: string;
 beforeEach(() => {
@@ -15,48 +15,23 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 
-it("delivers full fallback reason from persisted state to the prompt", async () => {
-  saveSegment(root, branchSegment("feature", "validation_scope"), {
-    snapshot: "", checks: [{ component: "server", check: "test", scope: "full", reason: "repocli fallback: CLI unavailable" }],
-  });
+// @case Legacy passing evidence and scope must not become current Board validation facts.
+it.each([false, true])("does not infer validation history from legacy records (present=%s)", async (present) => {
+  const checkedAt = "2026-01-01T00:00:00Z";
+  const segment = "validation_results/" + createHash("sha256").update(`${root}\0.\0lint`).digest("hex");
+  const record = { eligible: true, checked_at: checkedAt, report: {
+    schemaVersion: 2, inputsConsistent: true, checkout: root, snapshot: "legacy-snapshot",
+    components: [{ component: { root: "." }, checks: [{ check: "lint", scope: "full", status: "passed", checkedAt }] }],
+  } };
+  if (present) {
+    saveSegment(root, segment, record);
+    saveSegment(root, branchSegment("feature", "lint"), { ".": { evidence: segment, checked_at: checkedAt } });
+    saveSegment(root, branchSegment("feature", "validation_scope"), {
+      checks: [{ component: "server", check: "test", scope: "full", reason: "obsolete fallback" }],
+    });
+  }
   const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "validation-session" }));
-  expect(output).toContain("server test=full");
-  expect(output).toContain("repocli fallback: CLI unavailable");
-  expect(output).not.toContain("stamped");
-});
-
-function observe(check: string, status: string): void {
-  saveSegment(root, evidenceSegment(root, ".", check), { report: {
-    schemaVersion: 2, checkout: root, components: [{ component: { root: "." }, checks: [{ check, status }] }],
-  } });
-}
-
-it("shows observed missing lint and clears it after a fresh report", async () => {
-  writeFileSync(join(root, "go.mod"), "module example.test/demo\n\ngo 1.24\n");
-  const unknown = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "unknown-lint" }));
-  expect(unknown).not.toContain("Lint unavailable");
-  observe("lint", "unavailable");
-  const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "missing-lint" }));
-  expect(output).toContain("Lint unavailable: .");
-  expect(output).toContain("non-blocking");
-  expect(output).toContain("no recorded runs");
-  writeFileSync(join(root, "Makefile"), "lint:\n\t@true\n");
-  observe("lint", "passed");
-  const updated = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "with-lint" }));
-  expect(updated).not.toContain("Lint unavailable");
-});
-
-it("shows missing test for Go without assuming an ecosystem fallback", async () => {
-  writeFileSync(join(root, "go.mod"), "module example.test/demo\n\ngo 1.24\n");
-  observe("test", "unavailable");
-  observe("lint", "unavailable");
-  const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "missing-test" }));
-  expect(output).toContain("Test unavailable: .");
-  expect(output).toContain("non-blocking");
-  expect(output).toContain("no recorded runs");
-  writeFileSync(join(root, "Makefile"), "test-local:\n\t@true\n");
-  observe("test", "passed");
-  const updated = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "with-test" }));
-  expect(updated).not.toContain("Test unavailable");
-  expect(updated).toContain("Lint unavailable");
+  expect(output).toContain("[Current repo:");
+  expect(output).not.toMatch(/Validation|validation scope|obsolete fallback|legacy-snapshot/);
+  expect(loadSegment(root, segment)).toEqual(present ? record : undefined);
 });

@@ -1,4 +1,4 @@
-export type BoardItemType = "workspace" | "repo.references" | "repo.identity" | "repo.pull-request" | "repo.validation" | "repo.pr-blocked" | "repo.review" | "repo.review-findings" | "repo.pr-history";
+export type BoardItemType = "workspace" | "repo.references" | "repo.identity" | "repo.pull-request" | "repo.pr-blocked" | "repo.review" | "repo.review-findings" | "repo.pr-history";
 export type BoardItemKind = "state" | "event" | "detail";
 export interface BoardScope {
     readonly workspaceRoot: string;

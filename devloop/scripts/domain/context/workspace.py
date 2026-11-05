@@ -1,7 +1,7 @@
 """`WorkspaceContext` — aggregate-workspace state at `<workspace_root>/.devloop/context.json`.
 
 Workspace facts (References + Subprojects); no turn-grain content
-(branch/dirty/validation are repo-level). Board owns their prompt delivery. The
+(branch/dirty are repo-level). Board owns their prompt delivery. The
 registry of which dirs are workspaces lives in `domain/workspace.py`.
 
 The workspace `.devloop/` also hosts the session-grain `active/` dir (each

@@ -1,4 +1,4 @@
-"""Repo domain boundary: identity, resolution, and projection to validation components.
+"""Repo domain boundary: identity, resolution, and commit/review path selection.
 
 The aggregate-workspace loop's single biggest observed tax is that the shell's cwd
 snaps back to the workspace root between Bash calls, so every script invocation had
@@ -21,12 +21,11 @@ Fuzzy scoring is shared with the managed-worktree resolver, so a name means the
 same thing everywhere.
 """
 from __future__ import annotations
-from repokit import snapshot
-from repokit.git import changed_paths as toolkit_changed_paths, committed_paths as toolkit_committed_paths, range_paths as toolkit_range_paths
+from repokit.git import committed_paths as toolkit_committed_paths
 
 import os
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from lib import repokit
@@ -46,9 +45,7 @@ class Repo:
     - `git_root`: 解析入口路径（可能经 symlink，保留调用方视角）
     - `real_git_root`: realpath 后的 canonical 路径（比较 / rebase 用这个）
     - `target_path`: 解析入口的操作目标路径——显式路径 / cwd 落在仓内时有值，按名字 / last-active
-      兜底时为 None。它是「解析怎么找到这个 repo」的事实，喂给 `select_components` 当 explicit 信号；
-      **不是** component 决策——选哪些 component 由 `select_components` 按本次改动定（见 `WorkSet`），不再挂在
-      解析结果上当单值属性（那正是多代码目录仓选错 component 的根因）。
+      兜底时为 None。它记录解析来源；验证范围由 RepoKit 规划。
     - `workspace_root`: 所属聚合工作区根（单仓库模式为 None）
     - `source`: 解析来源自述（"cwd" / "subproject 'x'" / …），进 PLAN banner
     """
@@ -68,48 +65,6 @@ class RepoResolution:
     reason: str = ""
 
 
-def default_unit(git_root: str | Path, ctx: RepoContext | None = None) -> repo_layout.Component:
-    """Select a default from current inspection, never a stale code_dir cache."""
-    return repo_layout.default_component(git_root)
-
-
-
-@dataclass(frozen=True)
-class WorkSet:
-    """本轮要处理的 component 工作集——由「本次改动」而非「解析来源」决定，消费方（lint / test /
-    review hook、gate、注入）对 `components` 逐个 fan-out。**中立**对象：只答「哪些 component」，不含
-    「对它们跑什么 check」——那是消费方各自的事，别塞进来（塞了就从「选范围」滑向「验证专属」）。
-
-    - `components`:  0..N 个 Component；多代码目录仓一次改动可命中多个，并行处理
-    - `reason`: 面向人的一句自述（含来源：explicit / 改动投影 / repo-wide），进命令输出 / PLAN，
-      让「选错 component」执行前一眼可见。承载的是**只有 select_components 内部知道的「为什么这么选」**，
-      消费方从 components 推不出，故导出成字段——而不是再加一个当前无人消费的来源枚举。
-    """
-    components: tuple[repo_layout.Component, ...]
-    reason: str
-    # Preparation shares one observation; post-format planning gets fresh facts from impact.
-    catalog: repo_layout.Catalog | None = field(default=None, compare=False, repr=False)
-
-
-def _working_paths_or_unknown(git_root: str | Path) -> list[str] | None:
-    try:
-        return toolkit_changed_paths(git_root)
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
-
-
-
-def changed_paths(git_root: str | Path) -> list[str]:
-    """working tree 里有改动的文件（仓相对）——「本次改动」的**工作树答案**，只对「改动尚未提交」
-    的语境成立（pre_commit / CLI）。commit 之后工作树是干净的，那时的答案要问 git 历史（见
-    `committed_paths`）——用工作树去答 post_commit 会得到「什么都没改」。
-
-    这里把「不知道」压平成 `[]` 是**有意**的：唯一消费方 `select_components(paths=None)` 对空的处理
-    是回落 repo-wide 全跑，方向已经保守，无须再区分。要区分的消费方直接用
-    `_working_paths_or_unknown`。"""
-    return _working_paths_or_unknown(git_root) or []
-
-
 def changed_paths_in_scope(git_root: str | Path, scopes: list[str]) -> list[str] | None:
     """Use the same literal file selection as staging; failed observation is unknown."""
     try:
@@ -118,99 +73,16 @@ def changed_paths_in_scope(git_root: str | Path, scopes: list[str]) -> list[str]
         return None
 
 
-def component_fingerprint(git_root: str | Path, component: repo_layout.Component) -> str | None:
-    """Full-repository identity conservatively binds each Component validation result."""
-    try:
-        observed = snapshot(git_root)
-        return observed.digest if observed.complete else None
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
-
-
-
 def committed_paths(git_root: str | Path, rev: str = "HEAD") -> list[str] | None:
-    """One commit's paths; unknown falls back to repo-wide validation."""
+    """One commit's paths for workflow hooks; failed observation stays unknown."""
     try:
         return toolkit_committed_paths(git_root, rev)
     except (OSError, ValueError, subprocess.SubprocessError):
         return None
 
 
-def range_paths(git_root: str | Path, base: str, head: str = "HEAD") -> list[str] | None:
-    """Merge-base changes for a PR/MR; unknown must not skip validation."""
-    try:
-        return toolkit_range_paths(git_root, base, head)
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return None
-
-
-def _project_components(git_root: str | Path, paths: list[str], catalog: repo_layout.Catalog) -> list[repo_layout.Component]:
-    """一组仓相对路径**归属**的 component，去重。这是「变更决定验证目标」的核心：
-    改了 cli/** 就只投影出 cli，不受解析来源是否带路径影响。
-
-    **不属于任何 component 的路径不贡献 component**（也不减少）：仓根的 `README.md` / `docs/` /
-    `.github/` 不在任何 component 的项目边界内，拿谁的 lint 去验它都说不通。此前它们走
-    `enclosing_component` → `default_component` → `server`，于是纯文档改动会去跑 server 的
-    lint——server 有存量错就把你的文档 PR 拦了，而「为什么是 server 不是 cli」没有任何理由。
-    那是**选择**启发式在答**归属**问题（#88 的同一个混淆，这是它最后残留的一处）。
-
-    **刻意不做「共享路径 → 全部 component」**：看着更保守，实际是拿最常见的情况（改文档 / CI 配置）
-    去付最罕见情况的账——每个纯文档 PR 都跑全仓 lint，任一 component 有存量错就拦住你，正是
-    `phase_paths` 那套范围收敛要消灭的失败。代价是根级 tooling 配置（`ruff.toml` /
-    `.golangci.yml`）改动不触发验证：它会在下一次任何 lint 里立刻暴露，且 CI 兜底——比每天为它
-    付全仓的账划算。真要覆盖，该是一份显式的「这些根文件影响全部 component」清单，而不是把「没有
-    owner」一律当成「影响所有人」。"""
-    seen: dict[str, repo_layout.Component] = {}
-    for p in paths:
-        u = catalog.owner(Path(git_root).resolve() / p)
-        if u is not None:
-            seen.setdefault(u.id, u)
-    return list(seen.values())
-
-
-def select_components(git_root: str | Path, *, explicit: str | Path | None = None,
-                 paths: list[str] | None = None, catalog: repo_layout.Catalog | None = None) -> WorkSet:
-    """本轮 WorkSet：显式目标 > 本次改动投影 > repo-wide 全量。任何一级都**不静默回默认 server**。
-
-    - `explicit`（显式 --component / 路径 / cwd 落在仓内某具体子目录）→ 归属那个 component。仅当它指向仓根
-      **严格子路径**时才算显式；`explicit == 仓根`（cwd 恰停在仓根）不算——否则又会 enclosing 回落
-      到 default(server)，正是要消除的那个 bug。
-    - `paths`：**本次改动就是这些文件**（仓相对）。调用方知道范围时给它——lifecycle 各相位的
-      「本次改动」取法不同（将提交的脏文件 / 刚提交的那个 commit / 整条分支 vs target），只有
-      调用方知道，handler 自己读工作树猜不出来。
-    - `paths=None`：**不知道**范围 → 退回读 working tree（CLI 的「跑下测试」就是这个语境）。
-      dirty 为空（clean tree）→ repo-wide 枚举全部 component，绝不猜一个。
-    - `paths=[]`：**知道**范围且为空（该相位无改动）→ 0 个 component，干净跳过。与 None 是两回事：
-      「不知道所以全跑」和「知道没有所以不跑」不能混为一谈，混了就是 clean tree 上跑全仓。
-    """
-    root = Path(git_root).resolve()
-    catalog = catalog or repo_layout.inspect_catalog(root)
-    if not catalog.components:
-        return WorkSet((), "no recognized Components; validation not run", catalog)
-    if explicit is not None:
-        ep = Path(explicit).resolve()
-        if ep != root and root in ep.parents:
-            u = repo_layout.enclosing_component(ep, git_root, catalog=catalog)
-            return WorkSet((u,), f"explicit target {ep.name} → component {Path(u.path).name}", catalog)
-        # ep == 仓根：没有具体目标，落到改动投影（不走 enclosing → default → server）
-    if paths is not None:
-        components = _project_components(git_root, paths, catalog)
-        if not components:
-            return WorkSet((), "no changed files in scope", catalog)
-        names = ", ".join(Path(u.path).name for u in components)
-        return WorkSet(tuple(components), f"changed files under: {names}", catalog)
-    dirty = _project_components(git_root, changed_paths(git_root), catalog)
-    if dirty:
-        names = ", ".join(Path(u.path).name for u in dirty)
-        return WorkSet(tuple(dirty), f"changed files under: {names}", catalog)
-    allu = catalog.components
-    names = ", ".join(Path(u.path).name for u in allu)
-    return WorkSet(tuple(allu), f"clean tree, all components: {names}", catalog)
-
-
 def _resolved(git_root: str, source: str, target_path: str | Path | None = None) -> tuple[Repo, str]:
-    """把解析结果收成 Repo。`target_path` 是解析入口的操作目标（显式路径 / cwd），原样
-    带上供 `select_components` 当 explicit 信号——选哪些 component 不在这里算（那由本次改动定，见 `select_components`）。"""
+    """Retain repository identity and the explicit/cwd target used for resolution."""
     # workspace_for_repo, NOT plain containment: workspaces are symlink farms, so the
     # canonical git_root usually lives outside the workspace tree — containment-only
     # would report workspace_root=None for every symlinked subproject (Mode B 误判)

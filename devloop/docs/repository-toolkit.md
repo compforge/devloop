@@ -3,7 +3,7 @@
 RepoKit 拥有 Repository 的组织、Git/Forge 操作、验证执行与资源维护。devloop 负责开发策略、
 managed Git 事务、review 和 Board。AI 按 skill 直接执行 `repocli validate`、`repocli pr`
 和 `repocli worktree clean`；插件程序直接调用各语言 toolkit，不通过 subprocess 包装 repocli。
-Python 依赖锁定 `compforge-repokit==0.20.1`，CLI 最低版本为 0.57.1。
+Python 依赖锁定 `compforge-repokit==0.21.0`，CLI 最低版本为 0.58.0。
 
 ## 验证与 PR 交付
 
@@ -13,7 +13,10 @@ CLI 缺失或检查失败应明确报告，不能换一个执行器声称通过�
 commit/push 脚本不自动执行检查，也不消费验证记录作为门禁。
 
 repocli 默认在 `~/.repocli` 保存执行历史。devloop 不装配第二套验证输入、回执或复用缓存。
-Board 现有分支证据只展示已保存的历史报告；直接运行 CLI 不会自动写入这些记录，不能将其视为本次验证。
+Board 不再读取旧 `.devloop/validation_results`、分支 lint/test 引用或 `validation_scope`。
+当前 TS/Python SDK 尚未提供验证历史读取 API，因此 Board 暂不展示验证历史；历史查询使用
+`repocli validate --history`。恢复展示必须消费 RepoKit 公共读取 API，不读取 WAL 内部格式、
+不复制历史、不包装 CLI 子进程。旧磁盘记录保留，但不再参与展示或决策。
 
 `gcampr` 是 skill 编排：验证 → managed commit/push → 原生 PR 创建或更新 → 检查并启动 review。
 PR 标题、正文和目标仓由 AI 显式传给 CLI，不自动把 commit message 追加到已有 PR。

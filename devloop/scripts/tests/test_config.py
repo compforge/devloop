@@ -193,7 +193,7 @@ def test_separate_git_directory_shares_state_and_remote_identity():
     def parse_origin(repo):
         observed = remote(repo)
         return (observed.host, observed.path) if observed else None
-    from domain.repo import committed_paths, range_paths
+    from domain.repo import committed_paths
 
     with _repository() as (root, repo):
         assert state_dir(repo) == repo / ".devloop"
@@ -209,8 +209,6 @@ def test_separate_git_directory_shares_state_and_remote_identity():
         _git(repo, "add", "--", name)
         _git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "unicode")
         assert committed_paths(repo) == [name]
-        assert range_paths(repo, "linked") == [name]
-        assert range_paths(repo, "missing") is None
 
 
 if __name__ == "__main__":

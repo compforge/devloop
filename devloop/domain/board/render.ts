@@ -1,6 +1,5 @@
 import { pullRequestLabel } from "../forge.js";
 import { basename } from "node:path";
-import { formatTimestamp } from "../context/base.js";
 import type { BoardItem } from "./model.js";
 
 type Row = Record<string, unknown>;
@@ -38,17 +37,6 @@ export function renderItem(item: BoardItem): string {
     if (payload.error) return `PR status unavailable: ${text(payload.error)}`;
     if (payload.ambiguous) return `Branch '${text(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
     return `${pullRequestLabel(text(payload.provider), number(payload.number))} ${text(payload.state)} (${text(payload.repository)})`;
-  }
-  if (item.type === "repo.validation") {
-    const components = rows(payload.components);
-    const history = components.length === 0 ? "Validation history: no recorded runs" : `Validation: ${components.map((row) => `${text(row.component)}: lint=${formatTimestamp(typeof row.lintAt === "number" ? row.lintAt : undefined)}, test=${formatTimestamp(typeof row.testAt === "number" ? row.testAt : undefined)}`).join(" | ")}`;
-    const analysis = payload.analysis as Row | undefined;
-    const scopes = rows(analysis?.checks).map((row) => `${text(row.component)} ${text(row.check)}=${text(row.scope)} (${text(row.reason)})`);
-    const unavailable = Array.isArray(payload.unavailableLintComponents) ? payload.unavailableLintComponents.filter((value): value is string => typeof value === "string") : [];
-    const availability = unavailable.length ? [`Lint unavailable: ${unavailable.join(", ")} — no make lint/lint-ci entry (non-blocking)`] : [];
-    const unavailableTests = Array.isArray(payload.unavailableTestComponents) ? payload.unavailableTestComponents.filter((value): value is string => typeof value === "string") : [];
-    if (unavailableTests.length) availability.push(`Test unavailable: ${unavailableTests.join(", ")} — no make test/test-ci/test-local entry (non-blocking)`);
-    return [history, ...availability, ...(scopes.length ? [`Latest validation scope: ${scopes.join(" | ")}`] : [])].join("\n");
   }
   if (item.type === "repo.review") return renderReview(payload);
   return "";

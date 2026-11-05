@@ -26,7 +26,7 @@ Git、forge、验证命令、review 与 workspace 解析器仍各自拥有事实
 
 `SessionStart` 预热 workspace/repo 事实。`BoardRuntime` 统一解析当前 cwd 与 session
 focus，把事实投影为共享 `Board`，再得到相关 `BoardView`。每次
-`UserPromptSubmit`，同一入口组合 branch、dirty、validation、当前 PR、review 等条目，
+`UserPromptSubmit`，同一入口组合 branch、dirty、当前 PR、review 等条目，
 `DeliveryPolicy` 选择 prompt channel，`PromptDelivery` 只投递本 session 尚未收到或
 已经变化的部分。
 
@@ -53,13 +53,14 @@ prompt scope 或重放行为。Requirement 等长期领域对象由 Baton Plugin
 ### 投递状态不是业务事实
 
 Board 本体和 view 都不持久化事实副本。`DeliveryReceiptStore` 只保存每个 session 的
-条目 revision、次数和投递时间；这些数据可以安全删除或过期。repo、branch、PR、
-validation 等事实仍由原 owner 的 segment 提供。
+条目 revision、次数和投递时间；这些数据可以安全删除或过期。repo、branch、PR 等事实仍由对应 owner 提供。
+验证历史由 RepoKit 保存；当前 SDK 尚无历史读取 API，Board 暂不展示该项，
+也不读取旧 `.devloop` 验证记录来推断是否执行过检查。
 硬门禁继续读取 live truth，不依赖 Board 的展示视图或投递游标。
 
 ### 状态与事件分开重放
 
-branch、dirty、validation 等描述“现在在哪里”，compaction 后必须重放；review
+branch、dirty 等描述“现在在哪里”，compaction 后必须重放；review
 结果和待办提醒描述“发生过什么 / 请做什么”，按身份限次投递，避免 agent
 重复处理同一件事。
 

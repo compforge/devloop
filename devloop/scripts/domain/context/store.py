@@ -7,7 +7,7 @@ Everything above (views / seams / ledger writers) calls these; nothing else touc
   repo domain      → the MAIN repo's .devloop (state_dir): segments + ledgers that describe
                      the repo — one copy, survives worktree cleanup.
   branch domain    → main .devloop/branches/<branch>/ (branch_segment): state that describes
-                     one BRANCH (topology / validation / review). git forbids checking the
+                     one BRANCH (topology / review). git forbids checking the
                      same branch out in two worktrees, so per-file single-writer holds free.
   working-tree domain → each worktree's own .devloop (worktree_state_dir): the owner lock —
                      it protects THIS working tree's mutable surface; centralizing it would

@@ -146,7 +146,6 @@ describe("repository policy inheritance", () => {
 
 it("separate metadata shares devloop state across checkouts", async () => {
   const { stateDirectory } = await import("../domain/context/store.js");
-  const { committedPaths, rangePaths } = await import("../domain/repo.js");
   expect(stateDirectory(repo)).toBe(join(repo, ".devloop"));
   const metadata = join(root, "metadata");
   git(repo, "init", "--separate-git-dir", metadata);
@@ -158,7 +157,4 @@ it("separate metadata shares devloop state across checkouts", async () => {
   writeFileSync(join(repo, name), "pass\n");
   git(repo, "add", "--", name);
   git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "unicode");
-  expect(committedPaths(repo)).toEqual([name]);
-  expect(rangePaths(repo, "linked")).toEqual([name]);
-  expect(rangePaths(repo, "missing")).toBeUndefined();
 });

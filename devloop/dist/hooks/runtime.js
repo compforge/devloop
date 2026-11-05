@@ -8944,7 +8944,7 @@ var require_proper_lockfile = __commonJS({
 });
 
 // hooks/runtime.ts
-import { readFileSync as readFileSync9 } from "node:fs";
+import { readFileSync as readFileSync8 } from "node:fs";
 
 // adapters/process-hooks.ts
 import { basename as basename8, dirname as dirname11, isAbsolute as isAbsolute5, resolve as resolve12 } from "node:path";
@@ -12398,14 +12398,6 @@ function now() {
 function stale(timestamp, ttl, at = now()) {
   return timestamp === void 0 || at - timestamp >= ttl;
 }
-function formatTimestamp(timestamp) {
-  if (!timestamp) return "never";
-  const date = new Date(timestamp * 1e3);
-  if (Number.isNaN(date.valueOf())) return "never";
-  const fields = [date.getFullYear(), date.getMonth() + 1, date.getDate(), date.getHours(), date.getMinutes()];
-  const [year, month, day, hour, minute] = fields.map((value, index) => index === 0 ? String(value) : String(value).padStart(2, "0"));
-  return `${year}-${month}-${day} ${hour}:${minute}`;
-}
 
 // domain/context/store.ts
 import { appendFileSync as appendFileSync2, existsSync as existsSync5, mkdirSync as mkdirSync2, readFileSync as readFileSync3, renameSync, writeFileSync } from "node:fs";
@@ -13052,17 +13044,6 @@ function renderItem(item) {
     if (payload.ambiguous) return `Branch '${text(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
     return `${pullRequestLabel(text(payload.provider), number(payload.number))} ${text(payload.state)} (${text(payload.repository)})`;
   }
-  if (item.type === "repo.validation") {
-    const components = rows(payload.components);
-    const history = components.length === 0 ? "Validation history: no recorded runs" : `Validation: ${components.map((row) => `${text(row.component)}: lint=${formatTimestamp(typeof row.lintAt === "number" ? row.lintAt : void 0)}, test=${formatTimestamp(typeof row.testAt === "number" ? row.testAt : void 0)}`).join(" | ")}`;
-    const analysis = payload.analysis;
-    const scopes = rows(analysis?.checks).map((row) => `${text(row.component)} ${text(row.check)}=${text(row.scope)} (${text(row.reason)})`);
-    const unavailable = Array.isArray(payload.unavailableLintComponents) ? payload.unavailableLintComponents.filter((value) => typeof value === "string") : [];
-    const availability = unavailable.length ? [`Lint unavailable: ${unavailable.join(", ")} \u2014 no make lint/lint-ci entry (non-blocking)`] : [];
-    const unavailableTests = Array.isArray(payload.unavailableTestComponents) ? payload.unavailableTestComponents.filter((value) => typeof value === "string") : [];
-    if (unavailableTests.length) availability.push(`Test unavailable: ${unavailableTests.join(", ")} \u2014 no make test/test-ci/test-local entry (non-blocking)`);
-    return [history, ...availability, ...scopes.length ? [`Latest validation scope: ${scopes.join(" | ")}`] : []].join("\n");
-  }
   if (item.type === "repo.review") return renderReview(payload);
   return "";
 }
@@ -13094,7 +13075,6 @@ var RULES = {
   "repo.references": { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
   "repo.pull-request": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
   "repo.identity": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
-  "repo.validation": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
   "repo.pr-blocked": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: 1, replayAfterCompact: false },
   "repo.review": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: REVIEW_NUDGE_CAP, replayAfterCompact: false },
   "repo.review-findings": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: REVIEW_FINDING_NUDGE_CAP, replayAfterCompact: false },
@@ -13193,55 +13173,8 @@ async function prContextForRepo(repo) {
   return connection.pullRequestContext(repo, { source: origin.path, targets: [target] });
 }
 
-// domain/validation-evidence.ts
-import { createHash as createHash5 } from "node:crypto";
-import { readFileSync as readFileSync7, realpathSync as realpathSync5 } from "node:fs";
-function evidenceSegment(repo, component, check) {
-  return "validation_results/" + createHash5("sha256").update(`${realpathSync5(repo)}\0${component}\0${check}`).digest("hex");
-}
-function object4(value) {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
-}
-function fullEvidence(repo, component, check, reference2) {
-  const ref = object4(reference2);
-  const segment = evidenceSegment(repo, component, check);
-  if (ref.evidence !== segment) return void 0;
-  const record2 = loadSegment(repo, segment) ?? {};
-  const report = object4(record2.report);
-  if (record2.eligible !== true || report.schemaVersion !== 2 || report.inputsConsistent !== true || report.checkout !== realpathSync5(repo) || typeof report.snapshot !== "string" || !report.snapshot || typeof record2.checked_at !== "string" || record2.checked_at !== ref.checked_at) return void 0;
-  for (const raw of Array.isArray(report.components) ? report.components : []) {
-    const group = object4(raw);
-    for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
-      const result = object4(rawCheck);
-      if (object4(group.component).root !== component && !(Array.isArray(result.requestedComponents) && result.requestedComponents.includes(component))) continue;
-      if (result.check === check && result.scope === "full" && result.status === "passed" && result.checkedAt === record2.checked_at) return record2;
-    }
-  }
-  return void 0;
-}
-function fullProjection(repo, branch, check) {
-  const refs = loadSegment(repo, branchSegment(branch, check)) ?? {};
-  return Object.fromEntries(Object.entries(refs).flatMap(([component, reference2]) => {
-    const record2 = fullEvidence(repo, component, check, reference2);
-    return record2 ? [[component, { passed_at: Date.parse(String(record2.checked_at)) / 1e3, fingerprint: object4(record2.report).snapshot ?? null }]] : [];
-  }));
-}
-function observedCheck(repo, component, check) {
-  const report = object4((loadSegment(repo, evidenceSegment(repo, component, check)) ?? {}).report);
-  if (report.schemaVersion !== 2 || report.checkout !== realpathSync5(repo)) return void 0;
-  for (const raw of Array.isArray(report.components) ? report.components : []) {
-    const group = object4(raw);
-    for (const rawCheck of Array.isArray(group.checks) ? group.checks : []) {
-      const result = object4(rawCheck);
-      if (object4(group.component).root !== component && !(Array.isArray(result.requestedComponents) && result.requestedComponents.includes(component))) continue;
-      if (result.check === check) return result;
-    }
-  }
-  return void 0;
-}
-
 // domain/board/model.ts
-import { createHash as createHash6 } from "node:crypto";
+import { createHash as createHash5 } from "node:crypto";
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (value !== null && typeof value === "object") {
@@ -13258,7 +13191,7 @@ function boardItem(type, kind, scope, payload) {
     kind,
     scope,
     payload,
-    signature: createHash6("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
+    signature: createHash5("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
   };
 }
 var BoardView = class _BoardView {
@@ -13313,12 +13246,8 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   if (!repo) return new Board(root, items);
   const scope = { workspaceRoot: root, repoRoot: repo };
   let component, inspectionProblem = "";
-  let unavailableLintComponents = [];
-  let unavailableTestComponents = [];
   try {
     const catalog = await inspectCatalog(repo);
-    unavailableLintComponents = catalog.components.filter((item) => observedCheck(repo, item.id, "lint")?.status === "unavailable").map((item) => item.id);
-    unavailableTestComponents = catalog.components.filter((item) => observedCheck(repo, item.id, "test")?.status === "unavailable").map((item) => item.id);
     if (catalog.components.length > 0) component = catalog.default();
   } catch (error) {
     if (!(error instanceof InspectionError)) throw error;
@@ -13391,19 +13320,6 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   } finally {
     prContext?.close();
   }
-  const lint = fullProjection(repo, branch || void 0, "lint");
-  const test = fullProjection(repo, branch || void 0, "test");
-  const componentIds = [.../* @__PURE__ */ new Set([...Object.keys(lint), ...Object.keys(test)])].sort();
-  items.push(boardItem("repo.validation", "state", scope, {
-    analysis: loadSegment(repo, branchSegment(branch || void 0, "validation_scope")) ?? {},
-    unavailableLintComponents,
-    unavailableTestComponents,
-    components: componentIds.map((component2) => ({
-      component: component2,
-      lintAt: typeof lint[component2] === "object" && lint[component2] !== null && !Array.isArray(lint[component2]) ? lint[component2].passed_at ?? null : null,
-      testAt: typeof test[component2] === "object" && test[component2] !== null && !Array.isArray(test[component2]) ? test[component2].passed_at ?? null : null
-    }))
-  }));
   const reviewSegment = branchSegment(branch || void 0, "review");
   const review = loadSegment(repo, reviewSegment);
   if (review && typeof review.status === "string" && review.status && review.status !== "skipped" && typeof review.reviewed_sha === "string" && review.reviewed_sha) {
@@ -13809,7 +13725,7 @@ var PolicyContext = class _PolicyContext {
 };
 
 // hooks/rules/index.ts
-import { existsSync as existsSync11, readFileSync as readFileSync8 } from "node:fs";
+import { existsSync as existsSync11, readFileSync as readFileSync7 } from "node:fs";
 import { basename as basename7, dirname as dirname10, extname, join as join13, resolve as resolve11 } from "node:path";
 
 // domain/context/gate.ts
@@ -14023,7 +13939,7 @@ function resultingText(target) {
   if (typeof input.file_text === "string") return input.file_text;
   let current;
   try {
-    current = readFileSync8(target.path, "utf8");
+    current = readFileSync7(target.path, "utf8");
   } catch {
     current = "";
   }
@@ -14323,7 +14239,7 @@ var claudeProcessAdapter = {
 // hooks/runtime.ts
 function readPayload() {
   try {
-    const parsed = JSON.parse(readFileSync9(0, "utf8") || "{}");
+    const parsed = JSON.parse(readFileSync8(0, "utf8") || "{}");
     return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};

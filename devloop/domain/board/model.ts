@@ -5,7 +5,6 @@ export type BoardItemType =
   | "repo.references"
   | "repo.identity"
   | "repo.pull-request"
-  | "repo.validation"
   | "repo.pr-blocked"
   | "repo.review"
   | "repo.review-findings"

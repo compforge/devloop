@@ -24,7 +24,7 @@ AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.jso
 
 **两个控制杠杆**：
 
-1. **Board 消除信息滞后**：状态源持续提供当前 subproject 的 branch / 工作区 / PR / validation，加上 workspace 级的子项目清单与 AGENTS.md References；Board 按相关性组织 payload-first 条目，以独立的 item kind、delivery channel、prompt scope 与 replay policy 决定投递——AI 改第一行前就掌握现状，长历史又不浪费 prompt token。
+1. **Board 消除信息滞后**：状态源持续提供当前 subproject 的 branch / 工作区 / PR / review，加上 workspace 级的子项目清单与 AGENTS.md References；Board 按相关性组织 payload-first 条目，以独立的 item kind、delivery channel、prompt scope 与 replay policy 决定投递——AI 改第一行前就掌握现状，长历史又不浪费 prompt token。
 2. **执行守卫提前拒绝高置信风险**：PreToolUse `deny` 覆盖保护分支、过期分支改文件和误带文件等常见路径；command hook 超时、异常或 Harness 未覆盖的执行路径会 fail-open，因此它是护栏而非安全边界。
 
 **实现取向**：native-first——控制能力优先坐到 CLI 原生事件和统一技术 seam 上；独立 `.devloop/` 命名空间，状态与其它工具互不干扰。Lifecycle hook 尽量跨 Harness 共用；PR、验证和清理由 skill 指导 AI 直接调用 repocli。
@@ -52,7 +52,7 @@ devloop/
 │   ├── process-hooks.ts           #   共享 lifecycle translation
 │   └── hook-payload.ts            #   共享进程 hook payload 与输出契约
 ├── domain/                         # TypeScript 领域 owner
-│   ├── repo.ts                    #   ★Repo/Component WorkSet 与验证范围策略
+│   ├── repo.ts                    #   ★Repository 名称匹配
 │   ├── workspace.ts               #   ★Workspace 注册、发现与归属
 │   ├── repo-layout.ts             #   ★Component 模型 + repo/component 路径边界
 │   ├── context/                   #   ★状态源：workspace/session/gate/store
@@ -84,7 +84,7 @@ devloop/
 
 1. **领域归属沿 `PR/MR → Repo → Component`**：PR/MR 与 branch 生命周期归 Repo，验证范围与验证结果归 Component；Component 粒度确定执行目录与 Makefile，不等于组件全量：组件内的检查范围按 RepoKit 文件列表和项目 `LINT_FILES` / `TEST_FILES` 契约选择，局部通过不授予全量标记；Workspace 只聚合上下文。不得重新引入“一个 repo 只有一个代码目录”的假设，具体选择与身份语义见 [`CONCEPTS.md`](./CONCEPTS.md)。 Component 目录、language、tools 与 depot 由 RepoKit 提供：TypeScript runtime 直接调用 `@compforge/repokit` 的 `inspect` / `owner`，Python workflow 调用 `compforge-repokit` 的对应 API；RepoKit Go/CLI 拥有 Makefile 规划、检查执行与复用；devloop 拥有相位基线、依赖准备时机；skill 指导 AI 验证并判断结果，两套 runtime 不维护独立 manifest 扫描器。
 2. **Harness runtime 只走 TypeScript**：`adapters/hooks → domain/lib`；`domain/` 持有共享事实和合法变化，`lib/` 提供 Git、forge、配置等技术能力。`scripts/` 的 Python workflow 是 skill-owned 的独立执行面，不得成为 Harness adapter 同步决策的依赖。adapter 只维护会话上下文、Board 与执行策略，不启动仓库清理任务。
-3. **状态源提供事实，Board 决定组织和投递，guard 读取 live truth**：AGENTS.md 是文字知识源，`.devloop/` 是结构化运行态；Repo、Branch、WorkingTree 与 Session 状态按归属和写入者隔离，验证戳按 Component 记录。Board 只维护 per-session 投递游标，不复制业务事实，也不参与硬门禁判定。详见 [`docs/board.md`](./docs/board.md) 与 [`CONCEPTS.md`](./CONCEPTS.md)。
+3. **状态源提供事实，Board 决定组织和投递，guard 读取 live truth**：AGENTS.md 是文字知识源，`.devloop/` 是结构化运行态；Repo、Branch、WorkingTree 与 Session 状态按归属和写入者隔离，验证执行与历史归 RepoKit，devloop 不保存或读取旧验证戳。Board 只维护 per-session 投递游标，不复制业务事实，也不参与硬门禁判定。详见 [`docs/board.md`](./docs/board.md) 与 [`CONCEPTS.md`](./CONCEPTS.md)。
 4. **生命周期动作走唯一入口，合法例外才软提示**：新工作在编辑前走 `branch.py create`，branch 创建规则归 `domain.branch`；commit/push 走 `commit_flow`/smart 脚本；PR 操作由 skill 指导 AI 直接执行 repocli；checkout 选择及 worktree 形态的创建、复用走 `checkout.py` / `domain.worktree`；PR 写操作由 AI 直接执行原生 `repocli pr`；本地资源维护规则、数量配置和删除动作归 RepoKit，devloop 不传清理回调、不执行删除策略。保护分支、失活分支、guest session 等无合法编辑路径的情况硬拦截，有合法例外的 in-flight PR/MR 只注入提示。具体流程见 [`docs/loop.md`](./docs/loop.md) 与 [`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)。
 5. **devloop 产出开发事实，不拥有长期业务 loop 或会话唤醒**：RepoKit 拥有仓库资源维护；devloop 不提供定期扫描、清理 task 或 runner。跨系统持久观察、调度和后续工作仍归 Baton/reqloop；不要在 Plugin 内重建通知 transport、waiter 或 re-arm 流程。
 

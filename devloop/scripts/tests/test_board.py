@@ -34,7 +34,7 @@ def test_board_delivers_only_changed_items_per_session():
     root = "/tmp/dlut_board_granular"
     ctx = _repo(root)
     first = BoardRuntime.from_facts(root, "session-a", repo=ctx).deliver_prompt()
-    assert first and "[Current repo:" in first and "Validation history: no recorded runs" in first
+    assert first and "[Current repo:" in first and "Validation" not in first
     assert BoardRuntime.from_facts(
         root, "session-a", repo=RepoContext.load(root)
     ).deliver_prompt() is None
@@ -44,12 +44,12 @@ def test_board_delivers_only_changed_items_per_session():
         root, "session-a", repo=RepoContext.load(root)
     ).deliver_prompt()
     assert changed and "Workspace: dirty" in changed
-    assert "Validation" not in changed  # unchanged item did not ride the identity update
+    assert "Validation" not in changed  # validation is owned by RepoKit
 
     other = BoardRuntime.from_facts(
         root, "session-b", repo=RepoContext.load(root)
     ).deliver_prompt()
-    assert other and "Validation history: no recorded runs" in other  # independent delivery cursor
+    assert other and "[Current repo:" in other  # independent delivery cursor
 
 
 def test_board_compaction_replays_state_not_review_event():
@@ -78,7 +78,7 @@ def test_board_compaction_replays_state_not_review_event():
     replay = BoardRuntime.from_facts(
         root, "session-a", repo=RepoContext.load(root)
     ).deliver_prompt()
-    assert replay and "[Current repo:" in replay and "Validation history: no recorded runs" in replay
+    assert replay and "[Current repo:" in replay and "Validation" not in replay
     assert "Review:" not in replay
 
 
@@ -182,6 +182,32 @@ def test_board_missing_or_failed_divergence_is_unknown():
         prompt = BoardRuntime.from_facts(root, "failed-divergence", repo=ctx).deliver_prompt()
     assert "ahead ?, behind ?" in prompt
     assert "ahead 0, behind 0" not in prompt
+
+
+def test_board_ignores_legacy_validation_without_removing_records():
+    """@case Old passing references cannot reappear as current workflow evidence."""
+    import hashlib
+    from domain.board import BoardRuntime
+    from domain.context import RepoContext, store
+
+    root = "/tmp/dlut_board_legacy_validation"
+    ctx = _repo(root)
+    canonical = str(Path(root).resolve())
+    checked_at = "2026-01-01T00:00:00Z"
+    segment = "validation_results/" + hashlib.sha256(f"{canonical}\0.\0lint".encode()).hexdigest()
+    record = {"eligible": True, "checked_at": checked_at, "report": {
+        "schemaVersion": 2, "inputsConsistent": True, "checkout": canonical, "snapshot": "legacy",
+        "components": [{"component": {"root": "."}, "checks": [
+            {"check": "lint", "scope": "full", "status": "passed", "checkedAt": checked_at}]}],
+    }}
+    store.save_segment(root, segment, record)
+    store.save_segment(root, store.branch_segment(ctx.branch.local.name, "lint"), {
+        ".": {"evidence": segment, "checked_at": checked_at},
+    })
+    for fresh in (RepoContext.load(root), RepoContext.refresh_all(root)):
+        board = BoardRuntime.from_facts(root, "legacy", repo=fresh)
+        assert all(item.type.value != "repo.validation" for item in board.view.items)
+    assert store.load_segment(root, segment) == record
 
 
 if __name__ == "__main__":

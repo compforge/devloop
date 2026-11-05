@@ -17,7 +17,6 @@ from .model import (
     BoardItemKind,
     BoardScope,
     BoardView,
-    ComponentValidationCard,
     PrBlockedCard,
     PrHistoryCard,
     PullRequestCard,
@@ -27,7 +26,6 @@ from .model import (
     ReviewCard,
     PendingReviewFindingsCard,
     SubprojectCard,
-    ValidationCard,
     WorkspaceCard,
 )
 
@@ -101,26 +99,11 @@ def _repo_items(root: str, repo: RepoContext, stale_binding_hours: float | None)
             scope=scope,
             payload=RepoReferencesCard(tuple(_reference(ref) for ref in repo.agents_md.references)),
         ))
-    items.extend((
-        BoardItem(
-            type=BoardItemType.REPO_IDENTITY,
-            kind=BoardItemKind.STATE,
-            scope=scope,
-            payload=_repo_identity(repo, stale_binding_hours),
-        ),
-        BoardItem(
-            type=BoardItemType.REPO_VALIDATION,
-            kind=BoardItemKind.STATE,
-            scope=scope,
-            payload=ValidationCard(tuple(
-                ComponentValidationCard(
-                    component=component,
-                    lint_at=repo.validation.components[component].last_lint_at,
-                    test_at=repo.validation.components[component].last_test_at,
-                )
-                for component in sorted(repo.validation.components)
-            )),
-        ),
+    items.append(BoardItem(
+        type=BoardItemType.REPO_IDENTITY,
+        kind=BoardItemKind.STATE,
+        scope=scope,
+        payload=_repo_identity(repo, stale_binding_hours),
     ))
 
     details = prstate.review_details(repo.repo.repo_dir, repo.current_pr())

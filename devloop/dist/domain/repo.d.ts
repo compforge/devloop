@@ -1,17 +1,2 @@
-import { Component, ComponentCatalog } from "./repo-layout.js";
-export interface WorkSet {
-    readonly components: readonly Component[];
-    readonly reason: string;
-}
-export declare function changedPaths(root: string): readonly string[];
-export declare function changedPathsInScope(root: string, scopes: readonly string[]): readonly string[] | undefined;
-export declare function committedPaths(root: string, revision?: string): readonly string[] | undefined;
-export declare function rangePaths(root: string, base: string, head?: string): readonly string[] | undefined;
-export declare function selectComponents(rootValue: string, options: {
-    readonly explicit?: string;
-    readonly paths?: readonly string[];
-    readonly catalog: ComponentCatalog;
-}): WorkSet;
-export declare function componentFingerprint(root: string, _component: Component, _catalog: ComponentCatalog): Promise<string | undefined>;
 export declare function fuzzyScore(query: string, name: string): number | undefined;
 //# sourceMappingURL=repo.d.ts.map

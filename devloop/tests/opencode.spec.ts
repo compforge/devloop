@@ -109,7 +109,7 @@ describe("OpenCode V2 adapter", () => {
     const nextTurn = JSON.stringify((await context()).system);
     expect(nextTurn).toContain("design.md");
     expect(nextTurn).toContain("Branch: feature");
-    expect(nextTurn).toContain("Validation history");
+    expect(nextTurn).not.toContain("Validation history");
     await invoke("session.compaction", { sessionID: "ses_a" });
     expect(JSON.stringify((await context()).system)).toContain("design.md");
   });

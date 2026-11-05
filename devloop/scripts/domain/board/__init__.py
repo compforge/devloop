@@ -17,7 +17,6 @@ from .model import (
     BoardItemKind,
     BoardScope,
     BoardView,
-    ComponentValidationCard,
     PrBlockedCard,
     PrHistoryCard,
     PullRequestCard,
@@ -27,7 +26,6 @@ from .model import (
     ReviewCard,
     PendingReviewFindingsCard,
     SubprojectCard,
-    ValidationCard,
     WorkspaceCard,
 )
 from .projection import project_board, project_view

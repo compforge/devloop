@@ -37,7 +37,7 @@ from .base import (
     pr_label,
     vocab,
 )
-from .repo import Branch, BranchTopology, RepoContext, RepoMeta, Validation
+from .repo import Branch, BranchTopology, RepoContext, RepoMeta
 from .session import (
     SessionIdentity,
     clear_active_repo,

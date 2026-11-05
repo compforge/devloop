@@ -29,7 +29,7 @@ it("cancels a stalled native PR query without losing the rest of the prompt", as
   const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "slow-forge" }));
   expect(query.mock.calls[0]?.[0]?.signal?.aborted).toBe(true);
   expect(output).toContain("PR status unavailable");
-  expect(output).toContain("Validation history");
+  expect(output).toContain("[Current repo:");
   expect(close).toHaveBeenCalledOnce();
 });
 
@@ -37,5 +37,5 @@ it("shows missing credentials as unavailable while delivering other context", as
   vi.mocked(prContextForRepo).mockRejectedValue(new Error("PR query unavailable: no credential"));
   const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "no-credential" }));
   expect(output).toContain("no credential");
-  expect(output).toContain("Validation history");
+  expect(output).toContain("[Current repo:");
 });

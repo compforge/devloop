@@ -8,7 +8,6 @@ from domain.context import base
 
 from .model import (
     BoardItem,
-    ComponentValidationCard,
     PrBlockedCard,
     PrHistoryCard,
     ReferenceCard,
@@ -16,7 +15,6 @@ from .model import (
     RepoReferencesCard,
     ReviewCard,
     PendingReviewFindingsCard,
-    ValidationCard,
     WorkspaceCard,
 )
 
@@ -35,8 +33,6 @@ def render_item(item: BoardItem) -> str:
         return "\n".join(lines)
     if isinstance(payload, RepoIdentityCard):
         return _repo_identity(payload)
-    if isinstance(payload, ValidationCard):
-        return _validation(payload.components)
     if isinstance(payload, PrBlockedCard):
         blurbs = {
             "conflict": "merge conflict with target",
@@ -119,16 +115,6 @@ def _repo_identity(card: RepoIdentityCard) -> str:
         f"Branch: {card.branch or '?'}{worktree} (ahead {card.ahead if card.ahead is not None else '?'}, behind {card.behind if card.behind is not None else '?'} vs "
         f"{card.base_branch}{as_of}, target={card.target_branch}) | Workspace: {workspace}{warning}"
     )
-
-
-def _validation(components: tuple[ComponentValidationCard, ...]) -> str:
-    if not components:
-        return "Validation history: no recorded runs"
-    parts = [
-        f"{item.component}: lint={base.fmt_ts(item.lint_at)}, test={base.fmt_ts(item.test_at)}"
-        for item in components
-    ]
-    return "Validation: " + " | ".join(parts)
 
 
 def _review(card: ReviewCard) -> str:

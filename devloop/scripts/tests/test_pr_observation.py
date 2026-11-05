@@ -9,7 +9,6 @@ from _testkit import _pr_context, _FakeForge, _git, _git_out, _load_script, run_
 from test_worktree import _fixture, _add_worktree
 from domain.context import prstate, store, base, gate
 from domain.forge import ForgeError, ForgeRateLimited, PullRequest
-from domain import pull_request_lifecycle
 from tasks import pr_lifecycle
 
 
@@ -79,8 +78,8 @@ def test_reused_branch_is_reverified_before_removal():
     inventory = context.local_branches()
     from dataclasses import replace
     fake._prs[2] = replace(fake._prs[1], number=2, state="open")
-    actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
-    assert actions[0].status == "deferred" and Path(target).is_dir()
+    actions = context.refresh().maintenance.actions
+    assert actions[0].status == "skipped" and Path(target).is_dir()
     assert store.load_segment(repo, "pr") is None
     assert store.load_segment(repo, "local_pull_requests") is None
 

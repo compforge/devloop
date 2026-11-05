@@ -15,7 +15,7 @@ import logging
 import os
 import time
 
-from domain import pull_request_lifecycle, repo_layout, workspace, worktree
+from domain import repo_layout, workspace, worktree
 from domain.context import WorkspaceContext, prstate, store
 from tasks.registry import discover
 
@@ -69,10 +69,10 @@ def _sweep_repo(repo: str) -> dict:
     if context is None:
         return {"repo": repo, "errors": ["no usable forge"], "actions": [], "pull_requests": []}
     try:
-        issues = list(context.observer.maintain())
-        inventory = context.local_branches()
-        actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
-        rows = inventory
+        lifecycle = context.refresh()
+        issues = list(lifecycle.errors) + list(lifecycle.maintenance.errors)
+        actions = lifecycle.maintenance.actions
+        rows = lifecycle.branches
         issues.extend(row.error for row in rows if row.error)
         return {"repo": repo, "errors": issues,
                 "has_linked_checkouts": any(not checkout.primary for row in rows for checkout in row.checkouts),

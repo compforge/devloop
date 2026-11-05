@@ -57,6 +57,12 @@ def test_pr_cli_dispatch():
     class _R:
         git_root = "/x"
 
+    orig_context = prcli.pr_context_for_repo
+    from types import SimpleNamespace
+    prcli.pr_context_for_repo = lambda *a, **kw: SimpleNamespace(
+        update=lambda key, **fields: fake.update(key.number, **fields),
+        close=lambda key: fake.close(key.number),
+        observer=SimpleNamespace(close=lambda: None))
     orig_forge = prcli.forge_for_repo
     orig_resolve = prcli.cli.resolve_repo_or_exit
     try:
@@ -77,6 +83,7 @@ def test_pr_cli_dispatch():
         assert raised
     finally:
         prcli.forge_for_repo = orig_forge
+        prcli.pr_context_for_repo = orig_context
         prcli.cli.resolve_repo_or_exit = orig_resolve
 
 

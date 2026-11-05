@@ -25,7 +25,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 - **运行态上下文**：Board 向当前 session 投递相关仓库的 branch、working tree、PR/MR 和验证状态；进入项目或上下文压缩后会自动刷新。
 - **执行级守卫**：在原生 PreToolUse 路径上拒绝保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
 - **并发隔离**：checkout 被一个 session 占用后，其它 session 的分支切换和源码编辑会被引导到独立 worktree。
-- **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；PR/MR merged / closed 后自动强制回收对应的 linked worktree。
+- **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；通过 RepoKit repository lifecycle API 更新观察与本地资源状态。
 
 领域主链是 **`PR/MR → Repo → Component`**。Repo 是 git、branch 和 forge 状态的边界；Component 是 lint/test 的验证单位；workspace 只是可选的多仓聚合上下文，单仓库同样完整支持。
 
@@ -178,13 +178,13 @@ push 始终发往 origin；branch、worktree、commit、review 和巡检仍以�
 
 `review` 是异步 signal hook，不阻塞 commit 或 PR/MR；默认引擎是 [CCR](https://github.com/compforge/case-code-review)，也可以配置为 `ocr`。结果会在后续 session 中浮现；已有开放 PR/MR 时还会尝试发布 review comment。
 
-Worktree 回收只走 `pr-lifecycle-reconcile`：Forge 确认 PR/MR 已 merged / closed 后，除作为仓库锚点的 primary checkout 外，对应 linked worktree 被强制回收，branch ref 保留。删除前重新核对仓库内的 checkout 路径、branch 和 HEAD；若与查询时不同则延期，下一轮重新对账。gitlink 按父仓的普通版本化条目处理，子模块 checkout 内容不增加保留条件。创建或复用 worktree 只准备当前 checkout；open 或没有 PR/MR 的 worktree 不按数量淘汰。旧 `worktree.keep_recent` 配置不再生效。
+Worktree 的保留数量、依赖环境与清理保护由 RepoKit 管理。devloop 的 PR 写操作和周期对账调用其 repository lifecycle API，不传清理回调。RepoKit 以 merged 为终态，保留 branch refs；超出数量时清理旧 checkout 或环境，未知创建时间视为最旧。配置与手工 `repocli worktree clean` 见 RepoKit 文档，旧 `worktree.keep_recent` 不再生效。
 
 完整配置结构和 forge host 配置见 [`config/config.example.json`](./config/config.example.json)。token 建议使用环境变量；如果写入配置文件，不要提交仓库内的 `.devloop/config.json`。
 
 ## PR/MR 周期对账
 
-devloop 只定义一个 `pr-lifecycle-reconcile` task：它枚举本地 branch（包含无 checkout 的 branch），对账 Forge 状态，并强制回收 PR/MR 已 merged / closed 的 linked worktree。Claude native monitor 会循环执行该 task；Codex 可用 Scheduled task 周期调用同一个单次入口。
+devloop 只定义一个 `pr-lifecycle-reconcile` task：它调用 RepoKit repository lifecycle API，消费本地 branch（包含无 checkout 的 branch）的 Forge 观察与操作结果。Claude native monitor 会循环执行该 task；Codex 可用 Scheduled task 周期调用同一个单次入口。
 
 Codex 会在会话开始和工具执行后，对实际访问的仓库非阻塞触发一次对账；同一主仓库及其 worktree 共用触发频率，上一轮未结束时不会重复启动。这只能覆盖活跃使用期间：空闲时仍需在 ChatGPT desktop 创建能访问本地项目的 Scheduled task；Codex CLI 不提供 Scheduled 管理界面。参见 OpenAI 的 [Scheduled tasks](https://learn.chatgpt.com/docs/automations?surface=app) 与 [plugin packaging](https://developers.openai.com/plugins/build/plugins) 文档。
 

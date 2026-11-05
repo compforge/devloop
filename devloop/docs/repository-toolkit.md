@@ -44,15 +44,15 @@ CLI 默认在 `~/.repocli/repositories/<name>/` 保存执行历史；同仓 chec
 `--force` 强制执行，`--history` 查询实际执行次数、耗时和复用统计。VersionTag 变化只在复用判断时忽略，
 分支门禁继续核对本轮完整 snapshot。记录的原 Run 时间不能替换为本次复用时间。
 
-Python workflow 锁定 `compforge-repokit==0.18.0`，使用 schema 2 解码器；依赖通过官方发布包解析，
+Python workflow 锁定 `compforge-repokit==0.19.0`，使用 schema 2 解码器及 repository lifecycle API；依赖通过官方发布包解析，
 不依赖本地源码覆盖。执行端需要支持 schema 2 与历史复用的 repocli CLI 0.54.0 或后续版本。
 
 ## 操作与策略
 
-Worktree 的命名、任务/session 归属、复用、清理时机和依赖准备时机属于 devloop。RepoKit 执行明确指定的
-创建/删除操作，默认保留脏工作区；显式强制回收的决定由 devloop 生命周期作出。
+Worktree 的命名、任务/session 归属、复用和依赖准备时机属于 devloop。RepoKit 拥有 repository lifecycle
+操作及其 worktree/环境保留策略；devloop 调用 PR 操作与刷新 API，不持有删除策略或清理回调。
 本地远端 HEAD 缓存查询、`info/exclude` 规则追加和 worktree 失效注册清理由 RepoKit 提供。
-默认目标缺失时的 main/master 回退、忽略哪些目录、清理时机及 best-effort 处理属于 devloop；
+默认目标缺失时的 main/master 回退、开发流程忽略哪些目录及工作流 best-effort 处理属于 devloop；
 必要的默认分支读取失败向上传递，不能触发缺失时才允许的回退。
 提交范围、敏感文件规则、提交说明和 PR 正文由 devloop 决定，Git/Forge 库执行动作并返回结果。
 创建/复用 PR 直接调用 RepoKit `ensure_pull_request`：源仓身份、目标仓解析、默认分支读取、

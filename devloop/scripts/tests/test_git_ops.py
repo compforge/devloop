@@ -572,21 +572,23 @@ def test_sync_pr_description_append_only():
     pr = PullRequest(number=7, state="open", source_branch="feat/x")
 
     f = _FakeForge([pr])
+    from types import SimpleNamespace
+    context = SimpleNamespace(update=lambda key, **fields: f.update(key.number, **fields))
     plan = []
-    sgo.sync_pr_description(f, pr, "para one", plan)
+    sgo.sync_pr_description(f, pr, "para one", plan, context=context)
     assert f.description(7) == "para one" and any("description" in line for line in plan)
-    sgo.sync_pr_description(f, pr, "para two", [])           # append, not overwrite
+    sgo.sync_pr_description(f, pr, "para two", [], context=context)           # append, not overwrite
     assert f.description(7) == "para one\n\npara two"
-    sgo.sync_pr_description(f, pr, "para one", [])           # already present → no dup
+    sgo.sync_pr_description(f, pr, "para one", [], context=context)           # already present → no dup
     assert f.description(7) == "para one\n\npara two"
-    sgo.sync_pr_description(f, pr, "", [])                   # nothing to sync → no-op
+    sgo.sync_pr_description(f, pr, "", [], context=context)                   # nothing to sync → no-op
     assert f.description(7) == "para one\n\npara two"
 
     class _Broken(_FakeForge):
         def description(self, number):
             raise ForgeError("boom")
     plan = []
-    sgo.sync_pr_description(_Broken([pr]), pr, "para", plan)  # non-fatal
+    sgo.sync_pr_description(_Broken([pr]), pr, "para", plan, context=context)  # non-fatal
     assert any("non-fatal" in line for line in plan)
 
 
@@ -667,6 +669,19 @@ class _ForkForge(_FakeForge):
 
 
 
+def _operation_context(repo, *, forge, target_repository=None):
+    from tempfile import mkdtemp
+    from harness_common import Repository
+    from repokit.forge import PullRequestContext, PullRequestObserver
+    source = forge.repository()
+    target = Repository(source.forge, target_repository.partition("/")[2]) if target_repository else source
+    observer = PullRequestObserver(forge, forge=source.forge.name, state_dir=Path(mkdtemp()), connection="test")
+    context = PullRequestContext(observer, repo, source=source, targets=(target,))
+    # Retention safety belongs to RepoKit's isolated repository tests.
+    context._after_operation = lambda **kwargs: None
+    return context
+
+
 def test_explicit_repository_pr_target_does_not_change_local_git_baseline_or_persist_policy():
     from tempfile import TemporaryDirectory
     from unittest.mock import patch
@@ -688,6 +703,7 @@ def test_explicit_repository_pr_target_does_not_change_local_git_baseline_or_per
         assert intent.pr_target == "release"
         forge = _ForkForge()
         with patch.object(flow, "forge_for_repo", return_value=forge), \
+             patch.object(flow, "pr_context_for_repo", side_effect=_operation_context), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")) as push, \
              patch.object(flow.RepoContext, "refresh_branch"):
             flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
@@ -733,6 +749,7 @@ def test_publish_current_repository_preserves_existing_nondefault_base():
                                 target="main", base="origin/main", explicit_base=False, files=[],
                                 repo="/repo", source="test", invoke_cwd="/repo", pr_target=requested, description="follow-up body")
         with patch.object(flow, "forge_for_repo", return_value=forge), \
+             patch.object(flow, "pr_context_for_repo", side_effect=_operation_context), \
              patch.object(flow.operations, "push", return_value=GitResult(0, "", "")), \
              patch.object(flow.git_state, "commits", return_value=[]), \
              patch.object(flow.RepoContext, "refresh_branch"):

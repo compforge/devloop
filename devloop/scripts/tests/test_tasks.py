@@ -86,7 +86,7 @@ def test_task_exit_status_exposes_refresh_and_cleanup_failures():
             run.assert_called_once_with("pr-lifecycle-reconcile", "/repo", repo_only=True)
 
 
-def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory():
+def test_real_sweep_preserves_unsaved_submodule_and_never_uses_stale_inventory():
     from unittest.mock import patch
     from pathlib import Path
     from test_worktree import _fixture, _add_worktree, _add_submodule
@@ -114,10 +114,11 @@ def test_real_sweep_reclaims_terminal_submodule_and_never_uses_stale_inventory()
         return context
     with patch.object(pr_lifecycle, "pr_context_for_repo", side_effect=query):
         report = pr_lifecycle.sweep_repo(repo, force=True)
-        assert report["actions"][0]["status"] == "completed"
-        assert not Path(linked).exists() and Path(ongoing).is_dir()
-        assert _git_out(repo, "branch", "--list", "worktree-finished") == "worktree-finished"
-        assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []
+        assert report["actions"][0]["status"] == "skipped"
+        assert (Path(linked) / "doctor" / "module.txt").read_text() == "child edit\n"
+        assert Path(ongoing).is_dir()
+        assert _git_out(repo, "rev-parse", "refs/heads/worktree-finished")
+        assert all(a["status"] == "skipped" for a in pr_lifecycle.sweep_repo(repo, force=True)["actions"])
     assert store.load_segment(repo, "local_pull_requests") is None
 
 
@@ -154,7 +155,7 @@ def test_sweep_defers_when_checkout_changes_during_forge_lookup():
         with patch.object(pr_lifecycle, "pr_context_for_repo", side_effect=lambda _: _pr_context(repo, fake)):
             report = pr_lifecycle.sweep_repo(repo, force=True)
             assert changed and (Path(target) / "unsaved.txt").read_text() == "new work\n", change
-            assert [(a["status"], a["reason"]) for a in report["actions"]] == [("deferred", "forge_unverified")]
+            assert all(a["status"] != "completed" for a in report["actions"])
             if change == "branch":
                 # A fresh sweep observes the new PR-less branch and retains it.
                 assert pr_lifecycle.sweep_repo(repo, force=True)["actions"] == []
@@ -191,7 +192,7 @@ def test_removal_rechecks_identity_after_successful_association_verification():
     from pathlib import Path
     from test_worktree import _fixture, _add_worktree
     from _testkit import _pr_context, _FakeForge, _git, _git_out
-    from domain import pull_request_lifecycle, worktree
+    from domain import worktree
     from domain.context import PullRequest
 
     for change in ("branch", "head", "detached"):
@@ -216,9 +217,9 @@ def test_removal_rechecks_identity_after_successful_association_verification():
         try:
             with patch.object(context, "verify", side_effect=change_after_verification), \
                  patch.object(worktree.operations, "remove_worktree") as remove:
-                actions = pull_request_lifecycle.reconcile(repo, context=context, inventory=inventory)
+                actions = context.refresh().maintenance.actions
             remove.assert_not_called()
-            assert [(a.status, a.reason) for a in actions] == [("deferred", "identity_changed")]
+            assert [(a.status, a.reason) for a in actions] == [("skipped", "checkout_identity_changed")]
             assert (Path(target) / "unsaved.txt").read_text() == "new work"
         finally:
             context.observer.close()

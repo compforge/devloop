@@ -2,7 +2,7 @@
 
 Forge 是远端事实来源。repocli 负责原生 Python/TypeScript 状态查询、本地观察、重试、周期维护，
 以及 PR ↔ branch ↔ checkout 关联。devloop 配置访问身份和目标仓库，拥有开发门禁、Board 投递与
-本地资源回收策略。`.devloop/pr.json`、`local_pull_requests.json` 不再读写，也不做旧格式迁移。
+任务调度。RepoKit 的 repository lifecycle 操作自行维护本地资源。`.devloop/pr.json`、`local_pull_requests.json` 不再读写，也不做旧格式迁移。
 
 ## 查询与视图
 
@@ -19,7 +19,7 @@ Gate、Board 与脚本查询 repocli，库决定本地状态是否可用、何�
 Board 为 PR 查询提供 1 秒等待预算，超时或缺凭据时展示不可用并继续投递其它上下文；
 此预算不改变 repocli 的缓存与刷新职责。
 
-RepoContext 直接持有选中的原生 PR；生命周期对账直接消费 BranchPullRequests，
+RepoContext 直接持有选中的原生 PR；生命周期对账调用 `PullRequestContext.refresh()` 并消费其分支观察与动作报告，
 不再维护 recent window 或字典形式的中间库存。评论、finding verdict 和 merge readiness
 由 Board 展示按需独立读取，普通 RepoContext.load / 分支刷新不触发这些请求。评论读取失败不会撤回已确认的生命周期，
 readiness 失败也不会擦掉已取得的 finding 视图。devloop 只持久化验证证据、review 工作流记录、
@@ -33,9 +33,10 @@ cadence 只用于工作流去重；repocli 自己维护观察的到期、冷却�
 观察错误或回收延后会让单次 CLI 返回非零退出码。所有关联已知、没有开放 PR 和 linked checkout
 时进入空闲周期；primary checkout 上已完成的 PR 不阻止降频。
 
-回收前调用 repocli `verify` 重新确认分支仍对应同一个已完成 PR；随后 `remove_finished` 再检查
-实时 branch / HEAD / checkout 身份。旧缓存、歧义、未知关联、查询失败和新 PR 复用均不授权回收。
-primary checkout 始终保留。原有 linked checkout 回收策略不变，branch ref 不随 checkout 删除。
+PR 创建、更新、关闭和周期刷新都走 RepoKit 的 repository-aware 操作。devloop 不调用显式 clean，
+不传 after_success 回调，不持有数量阈值或清理算法。RepoKit 复用同一个 PR observer 与关联验证，
+仅将 merged 作为清理终态；数量淘汰、环境释放与保护规则由 RepoKit 管理，branch ref 保留。
+维护失败作为动作/诊断报告，不改写成功 PR 操作的结果。
 
 repocli 状态位于用户级 `~/.repocli`，Python 和 TypeScript 使用相同访问 revision 摘要和记录/锁
 协议。不同短进程可以复用观察，状态中不保存原始凭据。HTTP 客户端与凭据解析继续复用统一入口。

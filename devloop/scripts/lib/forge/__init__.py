@@ -95,7 +95,9 @@ def _connection(resolution: ForgeResolution, *, timeout: int = 10) -> ForgeConne
                            api_host=resolution.api_host, timeout=timeout)
 
 
-def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
+def pr_context_for_repo(
+    repo_dir: str | Path, *, forge: Forge | None = None, target_repository: str | None = None,
+):
     """Assemble access policy; repocli owns observation and local associations.
 
     +spec=`Only an absent Forge origin means PR queries are inapplicable;
@@ -108,4 +110,8 @@ def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
     connection = _connection(r)
     # Target selection belongs to the workflow; RepoKit never infers a fork parent.
     target = config.forge_entry(r.host, repo_dir).get("target_repository") or r.path
+    if target_repository:
+        name, separator, target = target_repository.partition("/")
+        if not separator or not target or name != connection.name:
+            raise ValueError("target repository must be an ID within the configured Forge")
     return connection.pull_request_context(repo_dir, source=r.path, targets=(target,), reader=forge)

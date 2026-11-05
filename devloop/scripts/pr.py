@@ -15,8 +15,8 @@ never a forge-specific credentials path.
   pr reply    <n> <comment-id> <body> [--repo R]             reply in a comment's thread
 
 Deliberately NO `create`: opening an MR is a commit+push transaction under the branch/staging
-gates, which lives in gcampr (`smart_gcampr.sh`). `pr` never touches your working tree — that
-boundary is the point; don't dissolve it by adding a create verb that would only forward.
+gates, which lives in gcampr (`smart_gcampr.sh`). RepoKit owns lifecycle maintenance
+after successful PR writes; ordinary reads remain read-only.
 """
 from __future__ import annotations
 
@@ -33,7 +33,8 @@ from domain.forge import (  # noqa: E402
     pr_label,
 )
 from lib import cli  # noqa: E402
-from lib.forge import forge_for_repo  # noqa: E402
+from lib.forge import forge_for_repo, pr_context_for_repo  # noqa: E402
+from repokit.forge import PullRequestKey
 
 _READINESS_LABEL = {
     MergeReadiness.READY: "✓ ready",
@@ -51,11 +52,21 @@ def _forge_or_exit(ns, prog):
     clean exit(0): the same not-an-error treatment the per-verb scripts had — devloop runs in
     repos with no forge and callers shouldn't see a failure for asking."""
     resolved, _ = cli.resolve_repo_or_exit(ns, prog)
+    ns.repo_root = resolved.git_root
     forge = forge_for_repo(resolved.git_root)
     if forge is None:
         print(f"{prog}: no token or unsupported remote", file=sys.stderr)
         raise SystemExit(0)
     return forge
+
+
+def _context_or_exit(ns, forge):
+    context = pr_context_for_repo(
+        ns.repo_root, forge=forge, target_repository=forge.repository().id(),
+    )
+    if context is None:
+        raise ForgeError("PR context unavailable")
+    return context
 
 
 def _number_or_exit(raw, prog):
@@ -149,7 +160,11 @@ def cmd_update(ns) -> int:
         print("pr update: nothing to update (pass --title/--description/--target-branch)", file=sys.stderr)
         return 1
     try:
-        pr = forge.update(number, **fields)
+        context = _context_or_exit(ns, forge)
+        try:
+            pr = context.update(PullRequestKey(forge.repository(), number), **fields)
+        finally:
+            context.observer.close()
     except ForgeError as e:
         print(f"pr update: {e}", file=sys.stderr)
         return 1
@@ -161,7 +176,11 @@ def cmd_close(ns) -> int:
     forge = _forge_or_exit(ns, "pr close")
     number = _number_or_exit(ns.number, "pr close")
     try:
-        pr = forge.close(number)
+        context = _context_or_exit(ns, forge)
+        try:
+            pr = context.close(PullRequestKey(forge.repository(), number))
+        finally:
+            context.observer.close()
     except ForgeError as e:
         print(f"pr close: {e}", file=sys.stderr)
         return 1

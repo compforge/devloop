@@ -34,7 +34,7 @@ import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from repokit.forge import ensure_pull_request
+from repokit.forge import PullRequestContext, PullRequestKey
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -42,7 +42,7 @@ from domain import branch as branch_domain, lifecycle, repo as repo_model, stagi
 from domain.context import RepoContext, gate, record_active_repo, store
 from domain.forge import Forge, ForgeError, PullRequest, pr_label  # noqa: E402
 from lib import cli, git_state, gitcmd  # noqa: E402
-from lib.forge import forge_for_repo  # noqa: E402
+from lib.forge import forge_for_repo, pr_context_for_repo  # noqa: E402
 
 
 class SmartError(Exception):
@@ -208,7 +208,7 @@ def warn_mixed_version_bump(repo: str, plan: list[str]) -> None:
         )
 
 
-def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: list[str]) -> None:
+def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: list[str], *, context: PullRequestContext) -> None:
     """Append this run's commit body to an existing PR/MR description (creation passes it
     directly; this covers follow-up commits onto an in-flight PR).
 
@@ -224,7 +224,7 @@ def sync_pr_description(forge: Forge, pr: PullRequest, description: str, plan: l
         if description in existing:
             return
         merged = f"{existing.rstrip()}\n\n{description}" if existing.strip() else description
-        forge.update(pr.number, body=merged)
+        context.update(PullRequestKey(forge.repository(), pr.number), body=merged)
         plan.append(f"appended commit body to {label} description")
     except ForgeError as e:
         plan.append(f"⚠ could not sync {label} description (non-fatal): {e}")
@@ -374,7 +374,12 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
         # in step with the new commit's body, same as the mr-mode reuse path does.
         forge = forge_for_repo(repo)
         if forge is not None:
-            sync_pr_description(forge, branch.active_pr, intent.description, plan)
+            context = pr_context_for_repo(repo, forge=forge)
+            if context is not None:
+                try:
+                    sync_pr_description(forge, branch.active_pr, intent.description, plan, context=context)
+                finally:
+                    context.observer.close()
 
     if intent.mode == "mr":
         commits = git_state.commits(repo, f"origin/{target}", current)
@@ -382,10 +387,17 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
         forge = forge_for_repo(repo)
         if forge is None:
             raise SmartError("branch pushed, but no token / unsupported remote — open the PR/MR manually.")
+        context = pr_context_for_repo(
+            repo, forge=forge,
+            target_repository=intent.target_repository or forge.repository().id(),
+        )
+        if context is None:
+            raise SmartError("PR context unavailable")
         try:
-            result = ensure_pull_request(forge, source_branch=current, title=intent.title,
-                                         body=intent.description, target_branch=intent.pr_target,
-                                         target_repository=intent.target_repository)
+            result = context.ensure_pull_request(
+                source_branch=current, title=intent.title, body=intent.description,
+                target_branch=intent.pr_target, target_repository=intent.target_repository,
+            )
             pr = result.pull_request
             plan.append(f"PR source={result.source_repository.id()}:{current} "
                         f"target={result.target_repository.id()}")
@@ -394,9 +406,11 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
             if not result.created:
                 client = (forge if result.source_repository.id() == result.target_repository.id()
                           else forge.for_repository(result.target_repository.path))
-                sync_pr_description(client, pr, intent.description, plan)
+                sync_pr_description(client, pr, intent.description, plan, context=context)
         except (ForgeError, ValueError) as error:
             raise SmartError(f"branch pushed, but PR/MR create/reuse failed: {error}") from error
+        finally:
+            context.observer.close()
         RepoContext.refresh_branch(repo)
 
 

@@ -17,21 +17,19 @@ MODULES = [
     "test_config",
     "test_forge",
     "test_pr",
-    "test_pr_cli",
     "test_git_ops",
     "test_git_policy",
     "test_staging",
     "test_worktree",
-    "test_tasks",
     "test_pr_observation",
     "test_rebase",
     "test_session",
     "test_board",
-    "test_validation_cli",
     "test_inspect",
     "test_dependencies",
     "test_python",
     "test_review",
+    "test_review_launch",
 ]
 
 

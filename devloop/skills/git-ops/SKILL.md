@@ -35,5 +35,5 @@ Before committing or pushing code, or submitting its PR, run `repocli validate` 
 [validate](../validate/SKILL.md). Inspect the result and fix failures relevant to the change;
 report unavailable checks and unresolved failures accurately. Validation timing and acceptance
 are your responsibility; neither commit scripts nor PR operations run validation automatically.
-PR title/body/label-only updates do not need code validation. Repocli owns check scope and reuse. Commit-triggered review is automatic and advisory; use
-[review](../review/SKILL.md) to inspect or handle its findings.
+PR title/body/label-only updates do not need code validation. Repocli owns check scope and reuse. Configured commit-triggered review is advisory; after PR operations, check or launch review using
+[review](../review/SKILL.md).

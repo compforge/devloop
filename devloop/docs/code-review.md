@@ -9,8 +9,7 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
 
 ## 一个动作、任意相位、机会性评论
 
-- **review 是一个动作,挂哪个相位由 config 决定**（`pre_commit` / `post_commit` / `pre_mr` /
-  `post_mr` 都行）。相位只决定**何时触发**;动作本身不变。
+- **review 是一个动作,挂哪个相位由 config 决定**（`pre_commit` / `post_commit`）。相位只决定**何时触发**;动作本身不变。
 - **通用交付 = surface 给 session**:无论哪个相位,都写 review.json → 下一轮经状态总线注入
   浮现 `Review:` 行（pull）。
 - **Review 行是事件,不是状态,所以只讲一次**:同一个 review 结果讲一遍就闭嘴,重跑出新结果
@@ -19,8 +18,8 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   已处理的 findings。同理 **PostCompact 不复活它**:compaction 掉的是「说过的话」,状态必须
   重说（否则 agent 拿着已不成立的分支/PR 图像动手）,事件重投则是让人重做已做的事。
   Finding 待判定 nudge 同理,只是 cap=3 而非 1(见 `context/base.py` 的 `Nudge`)。
-- **post_mr 的额外能力 = MR 评论**:relay 在 git 动作后跑时,查分支是否有开放 MR;有就
-  发评论（典型是 `post_mr`——MR 刚建好;或往在途 MR 追加提交时也会命中）。
+- **开放 PR/MR 的额外能力 = 评论**:relay 在 git 动作后跑时,查分支是否有开放 MR;有就
+  发评论（已有开放 MR 的提交后 review，或 AI 在创建 MR 后显式启动 review）。
   没有 MR 就只落 review.json。所以 **MR 评论是机会性的,不是 phase 硬绑**。
 - **findings 优先锚点,汇总 note 兜底**:每条 finding 先尝试发成 diff 锚点评论
   （`forge.comment(..., replyable=True)`,GitLab positioned discussion / GitHub review
@@ -50,17 +49,17 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
 - **启动失败可见**：runner 文件缺失时，当前操作给出 advisory 提示，并记录分支的 review error，
   供后续状态查询和 Board 展示；不影响 commit / MR。
 - **signal hook,不挡 commit**:review 跑得久,且写码 AI 与 review AI 同源——结论仅供参考、
-  **merge 必须人拍**。故不像 lint/test 那样 inline 挡。
+  **merge 必须人拍**。验证由 skill 提醒 AI 显式执行。
 - **detach、不靠 agent 起后台**:dispatch(subprocess)不能起「跑完唤醒 session」的 harness 后台
   任务（早期让 agent 读 `ARMED:` 行自己起,实测不可靠）。改由 commit_flow
   `Popen(start_new_session=True)` fire-and-forget 起;每相位的 relay 在它所裹的 git 动作后起
-  （pre/post_commit 在 commit 后、pre/post_mr 在 publish 后）。
+  （pre/post_commit 都在 commit 后）。
 
-## 流程（以 post_mr 为例）
+## 流程（以 gcampr skill 为例）
 
 ```
-gcampr → … → commit → publish（建/复用 MR）→ post_mr relay
-   → commit_flow detach 起 run_review（PLAN 出 `review: launched in background`）
+AI → repocli validate → managed commit/push → repocli pr create/update
+   → review status：同一 SHA 已在审则复用，否则显式 review run
 run_review（后台、独立进程）：**启动即冻结 (branch, sha)**（见下）→ 先写 status=running
    → 自动拼 --background（业务上下文）：本次提交说明（git log）+ MR 标题/描述（forge）
    → 经 forge.comments 拉当前 PR/MR 已有 finding threads，临时构造 history
@@ -136,12 +135,12 @@ HEAD 是谁」**：
 ```jsonc
 "lifecycle": { "repos": { "/abs/repo": {
   "pre_commit": [],   // validation is explicit
-  "post_mr":    ["review"]           // code-review：审全量 + （此相位有 MR）发评论到 MR 做历史
+  "post_commit": ["review"]           // 审全量；已有开放 MR 时发布评论
 } } }
 ```
 
-放 `post_mr` 是为了拿到 MR 号发评论;若只想要本地 review（不发 MR）放 `pre_commit`/`post_commit`
-也行——一样审、一样注入,只是没 MR 可评时不发评论。
+首次创建 PR/MR 后，由 gcampr skill 指导 AI 检查并启动 review；提交 hook 不负责创建 PR。
+配置的提交后 review 在没有 MR 时只保存本地结果。
 
 **切引擎**：默认 `ccr`，切回 ocr 在 `~/.devloop/config.json` 加 `"review": {"tool": "ocr"}`。
 devloop 只依赖 **review tool 协议**（`scripts/lib/review_engine.py` 的 `ReviewEngine`：`available()` /

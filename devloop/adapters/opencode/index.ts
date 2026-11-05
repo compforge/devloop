@@ -11,7 +11,6 @@ import { BoardRuntime } from "../../domain/board/runtime.js";
 import { itemsFor, promptFactsFor, PromptDelivery } from "../../domain/board/delivery.js";
 import { renderPrompt } from "../../domain/board/render.js";
 import { findGitRoot } from "../../domain/repo-layout.js";
-import { triggerReconciliation } from "../../domain/task-trigger.js";
 import { decisionMessage } from "../../hooks/core/domain.js";
 import { projectTool } from "../../hooks/core/project.js";
 import { releaseOwner } from "../../domain/context/session.js";
@@ -103,8 +102,6 @@ async function setup(ctx: Context): Promise<() => void> {
       sessions.set(sessionID, state);
       try {
         await initializeBoard({ cwd, session_id: sessionID });
-        const repo = findGitRoot(cwd);
-        if (repo) triggerReconciliation(repo, pluginRoot);
       } catch (error) { log("board_initialization_failed", error, sessionID, cwd); }
     } else if (state.cwd !== cwd) {
       state.cwd = cwd; state.roots.add(cwd); delete state.selected;
@@ -183,9 +180,7 @@ async function setup(ctx: Context): Promise<() => void> {
       const failed = event.status === "error" || event.tool === "execute" && output.error === true || event.tool === "shell" && (typeof output.exit === "number" && output.exit !== 0 || output.timeout === true || typeof output.signal === "string");
       const payload = { hook_event_name: failed ? "PostToolUseFailure" : "PostToolUse", tool_name: event.tool, tool_input: event.input, tool_use_id: callId(event), cwd: state.cwd, session_id: event.sessionID };
       recordToolCall(payload, "opencode");
-      if (!failed) afterTool(payload, "opencode", pluginRoot);
-      const repo = findGitRoot(state.cwd);
-      if (repo) triggerReconciliation(repo, pluginRoot);
+      if (!failed) afterTool(payload, "opencode");
     } catch (error) { log("after_tool_failed", error, event.sessionID); }
   });
 

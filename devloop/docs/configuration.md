@@ -11,7 +11,7 @@
 - 继承只决定配置值，不改变验证、review 等动作的执行目录。
 
 例如主仓库配置了提交前验证和 MR 后 review，worktree 只配置 `pre_commit: []`，最终会关闭
-提交前的自动动作，但保留继承的 `post_mr: ["review"]`。
+提交前的自动动作，但保留继承的 `post_commit: ["review"]`。
 
 ## 配置来源
 

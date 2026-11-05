@@ -26,13 +26,13 @@ devloop 的两个杠杆沿循环分布：**状态源 + Board**（软提示）覆
 | 1 | enter 子模块 | `cd` → `CwdChanged` | TS `afterCwdChanged` | 刷新 repo 段状态；记 `active.json`（不占有 owner 锁——enter 只选上下文） |
 | 2 | 每轮对话 | `UserPromptSubmit` | TS `userPromptOutput` | Board 按相关性投递变化/到期的 session/turn/event items，ui_only 不进入 prompt；`PostCompact` 只令状态 items 重放；AGENTS.md 被改时 `FileChanged` → TS `afterFileChanged` 刷新事实 |
 | 2b | 开始新工作 | 新任务需要独立 branch | `scripts/branch.py create` | 刷新 `origin/<target>`；clean checkout 上创建 branch、记录 `fork_from` 并占有 owner 锁；外来 owner 引导 managed worktree |
-| 3 | 开发（编辑与命令） | `PreToolUse` | TS `recordToolCall` 记录原始调用；策略引擎规则处理编辑面（owner / branch merged / requirements）与命令面（保护分支 / checkout owner / worktree add / add-all / workspace cwd / pytest / pip / precommit gate） | 最近一小时的调用起点追加到 repo 的 `.devloop/tool-calls.jsonl`；策略 deny 或放行，全部 fail-open |
-| 3' | 开发后效 | `PostToolUse` / `PostToolUseFailure` | TS `recordToolCall`；TS `afterTool` | 时间线追加完成结果并滚动清理；git 状态命令后按**位置感知的有效目录**刷新对应 repo 的 branch 段。时间线不参与 validation gate，验证是否过期仍由内容指纹判定 |
-| 4 | 验证 | AI 按 validate skill 显式执行 | `repocli validate` → `format → lint ‖ test` | 按 component 记录各 check 结果（lint 内容指纹 + test 时间） |
-| 5 | 提交 / PR | `/gcam` `/gcamp` `/gcampr` | `commit_flow`（PLAN banner 自陈） | 复用 `domain.branch` 承载兼容的 edit-then-cut；可重复的 `--file` 收敛 staging；外来提交自检；建 PR 后触发一次 `poll_pr_status` |
+| 3 | 开发（编辑与命令） | `PreToolUse` | TS `recordToolCall` 记录原始调用；策略引擎规则处理编辑面（owner / branch merged / requirements）与命令面（保护分支 / checkout owner / worktree add / add-all / workspace cwd / pytest / pip） | 最近一小时的调用起点追加到 repo 的 `.devloop/tool-calls.jsonl`；策略 deny 或放行，全部 fail-open |
+| 3' | 开发后效 | `PostToolUse` / `PostToolUseFailure` | TS `recordToolCall`；TS `afterTool` | 时间线追加完成结果并滚动清理；git 状态命令后按**位置感知的有效目录**刷新对应 repo 的 branch 段。时间线不参与验证；检查执行与复用由 repocli 管理 |
+| 4 | 验证 | AI 按 validate skill 显式执行 | `repocli validate` → `format → lint ‖ test` | repocli 保存各 check 的结果与复用历史 |
+| 5 | 提交 / PR | `/gcam` `/gcamp` `/gcampr` | `commit_flow`（PLAN banner 自陈） | 复用 `domain.branch` 承载兼容的 edit-then-cut；可重复的 `--file` 收敛 staging；外来提交自检；AI 直接调用 repocli 创建或更新 PR，并检查 review 状态 |
 | 5b | 在途 PR/MR rebase | `smart_rebase.sh start/continue/finish` | `scripts/domain/rebase.py`（worktree-local transaction） | start 在改写前保存远端 source SHA；finish 用精确 `force-with-lease`，远端移动即拒绝覆盖 |
-| 6 | 等人工 merge | Claude monitor / Codex Scheduled task | `run_task pr-lifecycle-reconcile` | 查询 repocli 状态与全 local branch 关联；当前分支派生为 in-flight，Board turn item 软提示 |
-| 7 | PR/MR 终态后的下一轮 | Forge 状态变为 merged / closed | RepoKit `PullRequestContext.refresh()` | 分支派生为 inactive；RepoKit 按 merged 状态和数量策略维护 linked worktree（保护本地工作、保留 branch ref），回到第 1 拍，从最新 `origin/<target>` 切新分支 |
+| 6 | 等人工 merge | Board / 写入 gate 按需查询 | 原生 RepoKit PR context | 当前分支派生为 in-flight，Board turn item 软提示 |
+| 7 | PR/MR 终态后的下一轮 | 查询到 Forge 状态变为 merged / closed | 原生查询；PR 写入或显式 clean 时维护资源 | 分支派生为 inactive；RepoKit 按 merged 状态和数量策略维护 linked worktree（保护本地工作、保留 branch ref），回到第 1 拍，从最新 `origin/<target>` 切新分支 |
 
 ### 分支一轮的生命线
 
@@ -55,8 +55,8 @@ cut off origin/<target> → healthy ──push+PR──▶ in-flight ──人�
 
 ## 3. 关键设计（流程级 why）
 
-- **为什么 merge 留在 AI 范围外**：merge 是发布权，留给人是边界设计而非能力缺口；devloop 只保证 merge 前的一切（验证戳、PLAN 自陈、外来提交自检）可审计。
-- **为什么验证不是 commit 的强制前置**：lint/test 状态走软提示 + validation 戳，强制 gate 是 opt-in（`precommit_gate`，默认关）——"未验证就提交"有合法场景（docs、紧急 hotfix），硬拦会逼出逃逸口。与 in-flight 软提示同一个分档准则：有合法例外的用提示，没有的才硬拦。
+- **为什么 merge 留在 AI 范围外**：merge 是发布权，留给人是边界设计而非能力缺口；devloop 只保证 merge 前的一切（验证报告、PLAN 自陈、外来提交自检）可审计。
+- **验证时机由 skill 提醒**：AI 在提交或提交 PR 前直接执行 repocli validate，并报告范围和结果；提交脚本不运行验证、不读取验证门禁。
 - **为什么循环里到处是"派生不存 bool"**：拍 6/7 的状态翻转发生在 AI 范围外（人工 merge），任何落盘的 bool 都会过期；按 repocli 查询结果现算，切分支即自动失效、无人去清。
-- **为什么回收是 reconciliation 而非 transition handler**：周期触发器可能离线或重启，边沿事件并不可靠。每轮用 Forge 当前状态对账本地 branch / checkout，动作保持幂等；漏过 merge 瞬间也会在下一次完整快照后补做。task 定义与单次执行唯一，Claude monitor 和 Codex Scheduled task 只是循环 / 调度 adapter。
+- **资源维护归 RepoKit**：原生 PR 写操作和显式 clean 复用当前 PR 观察与保护规则。devloop 不注册周期清理，也不在 Harness 活动时扫描仓库。
 - **为什么 guard 全部 fail-open**：循环的主产出是开发本身，guard 是护栏不是闸门——任何 guard 内部错误都不得打断用户的工具调用（`hook_io` runner 保证）。命令侧守卫同理采用风险黑名单而非白名单：宁可放过少数未知风险，也不因无法穷举命令生态而误拦正常操作。

@@ -32,7 +32,7 @@ devloop turns those boundaries into a reusable development loop: live context te
 ## What the devloop plugin provides
 
 - **Controlled Git/PR transactions** — `gcam`, `gcamp`, and `gcampr` perform commit, commit + push, and commit + push + PR/MR respectively. New work starts from the intended target branch instead of inheriting accidental commits from the current HEAD.
-- **Affected-Component validation** — a repository may contain independent Components such as `server/`, `cli/`, or `packages/*`. devloop selects the Components touched by the change and records lint/test results at the same granularity.
+- **Affected-Component validation** — a repository may contain independent Components such as `server/`, `cli/`, or `packages/*`. skills guide the AI to run repocli, which selects affected Components and records their check results.
 - **One validation model** — complete validation normalizes with `make format`, then runs static-quality and behavioral checks concurrently through canonical Make targets. Lint or test alone is reported as partial validation.
 - **Current repository context** — branch, working tree, PR/MR, and validation facts are surfaced to the active session and refreshed as the development state changes.
 - **Execution-level guardrails** — high-confidence risks such as protected-branch commits, inactive-branch edits, broad staging, and unmanaged worktree creation are denied before they mutate the repository.
@@ -126,7 +126,7 @@ See [`config/config.example.json`](./devloop/config/config.example.json) for the
 - **Forges:** GitHub and GitLab are peer providers selected per repository.
 - **Ownership:** devloop owns the coding-harness development loop: repo/branch state, validation, commit/push, PR/MR creation, review delivery, and execution guardrails.
 - **Boundary:** requirement identity, cross-repository orchestration, deployment, long-running scheduling, and session wakeups belong to higher-level loops such as Baton and the [ReqLoop Marketplace](https://github.com/compforge/reqloop).
-- **OpenCode scheduling:** session activity triggers bounded PR/MR reconciliation. Idle-time scheduling remains external; the adapter does not create a background polling loop.
+- **PR/worktree maintenance:** skills guide the AI to run native repocli commands. Harness events update session and Board context without starting cleanup tasks.
 
 ## Updating
 

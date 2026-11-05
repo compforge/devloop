@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""commit_flow 编排：staging 过滤、分支决策/切分、CLI 入参（message/title/repo）、PR 描述同步。
+"""commit_flow 编排：staging 过滤、分支决策/切分、CLI 入参（message/repo）、提交与推送边界。
 
 Standalone: `python3 devloop/scripts/tests/test_git_ops.py`（也 pytest-collectable）；共享设施见 _testkit.py。
 """
@@ -10,9 +10,8 @@ import shutil
 import sys
 from pathlib import Path
 
-from _testkit import _FakeForge, _git, _git_out, _load_script, run_main  # noqa: E402  (bootstrap first)
+from _testkit import _git, _git_out, _load_script, run_main  # noqa: E402  (bootstrap first)
 from domain.context import PullRequest  # noqa: E402
-from domain.forge import ForgeError  # noqa: E402
 
 
 def test_workflow_entrypoints_are_executable():
@@ -300,7 +299,7 @@ def test_prepare_branch_reads_gate_pr_state():
     _git(R, "checkout", "-q", "-b", "feat/a")
     Path(f"{R}/f").write_text("x"); _git(R, "add", "f"); _git(R, "commit", "-qm", "i")
     RepoContext.refresh_all(R)
-    intent = sgo.GitIntent(mode="mr", message="m", title="m", requested_branch=None,
+    intent = sgo.GitIntent(mode="push", message="m", requested_branch=None,
                            target="main", base="origin/main", explicit_base=False,
                            files=[], repo=R, source="test", invoke_cwd=R)
     # healthy branch, no PR segment → gate finds no PR → continue on the current branch
@@ -383,12 +382,12 @@ def test_message_file_and_stdin_input():
     msg = 'feat(x): subj\n\nbody "dq" (paren) $VAR `bt` \'apos\'.'
     p = "/tmp/dlut_msgfile.txt"
     Path(p).write_text(msg, encoding="utf-8")
-    assert sgo._resolve_message(ap.parse_args(["mr", "--message-file", p]), ap) == msg
+    assert sgo._resolve_message(ap.parse_args(["push", "--message-file", p]), ap) == msg
     # -F - reads stdin
     old = sys.stdin
     sys.stdin = io.StringIO("from stdin\nbody")
     try:
-        assert sgo._resolve_message(ap.parse_args(["mr", "-F", "-"]), ap) == "from stdin\nbody"
+        assert sgo._resolve_message(ap.parse_args(["push", "-F", "-"]), ap) == "from stdin\nbody"
     finally:
         sys.stdin = old
 
@@ -408,8 +407,7 @@ def test_only_canonical_commit_message_is_cleaned_after_success():
     main_scratch.write_text("fix: main checkout\n", encoding="utf-8")
     caller_owned.write_text("fix: caller-owned\n", encoding="utf-8")
     intent = sgo.GitIntent(
-        mode="commit", message="fix: canonical", title="fix: canonical",
-        requested_branch=None, target="main", base="origin/main", explicit_base=False,
+        mode="commit", message="fix: canonical", requested_branch=None, target="main", base="origin/main", explicit_base=False,
         files=[], repo=str(worktree), source="test", invoke_cwd=str(worktree),
     )
 
@@ -458,12 +456,49 @@ def test_commit_flow_retains_scratch_on_failure_and_cleans_on_success():
     assert not scratch.exists()
     assert _git_out(R, "log", "-1", "--format=%B") == "fix: preserve retry input\n\nExplain why."
 
+def test_push_is_git_only_without_validation_records():
+    # +case=`push-without-cli` +link=`component://docs/repository-toolkit.md`
+    # A real local push succeeds with failing project checks and no validation evidence.
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+    from lib import config
+
+    flow = _load_script("commit_flow")
+    with TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        remote = root / "remote.git"
+        remote.mkdir()
+        _git(remote, "init", "--bare", "-q")
+        repo = root / "checkout"
+        repo.mkdir()
+        _git(repo, "init", "-q", "-b", "feature")
+        _git(repo, "config", "user.email", "fixture@example.invalid")
+        _git(repo, "config", "user.name", "Fixture")
+        _git(repo, "remote", "add", "origin", str(remote))
+        (repo / "source.py").write_text("base")
+        (repo / "Makefile").write_text("format lint test:\n\t@touch check-ran; exit 1\n")
+        _git(repo, "add", "source.py", "Makefile")
+        _git(repo, "commit", "-qm", "base")
+        (repo / "source.py").write_text("changed")
+        binary = root / "repocli"
+        binary.write_text("#!/bin/sh\ntouch '" + str(root / "cli-ran") + "'\nexit 1\n")
+        binary.chmod(0o755)
+        # A local bare Git remote has no Forge; preserve real Git/staging/push execution.
+        with patch.object(config, "resolve_forge", return_value=None), patch.dict(os.environ, {
+            "PATH": str(root) + os.pathsep + os.environ["PATH"], "DEVLOOP_REPOCLI": str(binary),
+        }):
+            assert flow.main(["push", "--repo", str(repo), "--message", "fix: source", "--file", "source.py"]) == 0
+        assert _git_out(remote, "rev-parse", "refs/heads/feature") == _git_out(repo, "rev-parse", "HEAD")
+        assert not (root / "cli-ran").exists()
+        assert not (repo / "check-ran").exists()
+
+
 def test_inline_message_still_supported():
     """Back-compat: inline --message / -m is unchanged (just no longer the only option)."""
     sgo = _load_script("commit_flow")
     ap = sgo._build_parser()
-    assert sgo._resolve_message(ap.parse_args(["mr", "--message", "fix: x"]), ap) == "fix: x"
-    assert sgo._resolve_message(ap.parse_args(["mr", "-m", "fix: y"]), ap) == "fix: y"
+    assert sgo._resolve_message(ap.parse_args(["push", "--message", "fix: x"]), ap) == "fix: x"
+    assert sgo._resolve_message(ap.parse_args(["push", "-m", "fix: y"]), ap) == "fix: y"
 
 
 def test_explicit_paths_use_repeatable_file_arguments():
@@ -503,7 +538,7 @@ def test_message_required_with_hint():
     raised = False
     try:
         with contextlib.redirect_stderr(err):
-            sgo._resolve_message(ap.parse_args(["mr"]), ap)
+            sgo._resolve_message(ap.parse_args(["push"]), ap)
     except SystemExit:
         raised = True
     assert raised and "--message-file" in err.getvalue()
@@ -542,55 +577,6 @@ def test_cli_argparser_hint_only_on_unrecognized():
     with contextlib.redirect_stderr(err2), contextlib.suppress(SystemExit):
         ap.parse_args(["zzz"])                         # bad choice → no hint
     assert "USE --message-file" not in err2.getvalue()
-
-def test_title_defaults_to_message_first_line():
-    """--title omitted → PR title is the message's FIRST line, so a multi-line body can't yield a
-    multi-line (invalid) PR title — the gcampr 422 that bit us."""
-    sgo = _load_script("commit_flow")
-    R = "/tmp/dlut_title"
-    shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
-    _git(R, "init", "-q"); _git(R, "config", "user.email", "t@t.t"); _git(R, "config", "user.name", "t")
-    _git(R, "checkout", "-q", "-b", "feat/a")
-    Path(f"{R}/f").write_text("x"); _git(R, "add", "f"); _git(R, "commit", "-qm", "i")
-    ap = sgo._build_parser()
-    ns = ap.parse_args(["mr", "--message", "feat: subject\n\nlong body line", "--repo", R])
-    ns.message = sgo._resolve_message(ns, ap)
-    intent = sgo.resolve_intent(ns, R)
-    assert intent.title == "feat: subject" and intent.message.endswith("long body line")
-    # the body becomes the PR/MR description — the outlet that keeps titles one short line
-    assert intent.description == "long body line"
-    # single-line message → no description (forge gets body="", not a phantom paragraph)
-    ns1 = ap.parse_args(["mr", "--message", "feat: subject only", "--repo", R])
-    ns1.message = sgo._resolve_message(ns1, ap)
-    assert sgo.resolve_intent(ns1, R).description == ""
-
-def test_sync_pr_description_append_only():
-    """sync_pr_description: sets an empty body, appends to a non-empty one (human edits
-    survive), no-ops when the paragraph is already present (retry-safe), and a forge
-    failure degrades to a PLAN note — never an exception (commit/push already landed)."""
-    sgo = _load_script("commit_flow")
-    pr = PullRequest(number=7, state="open", source_branch="feat/x")
-
-    f = _FakeForge([pr])
-    from types import SimpleNamespace
-    context = SimpleNamespace(update=lambda key, **fields: f.update(key.number, **fields))
-    plan = []
-    sgo.sync_pr_description(f, pr, "para one", plan, context=context)
-    assert f.description(7) == "para one" and any("description" in line for line in plan)
-    sgo.sync_pr_description(f, pr, "para two", [], context=context)           # append, not overwrite
-    assert f.description(7) == "para one\n\npara two"
-    sgo.sync_pr_description(f, pr, "para one", [], context=context)           # already present → no dup
-    assert f.description(7) == "para one\n\npara two"
-    sgo.sync_pr_description(f, pr, "", [], context=context)                   # nothing to sync → no-op
-    assert f.description(7) == "para one\n\npara two"
-
-    class _Broken(_FakeForge):
-        def description(self, number):
-            raise ForgeError("boom")
-    plan = []
-    sgo.sync_pr_description(_Broken([pr]), pr, "para", plan, context=context)  # non-fatal
-    assert any("non-fatal" in line for line in plan)
-
 
 
 def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
@@ -640,159 +626,6 @@ def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
             assert False
         except flow.SmartError as exc:
             assert "outcome unknown" in str(exc)
-
-
-
-class _ForkForge(_FakeForge):
-    def __init__(self, *, parent="upstream/repo", prs=()):
-        super().__init__([])
-        self.parent = parent
-        self.destination = _FakeForge(prs)
-        self.scoped = None
-
-    def repository(self):
-        from harness_common import Forge, Repository
-        return Repository(Forge("github"), "fork/repo", forked_from=self.parent)
-
-    def for_repository(self, path):
-        self.scoped = path
-        return self.destination
-
-
-
-
-
-
-
-
-
-
-
-
-def _operation_context(repo, *, forge, target_repository=None):
-    from tempfile import mkdtemp
-    from harness_common import Repository
-    from repokit.forge import PullRequestContext, PullRequestObserver
-    source = forge.repository()
-    target = Repository(source.forge, target_repository.partition("/")[2]) if target_repository else source
-    observer = PullRequestObserver(forge, forge=source.forge.name, state_dir=Path(mkdtemp()), connection="test")
-    context = PullRequestContext(observer, repo, source=source, targets=(target,))
-    # Retention safety belongs to RepoKit's isolated repository tests.
-    context._after_operation = lambda **kwargs: None
-    return context
-
-
-def test_explicit_repository_pr_target_does_not_change_local_git_baseline_or_persist_policy():
-    from tempfile import TemporaryDirectory
-    from unittest.mock import patch
-    from lib.gitcmd import GitResult
-    flow = _load_script("commit_flow")
-    with TemporaryDirectory() as repo:
-        _git(repo, "init", "-qb", "main")
-        _git(repo, "config", "user.name", "Fixture")
-        _git(repo, "config", "user.email", "test@example.invalid")
-        _git(repo, "commit", "--allow-empty", "-qm", "base")
-        _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-        _git(repo, "checkout", "-qb", "fix")
-        config_before = _git_out(repo, "config", "--local", "--list")
-        ns = flow._build_parser().parse_args(["mr", "--repo", repo, "-m", "title",
-                                               "--target-repository", "github/upstream/repo", "--target", "release"])
-        with patch.object(flow, "forge_for_repo", side_effect=AssertionError("unneeded API")):
-            intent = flow.resolve_intent(ns, repo)
-        assert intent.target == "main" and intent.base == "origin/main"
-        assert intent.pr_target == "release"
-        forge = _ForkForge()
-        with patch.object(flow, "forge_for_repo", return_value=forge), \
-             patch.object(flow, "pr_commands_for_repo", side_effect=_operation_context), \
-             patch.object(flow.operations, "push", return_value=GitResult(0, "", "")) as push, \
-             patch.object(flow.RepoContext, "refresh_branch"):
-            flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
-        push.assert_called_once_with(str(Path(repo).resolve()), "fix", upstream=True)
-        assert forge.destination.created.target_branch == "release"
-        assert _git_out(repo, "config", "--local", "--list") == config_before
-
-
-def test_invalid_pr_destination_reports_pushed_branch_without_traceback():
-    from tempfile import TemporaryDirectory
-    from unittest.mock import patch
-    from lib.gitcmd import GitResult
-    flow = _load_script("commit_flow")
-    with TemporaryDirectory() as repo:
-        _git(repo, "init", "-qb", "main")
-        _git(repo, "config", "user.name", "Fixture")
-        _git(repo, "config", "user.email", "test@example.invalid")
-        _git(repo, "commit", "--allow-empty", "-qm", "base")
-        _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-        _git(repo, "checkout", "-qb", "fix")
-        config_before = _git_out(repo, "config", "--local", "--list")
-        ns = flow._build_parser().parse_args(["mr", "--repo", repo, "-m", "title",
-                                               "--target-repository", "gitlab/upstream/repo", "--target", "release"])
-        with patch.object(flow, "forge_for_repo", side_effect=AssertionError("unneeded API")):
-            intent = flow.resolve_intent(ns, repo)
-        assert intent.target == "main" and intent.base == "origin/main"
-        assert intent.pr_target == "release"
-        forge = _ForkForge()
-        plan = []
-        with patch.object(flow, "forge_for_repo", return_value=forge), \
-             patch.object(flow.operations, "push", return_value=GitResult(0, "", "")):
-            try:
-                flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), plan)
-                raise AssertionError("invalid destination accepted")
-            except flow.SmartError as error:
-                assert "branch pushed, but PR/MR create/reuse failed" in str(error)
-                assert "configured Forge" in str(error)
-        assert "pushed origin/fix" in plan
-        assert _git_out(repo, "config", "--local", "--list") == config_before
-
-
-def test_commit_without_forge_origin_and_non_pr_modes_reject_destination_option():
-    from contextlib import redirect_stderr
-    from io import StringIO
-    from tempfile import TemporaryDirectory
-    from unittest.mock import patch
-    flow = _load_script("commit_flow")
-    for mode in ["commit", "push"]:
-        with redirect_stderr(StringIO()):
-            try:
-                flow.main([mode, "-m", "title", "--target-repository", "github/upstream/repo"])
-            except SystemExit as exc:
-                assert exc.code == 2
-            else:
-                raise AssertionError("PR destination must be rejected outside mr mode")
-    with TemporaryDirectory() as repo:
-        _git(repo, "init", "-qb", "fix")
-        _git(repo, "config", "user.name", "Fixture")
-        _git(repo, "config", "user.email", "test@example.invalid")
-        _git(repo, "commit", "--allow-empty", "-qm", "base")
-        Path(repo, "f").write_text("local change")
-        with patch.object(flow.operations, "push", side_effect=AssertionError("commit must not push")):
-            assert flow.main(["commit", "--repo", repo, "-m", "local", "--file", "f"]) == 0
-        assert _git_out(repo, "log", "-1", "--format=%s") == "local"
-
-
-def test_publish_current_repository_preserves_existing_nondefault_base():
-    """@case Keep the existing PR base and append follow-up text without losing human edits."""
-    from lib.gitcmd import GitResult
-    from unittest.mock import patch
-    flow = _load_script("commit_flow")
-    for requested in [None, "release", "main"]:
-        existing = PullRequest(number=8, state="open", source_branch="fix", target_branch="release")
-        forge = _FakeForge([existing], bodies={8: "original"})
-        intent = flow.GitIntent(mode="mr", message="m", title="m", requested_branch=None,
-                                target="main", base="origin/main", explicit_base=False, files=[],
-                                repo="/repo", source="test", invoke_cwd="/repo", pr_target=requested, description="follow-up body")
-        with patch.object(flow, "forge_for_repo", return_value=forge), \
-             patch.object(flow, "pr_commands_for_repo", side_effect=_operation_context), \
-             patch.object(flow.operations, "push", return_value=GitResult(0, "", "")), \
-             patch.object(flow.git_state, "commits", return_value=[]), \
-             patch.object(flow.RepoContext, "refresh_branch"):
-            flow.publish(intent, flow.BranchResult("fix", False), flow.StageResult(False), [])
-        assert (forge.created is None) == (requested != "main")
-        if forge.created:
-            assert forge.created.target_branch == "main"
-        else:
-            assert forge.description(8) == "original\n\nfollow-up body"
-
 
 
 if __name__ == "__main__":

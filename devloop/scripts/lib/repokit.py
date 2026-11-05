@@ -1,7 +1,6 @@
-"""Native repository facts and the Go CLI impact protocol boundary."""
+"""Native repository facts used by workflow policy."""
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 
@@ -28,16 +27,3 @@ def inspect(repo: str) -> InspectReport:
         return report
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise InspectionError(f"repository inspection unavailable: {exc}") from exc
-
-
-def validation_report(repo: str, args: list[str]) -> dict:
-    """Read successful and failed rounds alike; exit 1 can carry a valid report."""
-    timeout = 600
-    argv = [os.environ.get("DEVLOOP_REPOCLI", "repocli"), "validate", "--repo", repo,
-            "--json", "--timeout", f"{timeout}s", *args]
-    completed = subprocess.run(argv, cwd=repo, capture_output=True, text=True,
-                               timeout=timeout + 15, check=False)
-    if completed.returncode not in (0, 1):
-        raise ValueError(f"repocli validate exited {completed.returncode}: {completed.stderr[-2000:]}")
-    checks = args[args.index("--check") + 1].split(",") if "--check" in args else ("lint", "test")
-    return toolkit.decode_validation_report(completed.stdout, checkout=repo, checks=checks)

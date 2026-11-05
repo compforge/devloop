@@ -26,7 +26,7 @@ beforeEach(() => {
   git(repo, "init", "-q", "-b", "main");
   git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-qm", "init");
   saveConfig({
-    lifecycle: { default: { pre_commit: ["lint", "test"], post_mr: ["review"] }, repos: { [repo]: { pre_commit: [] } } },
+    lifecycle: { default: { pre_commit: ["review", "custom"], post_commit: ["review"] }, repos: { [repo]: { pre_commit: [] } } },
     arch: { repos: { [repo]: { enabled: true, layers: { "/domain/": "domain" } } } },
   });
 });
@@ -60,10 +60,10 @@ describe("repository policy inheritance", () => {
     const checkout = join(root, "external");
     git(repo, "worktree", "add", "-qb", "fix", checkout);
     localConfig(repo, { lifecycle: { default: { pre_commit: ["test"] } }, arch: { default: { enabled: false } } });
-    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: ["test"], post_mr: ["review"] });
+    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: ["test"], post_commit: ["review"] });
     expect(architectureConfig(checkout).enabled).toBe(false);
     localConfig(checkout, { lifecycle: { default: { pre_commit: [] } }, arch: { default: { order: [] } } });
-    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: [], post_mr: ["review"] });
+    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: [], post_commit: ["review"] });
     expect(architectureConfig(checkout)).toMatchObject({ enabled: false, order: [] });
     expect(loadConfig(checkout).lifecycle).toMatchObject({ default: lifecycleConfig(checkout) });
   });
@@ -72,12 +72,12 @@ describe("repository policy inheritance", () => {
     const checkout = join(root, "external");
     git(repo, "worktree", "add", "-qb", "fix", checkout);
     saveConfig({ lifecycle: {
-      default: { pre_commit: ["lint"], post_mr: ["review"] },
+      default: { pre_commit: ["review"], post_commit: ["review"] },
       repos: { [repo]: { pre_commit: [] }, [checkout]: { pre_commit: ["test"] } },
     } });
     expect(lifecycleConfig(checkout).pre_commit).toEqual(["test"]);
     localConfig(checkout, { lifecycle: { default: { pre_commit: [] } } });
-    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: [], post_mr: ["review"] });
+    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: [], post_commit: ["review"] });
   });
 
   it("keeps workspace registration global and credential environment overrides explicit", () => {
@@ -104,7 +104,7 @@ describe("repository policy inheritance", () => {
     const checkout = location === "nested" ? join(repo, ".worktrees", "fix") : join(root, "external");
     git(repo, "worktree", "add", "-qb", "fix", checkout);
     expect(lifecycleConfig(checkout)).toEqual(lifecycleConfig(repo));
-    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: [], post_mr: ["review"] });
+    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: [], post_commit: ["review"] });
     expect(architectureConfig(checkout)).toEqual(architectureConfig(repo));
   });
 
@@ -116,7 +116,7 @@ describe("repository policy inheritance", () => {
       lifecycle: { repos: { [checkout]: { pre_commit: ["test"] } } },
       arch: { repos: { [checkout]: { enabled: false } } },
     }));
-    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: ["test"], post_mr: ["review"] });
+    expect(lifecycleConfig(checkout)).toMatchObject({ pre_commit: ["test"], post_commit: ["review"] });
     expect(lifecycleConfig(repo).pre_commit).toEqual([]);
     expect(architectureConfig(checkout)).toMatchObject({ enabled: false, layers: { "/domain/": "domain" } });
   });
@@ -125,7 +125,7 @@ describe("repository policy inheritance", () => {
     const source = join(root, "source");
     git(root, "clone", "-q", repo, source);
     git(repo, "-c", "protocol.file.allow=always", "submodule", "add", "-q", source, "child");
-    expect(lifecycleConfig(join(repo, "child")).pre_commit).toEqual(["lint", "test"]);
+    expect(lifecycleConfig(join(repo, "child")).pre_commit).toEqual(["review", "custom"]);
   });
 
   it("resolves worktrees of repositories with a separate git directory", () => {
@@ -137,8 +137,8 @@ describe("repository policy inheritance", () => {
   });
 
   it("keeps defaults and exact path overrides when Git identity is unavailable", () => {
-    expect(lifecycleConfig().pre_commit).toEqual(["lint", "test"]);
-    expect(lifecycleConfig(join(root, "missing")).pre_commit).toEqual(["lint", "test"]);
+    expect(lifecycleConfig().pre_commit).toEqual(["review", "custom"]);
+    expect(lifecycleConfig(join(root, "missing")).pre_commit).toEqual(["review", "custom"]);
     saveConfig({ lifecycle: { repos: { [root]: { pre_commit: [] } } } });
     expect(lifecycleConfig(root).pre_commit).toEqual([]);
   });

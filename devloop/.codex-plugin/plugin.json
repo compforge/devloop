@@ -1,7 +1,7 @@
 {
   "name": "devloop",
-  "version": "0.4.66",
-  "description": "TypeScript dev-loop runtime with shared Board and policy: git/PR (GitHub + GitLab), workspace/repo context, lint/test gates, and thin Codex hooks.",
+  "version": "0.4.67",
+  "description": "Shared Board and policy with skill-led Git/PR operations, explicit repocli validation, review, and native Harness hooks.",
   "author": {
     "name": "compforge",
     "url": "https://github.com/compforge"
@@ -25,7 +25,7 @@
   "interface": {
     "displayName": "devloop",
     "shortDescription": "Git/PR + lint/test + state-aware hooks",
-    "longDescription": "Bundles developer workflow skills for controlled Git/PR operations, validation, review, and shared PR/MR reconciliation tasks. Native lifecycle hooks include SessionEnd cleanup and execution guardrails; Codex Scheduled tasks can invoke the same task definition used by Claude monitors.",
+    "longDescription": "Skills guide AI use of repocli for PR operations, validation and worktree cleanup. Native hooks maintain Board context, session ownership and execution guardrails; no repository cleanup task is scheduled by the plugin.",
     "category": "Developer Workflow",
     "capabilities": [
       "Read",

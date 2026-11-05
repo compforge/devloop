@@ -1,15 +1,12 @@
 """Request cost, freshness and destructive-action contracts for PR observation."""
 from __future__ import annotations
 
-import fcntl
-from pathlib import Path
 from unittest.mock import patch
 
-from _testkit import _pr_context, _FakeForge, _git, _git_out, _load_script, run_main
-from test_worktree import _fixture, _add_worktree
-from domain.context import prstate, store, base, gate
+from _testkit import _pr_context, _FakeForge, _git, _load_script, run_main
+from test_worktree import _fixture
+from domain.context import prstate, gate
 from domain.forge import ForgeError, ForgeRateLimited, PullRequest
-from tasks import pr_lifecycle
 
 
 def test_commit_cli_reports_live_rate_limit_before_any_mutation():
@@ -22,66 +19,10 @@ def test_commit_cli_reports_live_rate_limit_before_any_mutation():
     error = StringIO()
     with patch.object(command.gate, "evaluate", side_effect=ForgeRateLimited("core", 2000000000)), \
          patch.object(command, "prepare_branch") as mutation, redirect_stderr(error):
-        assert command.main(["mr", "--repo", repo, "--message", "fix: quota handling"]) == 1
+        assert command.main(["push", "--repo", repo, "--message", "fix: quota handling"]) == 1
     mutation.assert_not_called()
     assert "PR state verification failed" in error.getvalue()
     assert "retry_at=2000000000" in error.getvalue()
-
-
-
-
-
-
-
-
-
-
-def test_executor_lease_and_cadence_cover_all_triggers():
-    repo, _, _ = _fixture("shared_observation_claim")
-    home = store.tmp_dir(repo)
-    home.mkdir(parents=True, exist_ok=True)
-    with (home / "pr-observation.lock").open("w") as claim:
-        fcntl.flock(claim, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        with patch.object(pr_lifecycle, "_sweep_repo", side_effect=AssertionError("overlap")):
-            assert pr_lifecycle.sweep_repo(repo)["skipped"] == "running"
-    with patch.object(pr_lifecycle, "_sweep_repo", return_value={"repo": repo}) as sweep:
-        pr_lifecycle.sweep_repo(repo)
-        assert pr_lifecycle.sweep_repo(repo)["skipped"] == "not_due"
-        assert sweep.call_count == 1
-
-
-def test_local_branch_change_invalidates_idle_cadence():
-    repo, _, _ = _fixture("idle_observation_change")
-    with patch.object(pr_lifecycle, "_sweep_repo", return_value={"repo": repo}) as sweep:
-        pr_lifecycle.sweep_repo(repo)
-        assert pr_lifecycle.sweep_repo(repo)["skipped"] == "not_due"
-        _git(repo, "branch", "new-work")
-        pr_lifecycle.sweep_repo(repo)
-        assert sweep.call_count == 2
-
-
-
-
-
-
-
-
-
-
-
-def test_reused_branch_is_reverified_before_removal():
-    repo, _, _ = _fixture("query_reuse")
-    target = _add_worktree(repo, "reused")
-    head = _git_out(target, "rev-parse", "HEAD")
-    fake = _FakeForge([PullRequest(1, state="merged", source_branch="worktree-reused", sha=head)])
-    context = _pr_context(repo, fake)
-    inventory = context.local_branches()
-    from dataclasses import replace
-    fake._prs[2] = replace(fake._prs[1], number=2, state="open")
-    actions = context.refresh().maintenance.actions
-    assert actions[0].status == "skipped" and Path(target).is_dir()
-    assert store.load_segment(repo, "pr") is None
-    assert store.load_segment(repo, "local_pull_requests") is None
 
 
 def test_gate_reports_unavailable_queries():

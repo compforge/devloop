@@ -10,7 +10,7 @@ export declare function sessionStartOutput(payload: HookPayload, harness?: HookH
 export declare function userPromptOutput(payload: HookPayload): Promise<Record<string, unknown>>;
 export declare function afterCompact(payload: HookPayload): Promise<void>;
 export declare function afterCwdChanged(payload: HookPayload): void;
-export declare function afterTool(payload: HookPayload, harness: RuntimeHarness, pluginRoot?: string): void;
+export declare function afterTool(payload: HookPayload, harness: RuntimeHarness): void;
 export declare function afterFileChanged(payload: HookPayload): void;
 /** Record tool timing in the same TypeScript process that evaluates hook policy. */
 export declare function recordToolCall(payload: HookPayload, harness: RuntimeHarness): void;

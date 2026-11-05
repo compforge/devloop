@@ -1,4 +1,3 @@
-import { triggerReconciliation } from "../domain/task-trigger.js";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { findGitRoot, findAgentsDocument } from "../domain/repo-layout.js";
 import { WorkspaceContext } from "../domain/context/workspace.js";
@@ -42,9 +41,6 @@ export async function initializeBoard(payload) {
     return { runtime, watchPaths: [...watchPaths] };
 }
 export async function sessionStartOutput(payload, harness = "claude") {
-    const repo = findGitRoot(cwd(payload));
-    if (repo && harness === "codex")
-        triggerReconciliation(repo);
     const { runtime, watchPaths } = await initializeBoard(payload);
     const content = runtime?.deliverPrompt("session_start");
     const deliveredWatches = harness === "claude" ? watchPaths : [];
@@ -73,21 +69,13 @@ export function afterCwdChanged(payload) {
         recordActiveRepo(workspace, repo, sessionId(payload));
 }
 const STATE_SUBCOMMANDS = new Set(["commit", "push", "checkout", "switch", "reset", "merge", "rebase", "pull", "fetch"]);
-export function afterTool(payload, harness, pluginRoot) {
+export function afterTool(payload, harness) {
     const input = payload.tool_input;
     const toolInput = input !== null && typeof input === "object" && !Array.isArray(input) ? { ...input } : { input: string(input) };
     if (sessionId(payload))
         toolInput.session_id = sessionId(payload);
     const change = projectTool({ harness, toolName: string(payload.tool_name), toolInput, cwd: cwd(payload) });
-    const repositories = new Set();
-    const direct = findGitRoot(cwd(payload));
-    if (direct)
-        repositories.add(direct);
     for (const target of change.targets) {
-        const directory = target.kind === "file_change" ? dirname(resolve(cwd(payload), target.path)) : target.workingDirectory.path;
-        const affected = directory ? findGitRoot(directory) : undefined;
-        if (affected)
-            repositories.add(affected);
         if (target.kind !== "command" || !target.subcommand || !STATE_SUBCOMMANDS.has(target.subcommand) || !target.workingDirectory.path)
             continue;
         const repo = findGitRoot(target.workingDirectory.path);
@@ -99,9 +87,6 @@ export function afterTool(payload, harness, pluginRoot) {
         if (target.subcommand !== "fetch")
             acquireOwner(repo, identity(payload, harness), currentBranch(repo) ?? "");
     }
-    if (harness === "codex" || harness === "opencode")
-        for (const repo of repositories)
-            triggerReconciliation(repo, pluginRoot);
 }
 export function afterFileChanged(payload) {
     const path = string(payload.file_path);

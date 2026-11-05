@@ -8,7 +8,7 @@
     {
       "name": "devloop",
       "source": "./devloop",
-      "description": "Dev-loop workflow, native-first rebuild built on native Claude Code events (CwdChanged / PostCompact / FileChanged / monitors): git/PR (GitHub + GitLab) + cwd-aware enter + lint/test gates + .devloop/context.json state layer auto-injected into every prompt.",
+      "description": "Skill-led development workflow: managed Git transactions, direct repocli validation and PR commands, native RepoKit observations, review and Board context across coding harnesses.",
       "author": {
         "name": "compforge",
         "url": "https://github.com/compforge"

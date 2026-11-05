@@ -57,9 +57,9 @@ protected 和 inactive 能干净地硬拦——在它们上面编辑没有任何
 | 进项目感知 | 正则解析 `cd` | **`CwdChanged`** 自动 enter |
 | 防 compaction 丢状态 | TTL 安全网（定时猜） | **`PostCompact`** → 重注入 |
 | `AGENTS.md` 变更 | mtime 轮询 | **`FileChanged`** + `watchPaths` |
-| PR/MR 感知 / 分支失活 | hook 心跳 scheduler | Claude **`monitors`** / Codex **Scheduled tasks** |
+| PR/MR 感知 / 分支失活 | hook 心跳 scheduler | 原生 RepoKit 按需查询；AI 显式执行 repocli 清理 |
 
-所有 git 走唯一入口 `gitcmd`，所有代码评审平台走唯一 facade `lib/forge`（GitHub / GitLab 平级 adapter，按 repo 分发），所有用户配置走唯一入口 `lib/config`。每个 guard 一律 **fail-open**——护栏坏了最坏是没拦住，但绝不堵死你的路。
+Git 和 Forge 程序调用使用原生 RepoKit toolkit，连接配置由 `lib/config` 装配；AI 按 skill 直接执行 repocli 的验证、PR 和清理命令。每个 guard 一律 **fail-open**——护栏坏了最坏是没拦住，但绝不堵死你的路。
 
 ## 与需求级闭环的边界
 
@@ -104,7 +104,7 @@ codex plugin add devloop@devloop
 
 也可以添加 marketplace 后，在 `/plugins` 里安装 `devloop`。安装后建议新开一个 Codex session；如果 Codex 提示需要审核 hook，打开 `/hooks` 并信任 devloop hooks。
 
-Codex manifest 指向 `devloop/hooks/hooks.codex.json`，其 `SessionEnd` 会立即释放当前 session 的 owner lock；`PostToolUse` 补足尚未暴露的 `CwdChanged` / `FileChanged` 刷新路径。Codex 的周期 PR/MR 对账通过 Scheduled task 调用 `$devloop:monitor`；Claude native monitor 与 Codex Scheduled task 共用同一个一次性 reconciler。Codex 下手动运行命令时，用 `${PLUGIN_ROOT}` 替代 `${CLAUDE_PLUGIN_ROOT}`。
+Codex manifest 指向 `devloop/hooks/hooks.codex.json`，其 `SessionEnd` 会立即释放当前 session 的 owner lock；`PostToolUse` 补足尚未暴露的 `CwdChanged` / `FileChanged` 刷新路径。查询与清理由 `$devloop:monitor` 指导 AI 直接执行 repocli；插件不注册周期任务。Codex 下手动运行命令时，用 `${PLUGIN_ROOT}` 替代 `${CLAUDE_PLUGIN_ROOT}`。
 
 ### 更新 devloop
 

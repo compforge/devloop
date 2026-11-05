@@ -17,8 +17,8 @@ the external dependencies (which forge, which token) are explicit in one place:
         }
       },
       "lifecycle": {            # devops lifecycle hooks per phase (opt-in, default empty)
-        "default": {"pre_commit": [], "post_commit": [], "pre_mr": [], "post_mr": []},
-        "repos":   {"/abs/repo": {"pre_commit": [], "post_mr": ["review"]}}
+        "default": {"pre_commit": [], "post_commit": []},
+        "repos":   {"/abs/repo": {"pre_commit": [], "post_commit": ["review"]}}
       }
     }
 
@@ -43,7 +43,12 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
+
+from repokit.forge import ForgeConnection, detect_provider
+from repokit.forge.model import Forge, PullRequestIdentity
+from repokit.git.remote import remote
 
 from .git_state import main_repo_root
 
@@ -55,7 +60,7 @@ _DEFAULTS: dict = {
     # devops 生命周期 hook：相位 → [hook 名]。opt-in，默认全空 = dispatch 每相位 no-op、零行为
     # 变化。domain.lifecycle.dispatch 读它决定每个相位跑哪些 hook。
     "lifecycle": {
-        "default": {"pre_commit": [], "post_commit": [], "pre_mr": [], "post_mr": []},
+        "default": {"pre_commit": [], "post_commit": []},
         "repos": {},
     },
     # 代码策略引擎的架构/层级规则。enabled 默认 False：opt-in per repo，装上不按猜的层映射误拦。
@@ -254,3 +259,56 @@ def _atomic_write(path: Path, content: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
     tmp.replace(path)
+
+
+@dataclass(frozen=True)
+class ForgeResolution:
+    """The repo's forge identity, resolved ONCE from the three sources (origin remote /
+    config / env). `token` is None when no usable credential exists."""
+    provider: str
+    host: str        # host parsed from origin (the config key)
+    api_host: str    # host to hit for the API (config `api_host` override, else `host`)
+    path: str        # owner/repo (GitHub) or group/subgroup/proj (GitLab)
+    token: str | None
+
+    def connection(self, *, timeout: int = 10) -> ForgeConnection:
+        """Assemble native toolkit access; callers never launch repocli."""
+        return ForgeConnection(host=self.host, token=self.token or "", provider=self.provider,
+                               api_host=self.api_host, timeout=timeout)
+
+    def pull_request_identity(self, number: int) -> PullRequestIdentity:
+        return PullRequestIdentity(
+            source=self.host,
+            repository=self.path,
+            number=number,
+        )
+
+
+def resolve_forge(repo_dir: str | Path) -> ForgeResolution | None:
+    """origin + config + env → one ForgeResolution. None if origin is unresolvable.
+
+    Single place the three sources are combined, so call sites never re-derive provider /
+    host / token piecemeal.
+    """
+    observed = remote(repo_dir)
+    if observed is None:
+        return None
+    host, path = observed.host, observed.path
+    entry = forge_entry(host, repo_dir)
+    provider = detect_provider(host, entry.get("type"))
+    return ForgeResolution(
+        provider=provider,
+        host=host,
+        api_host=entry.get("api_host") or host,
+        path=path,
+        token=forge_token(host, provider, repo_dir),
+    )
+
+
+def forge_client(repo_dir: str | Path, *, timeout: int = 10) -> Forge | None:
+    """Build the forge adapter for this repo's origin. None if the remote is unresolvable
+    or no token is available (callers skip quietly — forge features are best-effort)."""
+    r = resolve_forge(repo_dir)
+    if r is None or not r.token:
+        return None
+    return r.connection(timeout=timeout).client(r.path)

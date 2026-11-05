@@ -46,8 +46,8 @@ def test_missing_review_runner_is_visible_and_nonblocking():
         _git(repo, "-c", "user.name=Test", "-c", "user.email=test@example.com",
              "commit", "--allow-empty", "-qm", "init")
         with patch.dict(os.environ, {"PLUGIN_ROOT": str(repo / "missing-plugin")}), \
-                patch.object(config, "lifecycle", return_value={"post_mr": ["review"]}):
-            result = dispatch("post_mr", str(repo))
+                patch.object(config, "lifecycle", return_value={"post_commit": ["review"]}):
+            result = dispatch("post_commit", str(repo))
         assert result.proceed
         assert result.to_launch == []
         assert len(result.advisory_failures) == 1

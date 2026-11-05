@@ -5,7 +5,7 @@ import { mainRepoRoot } from "./git-state.js";
 const DEFAULTS = {
     workspaces: [],
     forges: {},
-    lifecycle: { default: { pre_commit: [], post_commit: [], pre_mr: [], post_mr: [] }, repos: {} },
+    lifecycle: { default: { pre_commit: [], post_commit: [] }, repos: {} },
     arch: {
         default: {
             enabled: false,

@@ -5,7 +5,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from repokit import dependency_witnesses, inspect_dependencies, prepare_dependencies
+from repokit import inspect_dependencies, prepare_dependencies
 
 _LOG = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ def preparation_problem(path: str | Path) -> str | None:
     """Preserve user-managed installations; prepare missing/stale locked dependencies.
 
     repocli owns package tools, workspace roots, process budgets and installation receipts.
-    devloop only decides whether the observations permit entering its validation workflow.
+    devloop prepares the environment when creating or reusing a managed worktree.
     """
     try:
         for environment in inspect_dependencies(path):
@@ -39,16 +39,3 @@ def preparation_problem(path: str | Path) -> str | None:
     except (OSError, ValueError, subprocess.SubprocessError, InterruptedError) as error:
         return f"dependency observation/preparation failed: {error}"
     return None
-
-
-def reuse_inputs(path: str | Path) -> tuple[tuple[str, str], ...] | None:
-    """Only receipt-backed environments authorize reuse; no environment is also known.
-
-    These witnesses describe repocli's installation contract, not an integrity scan of
-    every installed byte. Unmanaged installations still enter real project checks.
-    """
-    try:
-        witnesses = dependency_witnesses(path)
-        return tuple(witnesses.items()) if witnesses is not None else None
-    except (OSError, ValueError, subprocess.SubprocessError, InterruptedError):
-        return None

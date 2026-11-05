@@ -5,8 +5,7 @@ import hashlib
 from datetime import datetime
 from pathlib import Path
 
-from domain.context.store import branch_segment, load_segment, save_segment
-from lib import git_state
+from domain.context.store import branch_segment, load_segment
 
 
 def evidence_segment(repo: str, component: str, check: str) -> str:
@@ -31,18 +30,6 @@ def full_evidence(repo: str, component: str, check: str, reference: dict) -> dic
                         and result["checkedAt"] == record.get("checked_at")):
                     return record
     return None
-
-
-def bind_full(repo: str, components: list[str], check: str) -> None:
-    segment = branch_segment(git_state.get_current_branch(repo), check)
-    references = load_segment(repo, segment) or {}
-    for component in components:
-        evidence = evidence_segment(repo, component, check)
-        record = load_segment(repo, evidence) or {}
-        reference = {"evidence": evidence, "checked_at": record.get("checked_at")}
-        if full_evidence(repo, component, check, reference):
-            references[component] = reference
-    save_segment(repo, segment, references)
 
 
 def full_projection(repo: str, branch: str | None, check: str) -> dict:

@@ -1,19 +1,20 @@
 # Lifecycle actions
 
-开发顺序由 skill 指导 AI：修改代码 → 显式 `repocli validate` → 查看结果并修复相关失败 →
-commit/push → `repocli pr create`。修改 PR 标题或正文不需要代码验证。
+开发顺序由 skill 指导 AI：修改代码 → 直接执行 `repocli validate` → 判断结果 →
+managed commit/push → 直接执行 `repocli pr create/update` → 检查或启动 review。
+PR 标题和正文由 AI 根据最终改动编写；Git workflow 不自动拼接 commit body。
 
-`pre_commit`、`post_commit`、`pre_mr`、`post_mr` 保留为工作流动作相位；内置 action 为 `review`。
-配置中不提供 format/lint/test action。验证不自动执行，也不根据历史验证记录拦截提交或 PR。
+`pre_commit`、`post_commit` 是 Git 事务内的 action 相位；内置 action 为 `review`。
+配置不提供 format/lint/test action；提交不执行验证、不按历史验证记录设置门禁。
+PR 操作不进入脚本生命周期相位，PR 后的 review 由 skill 指导 AI 触发。
 
 ```json
-{"lifecycle":{"default":{"pre_commit":[],"post_commit":[],"pre_mr":[],"post_mr":["review"]},"repos":{}}}
+{"lifecycle":{"default":{"pre_commit":[],"post_commit":[]},"repos":{}}}
 ```
 
-`dispatch` 同步收集 action 结果；review 返回 background relay，在 Git 动作结束后启动。
-Review 是 advisory，结果通过 Board 和 PR 评论呈现。未知 action 属于配置错误。
-相位涉及的 changed paths 由工作流冻结后传给 action；review 自己定义评审范围。
+`dispatch` 同步收集 action 结果；配置在 commit 相位的 review 返回 background relay，
+提交成功后启动。Review 是 advisory；运行状态和 findings 通过 Board、PR 评论展示。
+未知 action 属于配置错误。保护分支、session owner、精确 staging、敏感路径和 gitlink 检查继续执行。
 
-Git 写操作仍检查保护分支、session owner、提交文件范围、敏感路径与 gitlink 注册。
-这些检查不执行项目验证、不读取验证成功戳。RepoKit 负责 Git index 事务和原生 PR 操作。
-PR 成功后的本地资源维护由 RepoKit 执行，devloop 不传回调、不管理清理策略。
+RepoKit 负责 PR 成功后的本地资源维护，也提供显式 `repocli worktree clean`。
+Devloop 不传清理回调、不启动清理 task，也不把 CLI 包成 subprocess 接口。

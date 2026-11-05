@@ -1,39 +1,22 @@
 ---
 name: monitor
-description: Reconcile local branches/worktrees with GitHub/GitLab PR/MR lifecycle, clean finished worktrees, or configure recurring reconciliation. Use for lifecycle sweeps and ongoing PR/MR monitoring. For a one-time PR/MR status query, use git-ops.
+description: Inspect PR/MR state or clean worktrees with repocli. Use for requested cleanup or user-requested recurring checks; one-time PR status queries also use git-ops.
 ---
 
-For status only, use [PR show/list](../git-ops/references/pr-management.md).
-Reconciliation applies repository lifecycle policy and can remove finished worktrees; it preserves
-branches and never merges a PR/MR. Use it for lifecycle monitoring or requested cleanup.
-
-`<PLUGIN_ROOT>` is `${CLAUDE_PLUGIN_ROOT}` on Claude Code and `${PLUGIN_ROOT}` on Codex.
-Discover the task and run one bounded sweep in the requested repository/workspace:
+The AI invokes repocli directly in each requested repository:
 
 ```bash
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py list
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/run_task.py run pr-lifecycle-reconcile . --report
+repocli pr list --repo <repo> --state all --json
+repocli worktree clean --repo <repo> --dry-run --json
+repocli worktree clean --repo <repo> --json
 ```
 
-Report `changes`, completed/deferred `actions`, and refresh failures. `pull_requests` includes local
-branches without a checkout. A false `updated` or repo `error` means freshness is unknown, not that
-no PR exists. Nonzero exit can indicate refresh failure or deferred cleanup; inspect the report.
-For missed cleanup, logs are in the main checkout's `.devloop/tmp/pr-lifecycle-reconcile.log`
-and `.devloop/tasks.jsonl`.
+For status-only requests, only query PRs. For requested cleanup, inspect the preview and execute
+within the authorized repository scope. RepoKit owns PR evidence, worktree protections and
+`max_count` / `max_prepared`; do not duplicate those rules or remove directories manually.
+Report completed/skipped actions and errors. A failed query is unknown state, never proof that
+no PR exists. Never merge a PR or delete a branch as part of monitoring.
 
-## Recurring monitoring
-
-When requested under Codex, use its native Scheduled-task capability with the user's cadence
-or the discovered task's `interval_seconds`. Each invocation runs one sweep; never pass `--loop`
-from a skill or Scheduled task. Claude's native monitor owns its own repeating adapter.
-
-Use a project-scoped prompt:
-
-```text
-Run $devloop:monitor for this project. Report PR/MR state changes, completed or deferred
-reconciliation actions, and refresh failures. If nothing changed and every refresh succeeded,
-report only "no changes". Never merge a PR/MR or delete a branch.
-```
-
-If scheduling is unavailable in the current client, provide the prompt and cadence without claiming
-a task was installed. Opportunistic lifecycle-hook sweeps are not a durable timer.
+When recurring checks are explicitly requested, use the Harness's native scheduling capability
+to invoke this skill at the requested cadence. Devloop installs no timer, task runner or automatic
+sweep. If scheduling is unavailable, provide the task prompt without claiming it was installed.

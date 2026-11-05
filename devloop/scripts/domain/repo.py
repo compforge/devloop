@@ -102,7 +102,7 @@ def _working_paths_or_unknown(git_root: str | Path) -> list[str] | None:
 def changed_paths(git_root: str | Path) -> list[str]:
     """working tree 里有改动的文件（仓相对）——「本次改动」的**工作树答案**，只对「改动尚未提交」
     的语境成立（pre_commit / CLI）。commit 之后工作树是干净的，那时的答案要问 git 历史（见
-    `committed_paths`）——用工作树去答 post_commit / pre_mr 会得到「什么都没改」。
+    `committed_paths`）——用工作树去答 post_commit 会得到「什么都没改」。
 
     这里把「不知道」压平成 `[]` 是**有意**的：唯一消费方 `select_components(paths=None)` 对空的处理
     是回落 repo-wide 全跑，方向已经保守，无须再区分。要区分的消费方直接用
@@ -351,7 +351,7 @@ def resolve_repo_dir(query: str | None, cwd: str | Path = ".") -> tuple[Repo | N
                 by_path[candidate[2]] = candidate
         scored = list(by_path.values())
         if not scored:
-            # Not a known subproject — maybe a bare relative dirname (`run_validate.py devloop`).
+            # Not a known subproject — maybe a bare relative dirname (`review.py run --repo devloop`).
             p = cwd / query
             root = repo_layout.find_git_root(p) if p.is_dir() else None
             if root:

@@ -5,9 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from _testkit import run_main
-from _validation_fixture import has_full_stamp, make_repo, report
-from domain.validation import run_validation
-from lib import repokit
+from _repo_fixture import make_repo
 from lib import dependencies
 from repokit import DependencyPreparation, inspect_dependencies
 
@@ -57,27 +55,6 @@ def test_observation_failure_does_not_turn_into_a_ready_environment():
             assert str(error) in dependencies.preparation_problem("unused")
 
 
-def test_unlocked_distribution_manifest_runs_project_checks_and_preserves_their_result():
-    for passes in (True, False):
-        with TemporaryDirectory() as tmp:
-            root = Path(make_repo(tmp))
-            (root / "go.mod").write_text("module example.com/cli\n\ngo 1.22\n")
-            (root / "package.json").write_text(json.dumps({
-                "name": "cli-distribution",
-                "bin": {"cli": "bin/cli.js"},
-                "optionalDependencies": {"cli-darwin-arm64": "0.0.0"},
-            }))
-            if not passes:
-                (root / "test_b.py").write_text("BAD\n")
-            data = report(root, test="passed" if passes else "failed")
-            with patch.object(dependencies, "prepare_dependencies", side_effect=AssertionError("no locked installer")), patch.object(repokit, "validation_report", return_value=data):
-                result = run_validation(str(root), names=("test",), full=True).results[0]
-            assert result.ok == passes, result.summary
-            assert has_full_stamp(root) == passes
-            assert not (root / "node_modules").exists()
-            assert inspect_dependencies(root)[0].status == "missing"
-
-
 def test_unlocked_required_dependencies_are_left_to_project_checks():
     with TemporaryDirectory() as tmp:
         root = Path(make_repo(tmp))
@@ -110,24 +87,6 @@ def test_unlocked_environment_with_invalid_directory_still_blocks():
         (root / "package.json").write_text('{"name":"fixture"}')
         (root / "node_modules").write_text("not a directory")
         assert dependencies.preparation_problem(root) is not None
-
-
-def test_receipt_evidence_is_supplied_by_toolkit_and_controls_reuse():
-    """@case Workflow forwards native evidence without knowing receipt filenames."""
-    with TemporaryDirectory() as tmp:
-        root = make_repo(tmp)
-        witness = str(root / "toolkit-owned-evidence")
-        for native, disabled in (({witness: "digest"}, False), (None, True)):
-            def invoke(repo, args):
-                values = json.loads(Path(args[args.index("--inputs") + 1]).read_text())
-                check = values["."]["lint"]
-                assert check["disableReuse"] is disabled
-                assert check["witnesses"] == ([] if disabled else [witness])
-                return report(root)
-            with patch.object(dependencies, "dependency_witnesses", return_value=native), patch.object(repokit, "validation_report", side_effect=invoke):
-                run_validation(str(root), full=True)
-        with patch.object(dependencies, "dependency_witnesses", side_effect=OSError("unreadable")):
-            assert dependencies.reuse_inputs(root) is None
 
 
 if __name__ == "__main__":

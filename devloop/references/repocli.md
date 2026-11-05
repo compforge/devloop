@@ -1,7 +1,7 @@
 # repocli
 
 Use repocli directly to inspect repository changes. It reports changed source files,
-symbols and potentially affected files; devloop owns check execution and stamps.
+symbols and potentially affected files; RepoKit also owns validation execution and history.
 There is no separate repocli skill or Python forwarding script.
 
 ```sh
@@ -26,8 +26,7 @@ these describe static associations, not runtime probabilities.
 `inspect` supplies the Component catalog, language and package-tool metadata.
 TypeScript uses `@compforge/repokit`; Python uses `compforge-repokit`. Both call native
 `inspect` and `owner`, sharing the toolkit contract rather than the CLI JSON protocol.
-Devloop retains workflow boundaries, dependency preparation timing,
-validation gates and stamps.
+Devloop retains workflow boundaries and managed-worktree preparation timing.
 
 Each TypeScript policy operation shares one inspection promise per checkout, including in-flight
 work and rejection. Python preparation passes one explicit catalog through the operation.
@@ -51,9 +50,8 @@ for a combined round. `--base` selects impact-based checks; without it selected
 Components run full checks. `--plan` is read-only. The Go toolkit owns Makefile
 parsing, plans, bounded execution, Component/check fingerprints and result reuse.
 
-Devloop submits phase baselines and changed-file seeds, prepares dependencies and
-provides input declarations/receipt paths. `run_validate.py` and lifecycle dispatch
-share one adapter; ordinary AI checks can call the CLI directly. See
+The AI selects scope and runs the CLI directly; devloop does not wrap it in Python or
+execute validation from commit hooks. Inspect the report before publishing code. See
 [validation](../skills/validate/SKILL.md) and [repository-toolkit](../docs/repository-toolkit.md).
 
 ## Installation and compatibility
@@ -67,7 +65,7 @@ Python 3.11+ and uv are required. `DEVLOOP_PYTHON` selects a compatible interpre
 Warm the environment before offline work:
 
 ```sh
-<PLUGIN_ROOT>/scripts/python -c 'import repocli'
+<PLUGIN_ROOT>/scripts/python -c 'import repokit'
 ```
 
 Update the pinned PyPI version in `devloop/scripts/_python.py`, then run
@@ -77,15 +75,11 @@ Validate the resulting dependencies before committing either lockfile. Keep the 
 lockfile in both Git and the npm package.
 
 
-Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repocli/releases)
+Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. `DEVLOOP_REPOCLI=/absolute/path/repocli` selects another installed binary for
-Python validation workflows and diff analysis; native organization inspection does not use this setting.
-No validation workflow downloads, upgrades or compiles the repocli CLI.
-
-Use repocli CLI 0.47.0 or later with format/lint/test composition and ValidationReport
-schema 1. The Python native toolkit remains independently locked for repository,
-Git/Forge and dependency operations. Validation never downloads or builds the CLI.
+`PATH`. Use repocli CLI 0.57.1 or later. The AI may invoke another installed binary by
+absolute path. Native toolkit operations do not require the CLI and never download or build it.
+Python and TypeScript toolkit dependencies remain independently locked.
 
 On CLI versions providing self-upgrade, use `repocli upgrade --check` (or add `--json`)
 to discover updates and `repocli upgrade` to install the latest stable release.
@@ -97,8 +91,7 @@ does not update the TypeScript/Python libraries or their lockfiles.
 Keep the original ValidationReport, including scope, diagnostics, command outputs,
 inputsConsistent and per-check results. A nonzero check exit may still return a valid
 JSON report; protocol/launch failures remain errors. Repocli decides reuse eligibility.
-Devloop records branch evidence and checks it before committing; it does not rebuild
-command scope or hash the Harness environment. Repository snapshots used by Git
+The AI reports the CLI result; devloop does not import it into a commit gate. Repository snapshots used by Git
 staging still come from the native toolkit and share the CLI's content contract.
 
 PR operations require repocli >= 0.57.1; Python RepoKit no longer provides a CLI runtime.

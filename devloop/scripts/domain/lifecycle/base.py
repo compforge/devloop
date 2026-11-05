@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import Callable
 
-PHASES = ("pre_commit", "post_commit", "pre_mr", "post_mr")
+PHASES = ("pre_commit", "post_commit")
 
 # 内置 hook 注册表：name → "module:function"。**惰性**解析（dispatch 时才 import）：handler
 # 模块（domain.lifecycle.review）要 `from domain.lifecycle.base import HookResult`，模块级直接引用会

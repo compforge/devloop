@@ -14,7 +14,7 @@ Run `repocli validate` before publishing code or submitting its PR; inspect the 
 Pure title/body updates do not require validation. CLI commands do not run validation.
 Select a fork destination explicitly with `--target-repository owner/repo`.
 Credentials use `GH_TOKEN`/`GITHUB_TOKEN` or `GITLAB_TOKEN`; never put tokens in command arguments.
-Managed gcampr supplies devloop's configured credentials to the same native CLI.
+The AI invokes the CLI directly in an environment with these credentials; devloop does not launch it.
 
 Use [gcampr](commit-flow.md) for commit + push + create/reuse. Merge remains a human action.
 Successful PR writes perform best-effort local maintenance inside RepoKit; devloop supplies no

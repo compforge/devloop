@@ -43,16 +43,11 @@ Claude/Codex 作为已安装 CLI plugin 时，使用官方 manifest 与 command 
 
 Adapter 应 fail-open：协议解析或本地派生状态失败不能卡死 Harness。明确命中的 deny 由共享 Decision 翻译为各端阻断结果；command hook 超时、缺失或 Harness 未覆盖路径仍可能放行，因此这些规则是工作流护栏，不是完整安全边界。DSH 的进程内 Cordis 决策可提供更强的一致性，但也复用同一 fail-open policy core。
 
-## 会话活动触发对账
+## 会话事件与资源维护
 
-Codex 的 SessionStart 与 PostToolUse 在实际访问的 repo 上非阻塞启动共享的一次性 task CLI。
-触发器只负责按主 checkout 节流和识别仍在运行的任务；Forge 查询、清理规则与执行结果仍由 task 拥有。
-该进程边界不参与 Board 或 admission 的同步决策，Python 启动失败也不改变 hook 输出。
-多个 worktree 共用主仓触发记录，单仓心跳不扩大到所属 workspace 的其它仓库。
-
-最近一次执行的 stdout/stderr 保存在主仓 `.devloop/tmp/pr-lifecycle-reconcile.log`，
-启动失败记录在 `.devloop/tasks.jsonl`；任务报告中的 refresh failure 与 deferred action 返回非零退出码。
-会话活动触发不保证空闲时运行，持续调度仍由 Claude monitor 或用户配置的 Scheduled task 提供。
+Harness 事件更新 session、checkout owner 和 Board，不启动 PR 扫描或清理进程。
+PR 状态通过原生 RepoKit toolkit 按需读取；验证、PR 写操作与 worktree 清理由 skill
+指导 AI 直接执行 repocli。用户需要定期执行时，可自行配置 Harness 的 Scheduled task 调用 monitor skill。
 
 ## 构建与验证
 
@@ -100,8 +95,8 @@ baseline is `@opencode/plugin` / OpenCode `2.1.2`; V1 hooks are a different prot
   Cleanup isolates failures per checkout, so a removed directory cannot terminate the event
   subscription or prevent other sessions from releasing ownership.
   Session deletion and plugin unload clear session state and ownership. Restored sessions initialize
-  lazily on their first observed request or tool. Activity runs the existing bounded reconciliation;
-  no idle-time scheduler or background polling loop is installed.
+  lazily on their first observed request or tool. Activity updates session context and ownership;
+  it does not launch repository cleanup tasks.
 
 Regression cases live in `tests/opencode.spec.ts`; live host checks must additionally cover the
 Promise/Effect bridge, native tool denial, CodeMode child calls, and model-visible context.

@@ -27,19 +27,24 @@ Apply the [Agent triangle](../SKILL.md#good-fast-cheap-for-agents) to a declared
 Keep the dimensions visible together instead of collapsing them into an undeclared weighted score:
 
 - **Good:** use project criteria for correctness, completeness, evidential support and delivered
-  value. Record independent judgment and annotation coverage; an agent's self-assessment or an
-  intermediate review is not automatically ground truth. Finding count and successful tool status
+  value. For knowledge-grounded answers, check faithfulness to the source and unsupported or
+  fabricated claims. Record independent judgment and annotation coverage; an agent's self-assessment
+  or an intermediate review is not automatically ground truth. Finding count and successful tool status
   alone do not measure quality. Precision needs adjudicated outputs; recall also needs evidence
   about relevant omissions. When effect falls short, follow
   [effect diagnosis](diagnosis.md#trace-effect-loss-to-its-cause) to locate the deviation and explain
   its cause; outcome scores alone cannot identify which decision or mechanism needs changing.
 - **Fast:** measure elapsed time to the required outcome, with observed start and end boundaries.
-  Separate time to first useful response when it matters to the task. Use waits, retries and
-  recorded dependencies to explain the critical path; concurrent call durations cannot simply be
-  summed. If task completion is unobserved, report the observed interval rather than a completed
+  For interactive answers, measure from user submission to the first visible answer token and
+  to the complete answer, separating these from time to first useful response. Provider-side
+  time to first token does not establish user-visible latency; record the observation boundary.
+  Use waits, retries and recorded dependencies to explain the critical path; concurrent call
+  durations cannot simply be summed. If task completion is unobserved, report the observed interval rather than a completed
   task latency; an open Session alone does not imply an unfinished Job. Report completion coverage
   beside latency so early failures do not appear as speed improvements.
-- **Cheap:** report model and tool use, input/output/cache usage and other metered resources.
+- **Cheap:** report model-call counts, tool-call counts and tool rounds per request or task,
+  input/output/cache token usage and other metered resources. Define a tool round when reported;
+  one round may contain multiple parallel calls.
   Preserve provider semantics for overlapping token fields and price/version provenance for money.
   Fewer tokens need not mean lower spend across models or cache policies. Keep missing usage and
   unknown charges visible; use the attribution rules below for shared work and aggregate cost.

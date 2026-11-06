@@ -3,6 +3,24 @@ export type Complexity = typeof COMPLEXITIES[number];
 export interface Classification { complexity: Complexity; confidence: number }
 export interface ModelRef { providerID: string; id: string; variant?: string }
 export type ModelRoutes = Record<Complexity, ModelRef>;
+export type RoutingMode = "auto" | "auto-fast";
+export interface RoutingOwnership { mode: RoutingMode; lastModel: ModelRef }
+
+export function fastModel(ref: ModelRef) {
+  return { ...ref, variant: `model-router-fast${ref.variant && ref.variant !== "default" ? `-${ref.variant}` : ""}` };
+}
+
+/** @spec Pre-mode ownership records resume ordinary Auto, never opt users into Fast billing. */
+export function routingOwnership(value: unknown): RoutingOwnership | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  if (record.mode === "auto" || record.mode === "auto-fast") {
+    const lastModel = modelRef(record.lastModel);
+    return lastModel ? { mode: record.mode, lastModel } : undefined;
+  }
+  const legacy = modelRef(value);
+  return legacy ? { mode: "auto", lastModel: legacy } : undefined;
+}
 
 /** @spec Uncertain simple classifications cannot downgrade a task below the medium route. */
 export function routeFor(answer: Classification, minimumConfidence: number): Complexity {

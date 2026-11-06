@@ -23,9 +23,18 @@ const mock = createServer(async (req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ answers: [{ type: "choice", name: "complexity", choice, confidence: 0.99 }] })); return;
   }
-  inference.push(body.model);
+  inference.push(body);
+  if (JSON.stringify(body.messages).includes("REJECT_PRIORITY") && body.tools?.some(tool => tool.function?.name === "router_probe")) {
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: { message: "Priority is unavailable for this test account", type: "invalid_request_error", code: "unsupported_service_tier" } }));
+    return;
+  }
   res.writeHead(200, { "content-type": "text/event-stream" });
-  for (const [delta, finish_reason] of [[{ role: "assistant", content: "Done" }, null], [{}, "stop"]]) {
+  const tool = JSON.stringify(body.messages).includes("TOOL continuation") && !body.messages.some(message => message.role === "tool")
+    && body.tools?.some(tool => tool.function?.name === "router_probe");
+  const chunksOut = tool ? [[{ role: "assistant", tool_calls: [{ index: 0, id: "call_probe", type: "function", function: { name: "router_probe", arguments: "{}" } }] }, null], [{}, "tool_calls"]]
+    : [[{ role: "assistant", content: "Done" }, null], [{}, "stop"]];
+  for (const [delta, finish_reason] of chunksOut) {
     res.write("data: " + JSON.stringify({ id: "chat_test", object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta, finish_reason }] }) + "\n\n");
   }
   res.end("data: [DONE]\n\n");
@@ -41,6 +50,8 @@ export default Plugin.define({ id:'model-router.probe', async setup(ctx) {
     info: {...Provider.Info.empty(Provider.ID.make('probe')), activation:'enabled', package:'@opencode/ai/providers/openai-compatible', settings:{baseURL:${JSON.stringify(baseURL)},apiKey:'local'}},
     models: ['terra','sol','astra'].map(id=>Model.Info.default(Provider.ID.make('probe'),Model.ID.make(id)))
   }));
+  // Expose directly rather than behind Code Mode so the fake model can invoke it.
+  await ctx.tool.transform(editor => editor.add({name:'router_probe',description:'Local test tool',input:{type:'object',properties:{}},options:{codemode:false},execute:async()=>({content:'probe completed'})}));
   await ctx.session.hook('model.request', event => { if(event.kind==='primary') appendFileSync(${JSON.stringify(report)}, JSON.stringify({session:event.sessionID,model:event.model})+'\\n'); });
 }});
 `);
@@ -79,6 +90,8 @@ try {
     await pause(100); available=(await api('/api/model?location[directory]='+encodeURIComponent(repo))).data;
   }
   assert(available.some(m=>m.id==='model-router'&&m.modelID==='sol'), 'Auto alias must inherit Sol');
+  assert(available.some(m=>m.id==='model-router-fast'&&m.name==='Auto Fast (Decisions)'&&m.modelID==='sol'), 'Auto Fast must be a separate picker entry');
+  assert.equal(available.filter(m=>m.providerID==='probe'&&m.id.startsWith('model-router')).length,2,'only two Auto models in the picker');
   const session=(await api('/api/session',{location:{directory:repo},model:{providerID:'probe',id:'model-router'}})).data.id;
   for(const [text,expected] of [['SIMPLE rename','terra'],['MEDIUM implement','sol'],['COMPLEX investigate','astra'],['FAIL classification','sol']]) {
     await api(`/api/session/${session}/prompt`,{text});
@@ -87,7 +100,8 @@ try {
     assert.equal(current.outcome,'succeeded'); assert.equal(current.model.id,expected);
     const requests=readFileSync(report,'utf8').trim().split('\n').map(JSON.parse);
     assert.equal(requests.at(-1).model.id,expected, 'the current primary request must use the route');
-    assert(inference.includes(expected), 'actual transport must receive the target model');
+    assert.equal(inference.at(-1).model,expected, 'actual transport must receive the target model');
+    assert.equal(inference.at(-1).service_tier,undefined,'ordinary Auto must not enable priority');
   }
   assert.equal(decisions.length,4);
   await api(`/api/session/${session}/model`,{model:{providerID:'probe',id:'astra'}});
@@ -101,10 +115,69 @@ try {
   await api(`/api/experimental/session/${queued}/wait`,{});
   assert.equal(decisions.length,4, 'queue admission must not classify or switch');
   assert.equal((await api(`/api/session/${queued}`)).data.outcome,'succeeded');
-  assert.equal(inference.at(-1),'sol','Auto is a working fallback without classification');
-  console.log(JSON.stringify({ threeTiers:true, currentRequestRouted:true, fallback:true, queuePreserved:true, evidence:root }));
+  assert.equal(inference.at(-1).model,'sol','Auto is a working fallback without classification');
+
+  const fast=(await api('/api/session',{location:{directory:repo},model:{providerID:'probe',id:'model-router-fast'}})).data.id;
+  for(const [text,expected] of [['SIMPLE fast','terra'],['MEDIUM fast','sol'],['COMPLEX fast','astra'],['FAIL fast','sol']]) {
+    await api(`/api/session/${fast}/prompt`,{text});
+    await api(`/api/experimental/session/${fast}/wait`,{});
+    const current=(await api(`/api/session/${fast}`)).data;
+    assert.equal(current.outcome,'succeeded');
+    assert.equal(current.model.id,expected);
+    assert.equal(current.model.variant,'model-router-fast');
+    const requests=readFileSync(report,'utf8').trim().split('\n').map(JSON.parse);
+    assert.equal(requests.at(-1).model.variant,'model-router-fast');
+    assert.equal(inference.at(-1).model,expected,'Fast must preserve the real transport model ID');
+    assert.equal(inference.at(-1).service_tier,'priority','each Fast route and fallback must send priority');
+  }
+  assert.equal(decisions.length,8);
+  // Multiple primary requests caused by a real tool step must retain priority,
+  // while classification still happens once at prompt admission.
+  const beforeSteps=inference.length;
+  await api(`/api/session/${fast}/prompt`,{text:'MEDIUM TOOL continuation'});
+  await api(`/api/experimental/session/${fast}/wait`,{});
+  const steps=inference.slice(beforeSteps).filter(body=>body.tools?.some(tool=>tool.function?.name==='router_probe'));
+  assert(steps.length>=2,'tool invocation must cause another primary request');
+  assert(steps.every(body=>body.model==='sol'&&body.service_tier==='priority'),'all tool steps retain Fast');
+  assert.equal(decisions.length,9,'tool continuations must not reclassify');
+
+  await api(`/api/session/${fast}/model`,{model:{providerID:'probe',id:'model-router'}});
+  await api(`/api/session/${fast}/prompt`,{text:'SIMPLE ordinary again'});
+  await api(`/api/experimental/session/${fast}/wait`,{});
+  assert.equal(inference.at(-1).model,'terra');
+  assert.equal(inference.at(-1).service_tier,undefined,'switching to Auto removes Fast');
+  await api(`/api/session/${fast}/model`,{model:{providerID:'probe',id:'model-router-fast'}});
+  await api(`/api/session/${fast}/prompt`,{text:'COMPLEX fast again'});
+  await api(`/api/experimental/session/${fast}/wait`,{});
+  assert.equal(inference.at(-1).service_tier,'priority');
+  await api(`/api/session/${fast}/model`,{model:{providerID:'probe',id:'sol'}});
+  await api(`/api/session/${fast}/prompt`,{text:'SIMPLE manual after Fast'});
+  await api(`/api/experimental/session/${fast}/wait`,{});
+  assert.equal(decisions.length,11,'manual selection must pause Fast routing');
+  assert.equal(inference.at(-1).model,'sol');
+  assert.equal(inference.at(-1).service_tier,undefined,'manual model settings remain unchanged');
+
+  const queuedFast=(await api('/api/session',{location:{directory:repo},model:{providerID:'probe',id:'model-router-fast'}})).data.id;
+  await api(`/api/session/${queuedFast}/prompt`,{text:'COMPLEX queued Fast',delivery:'queue'});
+  await api(`/api/experimental/session/${queuedFast}/wait`,{});
+  assert.equal(decisions.length,11,'Fast queue admission must not classify');
+  assert.equal((await api(`/api/session/${queuedFast}`)).data.outcome,'succeeded');
+  assert.equal(inference.at(-1).model,'sol');
+  assert.equal(inference.at(-1).service_tier,'priority','queued Auto Fast must execute medium with priority');
+
+  const rejected=(await api('/api/session',{location:{directory:repo},model:{providerID:'probe',id:'model-router-fast'}})).data.id;
+  const beforeRejection=inference.length;
+  await api(`/api/session/${rejected}/prompt`,{text:'MEDIUM REJECT_PRIORITY'});
+  await api(`/api/experimental/session/${rejected}/wait`,{});
+  assert.equal((await api(`/api/session/${rejected}`)).data.outcome,'failed','priority rejection must remain an execution error');
+  const rejectedPrimary=inference.slice(beforeRejection).filter(body=>body.tools?.some(tool=>tool.function?.name==='router_probe'));
+  assert.equal(rejectedPrimary.length,1,'400 must not trigger primary retries or downgrade');
+  assert.equal(inference.at(-1).service_tier,'priority');
+  console.log(JSON.stringify({ threeTiers:true, currentRequestRouted:true, fallback:true, queuePreserved:true, autoFast:true, fastToolSteps:true, modeSwitch:true, priorityRejection:true, evidence:root }));
 } finally {
   writeFileSync(join(root,'host.log'),logs);
+  writeFileSync(join(root,'inference.json'),JSON.stringify(inference,null,2));
+  console.error(`Host fixture evidence: ${root}`);
   child.kill('SIGTERM');
   await Promise.race([new Promise(resolve=>child.once('exit',resolve)),pause(3000)]);
   if(child.exitCode===null) child.kill('SIGKILL');

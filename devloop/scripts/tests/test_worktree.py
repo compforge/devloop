@@ -62,6 +62,23 @@ def _add_external_worktree(repo: str, tag: str) -> str:
     return str(path)
 
 
+def test_reused_worktree_refreshes_shared_home_without_recreating_source():
+    from repokit.state import RepositoryState
+    from repokit import resolve_home
+    from unittest.mock import patch
+
+    repo, _, _ = _fixture("home-reuse")
+    existing = _add_worktree(repo, "reuse")
+    path, message = worktree.create_or_reuse(repo, "reuse")
+    assert path == str(Path(existing).resolve()) and message == "reused existing worktree"
+    state = RepositoryState()
+    assert state.store.root == resolve_home().resolve()
+    assert state.branch(path, "worktree-reuse", max_age=3600).source == "cache"
+    with patch.object(RepositoryState, "observe", side_effect=OSError("unavailable")):
+        path, message = worktree.create_or_reuse(repo, "reuse")
+    assert path is not None and "repository observation unavailable" in message
+
+
 def test_new_worktree_fetches_latest_target_tip():
     repo, _, actor = _fixture("fresh")
     stale_tip = _git_out(repo, "rev-parse", "origin/main")

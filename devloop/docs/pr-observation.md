@@ -14,7 +14,7 @@ Board 的 PR 查询等待预算为 1 秒，超时或缺凭据时展示不可用�
 评论、finding Verdict 和 merge readiness 在展示时独立读取；它们失败不撤回已确认的 PR 状态。
 
 Python/TypeScript 使用原生 ForgeConnection 构造 client 和 PR context；配置和凭据由 devloop 装配。
-RepoKit 的用户级观察与协调状态位于 `~/.repocli`，不同进程复用记录和锁，不保存原始凭据。
+RepoKit 的用户级观察与协调状态位于 RepoKit home（`REPOKIT_HOME` 或默认 `~/.repokit`），不同进程复用记录和锁，不保存原始凭据。
 devloop 不复制通用 PR 缓存，也没有周期扫描 task、任务租约或 Harness 触发器。
 
 AI 按 skill 直接执行 `repocli pr`。PR 写操作后的资源维护由 RepoKit 自行完成，不传 after_success。

@@ -23,7 +23,7 @@ it("cancels a stalled native PR query without losing the rest of the prompt", as
   const reader = { forge: "github", provider: "github",
     listPullRequests: async (): Promise<{ items: [] }> => new Promise(() => {}),
     getPullRequest: async (): Promise<never> => { throw new Error("unexpected PR read"); } };
-  const context = new PullRequestContext(reader, { checkout: root, source: repository, targets: [repository], stateDir: join(root, "state"), connection: "test" });
+  const context = new PullRequestContext(reader, { checkout: root, source: repository, targets: [repository], home: join(root, "state"), connection: "test" });
   const query = vi.spyOn(context, "getCheckout"), close = vi.spyOn(context, "close");
   vi.mocked(prContextForRepo).mockResolvedValue(context);
   const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "slow-forge" }));

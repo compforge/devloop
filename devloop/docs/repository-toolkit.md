@@ -3,7 +3,7 @@
 RepoKit 拥有 Repository 的组织、Git/Forge 操作、验证执行与资源维护。devloop 负责开发策略、
 managed Git 事务、review 和 Board。AI 按 skill 直接执行 `repocli validate`、`repocli pr`
 和 `repocli worktree clean`；插件程序直接调用各语言 toolkit，不通过 subprocess 包装 repocli。
-Python 依赖锁定 `compforge-repokit==0.21.0`，CLI 最低版本为 0.58.0。
+Python 依赖锁定 `compforge-repokit==0.23.0`，CLI 最低版本为 0.60.0。
 
 ## 验证与 PR 交付
 
@@ -12,7 +12,7 @@ Python 依赖锁定 `compforge-repokit==0.21.0`，CLI 最低版本为 0.58.0。
 CLI 缺失或检查失败应明确报告，不能换一个执行器声称通过。验证是否足以交付由 skill 指导 AI 判断，
 commit/push 脚本不自动执行检查，也不消费验证记录作为门禁。
 
-repocli 默认在 `~/.repocli` 保存执行历史。devloop 不装配第二套验证输入、回执或复用缓存。
+repocli 默认在 RepoKit home（`REPOKIT_HOME` 或默认 `~/.repokit`）保存执行历史。devloop 不装配第二套验证输入、回执或复用缓存。
 Board 不再读取旧 `.devloop/validation_results`、分支 lint/test 引用或 `validation_scope`。
 当前 TS/Python SDK 尚未提供验证历史读取 API，因此 Board 暂不展示验证历史；历史查询使用
 `repocli validate --history`。恢复展示必须消费 RepoKit 公共读取 API，不读取 WAL 内部格式、

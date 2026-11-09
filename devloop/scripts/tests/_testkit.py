@@ -12,11 +12,13 @@ import 本模块的副作用即完成两件 bootstrap（必须发生在任何 `d
 """
 from __future__ import annotations
 
+import atexit
 import importlib.util
 import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -28,6 +30,9 @@ _GCFG = "/tmp/dlut_global_cfg"
 shutil.rmtree(_GCFG, ignore_errors=True)
 os.makedirs(_GCFG, exist_ok=True)
 os.environ["DEVLOOP_CONFIG_DIR"] = _GCFG
+_repokit_home = tempfile.TemporaryDirectory(prefix="devloop-repokit-test-")
+atexit.register(_repokit_home.cleanup)
+os.environ["REPOKIT_HOME"] = _repokit_home.name
 
 from harness_common import Forge as ForgeIdentity, Repository  # noqa: E402
 from domain.context import PullRequest  # noqa: E402
@@ -172,5 +177,5 @@ def _pr_context(repo, reader):
                                   target_repository=pr.target_repository or source.path)
                    for number, pr in reader._prs.items()}
     observer = PullRequestObserver(reader, forge=source.forge.name,
-                                   state_dir=Path(primary).parent / "repocli", connection="test")
+                                   home=Path(primary).parent / "repokit", connection="test")
     return PullRequestContext(observer, primary, source=source, targets=(source,))

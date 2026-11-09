@@ -35,3 +35,10 @@ Component 直接投影 RepoKit 提供的 `tools`、`depot` 和独立 `toolEviden
 
 依赖 Bin 的自动 witness 由 repocli 0.58.0 起提供。依赖缺失时执行真实检查，devloop 不维护第二份
 reuse 缓存，也不在 Component 投影中解释回执或自行决定目录是否可删除。
+
+## Repository 信息
+
+新建 worktree 后的观察由 RepoKit 操作自身完成；复用已有 worktree 时，devloop 显式调用
+`RepositoryState().observe()` 更新本地信息。home 解析和目录布局完全归 RepoKit，devloop 不拼接
+用户目录、不做历史数据迁移。观察失败作为诊断保留，不把已经可用的工作区当作创建失败。
+PR、checkout 信息和 CLI 验证共用 `REPOKIT_HOME`；`.devloop` 继续保存工作流和 session 状态。

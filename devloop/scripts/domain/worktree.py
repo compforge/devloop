@@ -7,6 +7,7 @@ reproducing only the visible ``git worktree add`` step and skipping lifecycle po
 from __future__ import annotations
 from repokit import git as operations
 from repokit.git.state import checkout_info
+from repokit.state import RepositoryState
 
 import logging
 from pathlib import Path
@@ -47,6 +48,11 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
         if (base / legacy).is_dir():
             path = str((base / legacy).resolve())
             warnings = prepare_environment(path)
+            try:
+                RepositoryState().observe(path)
+            except (OSError, ValueError) as exc:
+                logger.warning("Worktree observation failed path=%s error=%s", path, exc)
+                warnings.append(f"repository observation unavailable: {exc}")
             msg = "reused existing worktree"
             if warnings:
                 msg += "; environment warning: " + " | ".join(warnings)
@@ -74,6 +80,9 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
 
     path = str((base / rel).resolve())
     warnings = prepare_environment(path)
+    if result.err.startswith("checkout created; metadata unavailable:"):
+        logger.warning("Worktree created with metadata diagnostic path=%s detail=%s", path, result.err)
+        warnings.append(result.err)
     if warnings:
         message += "; environment warning: " + " | ".join(warnings)
     return path, message

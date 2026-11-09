@@ -18,7 +18,7 @@ function fixture() {
   const rows: PullRequestSnapshot[] = [{ repository, number: 1, state: "merged", sourceRepository: repository, sourceBranch: "feature", headSha: git("rev-parse", "HEAD") }];
   const reader = { forge: "github", provider: "github", listPullRequests: async () => ({ items: rows.map(({ repository, number }) => ({ repository, number })) }),
     getPullRequest: async (key: { number: number }) => rows.find(row => row.number === key.number)! };
-  const context = new PullRequestContext(reader, { checkout: root, source: repository, targets: [repository], stateDir: join(root, "state"), connection: "test" });
+  const context = new PullRequestContext(reader, { checkout: root, source: repository, targets: [repository], home: join(root, "state"), connection: "test" });
   vi.mocked(prContextForRepo).mockResolvedValue(context);
   return { root, reader, rows, git };
 }

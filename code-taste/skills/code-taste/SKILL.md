@@ -50,7 +50,7 @@ description: "Use when writing, modifying, refactoring, or reviewing software co
 
 ## 按问题读取
 
-按当前缺口选读，不要求每次加载全部原则。详细问题入口见 [理念索引](references/README.md)。
+按当前缺口选读，不要求每次加载全部原则。下表统一维护主题归属；原则解释留在所属文档，评审清单只保留检查问题与链接。
 
 | 当前判断 | 阅读 |
 |---|---|
@@ -83,12 +83,3 @@ description: "Use when writing, modifying, refactoring, or reviewing software co
 - 如果给出结论，必须能落到模型、边界、依赖、命名或日志上下文中的至少一个具体点
 - 设计 / 方案 review 按“原始需求 → 主要备选 → 选择及原因 → 主要改动 → 对既有设计的影响”组织。
 - 涉及行为或结构变化时，交付说明本次新增、更新或无需更新意图标记的判断。
-
-## 需要复核的信号
-
-- 用技术实现名替代业务概念，例如 `xxxMap`、`manager`、`processor`
-- Request/DTO/ORM 对象直接穿透到核心业务层
-- 一个函数同时混合业务规则、流程控制、协议细节和持久化细节
-- 为了复用而抽象，结果抽出一个接口复杂、语义模糊的浅模块
-- 没先搜一下就当场手写一套系统里已存在的能力（base64 编解码、None 安全访问、分页、HTTP client、时间解析…），仓库因此沉淀出多套近似实现
-- 错误信息只说失败，不说哪个参数、什么值、在做什么操作

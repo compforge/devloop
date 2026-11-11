@@ -28,7 +28,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from lib import repokit
+from domain import repo_layout
 
 from . import repo_layout, staging, workspace
 from .context import RepoContext, WorkspaceContext

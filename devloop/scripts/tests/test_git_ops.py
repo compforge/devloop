@@ -461,7 +461,7 @@ def test_push_is_git_only_without_validation_records():
     # A real local push succeeds with failing project checks and no validation evidence.
     from tempfile import TemporaryDirectory
     from unittest.mock import patch
-    from lib import config
+    from domain import config
 
     flow = _load_script("commit_flow")
     with TemporaryDirectory() as temporary:
@@ -484,7 +484,7 @@ def test_push_is_git_only_without_validation_records():
         binary.write_text("#!/bin/sh\ntouch '" + str(root / "cli-ran") + "'\nexit 1\n")
         binary.chmod(0o755)
         # A local bare Git remote has no Forge; preserve real Git/staging/push execution.
-        with patch.object(config, "resolve_forge", return_value=None), patch.dict(os.environ, {
+        with patch.dict(os.environ, {
             "PATH": str(root) + os.pathsep + os.environ["PATH"], "DEVLOOP_REPOCLI": str(binary),
         }):
             assert flow.main(["push", "--repo", str(repo), "--message", "fix: source", "--file", "source.py"]) == 0
@@ -544,11 +544,11 @@ def test_message_required_with_hint():
     assert raised and "--message-file" in err.getvalue()
 
 def test_cli_repo_arg_flag_and_positional_equivalent():
-    """The shared repo-target arg (lib.cli): --repo and the bare positional are equivalent
+    """The shared repo-target arg (command): --repo and the bare positional are equivalent
     spellings, the flag wins when both appear, and --repo is no longer swallowed as a
     positional — the original bug that made `run_lint.py --repo /x` die with
     "no subproject matches '--repo'"."""
-    from lib import cli
+    import command as cli
     ap = cli.ArgParser(prog="t")
     cli.add_repo_arg(ap)
     assert cli.repo_target(ap.parse_args([])) is None
@@ -566,7 +566,7 @@ def test_cli_argparser_hint_only_on_unrecognized():
     failure), but not on other errors (which already name the offending argument)."""
     import contextlib
     import io
-    from lib import cli
+    import command as cli
     ap = cli.ArgParser(prog="t", extra_hints=["USE --message-file"])
     ap.add_argument("mode", choices=["a", "b"])
     err = io.StringIO()

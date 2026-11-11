@@ -16,22 +16,28 @@ from domain.forge import (  # noqa: E402
     parse_pr_number,
     pr_label,
 )
-from lib import cli  # noqa: E402
-from lib.config import forge_client
+import command as cli
+from domain.config import pull_request_target
+from repokit import forge_client
 
 
 
 def _forge_or_exit(ns, prog):
-    """Resolve the repo target → a forge, or exit. `None` (no token / unsupported remote) is a
+    """Resolve the repo target → a forge, or exit. `None` (no Forge origin) is a
     clean exit(0): the same not-an-error treatment the per-verb scripts had — devloop runs in
     repos with no forge and callers shouldn't see a failure for asking."""
     resolved, _ = cli.resolve_repo_or_exit(ns, prog)
     ns.repo_root = resolved.git_root
-    forge = forge_client(resolved.git_root)
+    try:
+        forge = forge_client(resolved.git_root)
+    except ForgeError as error:
+        print(f"{prog}: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
     if forge is None:
-        print(f"{prog}: no token or unsupported remote", file=sys.stderr)
+        print(f"{prog}: no Forge origin", file=sys.stderr)
         raise SystemExit(0)
-    return forge
+    target = pull_request_target(resolved.git_root)
+    return forge.for_repository(target) if target else forge
 
 
 

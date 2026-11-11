@@ -11,7 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from lib import config
+from domain import config
 from domain.lifecycle.base import HookResult, dispatch
 
 
@@ -60,19 +60,17 @@ def test_all_local_configuration_is_inherited_by_worktrees():
             _local_config(root, {"review": {"tool": "ancestor", "options": {"verbose": True}}})
             _local_config(repo, {
                 "review": {"tool": "main"},
-                "forges": {"git.example.com": {"type": "gitlab", "token": "main-token", "api_host": "api.example.com"}},
+                "pull_request": {"target_repository": "upstream/repo"},
             })
             assert config.load(checkout)["review"] == {"tool": "main", "options": {"verbose": True}}
-            assert config.forge_entry("git.example.com", checkout)["token"] == "main-token"
+            assert config.pull_request_target(checkout) == "upstream/repo"
             _local_config(checkout, {
                 "review": {"options": {"verbose": False}},
-                "forges": {"git.example.com": {"token": ""}},
+                "pull_request": {"target_repository": ""},
             })
             assert config.load(checkout)["review"] == {"tool": "main", "options": {"verbose": False}}
             assert config.load(repo)["review"] == {"tool": "main", "options": {"verbose": True}}
-            assert config.forge_entry("git.example.com", checkout) == {
-                "type": "gitlab", "token": "", "api_host": "api.example.com",
-            }
+            assert config.pull_request_target(checkout) is None
 
 
 def test_closer_source_defaults_override_global_repo_policy():
@@ -106,16 +104,13 @@ def test_default_and_repo_overrides_are_resolved_once_per_source():
         assert config.lifecycle(checkout)["post_commit"] == ["review"]
 
 
-def test_global_workspace_registration_and_environment_token_override():
+def test_global_workspace_registration_and_local_pr_target():
     with _repository() as (_, repo):
-        config.save({"workspaces": ["/global"], "forges": {"git.example.com": {"token": "global-token"}}})
-        _local_config(repo, {"workspaces": ["/local"], "forges": {"git.example.com": {"token": "local-token"}}})
+        config.save({"workspaces": ["/global"], "pull_request": {"target_repository": "upstream/repo"}})
+        _local_config(repo, {"workspaces": ["/local"], "pull_request": {"target_repository": "fork/repo"}})
         assert config.load(repo)["workspaces"] == ["/global"]
         assert config.workspaces() == ["/global"]
-        with patch.dict(os.environ, {"GITLAB_TOKEN": ""}):
-            assert config.forge_token("git.example.com", "gitlab", repo) == "local-token"
-        with patch.dict(os.environ, {"GITLAB_TOKEN": "environment-token"}):
-            assert config.forge_token("git.example.com", "gitlab", repo) == "environment-token"
+        assert config.pull_request_target(repo) == "fork/repo"
 
 
 def test_invalid_local_file_falls_back_to_main_repository():

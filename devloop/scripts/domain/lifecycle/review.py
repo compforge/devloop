@@ -9,7 +9,9 @@ runner 可用时返回 relay；缺失时记录 advisory error，从不挡 commit
 """
 from __future__ import annotations
 
-from lib import config, git_state
+from domain import config
+
+from repokit.git import state as git_state
 from domain.context import base, store
 from domain.lifecycle.base import BackgroundSpec, HookResult
 

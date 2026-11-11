@@ -8,6 +8,7 @@ Branch protection, checkout ownership and exact staging selection remain live ch
 Fresh branches use an explicit base, and pushes reject unintended foreign commits.
 """
 from __future__ import annotations
+from domain import git_policy
 from repokit import git as operations
 from repokit.git import index as git_index
 
@@ -25,7 +26,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from domain import branch as branch_domain, lifecycle, repo as repo_model, staging  # noqa: E402
 from domain.context import RepoContext, gate, record_active_repo, store
 from domain.forge import ForgeError, PullRequest, pr_label  # noqa: E402
-from lib import cli, git_state, gitcmd  # noqa: E402
+import command as cli
+from repokit.git import state as git_state
 
 
 class SmartError(Exception):
@@ -194,7 +196,7 @@ def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
     if not resolved:
         raise SmartError(how)
     record_active_repo(resolved.git_root)
-    target = ns.target or git_state.local_default_target(resolved.git_root)
+    target = ns.target or git_policy.local_default_target(resolved.git_root)
     files: list[str] = []
     for path in ns.file or []:
         if path not in files:
@@ -528,7 +530,7 @@ def _banner(plan: list[str]) -> None:
 
 def check_operation(result: operations.GitResult) -> str:
     if not result.ok:
-        raise SmartError(gitcmd.operation_detail(result))
+        raise SmartError(result.detail)
     return result.out
 
 

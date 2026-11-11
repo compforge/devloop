@@ -1,6 +1,6 @@
 {
   "name": "@compforge/devloop",
-  "version": "0.4.71",
+  "version": "0.4.74",
   "description": "Shared dev-loop runtime with Claude Code, Codex, DeepSeek Harness, and OpenCode V2 adapters.",
   "type": "module",
   "engines": {
@@ -79,7 +79,7 @@
     }
   },
   "dependencies": {
-    "@compforge/repokit": "^0.17.0",
+    "@compforge/repokit": "^0.20.0",
     "@deepseek-ai/schemastery": "^3.18.2",
     "yaml": "^2.9.1"
   },
@@ -88,10 +88,10 @@
     "@deepseek-ai/dsh-agent": "^0.1.6-alpha.1",
     "@deepseek-ai/dsh-llm": "^0.1.6-alpha.1",
     "@deepseek-ai/dsh-tools": "^0.1.6-alpha.1",
+    "@opencode/plugin": "^2.1.2",
     "@types/node": "^24.7.0",
     "esbuild": "^0.28.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.8",
-    "@opencode/plugin": "^2.1.2"
+    "vitest": "^4.1.8"
   }
 }

@@ -10,8 +10,31 @@ from pathlib import Path
 
 from repokit import Layout, Tool, Depot
 
-from lib import repokit
+import subprocess
+import repokit as toolkit
+from repokit import InspectReport
 from repokit.git.state import find_checkout
+
+
+class InspectionError(ValueError):
+    """Unavailable organization must not become an empty or fabricated catalog."""
+
+
+def inspect_report(repo: str) -> InspectReport:
+    """Toolkit owns organization; devloop owns acceptance and execution containment."""
+    try:
+        report = toolkit.inspect(repo, timeout=5)
+        if not report.complete or report.diagnostics:
+            raise ValueError("repository inspection incomplete")
+        root = Path(repo).resolve()
+        for binding in report.components:
+            # Recheck containment even if a directory disappears after inspection;
+            # validation must not follow a replaced ancestor outside the checkout.
+            if not (root / binding.root).resolve().is_relative_to(root):
+                raise ValueError("component root escapes checkout")
+        return report
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        raise InspectionError(f"repository inspection unavailable: {exc}") from exc
 
 
 @dataclass(frozen=True)
@@ -72,7 +95,7 @@ class Catalog:
         path = Path(os.path.abspath(target))
         if not path.is_relative_to(self.root):
             return None
-        binding = repokit.owner(self.report, path.relative_to(self.root).as_posix())
+        binding = toolkit.owner(self.report, path.relative_to(self.root).as_posix())
         return next((c for c in self.components if binding and c.id == binding.root), None)
 
     def default(self) -> Component:
@@ -82,12 +105,12 @@ class Catalog:
                 return component
         if len(self.components) == 1:
             return self.components[0]
-        raise repokit.InspectionError("no default Component; select a discovered component explicitly")
+        raise InspectionError("no default Component; select a discovered component explicitly")
 
 
 def inspect_catalog(git_root: str | Path) -> Catalog:
     root = Path(git_root).resolve()
-    report = repokit.inspect(str(root))
+    report = inspect_report(str(root))
     return Catalog.from_layout(root, report)
 
 

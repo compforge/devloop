@@ -3,7 +3,7 @@
 
 `create` uses the forge facade to create a Release and its tag server-side. It defaults the
 release target to the remote trunk branch, checks version progression, and requires notes.
-Forge credentials come from lib.config.forge_token.
+Forge access is resolved by RepoKit; devloop owns release sequencing only.
 
 `tag` publishes version tags at one explicitly resolved commit for repositories whose CI owns
 Release creation. It supports Go module tag prefixes, refuses to move existing tags, and
@@ -16,6 +16,7 @@ verifies the remote result before reporting success.
 Release publication remains separate from the commit, push, and PR transaction.
 """
 from __future__ import annotations
+from domain import git_policy
 
 import re
 import sys
@@ -24,10 +25,12 @@ from pathlib import Path
 _SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS.parent))
 
-from lib import cli, git_state  # noqa: E402
+import command as cli
+
+from repokit.git import state as git_state
 from domain.forge import ForgeError  # noqa: E402
 from repokit import git
-from lib.config import forge_client  # noqa: E402
+from repokit import forge_client  # noqa: E402
 
 # Release version must be semver (optional leading v): the tag the forge cuts and the key the
 # increment check compares on. Anything else is rejected before a call is made.
@@ -40,13 +43,17 @@ def _parse_version(tag: str) -> tuple[int, int, int] | None:
 
 
 def _forge_or_exit(ns, prog):
-    """Resolve repo target → (forge, git_root), or exit. No token / unsupported remote is a
+    """Resolve repo target → (forge, git_root), or exit. No Forge origin is a
     clean exit(0) — the same not-an-error treatment `pr` gives (devloop runs in repos with no
     forge, and asking about a release there isn't a failure)."""
     resolved, _ = cli.resolve_repo_or_exit(ns, prog)
-    forge = forge_client(resolved.git_root)
+    try:
+        forge = forge_client(resolved.git_root)
+    except ForgeError as error:
+        print(f"{prog}: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
     if forge is None:
-        print(f"{prog}: no token or unsupported remote", file=sys.stderr)
+        print(f"{prog}: no Forge origin", file=sys.stderr)
         raise SystemExit(0)
     return forge, resolved.git_root
 
@@ -93,7 +100,7 @@ def cmd_create(ns) -> int:
                   f"{last.tag} — pick a higher version", file=sys.stderr)
             return 1
 
-    target = ns.target or git_state.local_default_target(git_root)
+    target = ns.target or git_policy.local_default_target(git_root)
     notes = _read_notes(ns, "release create")
     if not notes:
         print(

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Start new work on a fresh, owned development branch."""
 from __future__ import annotations
+from domain import git_policy
 
 import os
 import sys
@@ -10,7 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from domain import branch as branch_domain, repo as repo_model  # noqa: E402
 from domain.context import record_active_repo  # noqa: E402
-from lib import cli, git_state  # noqa: E402
+import command as cli
+from repokit.git import state as git_state
 
 
 def _build_parser() -> cli.ArgParser:
@@ -42,7 +44,7 @@ def main(argv: list[str]) -> int:
         return 1
     repo = resolved.git_root
     record_active_repo(repo)
-    target = ns.target or git_state.local_default_target(repo)
+    target = ns.target or git_policy.local_default_target(repo)
     base = ns.base or f"origin/{target}"
     plan = [
         f"action=branch-create repo={Path(repo).name} ({source}) "

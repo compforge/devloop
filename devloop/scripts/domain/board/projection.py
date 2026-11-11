@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from domain.forge import MergeReadiness, blocks_merge, pr_label
-from lib import git_state
+from repokit.git import state as git_state
 
 from domain.context import base, store, prstate
 

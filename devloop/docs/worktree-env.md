@@ -9,7 +9,7 @@ repocli 解析 Component 对应的包管理器、锁文件及安装根。同一 
 可以共用 checkout 内的安装根，不能把每个 Component 都当成独立安装单位。依赖恢复和缓存策略遵循
 包管理器，不能复用另一个 checkout 的整个 node_modules/.venv。
 
-`scripts/lib/dependencies.py` 只保留消费策略：ready 环境无需重新安装；present 表示用户已准备了本地依赖、
+`scripts/domain/worktree.py` 只保留消费策略：ready 环境无需重新安装；present 表示用户已准备了本地依赖、
 但没有匹配的准备回执，允许执行项目自己的检查，不宣称锁文件一致性已获验证。有锁定安装命令的 missing
 环境以及 stale 环境调用 prepare_dependencies。有些 Component 的 manifest 仅用于发行包装；当 repocli
 报告 missing 且安装命令为空时，跳过自动准备并输出原因，让项目自己的检查决定结果，不创建依赖目录或准备回执。

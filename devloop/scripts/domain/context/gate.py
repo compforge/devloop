@@ -1,9 +1,10 @@
 """Decision-time Git identity and library-owned PR queries for workflow gates."""
 from __future__ import annotations
+from domain import git_policy
 
 from dataclasses import dataclass
 
-from lib import git_state
+from repokit.git import state as git_state
 from . import prstate, store
 from .base import PullRequest
 
@@ -20,7 +21,7 @@ class GateView:
     active_pr: PullRequest | None
 
     def protected(self) -> bool:
-        return git_state.is_protected_branch(self.branch)
+        return git_policy.is_protected_branch(self.branch)
 
     def inactive(self) -> bool:
         """The current branch's PR/MR is merged/closed — block edits / refuse to continue."""
@@ -44,7 +45,7 @@ def evaluate(git_root: str) -> GateView:
     # target is stable (the repo's trunk) → read the cached repo fact (meta.default_branch, the
     # single source); only identity must be live. Fall back to a live local derive if uninitialized.
     mseg = store.load_segment(git_root, "meta") or {}
-    target = (mseg.get("repo") or {}).get("default_branch") or git_state.local_default_target(git_root)
+    target = (mseg.get("repo") or {}).get("default_branch") or git_policy.local_default_target(git_root)
 
     return GateView(
         git_root=str(git_root),

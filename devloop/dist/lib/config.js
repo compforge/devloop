@@ -4,7 +4,6 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { mainRepoRoot } from "./git-state.js";
 const DEFAULTS = {
     workspaces: [],
-    forges: {},
     lifecycle: { default: { pre_commit: [], post_commit: [] }, repos: {} },
     arch: {
         default: {
@@ -127,18 +126,10 @@ export function workspaces() {
 export function setWorkspaces(paths) {
     updateConfig((data) => { data.workspaces = [...paths]; });
 }
-export function forgeEntry(host, repo) {
-    return object(object(loadConfig(repo).forges)[host]);
-}
-export function forgeToken(host, provider, repo) {
-    const variables = provider === "github" ? ["GITHUB_TOKEN", "GH_TOKEN"] : provider === "gitlab" ? ["GITLAB_TOKEN"] : [];
-    for (const variable of variables) {
-        const token = process.env[variable]?.trim();
-        if (token)
-            return token;
-    }
-    const configured = forgeEntry(host, repo).token;
-    return typeof configured === "string" && configured.trim() ? configured.trim() : undefined;
+/** Workflow destination; transport and credentials belong to RepoKit. */
+export function pullRequestTarget(repo) {
+    const value = object(loadConfig(repo).pull_request).target_repository;
+    return typeof value === "string" && value ? value : undefined;
 }
 export function lifecycleConfig(repo) { return object(object(loadConfig(repo).lifecycle).default); }
 export function architectureConfig(repo) { return object(object(loadConfig(repo).arch).default); }

@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from _testkit import _FakeForge, _git, _git_out, _load_script, run_main  # noqa: E402  (bootstrap first)
+from domain import git_policy
 from domain.context import PullRequest  # noqa: E402
 from domain.forge import ForgeError  # noqa: E402
 
@@ -31,7 +32,7 @@ def test_run_review_skips_without_engine():
     finally:
         rr.review_engine.shutil.which = orig
     assert rc == 0
-    from lib import git_state
+    from repokit.git import state as git_state
     seg = store.load_segment(G, store.branch_segment(git_state.get_current_branch(G), "review"))
     assert seg and seg["status"] == "skipped" and "not installed" in seg["message"] and seg["count"] == 0
 
@@ -128,17 +129,17 @@ def test_run_review_posts_streamed_finding_before_engine_returns():
             return rr.review_engine.ReviewResult(ok=True, comments=[finding])
 
     original_resolve, original_open = rr.review_engine.resolve, rr._open_mr
-    original_default_target = rr.git_state.local_default_target
+    original_default_target = rr.git_policy.local_default_target
     original_identity = rr._pull_request_identity
     rr.review_engine.resolve = lambda name: FakeEngine()
     rr._open_mr = lambda repo, branch: (forge, pr)
-    rr.git_state.local_default_target = lambda repo: "release"
+    rr.git_policy.local_default_target = lambda repo: "release"
     rr._pull_request_identity = lambda repo, pr: None
     try:
         assert rr.main(["--repo", repo]) == 0
     finally:
         rr.review_engine.resolve, rr._open_mr = original_resolve, original_open
-        rr.git_state.local_default_target = original_default_target
+        rr.git_policy.local_default_target = original_default_target
         rr._pull_request_identity = original_identity
 
     assert len(forge.diff_posted) == 1
@@ -598,12 +599,18 @@ def test_run_review_build_background():
     rr = _load_script("run_review")
 
     class _PR:
+        target_repository = ""
         number, title = 7, "Add dark mode"
 
     class _Forge:
         def description(self, n): return "why: users asked for dark mode"
 
-    bg = rr._build_background("/no/such/repo", "main", _Forge(), _PR(), "extra ctx")
+    original = rr.pull_request_description
+    rr.pull_request_description = lambda *args, **kwargs: _Forge().description(1)
+    try:
+        bg = rr._build_background("/no/such/repo", "main", _Forge(), _PR(), "extra ctx")
+    finally:
+        rr.pull_request_description = original
     assert "extra ctx" in bg and "Add dark mode" in bg and "users asked for dark mode" in bg
     # 无 forge/pr → 只有 extra（commit 段在该假路径为空）
     assert rr._build_background("/no/such/repo", "main", None, None, "only extra").strip() == "only extra"
@@ -626,29 +633,19 @@ def test_run_review_append_history():
         assert _json.loads(lines[1])["status"] == "skipped"
 
 
-def test_pull_request_identity_uses_origin_source_and_repository():
-    """Review 对外携带完整 identity；source 是 forges 配置 key，不是 provider 名。"""
+def test_review_identity_uses_toolkit_target_identity():
     from types import SimpleNamespace
-    from lib.config import ForgeResolution
+    from unittest.mock import patch
+    from repokit.forge.model import PullRequestIdentity
     rr = _load_script("run_review")
-    original = rr.resolve_forge
-    resolution = ForgeResolution(
-        provider="github",
-        host="github-work-alias",
-        api_host="github.example.com",
-        path="owner/repo",
-        token="token",
-    )
-    rr.resolve_forge = lambda repo: resolution
-    try:
-        assert rr._pull_request_identity("/repo", SimpleNamespace(number=17)) == {
-            "source": "github-work-alias",
-            "repository": "owner/repo",
-            "number": 17,
-        }
+    identity = PullRequestIdentity("git.example.com", "upstream/repo", 17)
+    with patch.object(rr, "pull_request_identity", return_value=identity) as resolve:
+        assert rr._pull_request_identity("/repo", SimpleNamespace(number=17, target_repository="upstream/repo")) == identity.to_dict()
+        resolve.assert_called_once_with("/repo", 17, target_repository="upstream/repo")
+        resolve.reset_mock()
         assert rr._pull_request_identity("/repo", None) is None
-    finally:
-        rr.resolve_forge = original
+        resolve.assert_not_called()
+
 
 def test_findings_for_history_status_from_warnings():
     """history findings 带 symbol_id + 状态：成功文件 ok、失败(超时)文件 failed+reason。"""
@@ -921,6 +918,86 @@ def test_format_comment_counts_inline():
     assert "b.py:" not in body                  # 无行号 → 不拼 `:0-0`
     assert "ccr:history=" in body                # 汇总 fallback 也能从 Forge 恢复
     assert "clean" in rr._format_comment([], 0, "r", "s", {}, 0, "", inline_posted=0)
+
+
+
+def test_review_cli_query_precedes_optional_sdk_comment_access():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    rr = _load_script("run_review")
+    origin = SimpleNamespace(host="github.com", path="fork/repo")
+    pr = PullRequest(7, state="open", source_branch="topic", target_repository="upstream/repo")
+    forge = _FakeForge([pr])
+    with patch.object(rr, "remote", return_value=origin), \
+         patch.object(rr, "list_pull_requests", return_value=[]) as query, \
+         patch.object(rr, "forge_client", return_value=forge) as access:
+        assert rr._open_mr("/repo", "topic") == (None, None)
+        query.assert_called_once_with("/repo", branch="topic", state="open", target_repository=None)
+        access.assert_not_called()
+        query.return_value = [pr]
+        with patch.object(forge, "for_repository", return_value=forge) as destination:
+            assert rr._open_mr("/repo", "topic") == (forge, pr)
+            destination.assert_called_once_with("upstream/repo")
+        access.reset_mock()
+        query.return_value = [pr, pr]
+        assert rr._open_mr("/repo", "topic") == (None, None)
+        access.assert_not_called()
+
+
+def test_optional_review_access_failure_does_not_retract_pr_observation():
+    from unittest.mock import patch
+    from domain.context import prstate
+    pr = PullRequest(7, state="open", source_branch="topic", target_repository="upstream/repo")
+    with patch.object(prstate, "forge_client", side_effect=ForgeError("config unavailable")):
+        details = prstate.review_details("/repo", pr)
+    assert details.pending is None and details.readiness is None
+    assert pr.is_open
+
+
+def test_discussion_entrypoints_use_workflow_target_without_changing_access():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    for name in ("pr", "review"):
+        command = _load_script(name)
+        forge = _FakeForge([])
+        with patch.object(command.cli, "resolve_repo_or_exit", return_value=(SimpleNamespace(git_root="/repo"), None)), \
+             patch.object(command, "forge_client", return_value=forge) as access, \
+             patch.object(command, "pull_request_target", return_value="upstream/repo"), \
+             patch.object(forge, "for_repository", return_value=forge) as destination:
+            assert command._forge_or_exit(SimpleNamespace(), name) is forge
+            access.assert_called_once_with("/repo")
+            destination.assert_called_once_with("upstream/repo")
+
+
+
+def test_review_query_receives_workflow_target():
+    from unittest.mock import patch
+    rr = _load_script("run_review")
+    with patch.object(rr, "remote", return_value=object()), \
+         patch.object(rr.config, "pull_request_target", return_value="upstream/repo"), \
+         patch.object(rr, "list_pull_requests", return_value=[]) as query, \
+         patch.object(rr, "forge_client") as client:
+        assert rr._open_mr("/repo", "feature") == (None, None)
+        query.assert_called_once_with("/repo", branch="feature", state="open", target_repository="upstream/repo")
+        client.assert_not_called()
+
+
+def test_review_preserves_confirmed_pr_when_optional_sdk_access_fails():
+    """+case=Comment access failure preserves the observed PR and its review base."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    rr = _load_script("run_review")
+    pr = PullRequest(7, state="open", source_branch="topic", target_branch="release", target_repository="upstream/repo")
+    forge = _FakeForge([pr])
+    with patch.object(rr, "remote", return_value=SimpleNamespace(host="github.com", path="fork/repo")), \
+         patch.object(rr, "list_pull_requests", return_value=[pr]), \
+         patch.object(rr, "forge_client", side_effect=ForgeError("access unavailable")) as access:
+        assert rr._open_mr("/repo", "topic") == (None, pr)
+        access.side_effect = None
+        access.return_value = forge
+        with patch.object(forge, "for_repository", side_effect=ForgeError("target unavailable")):
+            assert rr._open_mr("/repo", "topic") == (None, pr)
+        assert pr.target_branch == "release"
 
 
 if __name__ == "__main__":

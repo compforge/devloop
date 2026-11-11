@@ -5,15 +5,20 @@ PR lifecycle state and generic associations belong to repocli; they are never co
 .devloop. The selected pull_request exists only in this transient view.
 """
 from __future__ import annotations
+from domain import git_policy
 
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import logging
 
-from lib import git_state, parsers, repokit
-from repokit.repository import default_branch as repository_default_branch
-from lib.config import forge_client
+from repokit.git import state as git_state
+
+from domain.context import agents as parsers
+
+from repokit.state import default_branch as repository_default_branch
+from repokit import forge_client
+from repokit.forge.model import ForgeError
 
 from .. import repo_layout
 from . import base, store
@@ -67,7 +72,7 @@ class Branch:
         )
 
     def is_protected(self) -> bool:
-        return git_state.is_protected_branch(self.name)
+        return git_policy.is_protected_branch(self.name)
 
 
 @dataclass
@@ -171,7 +176,7 @@ class RepoContext:
             "agents_md": asdict(self.agents_md),
             "updated_at": self.updated_at,
         })
-        git_state.ensure_gitignore_excluded(root)   # keep /.devloop/ out of git
+        git_policy.ensure_gitignore_excluded(root)   # keep /.devloop/ out of git
 
     def _branch_seg(self, name: str) -> str:
         """Branch-domain segment name for THIS context's branch (branches/<b>/<name>)."""
@@ -204,15 +209,20 @@ class RepoContext:
             if catalog.components:
                 component = catalog.default()
                 code_dir, language = component.path, component.language
-        except repokit.InspectionError as exc:
+        except repo_layout.InspectionError as exc:
             # Optional context metadata must not turn a completed Git action into failure.
             logging.getLogger(__name__).warning("Component context unavailable for %s: %s", repo_dir_abs, exc)
         agents_md_path = repo_layout.find_agents_md(repo_dir_abs, code_dir)
 
         prev = cls.load(repo_dir_abs) or cls()
-        # RepoKit owns observation freshness; this is only the development target projection.
-        observed = repository_default_branch(repo_dir_abs, forge=forge_client(repo_dir_abs))
-        default_branch = observed.branch or git_state.local_default_target(repo_dir_abs)
+        # Optional metadata access must preserve RepoKit's cached/local fallback.
+        try:
+            forge = forge_client(repo_dir_abs)
+        except ForgeError as error:
+            logging.getLogger(__name__).warning("Forge metadata access unavailable repo=%s error=%s", repo_dir_abs, error)
+            forge = None
+        observed = repository_default_branch(repo_dir_abs, forge=forge)
+        default_branch = observed.branch or git_policy.local_default_target(repo_dir_abs)
         target = default_branch
         items = parsers.parse_references_section(agents_md_path) if agents_md_path else []
 
@@ -242,7 +252,7 @@ class RepoContext:
         if ctx is None:
             return cls.refresh_all(repo_dir)
         # cached repo fact (zero network); local origin/HEAD only if cache empty
-        target = ctx.repo.default_branch or git_state.local_default_target(ctx.repo.real_repo_dir)
+        target = ctx.repo.default_branch or git_policy.local_default_target(ctx.repo.real_repo_dir)
         ctx.branch = _build_topology(ctx.repo.real_repo_dir, target, ctx.branch)
         ctx._save_branch()
         return ctx

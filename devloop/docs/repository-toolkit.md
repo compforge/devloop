@@ -2,13 +2,14 @@
 
 RepoKit 拥有 Repository 的组织、Git/Forge 操作、验证执行与资源维护。devloop 负责开发策略、
 managed Git 事务、review 和 Board。AI 按 skill 直接执行 `repocli validate`、`repocli pr`
-和 `repocli worktree clean`；插件程序直接调用各语言 toolkit，不通过 subprocess 包装 repocli。
+和 `repocli clean` / `repocli worktree clean`。程序内的 Git/Forge 操作同样优先使用已有 CLI 契约；
+CLI 未覆盖的操作及本地结构化分析使用 toolkit。访问配置统一归 RepoKit。
 CLI 的版本基线与消费规则统一见 [repocli](../references/repocli.md)。原生 SDK 依赖独立锁定。
 
 CLI 交付命令结果 envelope，SDK 返回领域对象。AI 同时检查退出状态、outcome、diagnostics 与
 `data` 的领域判定，再决定开发流程是否继续；成本直接消费 `cost`，不从历史耗时另行推算。
-结果未知时先核验目标事实，部分失败保留已确认动作。具体恢复规则归各 skill，不在 runtime
-增加 CLI 转发器、结果缓存或第二套错误分类。
+结果未知时先核验目标事实，部分失败保留已确认动作。具体恢复规则归各 skill，程序消费 CLI 时只在边界做有超时的调用和契约解码，不复制
+Repository 逻辑、结果缓存、重试或第二套错误分类。
 
 ## 验证与 PR 交付
 
@@ -26,7 +27,7 @@ Board 不再读取旧 `.devloop/validation_results`、分支 lint/test 引用或
 
 `gcampr` 是 skill 编排：验证 → managed commit/push → 原生 PR 创建或更新 → 检查并启动 review。
 PR 标题、正文和目标仓由 AI 显式传给 CLI，不自动把 commit message 追加到已有 PR。
-CLI 使用自己的环境凭据；devloop 的 Forge 配置供 review、Board 等 toolkit 调用方使用。
+CLI 和 SDK 均由 RepoKit 的 `<home>/config.json` 解析 Forge 访问配置；devloop 不读取或注入凭据。
 
 ## Managed Git 事务
 
@@ -49,9 +50,18 @@ rebase 事务、lease、恢复与推送策略由 devloop 持有。Git 元数据�
 PR、branch 和 checkout 的关联、观察缓存及 HTTP 协调归 RepoKit。devloop 按需读取原生 PR context，
 构造 branch gate 与 Board 视图；review 评论、Verdict、readiness 单独读取。
 无凭据、查询失败与候选歧义不能解释成无 PR。必要写入 gate 停止；Board 展示未知并继续提供其它上下文。
-连接配置由 `lib/config.py` 装配为原生 ForgeConnection/client，不再提供通用 Forge 转发 facade。
+review 的 PR 列表和正文通过 CLI 查询；分支关联、评论、readiness、release 与 repository metadata
+等没有等价 CLI 契约的能力使用原生 SDK。RepoKit 的 `forge_client` / `pull_request_context`
+统一组合 origin、config 与 client；devloop 不再解析 host/provider/凭据。Python 显式消费
+`repokit.cli` 查询 PR 列表和正文，目标仓库由 devloop 传入，CLI 解码与进程预算归 RepoKit。
 
-RepoKit 在 PR 写操作中维护本地资源，也提供显式 `worktree clean`。数量阈值、merged 终态、
+Python workflow 不设 `scripts/lib` 中转层。命令参数归 `scripts/command.py`；配置继承、
+保护分支和 review 引擎归 `scripts/domain`；AGENTS 解析归 `domain/context/agents.py`；
+依赖准备时机归 `domain/worktree.py`，Component 验收与路径约束归 `domain/repo_layout.py`。
+通用 Git 查询与结果直接使用 RepoKit，不经 devloop 重导出。
+
+RepoKit 在 PR 写操作后维护本地资源。全局 `clean` 扫描 RepoKit home 的登记仓库，回收过期缓存并
+保留轻量 checkout 登记；`worktree clean` 面向指定 clone，二者共用清理 service。数量阈值、merged 终态、
 旧 checkout 淘汰和依赖环境释放均由 RepoKit 管理；未知创建时间视为最旧，branch refs 保留。
 devloop 没有 after_success 清理回调、周期 task、monitor 注册或 Harness 活动触发的扫描进程。
 用户要求清理时，AI 按 monitor skill 直接执行 CLI；纯状态查询不清理。

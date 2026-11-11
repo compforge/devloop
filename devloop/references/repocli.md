@@ -2,7 +2,8 @@
 
 Use repocli directly to inspect repository changes. It reports changed source files,
 symbols and potentially affected files; RepoKit also owns validation execution and history.
-There is no separate repocli skill or Python forwarding script.
+Skills invoke the CLI directly. Programmatic PR queries share a bounded result decoder;
+it owns no credentials, retry policy or repository state.
 
 ```sh
 repocli version --json
@@ -50,8 +51,8 @@ for a combined round. `--base` selects impact-based checks; without it selected
 Components run full checks. `--plan` is read-only. The Go toolkit owns Makefile
 parsing, plans, bounded execution, Component/check fingerprints and result reuse.
 
-The AI selects scope and runs the CLI directly; devloop does not wrap it in Python or
-execute validation from commit hooks. Inspect the report before publishing code. See
+The AI selects validation scope and runs the CLI directly; commit hooks do not execute validation.
+Automated repository queries prefer the CLI; SDKs cover operations without an equivalent CLI contract. Inspect the report before publishing code. See
 [validation](../skills/validate/SKILL.md) and [repository-toolkit](../docs/repository-toolkit.md).
 
 ## Installation and compatibility
@@ -77,7 +78,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.62.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.65.1 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.
@@ -152,3 +153,10 @@ or passed. History totals belong to `data`, not this invocation's cost. Do not a
 phases to their checks, subtract summed work from wall time to infer CLI overhead, or
 invent timings for unmeasured lock/scan work. `wallSeconds` ends before final serialization
 and output delivery. See [validation](../skills/validate/references/spec.md) for acceptance.
+
+## Repository access
+
+RepoKit owns Forge instance/provider, API host and credentials in `<home>/config.json`.
+Devloop does not load access settings or inject token environment variables. SDK fallbacks use
+RepoKit configuration; workflow configuration only selects the PR target repository.
+The configured access contract requires Python RepoKit 0.26.0 and TypeScript RepoKit 0.20.0.

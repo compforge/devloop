@@ -6,7 +6,7 @@
 enter repo → start branch → develop → explicit validate → commit → push → PR/MR → human merge
 ```
 
-它支持 GitHub PR 与 GitLab MR，并根据仓库的 origin 自动选择平台。当前可运行在 Claude Code、Codex、DeepSeek Harness（DSH）与 OpenCode V2。
+它支持 GitHub PR 与 GitLab MR，Repository 身份和平台访问配置统一由 RepoKit 解析。当前可运行在 Claude Code、Codex、DeepSeek Harness（DSH）与 OpenCode V2。
 
 ## 为什么需要 devloop
 
@@ -25,7 +25,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 - **运行态上下文**：Board 向当前 session 投递相关仓库的 branch、working tree、PR/MR 和验证状态；进入项目或上下文压缩后会自动刷新。
 - **执行级守卫**：在原生 PreToolUse 路径上拒绝保护分支 commit/push、过期分支编辑、`git add -A`、绕过 managed worktree 等高置信风险操作。
 - **并发隔离**：checkout 被一个 session 占用后，其它 session 的分支切换和源码编辑会被引导到独立 worktree。
-- **PR/MR 生命周期对账**：周期关联主 checkout 与 linked worktree 的 Forge 状态；通过 RepoKit repository lifecycle API 更新观察与本地资源状态。
+- **PR/MR 生命周期观察**：按需通过 RepoKit 关联 branch、checkout 与 PR 状态。显式 `repocli clean` 或 PR 写入后的维护由 RepoKit 执行，devloop 不启动周期清理。
 
 领域主链是 **`PR/MR → Repo → Component`**。Repo 是 git、branch 和 forge 状态的边界；Component 是 lint/test 的验证单位；workspace 只是可选的多仓聚合上下文，单仓库同样完整支持。
 
@@ -82,7 +82,7 @@ Board 在同一用户轮次的每次模型请求中保持可见。工具与脚�
 gcampr
 ```
 
-devloop 会选择当前仓库和受影响的 Component，完成验证、提交、推送并返回 PR/MR 地址。创建 PR/MR 和状态刷新需要对应平台的凭据，优先使用 `GITHUB_TOKEN`、`GH_TOKEN` 或 `GITLAB_TOKEN`。
+devloop 会选择当前仓库和受影响的 Component，完成验证、提交、推送并返回 PR/MR 地址。创建 PR/MR 和状态刷新使用 RepoKit 的 `~/.repokit/config.json` 访问配置；devloop 不读取 token 环境变量。
 
 ## Component 验证
 
@@ -159,7 +159,7 @@ push 始终发往 origin；branch、worktree、commit、review 和巡检仍以�
 
 Worktree 的保留数量、依赖环境与清理保护由 RepoKit 管理。AI 直接执行原生 PR 写操作或显式 clean，RepoKit 自行维护本地资源。RepoKit 以 merged 为终态，保留 branch refs；超出数量时清理旧 checkout 或环境，未知创建时间视为最旧。配置与手工 `repocli worktree clean` 见 RepoKit 文档。
 
-完整配置结构和 forge host 配置见 [`config/config.example.json`](./config/config.example.json)。token 建议使用环境变量；如果写入配置文件，不要提交仓库内的 `.devloop/config.json`。
+工作流配置见 [`config/config.example.json`](./config/config.example.json)；Forge 访问配置独立存放在 RepoKit home，见[配置边界](docs/configuration.md#repository-访问边界)。
 
 ## PR/MR 查询与清理
 

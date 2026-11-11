@@ -64,7 +64,7 @@ def _add_external_worktree(repo: str, tag: str) -> str:
 
 def test_reused_worktree_refreshes_shared_home_without_recreating_source():
     from repokit.state import RepositoryState
-    from repokit import resolve_home
+    from repokit.state import resolve_home
     from unittest.mock import patch
 
     repo, _, _ = _fixture("home-reuse")

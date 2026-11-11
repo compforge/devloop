@@ -13,8 +13,8 @@ repocli pr close <number> --repo <path> --json
 Run `repocli validate` before publishing code or submitting its PR; inspect the results.
 Pure title/body updates do not require validation. CLI commands do not run validation.
 Select a fork destination explicitly with `--target-repository owner/repo`.
-Credentials use `GH_TOKEN`/`GITHUB_TOKEN` or `GITLAB_TOKEN`; never put tokens in command arguments.
-The AI invokes the CLI directly in an environment with these credentials; devloop does not launch it.
+Forge access comes from RepoKit home config.json; do not inject token environment variables.
+The AI invokes these write commands directly; devloop owns no access configuration.
 
 Use [gcampr](commit-flow.md) for commit + push + create/reuse. Merge remains a human action.
 Successful PR writes perform best-effort local maintenance inside RepoKit; devloop supplies no

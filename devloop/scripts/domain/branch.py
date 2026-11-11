@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from repokit import git as operations
 from repokit.git import stash as stash
 
-from lib import git_state, gitcmd
+from repokit.git import state as git_state
 
 from .context import RepoContext, session
 
@@ -95,7 +95,7 @@ def create(
             stash_oid = saved.oid
             uncertain = saved.result.uncertain
             if not saved.result.ok:
-                raise BranchError(f"could not preserve local changes before creating {name!r}: {gitcmd.operation_detail(saved.result)}")
+                raise BranchError(f"could not preserve local changes before creating {name!r}: {saved.result.detail}")
 
         checkout = operations.create_branch(repo, name, base)
         uncertain = checkout.uncertain
@@ -105,10 +105,10 @@ def create(
                 uncertain = restored.uncertain
                 if not restored.ok:
                     raise BranchError(
-                        f"could not cut {name!r} off {base}: {gitcmd.operation_detail(checkout)}; "
-                        f"restoring stash {stash_oid} also failed: {gitcmd.operation_detail(restored)}"
+                        f"could not cut {name!r} off {base}: {checkout.detail}; "
+                        f"restoring stash {stash_oid} also failed: {restored.detail}"
                     )
-            raise BranchError(f"could not cut {name!r} off {base}: {gitcmd.operation_detail(checkout)}")
+            raise BranchError(f"could not cut {name!r} off {base}: {checkout.detail}")
         switched = True
 
         # The checkout has already changed even if stash reapplication conflicts below. Refresh
@@ -121,7 +121,7 @@ def create(
         if stash_oid:
             restored = stash.restore(repo, stash_oid)
             if restored.uncertain:
-                raise BranchError(gitcmd.operation_detail(restored))
+                raise BranchError(restored.detail)
             if not restored.ok:
                 raise BranchError(
                     f"cut {name!r} off {base} but reapplying local changes failed: "

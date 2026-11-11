@@ -13,7 +13,7 @@ from unittest.mock import patch
 from domain.context import store
 from domain.lifecycle.base import dispatch
 from domain.lifecycle.review import review
-from lib import config
+from domain import config
 
 
 def test_plugin_root_environment_precedence():

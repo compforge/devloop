@@ -22,6 +22,15 @@ retaining the dependency workset. Repocli selects symbol, file or package granul
 automatically. `data.affectedFiles` includes seeds, confidence, distance and relation evidence;
 these describe static associations, not runtime probabilities.
 
+## Depot preparation
+
+Use `repocli depot inspect --repo <checkout> --json` to observe dependency Bins;
+`repocli depot prepare --repo <checkout> --timeout 10m --json` explicitly prepares them.
+`--component <root>` selects a Component; shared workspace Bins are prepared once.
+Check per-Bin status/action/error and `cost.phases`. `present` is unverified and preserved;
+failed/unknown installation must not be treated as ready or automatically retried.
+Managed checkout calls prepare once and retains environment warnings. Validate does not install dependencies.
+
 ## Organization
 
 `inspect` supplies the Component catalog, language and package-tool metadata.
@@ -78,7 +87,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.70.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.71.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

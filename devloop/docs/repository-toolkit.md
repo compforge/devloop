@@ -67,7 +67,7 @@ devloop 没有 after_success 清理回调、周期 task、monitor 注册或 Harn
 用户要求清理时，AI 按 monitor skill 直接执行 CLI；纯状态查询不清理。
 
 managed worktree 的命名、任务/session 归属、复用及依赖准备时机仍由 devloop 决定。
-依赖观察和锁定安装使用原生 toolkit；安装成功不代表验证通过。详见 [worktree-env](worktree-env.md)。
+依赖准备一次调用 `repocli depot prepare`，消费逐 Bin 结果和成本；安装成功不代表验证通过。详见 [worktree-env](worktree-env.md)。
 
 ## 组织事实与状态归属
 

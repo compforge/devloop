@@ -66,7 +66,8 @@ RepoKit 在 PR 写操作后维护本地资源。全局 `clean` 扫描 RepoKit ho
 devloop 没有 after_success 清理回调、周期 task、monitor 注册或 Harness 活动触发的扫描进程。
 用户要求清理时，AI 按 monitor skill 直接执行 CLI；纯状态查询不清理。
 
-managed worktree 的命名、任务/session 归属、复用及依赖准备时机仍由 devloop 决定。
+managed worktree 的命名、目标基线、任务/session 归属及依赖准备时机由 devloop 决定。
+创建、恢复、复用核验和登记统一调用 `repocli worktree ensure`；不再根据目录/分支自行拼装 Git 操作。
 依赖准备一次调用 `repocli depot prepare`，消费逐 Bin 结果和成本；安装成功不代表验证通过。详见 [worktree-env](worktree-env.md)。
 
 ## 组织事实与状态归属

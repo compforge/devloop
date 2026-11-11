@@ -22,6 +22,15 @@ retaining the dependency workset. Repocli selects symbol, file or package granul
 automatically. `data.affectedFiles` includes seeds, confidence, distance and relation evidence;
 these describe static associations, not runtime probabilities.
 
+## Worktree lifecycle
+
+`repocli worktree ensure <path> --branch <branch> --base <branch> --remote origin --repo <repo> --json`
+creates or reuses the exact requested checkout. Require `data.confirmed=true` and matching checkout/branch;
+action distinguishes `created`, `resumed` and `reused`. A new branch requires a successful remote refresh;
+existing branches/checkouts are never reset to the creation base. Diagnostics can retain a confirmed checkout
+with failed state publication. An unknown result needs inspection before retry; do not fall back to SDK mutation.
+Depot preparation is a separate command. See [worktree workflow](../skills/git-ops/references/worktree.md).
+
 ## Depot preparation
 
 Use `repocli depot inspect --repo <checkout> --json` to observe dependency Bins;
@@ -87,7 +96,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.71.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.72.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

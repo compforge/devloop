@@ -3,7 +3,7 @@ name: git-ops
 description: Commit, push, rebase, manage GitHub PRs or GitLab MRs, create/resume branches and worktrees, or publish releases. Use for gcam / gcamp / gcampr / rebase / 解决冲突 / 提 PR / 提 MR / 看 PR / 看 MR / 关 PR / 关 MR / checkout / worktree / 切新分支 / 发版.
 ---
 
-Use devloop's managed scripts for Git transactions and `repocli pr` for PR operations; read-only Git inspection is unrestricted.
+Use devloop's managed scripts for commit/rebase transactions, `repocli worktree ensure` for checkout lifecycle and `repocli pr` for PR operations; read-only Git inspection is unrestricted.
 Do not replace these workflows with raw Git mutations or provider-specific API calls.
 Before invoking repocli, read [its result and recovery contract](../../references/repocli.md#command-results-and-recovery).
 

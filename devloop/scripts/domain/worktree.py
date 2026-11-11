@@ -11,10 +11,7 @@ import logging
 import subprocess
 from pathlib import Path
 
-from repokit import state as operations
-from repokit.git import state as git_state
 from repokit.git.state import checkout_info
-from repokit.state import RepositoryState
 
 from domain import git_policy
 
@@ -28,16 +25,7 @@ def prepare_environment(path: str) -> list[str]:
     +link=component://devloop/docs/worktree-env.md
     """
     try:
-        result = subprocess.run(
-            ["repocli", "depot", "prepare", "--repo", path, "--timeout", "10m", "--json"],
-            capture_output=True, text=True, timeout=610, check=False,
-        )
-        envelope = json.loads(result.stdout)
-        if (envelope["schemaVersion"] != "1.0"
-                or envelope["command"] != "repocli depot prepare"
-                or envelope["outcome"] not in {"succeeded", "failed", "partial", "unknown"}
-                or (result.returncode == 0) != (envelope["outcome"] == "succeeded")):
-            raise ValueError("unsupported or contradictory repocli result")
+        envelope = _repocli(path, ("depot", "prepare"), [], timeout=600)
         data = envelope["data"]
         if envelope["outcome"] != "succeeded" and isinstance(data, dict) and not data.get("checkout"):
             error = envelope.get("error")
@@ -80,8 +68,6 @@ def prepare_environment(path: str) -> list[str]:
             if not isinstance(error, dict) or not isinstance(error.get("message"), str):
                 raise ValueError("failed Depot report without error")
             warnings.append(error["message"])
-        logger.info("Dependency preparation path=%s outcome=%s bins=%d cost=%s",
-                    path, envelope["outcome"], len(data["bins"]), envelope.get("cost"))
         return warnings
     except (OSError, ValueError, KeyError, TypeError, AttributeError,
             subprocess.SubprocessError) as error:
@@ -89,59 +75,62 @@ def prepare_environment(path: str) -> list[str]:
 
 
 def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
-    """Create or reuse ``.worktrees/<tag>``.
+    """Choose devloop naming and preparation policy over RepoKit checkout lifecycle.
 
-    Worktrees live inside the repo, never as siblings. The legacy ``worktrees/`` layout
-    remains readable so existing checkouts continue to resolve. The operation is
-    idempotent and prepares dependencies. Reclamation belongs exclusively to PR/MR
-    lifecycle reconciliation; creating or resuming a checkout never removes another.
-    A genuinely new branch is cut from a freshly fetched ``origin/<target>``. A retained
-    branch is resumed as-is: reusing a tag must never rewrite existing work.
+    +spec=Only a confirmed matching CLI result authorizes preparation; failure/unknown never falls back to SDK mutation.
+    +link=component://devloop/docs/worktree-env.md
     """
-    base = Path(repo_dir)
-    rel = Path(".worktrees") / tag
-    for legacy in (rel, Path("worktrees") / tag):
-        if (base / legacy).is_dir():
-            path = str((base / legacy).resolve())
-            warnings = prepare_environment(path)
-            try:
-                RepositoryState().observe(path)
-            except (OSError, ValueError) as exc:
-                logger.warning("Worktree observation failed path=%s error=%s", path, exc)
-                warnings.append(f"repository observation unavailable: {exc}")
-            msg = "reused existing worktree"
-            if warnings:
-                msg += "; environment warning: " + " | ".join(warnings)
-            return path, msg
-
-    target = git_policy.local_default_target(repo_dir)
     branch = f"worktree-{tag}"
-    if git_state.rev_parse(repo_dir, f"refs/heads/{branch}"):
-        result = operations.add_worktree(repo_dir, str(rel), branch)
-        message = "reused existing branch"
-    else:
-        remote_ref = f"origin/{target}"
-        refspec = f"+refs/heads/{target}:refs/remotes/origin/{target}"
-        if not git_state.fetch(repo_dir, refspec, timeout=30):
-            return None, (
-                f"could not refresh {remote_ref}; worktree was not created "
-                "because its base may be stale"
-            )
-        if not git_state.rev_parse(repo_dir, remote_ref):
-            return None, f"could not resolve refreshed {remote_ref}"
-        result = operations.add_worktree(repo_dir, str(rel), remote_ref, branch=branch)
-        message = f"created worktree from refreshed {remote_ref}"
-    if not result.ok:
-        return None, f"worktree add failed for {branch}: {result.detail}"
+    target = Path(repo_dir).resolve() / ".worktrees" / tag
+    try:
+        base = git_policy.local_default_target(repo_dir)
+        envelope = _repocli(repo_dir, ("worktree", "ensure"), [
+            str(target), "--branch", branch, "--base", base, "--remote", "origin",
+        ], timeout=120)
+        if envelope["outcome"] != "succeeded":
+            error = envelope.get("error")
+            detail = error.get("message") if isinstance(error, dict) else None
+            return None, f"worktree ensure {envelope['outcome']}: {detail or 'inspect the CLI result before retrying'}"
+        data = envelope["data"]
+        if (not isinstance(data, dict) or data.get("confirmed") is not True
+                or data.get("branch") != branch or not isinstance(data.get("checkout"), str)
+                or not data["checkout"] or Path(data["checkout"]).resolve() != target.resolve()
+                or not isinstance(data.get("headSha"), str) or not data["headSha"]
+                or data.get("action") not in {"created", "resumed", "reused"}):
+            raise ValueError("unconfirmed or mismatching checkout result")
+        diagnostics = data.get("diagnostics")
+        if not isinstance(diagnostics, list) or any(
+            not isinstance(d, dict) or not isinstance(d.get("message"), str) for d in diagnostics
+        ):
+            raise ValueError("invalid checkout diagnostics")
+        warnings = [d["message"] for d in diagnostics]
+        checkout = data["checkout"]
+        warnings.extend(prepare_environment(checkout))
+        message = {"created": f"created worktree from refreshed origin/{base}",
+                   "resumed": "reused existing branch", "reused": "reused existing worktree"}[data["action"]]
+        if warnings:
+            message += "; environment warning: " + " | ".join(warnings)
+        return checkout, message
+    except (OSError, ValueError, KeyError, TypeError, AttributeError,
+            subprocess.SubprocessError) as error:
+        return None, f"worktree ensure unavailable: {error}"
 
-    path = str((base / rel).resolve())
-    warnings = prepare_environment(path)
-    if result.err.startswith("checkout created; metadata unavailable:"):
-        logger.warning("Worktree created with metadata diagnostic path=%s detail=%s", path, result.err)
-        warnings.append(result.err)
-    if warnings:
-        message += "; environment warning: " + " | ".join(warnings)
-    return path, message
+
+def _repocli(repo: str, operation: tuple[str, str], arguments: list[str], *, timeout: int) -> dict:
+    """Bound the CLI protocol boundary; return domain failures for caller policy."""
+    result = subprocess.run(
+        ["repocli", *operation, *arguments, "--repo", repo, "--timeout", f"{timeout}s", "--json"],
+        capture_output=True, text=True, timeout=timeout + 10, check=False,
+    )
+    envelope = json.loads(result.stdout)
+    if (not isinstance(envelope, dict) or envelope.get("schemaVersion") != "1.0"
+            or envelope.get("command") != "repocli " + " ".join(operation)
+            or envelope.get("outcome") not in {"succeeded", "failed", "partial", "unknown"}
+            or (result.returncode == 0) != (envelope["outcome"] == "succeeded")):
+        raise ValueError("unsupported or contradictory repocli result")
+    logger.info("RepoCLI operation=%s repo=%s outcome=%s cost=%s",
+                operation, repo, envelope["outcome"], envelope.get("cost"))
+    return envelope
 
 
 def primary(repo_dir: str) -> str:

@@ -25,7 +25,7 @@ def test_one_cli_call_handles_all_components_and_shared_bins():
     with patch.object(worktree.subprocess, "run", return_value=result(bins)) as run:
         assert worktree.prepare_environment("/repo") == []
     assert run.call_count == 1
-    assert run.call_args.args[0] == ["repocli", "depot", "prepare", "--repo", "/repo", "--timeout", "10m", "--json"]
+    assert run.call_args.args[0] == ["repocli", "depot", "prepare", "--repo", "/repo", "--timeout", "600s", "--json"]
     assert run.call_args.kwargs["timeout"] > 600
 
 

@@ -37,24 +37,6 @@ def _fixture(name: str) -> tuple[str, str, str]:
     return str(repo), str(remote), str(actor)
 
 
-def _advance_remote(actor: str) -> str:
-    path = Path(actor) / "remote.txt"
-    path.write_text("new\n")
-    _git(actor, "add", "remote.txt")
-    _git(actor, "commit", "-qm", "advance main")
-    _git(actor, "push", "-q", "origin", "main")
-    return _git_out(actor, "rev-parse", "HEAD")
-
-
-def _add_worktree(repo: str, tag: str) -> str:
-    path = Path(repo) / ".worktrees" / tag
-    path.parent.mkdir(exist_ok=True)
-    branch = f"worktree-{tag}"
-    _git(repo, "branch", branch)
-    _git(repo, "worktree", "add", "-q", str(path), branch)
-    return str(path)
-
-
 def _add_external_worktree(repo: str, tag: str) -> str:
     path = Path(repo).parent / f"external-{tag}"
     branch = f"external-{tag}"
@@ -63,88 +45,64 @@ def _add_external_worktree(repo: str, tag: str) -> str:
     return str(path)
 
 
-@patch.object(worktree, "prepare_environment", return_value=[])
-def test_reused_worktree_refreshes_shared_home_without_recreating_source(_prepare):
-    from repokit.state import RepositoryState
-    from repokit.state import resolve_home
-    from unittest.mock import patch
-
-    repo, _, _ = _fixture("home-reuse")
-    existing = _add_worktree(repo, "reuse")
-    path, message = worktree.create_or_reuse(repo, "reuse")
-    assert path == str(Path(existing).resolve()) and message == "reused existing worktree"
-    state = RepositoryState()
-    assert state.store.root == resolve_home().resolve()
-    assert state.branch(path, "worktree-reuse", max_age=3600).source == "cache"
-    with patch.object(RepositoryState, "observe", side_effect=OSError("unavailable")):
-        path, message = worktree.create_or_reuse(repo, "reuse")
-    assert path is not None and "repository observation unavailable" in message
+def _ensure_report(action="created", **fields):
+    return {"schemaVersion": "1.0", "command": "repocli worktree ensure", "outcome": "succeeded",
+            "data": {"checkout": str(Path("/repo/.worktrees/topic").resolve()), "branch": "worktree-topic",
+                     "headSha": "a" * 40, "confirmed": True, "action": action, "diagnostics": [], **fields}}
 
 
-@patch.object(worktree, "prepare_environment", return_value=[])
-def test_new_worktree_fetches_latest_target_tip(_prepare):
-    repo, _, actor = _fixture("fresh")
-    stale_tip = _git_out(repo, "rev-parse", "origin/main")
-    latest_tip = _advance_remote(actor)
-    assert stale_tip != latest_tip
-
-    path, message = worktree.create_or_reuse(repo, "fresh")
-
-    assert path is not None
-    assert _git_out(path, "rev-parse", "HEAD") == latest_tip
-    assert message == "created worktree from refreshed origin/main"
-
-
-def test_new_worktree_refuses_a_stale_base_when_fetch_fails():
-    repo, remote, _ = _fixture("offline")
-    shutil.rmtree(remote)
-
-    path, message = worktree.create_or_reuse(repo, "offline")
-
-    assert path is None
-    assert "base may be stale" in message
-    assert _git_out(repo, "branch", "--list", "worktree-offline") == ""
+def test_creation_resume_and_reuse_delegate_identity_to_repocli():
+    for action, message in (("created", "created worktree from refreshed origin/main"),
+                            ("resumed", "reused existing branch"), ("reused", "reused existing worktree")):
+        with (patch.object(worktree.git_policy, "local_default_target", return_value="main"),
+              patch.object(worktree, "_repocli", return_value=_ensure_report(action)) as run,
+              patch.object(worktree, "prepare_environment", return_value=[]) as prepare):
+            path, actual = worktree.create_or_reuse("/repo", "topic")
+        assert path == str(Path("/repo/.worktrees/topic").resolve()) and actual == message
+        assert run.call_count == 1 and prepare.call_count == 1
+        repo, operation, arguments = run.call_args.args
+        assert repo == "/repo" and operation == ("worktree", "ensure")
+        assert arguments == [str(Path("/repo/.worktrees/topic").resolve()), "--branch", "worktree-topic",
+                             "--base", "main", "--remote", "origin"]
+        assert run.call_args.kwargs["timeout"] == 120
+        prepare.assert_called_once_with(path)
 
 
-@patch.object(worktree, "prepare_environment", return_value=[])
-def test_retained_branch_is_resumed_without_rewriting_it(_prepare):
-    repo, _, actor = _fixture("resume")
-    retained_tip = _git_out(repo, "rev-parse", "HEAD")
-    _git(repo, "branch", "worktree-resume", retained_tip)
-    latest_tip = _advance_remote(actor)
-    assert retained_tip != latest_tip
-
-    path, message = worktree.create_or_reuse(repo, "resume")
-
-    assert path is not None
-    assert _git_out(path, "rev-parse", "HEAD") == retained_tip
-    assert message == "reused existing branch"
+def test_failed_and_unknown_ensure_never_prepare_or_fallback():
+    for outcome in ("failed", "unknown"):
+        report = _ensure_report(); report.update(outcome=outcome, error={"code": "state.worktree_unconfirmed", "message": "inspect checkout"})
+        with (patch.object(worktree.git_policy, "local_default_target", return_value="main"),
+              patch.object(worktree, "_repocli", return_value=report),
+              patch.object(worktree, "prepare_environment", side_effect=AssertionError("must not prepare"))):
+            path, message = worktree.create_or_reuse("/repo", "topic")
+        assert path is None and outcome in message and "inspect checkout" in message
 
 
-@patch.object(worktree, "prepare_environment", return_value=[])
-def test_create_and_reuse_leave_reclamation_to_pr_lifecycle(_prepare):
-    repo, _, _ = _fixture("create_without_pruning")
-    old = _add_worktree(repo, "old")
-    # A leftover legacy setting must not resurrect count-based reclamation.
-    config_file = Path(repo) / ".devloop" / "config.json"
-    config_file.parent.mkdir(exist_ok=True)
-    config_file.write_text('{"worktree":{"keep_recent":0}}')
-    created, _ = worktree.create_or_reuse(repo, "new")
-    assert created is not None and Path(created).is_dir()
-    assert Path(old).is_dir()
-    reused, _ = worktree.create_or_reuse(repo, "new")
-    assert reused == created and Path(old).is_dir()
+def test_mismatching_or_unconfirmed_reports_never_authorize_preparation():
+    for fields in ({"confirmed": False}, {"checkout": "/other"}, {"branch": "different"},
+                   {"action": "unknown"}, {"headSha": ""}, {"diagnostics": None}):
+        with (patch.object(worktree.git_policy, "local_default_target", return_value="main"),
+              patch.object(worktree, "_repocli", return_value=_ensure_report(**fields)),
+              patch.object(worktree, "prepare_environment", side_effect=AssertionError("must not prepare"))):
+            path, message = worktree.create_or_reuse("/repo", "topic")
+        assert path is None and "unavailable" in message
 
 
-@patch.object(worktree, "prepare_environment", return_value=["registry unavailable"])
-def test_preparation_warning_keeps_created_and_reused_worktree(_prepare):
-    repo, _, _ = _fixture("preparation_warning")
-    created, message = worktree.create_or_reuse(repo, "new")
-    assert created is not None and Path(created).is_dir()
-    assert "environment warning: registry unavailable" in message
-    reused, message = worktree.create_or_reuse(repo, "new")
-    assert reused == created and "environment warning: registry unavailable" in message
-    assert _prepare.call_count == 2
+def test_observation_and_environment_warnings_preserve_confirmed_checkout():
+    with (patch.object(worktree.git_policy, "local_default_target", return_value="main"),
+          patch.object(worktree, "_repocli", return_value=_ensure_report(diagnostics=[
+              {"code": "state.observation_unavailable", "message": "metadata unavailable"}])),
+          patch.object(worktree, "prepare_environment", return_value=["registry unavailable"])):
+        path, message = worktree.create_or_reuse("/repo", "topic")
+    assert path is not None and "metadata unavailable" in message and "registry unavailable" in message
+
+
+def test_missing_cli_preserves_failure_without_sdk_fallback():
+    with (patch.object(worktree.git_policy, "local_default_target", return_value="main"),
+          patch.object(worktree, "_repocli", side_effect=FileNotFoundError("repocli")),
+          patch.object(worktree, "prepare_environment", side_effect=AssertionError("must not prepare"))):
+        path, message = worktree.create_or_reuse("/repo", "topic")
+    assert path is None and "repocli" in message
 
 
 def test_repo_context_topology_uses_checkout_locations():

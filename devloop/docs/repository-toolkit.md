@@ -94,4 +94,5 @@ thread ID，前者用于 Verdict 命令，后者用于通用 discussion 命令�
 通用 tag 发布由 skill 直接调用 `repocli git tag publish`；devloop 不保留 `release.py tag`
 或 Python 转发器。RepoKit 拥有目标 commit 固定、push destination 选择、已有 tag 冲突检查、
 原子推送和远端核验。命令遵守 Git tag 名称语法，版本号、递增规则、模块 tag 顺序与 CI 验收归
-项目契约和 skill。`release.py` 仅保留 Forge Release 的 create/latest 入口。
+项目契约和 skill。Forge Release 由 skill 直接调用 `repocli release latest/show/create`，
+查询、目标核验、重复创建和未知结果恢复归 RepoKit；devloop 不保留 Release Python 入口。

@@ -36,7 +36,7 @@ os.environ["REPOKIT_HOME"] = _repokit_home.name
 
 from harness_common import Forge as ForgeIdentity, Repository  # noqa: E402
 from domain.context import PullRequest  # noqa: E402
-from domain.forge import Comment, Forge, ForgeError, ForgeNotFound, Release  # noqa: E402
+from domain.forge import Comment, Forge, ForgeError, ForgeNotFound  # noqa: E402
 
 
 class _FakeForge(Forge):
@@ -113,17 +113,10 @@ class _FakeForge(Forge):
         return "main"
 
     def create_release(self, *, tag, target, name="", notes=""):
-        r = Release(tag=tag, name=name or tag, target=target, web_url=f"rel/{tag}",
-                    created_at=f"t{tag}")
-        self._releases = getattr(self, "_releases", [])
-        self._releases.append(r)
-        self.released = r
-        self.released_notes = notes   # Release carries no body; capture it for assertions
-        return r
+        raise NotImplementedError("Release publication belongs to repocli")
 
     def latest_release(self):
-        rels = getattr(self, "_releases", [])
-        return rels[-1] if rels else None
+        raise NotImplementedError("Release queries belong to repocli")
 
 def _load_from(base, name):
     spec = importlib.util.spec_from_file_location(name, str(base / f"{name}.py"))

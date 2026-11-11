@@ -88,3 +88,10 @@ Git status、ahead/behind 或祖先查询失败均保留失败语义，不伪造
 `review.py` 继续拥有 Finding/Verdict、修复发布条件与 review 引擎编排；其内部原生 SDK 调用
 保留，不为替换通用入口新增 Python CLI wrapper。`review findings` 输出 comment ID 和可用的
 thread ID，前者用于 Verdict 命令，后者用于通用 discussion 命令。
+
+## Tag 发布
+
+通用 tag 发布由 skill 直接调用 `repocli git tag publish`；devloop 不保留 `release.py tag`
+或 Python 转发器。RepoKit 拥有目标 commit 固定、push destination 选择、已有 tag 冲突检查、
+原子推送和远端核验。命令遵守 Git tag 名称语法，版本号、递增规则、模块 tag 顺序与 CI 验收归
+项目契约和 skill。`release.py` 仅保留 Forge Release 的 create/latest 入口。

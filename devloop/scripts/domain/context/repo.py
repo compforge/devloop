@@ -18,6 +18,7 @@ from domain.context import agents as parsers
 
 from repokit.state import default_branch as repository_default_branch
 from repokit import forge_client
+from repokit.forge.model import ForgeError
 
 from .. import repo_layout
 from . import base, store
@@ -214,8 +215,13 @@ class RepoContext:
         agents_md_path = repo_layout.find_agents_md(repo_dir_abs, code_dir)
 
         prev = cls.load(repo_dir_abs) or cls()
-        # RepoKit owns observation freshness; this is only the development target projection.
-        observed = repository_default_branch(repo_dir_abs, forge=forge_client(repo_dir_abs))
+        # Optional metadata access must preserve RepoKit's cached/local fallback.
+        try:
+            forge = forge_client(repo_dir_abs)
+        except ForgeError as error:
+            logging.getLogger(__name__).warning("Forge metadata access unavailable repo=%s error=%s", repo_dir_abs, error)
+            forge = None
+        observed = repository_default_branch(repo_dir_abs, forge=forge)
         default_branch = observed.branch or git_policy.local_default_target(repo_dir_abs)
         target = default_branch
         items = parsers.parse_references_section(agents_md_path) if agents_md_path else []

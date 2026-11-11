@@ -982,5 +982,23 @@ def test_review_query_receives_workflow_target():
         client.assert_not_called()
 
 
+def test_review_preserves_confirmed_pr_when_optional_sdk_access_fails():
+    """+case=Comment access failure preserves the observed PR and its review base."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    rr = _load_script("run_review")
+    pr = PullRequest(7, state="open", source_branch="topic", target_branch="release", target_repository="upstream/repo")
+    forge = _FakeForge([pr])
+    with patch.object(rr, "remote", return_value=SimpleNamespace(host="github.com", path="fork/repo")), \
+         patch.object(rr, "list_pull_requests", return_value=[pr]), \
+         patch.object(rr, "forge_client", side_effect=ForgeError("access unavailable")) as access:
+        assert rr._open_mr("/repo", "topic") == (None, pr)
+        access.side_effect = None
+        access.return_value = forge
+        with patch.object(forge, "for_repository", side_effect=ForgeError("target unavailable")):
+            assert rr._open_mr("/repo", "topic") == (None, pr)
+        assert pr.target_branch == "release"
+
+
 if __name__ == "__main__":
     run_main(globals())

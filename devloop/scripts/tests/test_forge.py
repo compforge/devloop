@@ -243,5 +243,28 @@ def test_merge_reminders_are_devloop_policy():
     }
 
 
+def test_repo_refresh_preserves_local_and_cached_metadata_without_forge_access():
+    """+case=Optional context refresh survives unavailable Forge credentials."""
+    from tempfile import TemporaryDirectory
+    from unittest.mock import patch
+    from _repo_fixture import make_repo
+    from domain.context import repo as context
+    from repokit.forge.model import ForgeAuthError
+    from repokit.state.metadata import DefaultBranch
+
+    with TemporaryDirectory() as directory:
+        root = make_repo(directory)
+        _git(root, "branch", "release")
+        _git(root, "remote", "add", "origin", "https://github.com/example/repo.git")
+        for observed, expected in (("release", "release"), (None, "main")):
+            with patch.object(context, "forge_client", side_effect=ForgeAuthError("no credential")), \
+                 patch.object(context, "repository_default_branch", return_value=DefaultBranch(observed, 0, False, "unavailable")) as metadata:
+                refreshed = context.RepoContext.refresh_all(root)
+                metadata.assert_called_once_with(str(root), forge=None)
+                assert refreshed.repo.default_branch == expected
+                assert refreshed.branch.local.name == "main"
+                assert context.RepoContext.load(root).repo.default_branch == expected
+
+
 if __name__ == "__main__":
     run_main(globals())

@@ -231,10 +231,12 @@ _BG_CAP = 1800   # background 每段上限：它会注入每个文件的 review 
 
 
 def _open_mr(repo: str, branch: str):
-    """(forge, 该分支的开放 MR)——找一次，给 background 取标题/描述 + 发评论复用。无则补 None。"""
+    """Resolve the proposal, then optionally obtain access for posting review comments.
+
+    +spec=Optional SDK access failure never retracts a confirmed PR or its review base.
+    """
     if not branch:
         return None, None
-    forge = None
     try:
         if remote(repo) is None:
             return None, None
@@ -244,11 +246,15 @@ def _open_mr(repo: str, branch: str):
         if not rows:
             return None, None
         pr = rows[0]
+    except ForgeError as error:
+        logging.getLogger(__name__).warning("Review PR context unavailable repo=%s error=%s", repo, error)
+        return None, None
+    try:
         forge = forge_client(repo)
         return (forge.for_repository(pr.target_repository) if forge else None), pr
     except ForgeError as error:
-        logging.getLogger(__name__).warning("Review PR context unavailable repo=%s error=%s", repo, error)
-        return forge, None
+        logging.getLogger(__name__).warning("Review comment access unavailable repo=%s pr=%s error=%s", repo, pr.number, error)
+        return None, pr
 
 
 def _pull_request_identity(repo: str, pr) -> dict | None:

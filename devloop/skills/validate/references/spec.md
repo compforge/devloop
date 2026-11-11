@@ -25,9 +25,24 @@ Component fall back to full scope. Partial impact does not by itself force full 
 checks. Failed format stops the round; absent optional format allows checks. Format-only
 success is never lint/test evidence. Dependencies must be prepared first.
 
-The report distinguishes inputsConsistent, complete and passed. Missing targets are
-unavailable; failed commands remain failed. Input changes invalidate passing evidence
-independently of check availability. A focused pass does not grant full coverage.
+The CLI command envelope and the ValidationReport in `data` answer different questions:
+command completion versus validation coverage and evidence. Read
+[the shared result contract](../../../references/repocli.md#command-results-and-recovery).
+
+| Evidence | Acceptance |
+|---|---|
+| Exit 0, `outcome: succeeded`, `data.passed`, `data.complete`, `data.inputsConsistent` all true | Accept only the reported check scope; focused success is not full coverage. |
+| A check failed, even without a top-level `error` | Report its diagnostics/output and repair the failure; preserve other check results. |
+| `inputsConsistent: false` | Passing checks do not validate the current inputs. |
+| Missing targets, skipped or unavailable checks | Describe the uncovered checks; do not call them passing. |
+| Plan or history result | Planning/prior evidence only; not a newly executed validation round. |
+| Successful checks but output export failed | Preserve the checks and report the export failure separately. |
+
+Check `data.components[].checks[].scope` and individual results even when all report flags are true.
+Format-only success is not validation coverage. Partial analysis alone does not mandate
+full checks: RepoKit selects the scope and explains fallback. Cost is reported from the
+current command's `cost`, with reuse accounting defined in
+[cost reporting](../../../references/repocli.md#cost-reporting).
 
 Repocli owns persistent execution history and checks reuse using Component/check inputs, command,
 scope, environment and dependency receipts. The AI inspects this report before publishing code;

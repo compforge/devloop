@@ -5,12 +5,14 @@ description: Run a repository or Component's Makefile format/lint/test through r
 
 Use repocli directly for project checks. The project owns its Makefile recipes;
 repocli owns target discovery, file selection, execution, bounded concurrency and result reuse.
+Read [repocli results and recovery](../../references/repocli.md#command-results-and-recovery)
+before interpreting CLI output; use its supported CLI/schema baseline.
 
 ```bash
 repocli format --repo <repo> --component <component>
 repocli lint --repo <repo> --component <component>
 repocli test --repo <repo> --component <component>
-repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m
+repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m --json
 ```
 
 `validate` defaults to lint/test. `--check` selects the steps to combine. Format always runs
@@ -27,15 +29,19 @@ Prepare project dependencies through its documented installation entrypoint befo
 validation. Missing Makefile targets are unavailable, not passing checks. Do not invent
 targets, install tools, or change dependencies merely to make a validation command work.
 
-For machine-readable results use `--json`; `--output <file>` saves the same report,
-including failed rounds. Repocli automatically checks its own execution history before
-running checks. `--force` requests real execution; `--history` reads retained statistics.
-Do not assemble previous reports or decide execution reuse in the workflow. Reports may include project output;
-keep them in ignored local state. `--concurrency` bounds simultaneous checks.
+Use `--json` for workflow decisions and `--output <file>` to retain the whole command result
+in ignored local state, including failed rounds. The ValidationReport is in `data`; parse it
+even when the process exits nonzero. `--plan` and `--history` also return envelopes by default;
+neither provides evidence that checks ran in this invocation. Repocli checks its own history
+before execution. `--force` requests real execution; `--concurrency` bounds simultaneous checks.
+Do not assemble previous reports or decide execution reuse in the workflow.
 
-Report Components, focused/full scope, executed/reused checks, failures and unavailable
-checks. `inputsConsistent: false` invalidates passing evidence independently of check
-availability. A focused pass, format success or a single check does not prove full validation.
+Accept validation only after checking the command outcome plus `data.passed`, `data.complete`,
+`data.inputsConsistent`, scope and individual check results. Report Components, focused/full
+scope, executed/reused checks, failures and unavailable checks. Input inconsistency invalidates
+passing evidence; a focused pass, format success or a single check does not prove full validation.
+Report `cost.wallSeconds` and the slowest Component/check steps with their current execution
+and lookup times. Use `cost.validation`, not historical reused check durations, for this round's cost.
 
 Read [the validation contract](references/spec.md) for result and Makefile semantics and
 [repocli](../../references/repocli.md) for installation and repository analysis.

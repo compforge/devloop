@@ -31,7 +31,7 @@ devloop 用状态投递让 agent 看到当前事实，用受控 Git 事务和执
 
 ## 快速开始
 
-运行时要求：共享核心与 Harness adapter 使用 **Node.js 22.19+**；Python 工作流使用 **uv 与 Python 3.11+**。`scripts/python` 通过 uv 准备隔离的 Python 环境和锁定依赖，首次准备需要联网；`DEVLOOP_PYTHON` 可指定兼容解释器。两种 runtime 的组件识别都直接使用原生 repocli toolkit。变更分析与验证戳仍需预先安装 **repocli CLI 0.47.0+**，详见 [repocli 接入](references/repocli.md)。
+运行时要求：共享核心与 Harness adapter 使用 **Node.js 22.19+**；Python 工作流使用 **uv 与 Python 3.11+**。`scripts/python` 通过 uv 准备隔离的 Python 环境和锁定依赖，首次准备需要联网；`DEVLOOP_PYTHON` 可指定兼容解释器。两种 runtime 的组件识别都直接使用原生 RepoKit SDK。AI 执行变更分析、验证与 PR 操作前须安装符合 [repocli 接入基线](references/repocli.md#installation-and-compatibility) 的 CLI。
 
 ### Claude Code
 
@@ -89,11 +89,12 @@ devloop 会选择当前仓库和受影响的 Component，完成验证、提交�
 AI 按 validate skill 直接执行 repocli，由 RepoKit 选择 Component、规划检查、执行并记录历史：
 
 ```console
-repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m
+repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m --json
 ```
 
 format 可选且允许修改源码；完成后重新规划，再有界并发执行 lint/test。
-AI 在提交代码和提交 PR 前检查 scope、diagnostics、inputsConsistent 和各检查结果。
+AI 在提交代码和提交 PR 前检查命令 outcome、diagnostics 与 `data` 中的范围、判定和各检查结果，
+并报告本次墙钟耗时、慢检查与复用情况；复用结果的历史耗时不计入本轮成本。
 commit/push 脚本不自动执行验证，也不以历史记录作为门禁。
 
 项目通过 Component 的 Makefile 暴露 `format`、`lint-ci` / `lint` 和 `test` 等检查。

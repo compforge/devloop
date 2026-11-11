@@ -3,12 +3,18 @@
 RepoKit 拥有 Repository 的组织、Git/Forge 操作、验证执行与资源维护。devloop 负责开发策略、
 managed Git 事务、review 和 Board。AI 按 skill 直接执行 `repocli validate`、`repocli pr`
 和 `repocli worktree clean`；插件程序直接调用各语言 toolkit，不通过 subprocess 包装 repocli。
-Python 依赖锁定 `compforge-repokit==0.23.0`，CLI 最低版本为 0.60.0。
+CLI 的版本基线与消费规则统一见 [repocli](../references/repocli.md)。原生 SDK 依赖独立锁定。
+
+CLI 交付命令结果 envelope，SDK 返回领域对象。AI 同时检查退出状态、outcome、diagnostics 与
+`data` 的领域判定，再决定开发流程是否继续；成本直接消费 `cost`，不从历史耗时另行推算。
+结果未知时先核验目标事实，部分失败保留已确认动作。具体恢复规则归各 skill，不在 runtime
+增加 CLI 转发器、结果缓存或第二套错误分类。
 
 ## 验证与 PR 交付
 
 验证计划、Makefile 执行、输入指纹、执行历史和复用判断均归 RepoKit。AI 在提交代码或提交 PR 前
-执行验证并检查 scope、diagnostics、inputsConsistent 和各检查结果；format 后按新的内容执行 lint/test。
+执行验证并检查 envelope 的 outcome、diagnostics，以及 `data` 的 passed、complete、inputsConsistent
+和各 Component/check 的范围与结果；format 后按新的内容执行 lint/test。
 CLI 缺失或检查失败应明确报告，不能换一个执行器声称通过。验证是否足以交付由 skill 指导 AI 判断，
 commit/push 脚本不自动执行检查，也不消费验证记录作为门禁。
 

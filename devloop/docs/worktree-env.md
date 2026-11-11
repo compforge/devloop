@@ -2,7 +2,12 @@
 
 devloop 在 managed worktree 创建或复用后调用一次 `repocli depot prepare --repo <checkout> --timeout 10m --json`。
 RepoKit 拥有 Component → Depot → Bin 的发现、安装根、指纹、锁定安装、回执与共享 Bin 去重。
-worktree 创建和依赖准备是独立操作，devloop 只决定准备时机及告警后继续的策略。
+worktree 创建和依赖准备是独立操作，devloop 只决定命名、基线、准备时机及告警后继续的策略。
+
+managed checkout 将 `.worktrees/<tag>`、`worktree-<tag>` 与选定的 origin 基线显式交给
+`repocli worktree ensure`。RepoKit 核验注册、实际 checkout 和分支，负责创建、恢复、复用及状态登记。
+只有 succeeded、confirmed 且路径/分支匹配时才继续 Depot 准备；失败、未知、CLI 缺失或协议错误停止，
+不回退到 SDK。不会根据目录存在就认定可复用，也不再维护旧目录布局的兼容分支。
 
 ## 结果与策略
 
@@ -34,7 +39,6 @@ reuse 缓存，也不在 Component 投影中解释回执或自行决定目录是
 
 ## Repository 信息
 
-新建 worktree 后的观察由 RepoKit 操作自身完成；复用已有 worktree 时，devloop 显式调用
-`RepositoryState().observe()` 更新本地信息。home 解析和目录布局完全归 RepoKit，devloop 不拼接
-用户目录、不做历史数据迁移。观察失败作为诊断保留，不把已经可用的工作区当作创建失败。
-PR、checkout 信息和 CLI 验证共用 `REPOKIT_HOME`；`.devloop` 继续保存工作流和 session 状态。
+创建和复用后的登记统一由 RepoKit ensure 完成；devloop 不再单独调用 `RepositoryState.observe()`。
+登记失败以结构化诊断保留，不把已确认的 checkout 当作创建失败。RepoKit home 的解析和布局归 RepoKit；
+`.devloop` 继续保存工作流和 session 状态。

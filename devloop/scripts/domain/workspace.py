@@ -4,7 +4,7 @@ Per-workspace state (`<workspace_root>/.devloop/context.json`) is owned by
 `domain.context.workspace`. This module owns only the registry and discovery
 (`find_containing_workspace` / `maybe_register_workspace`).
 
-Persistence lives in the unified `lib.config` (`~/.devloop/config.json`,
+Persistence lives in the unified `domain.config` (`~/.devloop/config.json`,
 `workspaces` key) — a USER-LEVEL path, NOT inside the plugin directory: the plugin
 dir is a versioned cache (`~/.claude/plugins/cache/.../<version>/`), so anything
 written there is silently reset on every `/plugin update`. `config_dir` / `plugin_root`
@@ -16,7 +16,7 @@ import os
 from pathlib import Path
 from repokit.git.state import checkout_at
 
-from lib import config
+from domain import config
 
 # Back-compat re-exports: other hooks call `workspace.config_dir()` / `workspace.plugin_root()`.
 config_dir = config.config_dir
@@ -63,7 +63,7 @@ def maybe_register_workspace(cwd: str | Path) -> str | None:
     agents_md = root / "AGENTS.md"
     if not agents_md.exists():
         return None
-    from lib import parsers  # local import: keep this module's import graph flat
+    from domain.context import agents as parsers
     from .context import workspace as wsctx
     if not wsctx.discover_subproject_names(root) and not parsers.parse_subprojects_section(agents_md):
         return None

@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 
 from _testkit import _FakeForge, _git, _git_out, _load_script, run_main  # noqa: E402  (bootstrap first)
+from domain import git_policy
 from domain.context import PullRequest  # noqa: E402
 from domain.forge import ForgeError  # noqa: E402
 
@@ -31,7 +32,7 @@ def test_run_review_skips_without_engine():
     finally:
         rr.review_engine.shutil.which = orig
     assert rc == 0
-    from lib import git_state
+    from repokit.git import state as git_state
     seg = store.load_segment(G, store.branch_segment(git_state.get_current_branch(G), "review"))
     assert seg and seg["status"] == "skipped" and "not installed" in seg["message"] and seg["count"] == 0
 
@@ -128,17 +129,17 @@ def test_run_review_posts_streamed_finding_before_engine_returns():
             return rr.review_engine.ReviewResult(ok=True, comments=[finding])
 
     original_resolve, original_open = rr.review_engine.resolve, rr._open_mr
-    original_default_target = rr.git_state.local_default_target
+    original_default_target = rr.git_policy.local_default_target
     original_identity = rr._pull_request_identity
     rr.review_engine.resolve = lambda name: FakeEngine()
     rr._open_mr = lambda repo, branch: (forge, pr)
-    rr.git_state.local_default_target = lambda repo: "release"
+    rr.git_policy.local_default_target = lambda repo: "release"
     rr._pull_request_identity = lambda repo, pr: None
     try:
         assert rr.main(["--repo", repo]) == 0
     finally:
         rr.review_engine.resolve, rr._open_mr = original_resolve, original_open
-        rr.git_state.local_default_target = original_default_target
+        rr.git_policy.local_default_target = original_default_target
         rr._pull_request_identity = original_identity
 
     assert len(forge.diff_posted) == 1
@@ -632,18 +633,18 @@ def test_run_review_append_history():
         assert _json.loads(lines[1])["status"] == "skipped"
 
 
-def test_pull_request_identity_uses_repository_facts_without_credentials():
+def test_review_identity_uses_toolkit_target_identity():
     from types import SimpleNamespace
+    from unittest.mock import patch
+    from repokit.forge.model import PullRequestIdentity
     rr = _load_script("run_review")
-    original = rr.remote
-    rr.remote = lambda repo: SimpleNamespace(host="git.example.com", path="fork/repo")
-    try:
-        assert rr._pull_request_identity("/repo", SimpleNamespace(number=17, target_repository="upstream/repo")) == {
-            "source": "git.example.com", "repository": "upstream/repo", "number": 17,
-        }
+    identity = PullRequestIdentity("git.example.com", "upstream/repo", 17)
+    with patch.object(rr, "pull_request_identity", return_value=identity) as resolve:
+        assert rr._pull_request_identity("/repo", SimpleNamespace(number=17, target_repository="upstream/repo")) == identity.to_dict()
+        resolve.assert_called_once_with("/repo", 17, target_repository="upstream/repo")
+        resolve.reset_mock()
         assert rr._pull_request_identity("/repo", None) is None
-    finally:
-        rr.remote = original
+        resolve.assert_not_called()
 
 
 def test_findings_for_history_status_from_warnings():
@@ -931,7 +932,7 @@ def test_review_cli_query_precedes_optional_sdk_comment_access():
          patch.object(rr, "list_pull_requests", return_value=[]) as query, \
          patch.object(rr, "forge_client", return_value=forge) as access:
         assert rr._open_mr("/repo", "topic") == (None, None)
-        query.assert_called_once_with("/repo", branch="topic", state="open")
+        query.assert_called_once_with("/repo", branch="topic", state="open", target_repository=None)
         access.assert_not_called()
         query.return_value = [pr]
         with patch.object(forge, "for_repository", return_value=forge) as destination:
@@ -966,6 +967,20 @@ def test_discussion_entrypoints_use_workflow_target_without_changing_access():
             assert command._forge_or_exit(SimpleNamespace(), name) is forge
             access.assert_called_once_with("/repo")
             destination.assert_called_once_with("upstream/repo")
+
+
+
+def test_review_query_receives_workflow_target():
+    from unittest.mock import patch
+    rr = _load_script("run_review")
+    with patch.object(rr, "remote", return_value=object()), \
+         patch.object(rr.config, "pull_request_target", return_value="upstream/repo"), \
+         patch.object(rr, "list_pull_requests", return_value=[]) as query, \
+         patch.object(rr, "forge_client") as client:
+        assert rr._open_mr("/repo", "feature") == (None, None)
+        query.assert_called_once_with("/repo", branch="feature", state="open", target_repository="upstream/repo")
+        client.assert_not_called()
+
 
 if __name__ == "__main__":
     run_main(globals())

@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 
-from .git_state import main_repo_root
+from repokit.git.state import main_repo_root
 
 # Section defaults — every load() deep-merges real layers over these, so a partial
 # config (e.g. only `workspaces`) still yields sane lifecycle policies.
@@ -57,7 +57,7 @@ def plugin_root() -> Path:
     """Resolve plugin root from CLI-provided plugin root env or relative fallback.
 
     CLI-agnostic: any CLI exporting a plugin-root alias works; the relative
-    fallback (this file at `<plugin_root>/scripts/lib/config.py`) covers the rest.
+    fallback (this file at `<plugin_root>/scripts/domain/config.py`) covers the rest.
     """
     env_root = os.environ.get("PLUGIN_ROOT") or os.environ.get("CLAUDE_PLUGIN_ROOT")
     if env_root:

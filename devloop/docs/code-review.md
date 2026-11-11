@@ -105,7 +105,7 @@ path 退化。发布阶段再按稳定 fingerprint 跳过已有未解决 thread 
 
 关键对象（锚点）：`scripts/domain/lifecycle/review.py`（`review` handler，返回 relay）、`commit_flow`
 （`launch_background_relays`，各相位 git 动作后 detach 起）、`scripts/run_review.py`（后台执行体：
-审全量 diff + 机会性发评论，经 `scripts/lib/review_engine.py` 协议调引擎）、`scripts/lib/review_engine.py`（**review
+审全量 diff + 机会性发评论，经 `scripts/domain/review_engine.py` 协议调引擎）、`scripts/domain/review_engine.py`（**review
 tool 协议** `ReviewEngine` + `ReviewResult` + ocr/ccr adapter）、`scripts/domain/review_feedback.py`（Finding↔Verdict
 join + Forge comments→history 投影，纯函数、无 HTTP）、`scripts/review.py`（ReviewRun / Finding /
 Verdict / resolve 的 provider-neutral 入口）、
@@ -143,7 +143,7 @@ HEAD 是谁」**：
 配置的提交后 review 在没有 MR 时只保存本地结果。
 
 **切引擎**：默认 `ccr`，切回 ocr 在 `~/.devloop/config.json` 加 `"review": {"tool": "ocr"}`。
-devloop 只依赖 **review tool 协议**（`scripts/lib/review_engine.py` 的 `ReviewEngine`：`available()` /
+devloop 只依赖 **review tool 协议**（`scripts/domain/review_engine.py` 的 `ReviewEngine`：`available()` /
 `configured()` / `review() → ReviewResult`）——ocr/ccr 各自独立 adapter（`CcrEngine` / `OcrEngine`，
 **刻意不共享基类、接受重复**，好让它们自由演进）。**接一个非 ocr 系列的引擎 = 加个 adapter 实现协议，`run_review` 一行不动**。
 引擎需自备 LLM（保留各自 key/endpoint，devloop 不接管）。未装引擎或未配 LLM → run_review 写

@@ -8,7 +8,7 @@ import subprocess
 
 from _testkit import run_main
 from domain.repo_layout import inspect_catalog
-from lib import repokit
+from domain import repo_layout as repokit
 from _repo_fixture import make_repo
 
 def native_components(root):
@@ -27,7 +27,7 @@ def test_catalog_is_authoritative_and_one_inspection_serves_many_paths():
         (root / "service/go.mod").write_text("module api\n")
         (corpus / "go.mod").write_text("module fixture\n")
         with patch.object(repokit.toolkit, "inspect", wraps=repokit.toolkit.inspect) as read:
-            with patch.object(repokit, "owner", wraps=repokit.owner) as query:
+            with patch.object(repokit.toolkit, "owner", wraps=repokit.toolkit.owner) as query:
                 catalog = inspect_catalog(root)
                 assert catalog.owner(root / "service/deleted.go").name == "service"
                 assert catalog.owner(root / "service2/a.go").id == "."

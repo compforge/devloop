@@ -1,8 +1,8 @@
 """devloop 测试共享设施（非测试文件）：hermetic bootstrap + 公共 helper。
 
-import 本模块的副作用即完成两件 bootstrap（必须发生在任何 `domain.*` / `lib.*` import 之前，
+import 本模块的副作用即完成两件 bootstrap（必须发生在任何 `domain.*` import 之前，
 所以每个测试文件的第一条 import 都应是 _testkit）：
-1. 把 skill scripts 目录加进 sys.path，使私有 `domain` / `lib` package 可导入；
+1. 把 skill scripts 目录加进 sys.path，使私有 `domain` package 可导入；
 2. 把 DEVLOOP_CONFIG_DIR 指向空临时目录——测试绝不读开发机真实 ~/.devloop/config.json
    （否则全局 lifecycle 动作会在测试 repo 上运行）。
    需要 config 的测试各自写自己的。

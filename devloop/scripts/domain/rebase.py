@@ -14,7 +14,7 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from lib import git_state, gitcmd
+from repokit.git import state as git_state
 
 from .context import RepoContext, gate
 
@@ -195,7 +195,7 @@ def start(repo: str, target: str | None = None) -> list[str]:
 
     result = operations.rebase(repo, f"origin/{selected_target}")
     if result.uncertain:
-        raise RebaseError(gitcmd.operation_detail(result))
+        raise RebaseError(result.detail)
     if result.ok:
         plan.append(f"rebased {branch} onto origin/{selected_target}")
         plan.append("run relevant tests, then `smart_rebase.sh finish` (no --message needed)")
@@ -209,7 +209,7 @@ def start(repo: str, target: str | None = None) -> list[str]:
         return plan
 
     _clear_state(repo)
-    raise RebaseError(f"rebase could not start: {gitcmd.operation_detail(result)}")
+    raise RebaseError(f"rebase could not start: {result.detail}")
 
 
 def continue_rebase(repo: str) -> list[str]:
@@ -222,7 +222,7 @@ def continue_rebase(repo: str) -> list[str]:
 
     result = operations.continue_rebase(repo, editor="true")
     if result.uncertain:
-        raise RebaseError(gitcmd.operation_detail(result))
+        raise RebaseError(result.detail)
     if result.ok:
         _refresh(repo)
         return [
@@ -235,7 +235,7 @@ def continue_rebase(repo: str) -> list[str]:
             f"rebase remains paused: {detail[-1] if detail else 'resolve the remaining conflicts'}",
             "resolve + git add the files, then run `smart_rebase.sh continue` again",
         ]
-    raise RebaseError(f"rebase --continue failed: {gitcmd.operation_detail(result)}")
+    raise RebaseError(f"rebase --continue failed: {result.detail}")
 
 
 def finish(repo: str) -> list[str]:
@@ -271,7 +271,7 @@ def finish(repo: str) -> list[str]:
     result = operations.push(repo, state.branch, upstream=True, lease=state.remote_sha)
     if not result.ok:
         raise RebaseError(
-            f"lease-protected push failed; transaction retained for inspection: {gitcmd.operation_detail(result)}"
+            f"lease-protected push failed; transaction retained for inspection: {result.detail}"
         )
 
     _clear_state(repo)
@@ -291,7 +291,7 @@ def abort(repo: str) -> list[str]:
         )
     result = operations.abort_rebase(repo)
     if not result.ok:
-        raise RebaseError(f"git rebase --abort failed: {gitcmd.operation_detail(result)}")
+        raise RebaseError(f"git rebase --abort failed: {result.detail}")
     _clear_state(repo)
     _refresh(repo)
     return [f"aborted rebase of {state.branch} and cleared its saved lease"]

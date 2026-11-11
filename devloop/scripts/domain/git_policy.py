@@ -3,30 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from repokit import git as gitcmd
-from repokit.git.state import (
-    commits as commits,
-    merge_base as merge_base,
-    validate_branch_name as validate_branch_name,
-    get_current_branch as get_current_branch,
-    get_ahead_behind as get_ahead_behind,
-    get_workspace_status as get_workspace_status,
-    target_exists as target_exists,
-    local_default_branch,
-    refresh_remote_head as refresh_remote_head,
-    set_local_default_head as set_local_default_head,
-    checkout_info as checkout_info,
-    get_head_sha as get_head_sha,
-    rev_parse as rev_parse,
-    is_ancestor as is_ancestor,
-    get_upstream_ahead_behind as get_upstream_ahead_behind,
-    ls_remote_tips as ls_remote_tips,
-    list_checkouts as list_checkouts,
-    main_repo_root as main_repo_root,
-    list_local_branches as list_local_branches,
-    fetch as fetch,
-    git_path as git_path,
-    rebase_in_progress as rebase_in_progress,
-)
+from repokit.git.state import local_default_branch, target_exists
 PROTECTED_BRANCH_PATTERNS = tuple(re.compile(p) for p in (r"^main$",r"^master$",r"^release$",r"^release.*",r".*release$"))
 
 def is_protected_branch(branch: str | None) -> bool:

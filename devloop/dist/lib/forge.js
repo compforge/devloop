@@ -1,4 +1,4 @@
-import { loadConfig, remote } from "@compforge/repokit";
+import { pullRequestContext } from "@compforge/repokit";
 import { pullRequestTarget } from "./config.js";
 /**
  * @spec Missing credentials mean unavailable PR facts, never absence of PRs.
@@ -7,11 +7,7 @@ import { pullRequestTarget } from "./config.js";
  * @see {@link component://docs/pr-observation.md}
  */
 export async function prContextForRepo(repo) {
-    const origin = await remote(repo);
-    if (!origin)
-        return undefined;
-    const connection = (await loadConfig()).forge(origin.host);
-    const target = pullRequestTarget(repo) ?? origin.path;
-    return connection.pullRequestContext(repo, { source: origin.path, targets: [target] });
+    const target = pullRequestTarget(repo);
+    return pullRequestContext(repo, target ? { targets: [target] } : {});
 }
 //# sourceMappingURL=forge.js.map

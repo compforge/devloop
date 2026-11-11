@@ -16,9 +16,9 @@ from domain.forge import (  # noqa: E402
     parse_pr_number,
     pr_label,
 )
-from lib import cli  # noqa: E402
-from lib.config import pull_request_target
-from lib.forge import forge_client
+import command as cli
+from domain.config import pull_request_target
+from repokit import forge_client
 
 
 

@@ -12333,7 +12333,7 @@ var RepoKitConfig = class {
    * and caller configuration never supply or override credentials.
    * @see {@link component://docs/configuration.md}
    */
-  forge(name) {
+  forge(name, options = {}) {
     const host = normalizeHost(name);
     const entry = this.#forges.get(host) ?? {};
     const provider = entry.provider || { "github.com": "github", "gitlab.com": "gitlab" }[host];
@@ -12342,7 +12342,7 @@ var RepoKitConfig = class {
     const token = (entry.token ?? "").trim();
     if (!token)
       throw new ForgeAuthError(`no ${provider} credential for ${host}; configure ${join5(this.home, "config.json")}`);
-    return new ForgeConnection({ host, provider, token, apiHost: entry.apiHost || void 0, home: this.home });
+    return new ForgeConnection({ host, provider, token, apiHost: entry.apiHost || void 0, home: this.home, timeoutMs: options.timeoutMs });
   }
 };
 function object3(value) {
@@ -12394,6 +12394,15 @@ async function loadConfig(home) {
     entries.set(host, entry);
   }
   return new RepoKitConfig(root, entries);
+}
+
+// node_modules/@compforge/repokit/dist/access.js
+async function pullRequestContext(checkout, options = {}) {
+  const origin = await remote(checkout);
+  if (!origin)
+    return void 0;
+  const connection = (await loadConfig(options.home)).forge(origin.host, { timeoutMs: options.timeoutMs });
+  return connection.pullRequestContext(checkout, { source: origin.path, targets: options.targets, reader: options.reader });
 }
 
 // lib/repokit.ts
@@ -13354,11 +13363,8 @@ function number2(value) {
 
 // lib/forge.ts
 async function prContextForRepo(repo) {
-  const origin = await remote(repo);
-  if (!origin) return void 0;
-  const connection = (await loadConfig()).forge(origin.host);
-  const target = pullRequestTarget(repo) ?? origin.path;
-  return connection.pullRequestContext(repo, { source: origin.path, targets: [target] });
+  const target = pullRequestTarget(repo);
+  return pullRequestContext(repo, target ? { targets: [target] } : {});
 }
 
 // domain/board/model.ts

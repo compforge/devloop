@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from _testkit import run_main
 from _repo_fixture import make_repo
-from lib import dependencies
+from domain import worktree
 from repokit import DependencyPreparation, inspect_dependencies
 
 
@@ -16,8 +16,8 @@ def test_existing_bun_installation_can_enter_validation_without_auto_prepare():
         (root / "package.json").write_text(json.dumps({"name": "fixture", "packageManager": "bun@1.3.11"}))
         (root / "bun.lock").write_text("fixture")
         (root / "node_modules").mkdir()
-        with patch.object(dependencies, "prepare_dependencies", side_effect=AssertionError("already present")):
-            assert dependencies.preparation_problem(root) is None
+        with patch.object(worktree, "prepare_dependencies", side_effect=AssertionError("already present")):
+            assert worktree.preparation_problem(root) is None
         assert inspect_dependencies(root)[0].status == "present"
 
 
@@ -28,8 +28,8 @@ def test_missing_environment_delegates_to_repocli_and_preserves_failure_reason()
         (root / "bun.lock").write_text("fixture")
         environment, = inspect_dependencies(root)
         result = DependencyPreparation(environment, "failed", True, 7, stderr="registry unavailable", reason="install failed")
-        with patch.object(dependencies, "prepare_dependencies", return_value=result) as prepare:
-            problem = dependencies.preparation_problem(root)
+        with patch.object(worktree, "prepare_dependencies", return_value=result) as prepare:
+            problem = worktree.preparation_problem(root)
         assert prepare.call_count == 1
         assert "failed: bun" in problem and "registry unavailable" in problem
 
@@ -44,23 +44,23 @@ def test_workspace_member_uses_repocli_installation_root():
         (member / "package.json").write_text('{"name":"child"}')
         environment, = inspect_dependencies(member)
         assert environment.root == root
-        with patch.object(dependencies, "prepare_dependencies", return_value=DependencyPreparation(environment, "ready")) as prepare:
-            assert dependencies.preparation_problem(member) is None
+        with patch.object(worktree, "prepare_dependencies", return_value=DependencyPreparation(environment, "ready")) as prepare:
+            assert worktree.preparation_problem(member) is None
         assert prepare.call_args.args[0].root == root
 
 
 def test_observation_failure_does_not_turn_into_a_ready_environment():
     for error in (ValueError("incomplete checkout"), PermissionError("cannot observe dependency directory")):
-        with patch.object(dependencies, "inspect_dependencies", side_effect=error):
-            assert str(error) in dependencies.preparation_problem("unused")
+        with patch.object(worktree, "inspect_dependencies", side_effect=error):
+            assert str(error) in worktree.preparation_problem("unused")
 
 
 def test_unlocked_required_dependencies_are_left_to_project_checks():
     with TemporaryDirectory() as tmp:
         root = Path(make_repo(tmp))
         (root / "package.json").write_text('{"name":"fixture","dependencies":{"some-package":"1.0.0"}}')
-        with patch.object(dependencies, "prepare_dependencies", side_effect=AssertionError("no locked installer")):
-            assert dependencies.preparation_problem(root) is None
+        with patch.object(worktree, "prepare_dependencies", side_effect=AssertionError("no locked installer")):
+            assert worktree.preparation_problem(root) is None
         assert not (root / "node_modules").exists()
 
 
@@ -76,7 +76,7 @@ def test_dependency_symlinks_still_block_with_or_without_a_lockfile():
                 if exists:
                     target.mkdir()
                 (root / "node_modules").symlink_to(target, target_is_directory=True)
-                problem = dependencies.preparation_problem(root)
+                problem = worktree.preparation_problem(root)
                 assert problem and "symlink" in problem, problem
                 assert not (root / "test.observed").exists()
 
@@ -86,7 +86,7 @@ def test_unlocked_environment_with_invalid_directory_still_blocks():
         root = Path(make_repo(tmp))
         (root / "package.json").write_text('{"name":"fixture"}')
         (root / "node_modules").write_text("not a directory")
-        assert dependencies.preparation_problem(root) is not None
+        assert worktree.preparation_problem(root) is not None
 
 
 if __name__ == "__main__":

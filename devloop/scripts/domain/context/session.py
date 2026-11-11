@@ -23,6 +23,7 @@ Codex uses CODEX_THREAD_ID, with CODEX_SESSION_ID retained as a compatibility fa
 """
 
 from __future__ import annotations
+from domain import git_policy
 
 import json
 import os
@@ -31,7 +32,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from lib import git_state
+from repokit.git import state as git_state
 from . import base, store
 from .base import ACTIVE_REPO_TTL_SEC
 
@@ -412,7 +413,7 @@ def acquire(
     try:
         # creating the lock would create .devloop/ early (before any context save) —
         # make sure it's git-excluded first so it can never be committed.
-        git_state.ensure_gitignore_excluded(repo)
+        git_policy.ensure_gitignore_excluded(repo)
         f.parent.mkdir(parents=True, exist_ok=True)  # self-creates .devloop/ if absent
         if stored is not None:
             # POSITIVELY-read stale record: clear it so O_EXCL arbitrates the takeover.

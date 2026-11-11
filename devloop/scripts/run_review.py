@@ -15,6 +15,7 @@
 advisory：从不挡 commit。引擎没装 / LLM 没配好 → 写 `status=skipped` 退出 0，不报错。
 """
 from __future__ import annotations
+from domain import git_policy
 
 import json
 import logging
@@ -25,14 +26,20 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from lib import cli, config, git_state, review_engine  # noqa: E402
+import command as cli
+
+from domain import config
+
+from repokit.git import state as git_state
+
+from domain import review_engine
 from domain import review_feedback  # noqa: E402
 from domain.context import base, record_active_repo, store  # noqa: E402
 from domain.forge import ForgeError, pr_label  # noqa: E402
-from lib.forge import forge_client
-from lib.repocli import list_pull_requests, pull_request_description
+from repokit import forge_client
+from repokit.cli import list_pull_requests, pull_request_description
 from repokit.git.remote import remote
-from domain.forge import PullRequestIdentity  # noqa: E402
+from repokit import pull_request_identity  # noqa: E402
 
 _MAX_COMMENT_FINDINGS = 30   # 评论里最多列几条，避免超长 MR 评论
 
@@ -231,7 +238,7 @@ def _open_mr(repo: str, branch: str):
     try:
         if remote(repo) is None:
             return None, None
-        rows = list_pull_requests(repo, branch=branch, state="open")
+        rows = list_pull_requests(repo, branch=branch, state="open", target_repository=config.pull_request_target(repo))
         if len(rows) > 1:
             raise ForgeError("multiple open PRs match this branch")
         if not rows:
@@ -248,11 +255,9 @@ def _pull_request_identity(repo: str, pr) -> dict | None:
     """The complete external identity attached to a PR-bound review."""
     if pr is None:
         return None
-    origin = remote(repo)
-    if origin is None:
-        return None
-    return PullRequestIdentity(source=origin.host, repository=pr.target_repository or origin.path,
-                               number=pr.number).to_dict()
+    identity = pull_request_identity(repo, pr.number, target_repository=pr.target_repository or None)
+    return identity.to_dict() if identity else None
+
 
 
 def _biz_id(pull_request: dict | None) -> str | None:
@@ -384,7 +389,7 @@ def main(argv: list[str]) -> int:
         return skip(f"{engine.name} LLM not configured — run `{engine.name} config set llm.*`")
 
     forge, pr = _open_mr(repo, branch)                              # 冻结的 branch：别把 A 的 findings 发到 B 的 PR
-    target = pr.target_branch if pr is not None and pr.target_branch else git_state.local_default_target(repo)
+    target = pr.target_branch if pr is not None and pr.target_branch else git_policy.local_default_target(repo)
     range_label = f"origin/{target}..HEAD"
     background = _build_background(repo, target, forge, pr, ns.background)
     pull_request = _pull_request_identity(repo, pr)

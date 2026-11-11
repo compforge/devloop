@@ -53,5 +53,5 @@ Repository 操作优先调用 `repocli`，按统一 envelope 检查 schema、com
 也通过 CLI。评论线程、release 和包含祖先关系核验的分支关联暂未有对应 CLI 契约，使用 RepoKit
 SDK，由其 config 入口取得访问配置。devloop 不实现 Git/Forge 传输，不另建缓存，不回退到自己的 token。
 
-RepoKit 配置与 SDK 需要支持该配置契约：CLI 0.65.1、Python 0.25.0、TypeScript 0.19.0 或更新版本。
+RepoKit 配置与 SDK 需要支持该配置契约：CLI 0.65.1、Python 0.26.0、TypeScript 0.20.0 或更新版本。
 配置文件权限与完整 schema 由 RepoKit 的 `docs/configuration.md` 维护。

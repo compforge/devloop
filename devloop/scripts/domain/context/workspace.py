@@ -9,13 +9,14 @@ session's bound repo) — that is a different fact-owner grain and lives in
 `session.py`: state-bus modules are organized by owner, not by where the file sits.
 """
 from __future__ import annotations
+from domain import git_policy
 
 from dataclasses import dataclass, field
 from pathlib import Path
 from repokit.git.state import checkout_at
 from typing import Any
 
-from lib import parsers
+from domain.context import agents as parsers
 from . import base, store
 from .base import (
     WORKSPACE_STALE_SEC,
@@ -80,8 +81,8 @@ class WorkspaceContext:
         store.save_raw(root, store.to_dict(self))
         # A workspace root is usually not a git repo; exclude only if it is one.
         if checkout_at(root) is not None:
-            from lib import git_state
-            git_state.ensure_gitignore_excluded(root)
+            from repokit.git import state as git_state
+            git_policy.ensure_gitignore_excluded(root)
 
     @classmethod
     def refresh(cls, workspace_root: str | Path) -> "WorkspaceContext":
@@ -180,11 +181,10 @@ def _build_subproject(root: Path, s: dict) -> Subproject:
         # Auto-detect language when the table didn't pin one (table value wins).
         if not sub.language:
             import logging
-            from lib import repokit
             from .. import repo_layout
             try:
                 sub.language = repo_layout.default_component(sp_dir).language
-            except repokit.InspectionError as exc:
+            except repo_layout.InspectionError as exc:
                 logging.getLogger(__name__).warning("Component context unavailable for %s: %s", sp_dir, exc)
     return sub
 

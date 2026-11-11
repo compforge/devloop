@@ -9,7 +9,7 @@ _SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS.parent))
 
 from domain import rebase as rebase_flow  # noqa: E402
-from lib import cli  # noqa: E402
+import command as cli
 
 
 def _run(ns) -> int:

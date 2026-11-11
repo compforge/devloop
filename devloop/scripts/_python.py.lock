@@ -3,19 +3,19 @@ revision = 3
 requires-python = ">=3.11"
 
 [manifest]
-requirements = [{ name = "compforge-repokit", specifier = "==0.25.0" }]
+requirements = [{ name = "compforge-repokit", specifier = "==0.26.0" }]
 
 [[package]]
 name = "compforge-repokit"
-version = "0.25.0"
+version = "0.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "harness-common" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a4/40/092b1f140a0606e8be19353d57597724c06c74fd6010d2a076be137ee1a7/compforge_repokit-0.25.0.tar.gz", hash = "sha256:f07d468026ecb5c3cda1565175fca3ebd2d3d4a5a80386f5dc53fc4eb8ca2750", size = 153734, upload-time = "2026-11-11T07:59:41.849Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/86/7e9f6408776eeefc591b654a3708334c755c46863683d59cf91d73655eec/compforge_repokit-0.26.0.tar.gz", hash = "sha256:668c2ab41b187d5a08bb45f32aa8c2060ebc8f472b9e48b8f857e79a64811f90", size = 157431, upload-time = "2026-11-11T08:50:11.932Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/77/b5/6c96be76a4c8546bd0eb981ff6bf992534295d311302b7b30d4c85622c40/compforge_repokit-0.25.0-py3-none-any.whl", hash = "sha256:3be772c05712a0ab10b9523e46880bcceda251be0f7c5e7723491c0f44c4b8d6", size = 107104, upload-time = "2026-11-11T07:59:40.277Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/23/f5bb094e030285e98eb3cf2de7f53bdaf7a1fad429189b13b44e7af72b62/compforge_repokit-0.26.0-py3-none-any.whl", hash = "sha256:992f45bab9f87875f3ce4387c577bc4fec205fcaae8b369e2f498403c2db38ba", size = 109933, upload-time = "2026-11-11T08:50:10.284Z" },
 ]
 
 [[package]]

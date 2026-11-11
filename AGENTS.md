@@ -43,7 +43,7 @@ devloop/                              # ← 仓库根（marketplace）
 │   ├── domain/                       #     TS 共享领域模型与状态
 │   ├── lib/                          #     TS 共享技术 seam
 │   ├── hooks/                        #     TS policy/runtime 与 hook manifests
-│   ├── scripts/                      #     skill-owned Python workflow 及其私有 domain/lib
+│   ├── scripts/                      #     skill-owned Python workflow 及其私有 domain
 │   ├── config/                       #     用户配置模板（config.json：workspaces / lifecycle / review）
 │   └── README.md / AGENTS.md / CONCEPTS.md
 │

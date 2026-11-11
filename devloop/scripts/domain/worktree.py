@@ -5,6 +5,7 @@ reuse and dependency preparation behind this module prevents callers from
 reproducing only the visible ``git worktree add`` step and skipping lifecycle policy.
 """
 from __future__ import annotations
+from domain import git_policy
 from repokit import state as operations
 from repokit.git.state import checkout_info
 from repokit.state import RepositoryState
@@ -12,7 +13,9 @@ from repokit.state import RepositoryState
 import logging
 from pathlib import Path
 
-from lib import dependencies, git_state, gitcmd, repokit
+import subprocess
+from repokit import inspect_dependencies, prepare_dependencies
+from repokit.git import state as git_state
 
 from . import repo_layout
 
@@ -24,10 +27,10 @@ def prepare_environment(path: str) -> list[str]:
     warnings = []
     try:
         components = repo_layout.discover_components(path)
-    except repokit.InspectionError as exc:
+    except repo_layout.InspectionError as exc:
         return [str(exc)]
     for component in components:
-        if problem := dependencies.preparation_problem(component.path):
+        if problem := preparation_problem(component.path):
             warnings.append(f"component {component.id}: {problem}")
     return warnings
 
@@ -58,7 +61,7 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
                 msg += "; environment warning: " + " | ".join(warnings)
             return path, msg
 
-    target = git_state.local_default_target(repo_dir)
+    target = git_policy.local_default_target(repo_dir)
     branch = f"worktree-{tag}"
     if git_state.rev_parse(repo_dir, f"refs/heads/{branch}"):
         result = operations.add_worktree(repo_dir, str(rel), branch)
@@ -76,7 +79,7 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
         result = operations.add_worktree(repo_dir, str(rel), remote_ref, branch=branch)
         message = f"created worktree from refreshed {remote_ref}"
     if not result.ok:
-        return None, f"worktree add failed for {branch}: {gitcmd.operation_detail(result)}"
+        return None, f"worktree add failed for {branch}: {result.detail}"
 
     path = str((base / rel).resolve())
     warnings = prepare_environment(path)
@@ -92,3 +95,34 @@ def primary(repo_dir: str) -> str:
     """Return the stable primary checkout used to mutate linked-worktree metadata."""
     info = checkout_info(repo_dir)
     return info.main_root or info.root
+
+
+def preparation_problem(path: str | Path) -> str | None:
+    """Preserve user-managed installations; prepare missing/stale locked dependencies.
+
+    repocli owns package tools, workspace roots, process budgets and installation receipts.
+    devloop prepares the environment when creating or reusing a managed worktree.
+    """
+    try:
+        for environment in inspect_dependencies(path):
+            # Existing unmanaged dependencies may enter the actual project checks. This
+            # does not assert lockfile consistency or issue a dependency-ready receipt.
+            if environment.status in {"ready", "present"}:
+                continue
+            # Absence and preparation capability are separate repocli facts. Without
+            # a locked installer, project checks decide whether dependencies are needed.
+            if environment.status == "missing" and not environment.command:
+                logger.warning(
+                    "Dependency preparation skipped for %s at %s: no supported locked "
+                    "installer is available; project checks will determine validation results",
+                    environment.manager, environment.root,
+                )
+                continue
+            result = prepare_dependencies(environment)
+            if result.status != "ready":
+                detail = result.stderr.strip() or result.stdout.strip()
+                return (f"{result.status}: {environment.manager} at {environment.root}: {result.reason}"
+                        + (f"\n{detail[-4000:]}" if detail else ""))
+    except (OSError, ValueError, subprocess.SubprocessError, InterruptedError) as error:
+        return f"dependency observation/preparation failed: {error}"
+    return None

@@ -16,6 +16,7 @@ verifies the remote result before reporting success.
 Release publication remains separate from the commit, push, and PR transaction.
 """
 from __future__ import annotations
+from domain import git_policy
 
 import re
 import sys
@@ -24,10 +25,12 @@ from pathlib import Path
 _SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_SCRIPTS.parent))
 
-from lib import cli, git_state  # noqa: E402
+import command as cli
+
+from repokit.git import state as git_state
 from domain.forge import ForgeError  # noqa: E402
 from repokit import git
-from lib.forge import forge_client  # noqa: E402
+from repokit import forge_client  # noqa: E402
 
 # Release version must be semver (optional leading v): the tag the forge cuts and the key the
 # increment check compares on. Anything else is rejected before a call is made.
@@ -97,7 +100,7 @@ def cmd_create(ns) -> int:
                   f"{last.tag} — pick a higher version", file=sys.stderr)
             return 1
 
-    target = ns.target or git_state.local_default_target(git_root)
+    target = ns.target or git_policy.local_default_target(git_root)
     notes = _read_notes(ns, "release create")
     if not notes:
         print(

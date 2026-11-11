@@ -11,7 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from lib import config
+from domain import config
 from domain.lifecycle.base import HookResult, dispatch
 
 

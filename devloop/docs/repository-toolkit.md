@@ -51,8 +51,14 @@ PR、branch 和 checkout 的关联、观察缓存及 HTTP 协调归 RepoKit。de
 构造 branch gate 与 Board 视图；review 评论、Verdict、readiness 单独读取。
 无凭据、查询失败与候选歧义不能解释成无 PR。必要写入 gate 停止；Board 展示未知并继续提供其它上下文。
 review 的 PR 列表和正文通过 CLI 查询；分支关联、评论、readiness、release 与 repository metadata
-等没有等价 CLI 契约的能力使用 SDK。`lib/forge.py` 仅组合 RepoKit 的公开 config 与 client 入口，
-不解析 host/provider/凭据，不读取 devloop 配置。
+等没有等价 CLI 契约的能力使用原生 SDK。RepoKit 的 `forge_client` / `pull_request_context`
+统一组合 origin、config 与 client；devloop 不再解析 host/provider/凭据。Python 显式消费
+`repokit.cli` 查询 PR 列表和正文，目标仓库由 devloop 传入，CLI 解码与进程预算归 RepoKit。
+
+Python workflow 不设 `scripts/lib` 中转层。命令参数归 `scripts/command.py`；配置继承、
+保护分支和 review 引擎归 `scripts/domain`；AGENTS 解析归 `domain/context/agents.py`；
+依赖准备时机归 `domain/worktree.py`，Component 验收与路径约束归 `domain/repo_layout.py`。
+通用 Git 查询与结果直接使用 RepoKit，不经 devloop 重导出。
 
 RepoKit 在 PR 写操作后维护本地资源。全局 `clean` 扫描 RepoKit home 的登记仓库，回收过期缓存并
 保留轻量 checkout 登记；`worktree clean` 面向指定 clone，二者共用清理 service。数量阈值、merged 终态、

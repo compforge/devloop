@@ -17,9 +17,11 @@ sys.path.insert(0, str(_SCRIPTS))
 from domain import review_feedback  # noqa: E402
 from domain.context import store  # noqa: E402
 from domain.forge import CommentResolution, ForgeError, parse_pr_number, pr_label  # noqa: E402
-from lib import cli, git_state, review_engine  # noqa: E402
-from lib.config import pull_request_target
-from lib.forge import forge_client  # noqa: E402
+import command as cli
+from repokit.git import state as git_state
+from domain import review_engine
+from domain.config import pull_request_target
+from repokit import forge_client  # noqa: E402
 
 
 def _forge_or_exit(ns, prog):

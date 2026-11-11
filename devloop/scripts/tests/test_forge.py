@@ -11,6 +11,7 @@ import subprocess
 from dataclasses import replace
 
 from _testkit import _FakeForge, _git, _load_script, run_main  # noqa: E402  (bootstrap first)
+from domain import git_policy
 from domain.context import Cadence, PullRequest  # noqa: E402
 from repokit.forge import detect_provider
 from repokit.git.remote import remote
@@ -161,7 +162,7 @@ def test_pr_reply_has_no_review_side_effects():
 def test_release_cli_dispatch():
     """`release` CLI over the facade: create validates semver + strict increment, defaults the
     target to the repo trunk, requires semantic notes, and reads the latest release."""
-    from lib import git_state
+    from repokit.git import state as git_state
     rel = _load_script("release")
     fake = _FakeForge([])
 
@@ -169,11 +170,11 @@ def test_release_cli_dispatch():
         git_root = "/x"
 
     orig_forge, orig_resolve = rel.forge_client, rel.cli.resolve_repo_or_exit
-    orig_trunk = git_state.local_default_target
+    orig_trunk = git_policy.local_default_target
     try:
         rel.forge_client = lambda repo: fake
         rel.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
-        git_state.local_default_target = lambda repo: "main"
+        git_policy.local_default_target = lambda repo: "main"
 
         # Semantic notes are caller-owned: omission must not silently publish a raw PR list.
         assert rel.main(["create", "v1.8.0"]) == 1
@@ -197,7 +198,7 @@ def test_release_cli_dispatch():
         assert rel.main(["latest"]) == 0
     finally:
         rel.forge_client, rel.cli.resolve_repo_or_exit = orig_forge, orig_resolve
-        git_state.local_default_target = orig_trunk
+        git_policy.local_default_target = orig_trunk
 
 
 def test_checkout_pr_without_forge():

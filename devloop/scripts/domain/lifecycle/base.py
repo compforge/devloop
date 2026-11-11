@@ -109,7 +109,7 @@ def dispatch(
     if phase not in PHASES:
         raise ValueError(f"unknown lifecycle phase: {phase!r} (one of {PHASES})")
     if names is None:
-        from lib import config
+        from domain import config
         names = list(config.lifecycle(repo).get(phase) or [])
     if not names:
         return DispatchResult(phase=phase, results=[])

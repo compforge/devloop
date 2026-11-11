@@ -89,10 +89,11 @@ def test_pr_cli_bootstraps_private_modules_from_foreign_cwd():
     # Exercise the actual shell/Python entrypoint rather than the testkit import bootstrap.
     with tempfile.TemporaryDirectory() as directory:
         cwd = Path(directory)
-        for name in ("lib", "domain"):
+        for name in ("domain",):
             package = cwd / name
             package.mkdir()
             (package / "__init__.py").write_text("raise AssertionError('foreign package imported')\n")
+        (cwd / "command.py").write_text("raise AssertionError('foreign command imported')\n")
         for pythonpath in (None, str(PLUGIN_ROOT)):
             env = dict(os.environ)
             env.pop("PYTHONPATH", None)

@@ -1,4 +1,4 @@
-import { loadConfig, remote, type PullRequestContext } from "@compforge/repokit";
+import { pullRequestContext, type PullRequestContext } from "@compforge/repokit";
 import { pullRequestTarget } from "./config.js";
 
 /**
@@ -8,9 +8,6 @@ import { pullRequestTarget } from "./config.js";
  * @see {@link component://docs/pr-observation.md}
  */
 export async function prContextForRepo(repo: string): Promise<PullRequestContext | undefined> {
-  const origin = await remote(repo);
-  if (!origin) return undefined;
-  const connection = (await loadConfig()).forge(origin.host);
-  const target = pullRequestTarget(repo) ?? origin.path;
-  return connection.pullRequestContext(repo, { source: origin.path, targets: [target] });
+  const target = pullRequestTarget(repo);
+  return pullRequestContext(repo, target ? { targets: [target] } : {});
 }

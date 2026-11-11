@@ -1,16 +1,15 @@
 """Transient workflow views over repocli PR queries; remote trunk tips remain workflow state."""
 from __future__ import annotations
+from domain import git_policy
 
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from repokit.forge import BranchPullRequests
-from repokit.config import load_config
-from repokit.git.remote import remote
-from lib import git_state
-from lib import config
-from lib.forge import forge_client
+from repokit.git import state as git_state
+from domain import config
+from repokit import forge_client, pull_request_context
 from domain.forge import Forge, ForgeError, PullRequest
 from . import base, store
 
@@ -77,7 +76,7 @@ def poll_remote_branches(repo: str, branches: tuple[str, ...] = TRUNK_CANDIDATES
 
 def persist_remote_branches(repo: str, payload: dict) -> None:
     """Write the monitor-owned `remote_branches` segment (sole writer)."""
-    git_state.ensure_gitignore_excluded(repo)
+    git_policy.ensure_gitignore_excluded(repo)
     store.save_segment(repo, "remote_branches", payload)
 
 
@@ -126,26 +125,7 @@ def review_details(repo: str, pr: PullRequest | None) -> ReviewDetails:
     return result
 
 
-def pr_context_for_repo(
-    repo_dir: str | Path, *, forge: Forge | None = None, target_repository: str | None = None,
-):
-    """Select the workflow target; RepoKit owns access and branch associations.
-
-    +spec=`Only an absent Forge origin means PR queries are inapplicable;
-    a configured origin without credentials is unavailable, never known to have no PR.`
-    +link=`component://docs/pr-observation.md`
-    """
-    origin = remote(repo_dir)
-    if origin is None:
-        return None
-    try:
-        connection = load_config().forge(origin.host)
-    except (ValueError, OSError) as error:
-        raise ForgeError(str(error)) from error
-    # Target selection belongs to the workflow; RepoKit never infers a fork parent.
-    target = config.pull_request_target(repo_dir) or origin.path
-    if target_repository:
-        name, separator, target = target_repository.partition("/")
-        if not separator or not target or name != connection.name:
-            raise ValueError("target repository must be an ID within the configured Forge")
-    return connection.pull_request_context(repo_dir, source=origin.path, targets=(target,), reader=forge)
+def pr_context_for_repo(repo_dir: str | Path, *, forge: Forge | None = None):
+    """Select the workflow target; RepoKit owns access and branch associations."""
+    target = config.pull_request_target(repo_dir)
+    return pull_request_context(repo_dir, targets=(target,) if target else None, reader=forge)

@@ -159,4 +159,4 @@ and output delivery. See [validation](../skills/validate/references/spec.md) for
 RepoKit owns Forge instance/provider, API host and credentials in `<home>/config.json`.
 Devloop does not load access settings or inject token environment variables. SDK fallbacks use
 RepoKit configuration; workflow configuration only selects the PR target repository.
-The configured access contract requires Python RepoKit 0.25.0 and TypeScript RepoKit 0.19.0.
+The configured access contract requires Python RepoKit 0.26.0 and TypeScript RepoKit 0.20.0.

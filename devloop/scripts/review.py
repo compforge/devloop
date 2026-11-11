@@ -18,16 +18,22 @@ from domain import review_feedback  # noqa: E402
 from domain.context import store  # noqa: E402
 from domain.forge import CommentResolution, ForgeError, parse_pr_number, pr_label  # noqa: E402
 from lib import cli, git_state, review_engine  # noqa: E402
-from lib.config import forge_client  # noqa: E402
+from lib.config import pull_request_target
+from lib.forge import forge_client  # noqa: E402
 
 
 def _forge_or_exit(ns, prog):
     resolved, _ = cli.resolve_repo_or_exit(ns, prog)
-    forge = forge_client(resolved.git_root)
+    try:
+        forge = forge_client(resolved.git_root)
+    except ForgeError as error:
+        print(f"{prog}: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
     if forge is None:
-        print(f"{prog}: no token or unsupported remote", file=sys.stderr)
+        print(f"{prog}: no Forge origin", file=sys.stderr)
         raise SystemExit(0)
-    return forge
+    target = pull_request_target(resolved.git_root)
+    return forge.for_repository(target) if target else forge
 
 
 def _number_or_exit(raw: str, prog: str) -> int:

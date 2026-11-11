@@ -29,7 +29,10 @@ from lib import cli, config, git_state, review_engine  # noqa: E402
 from domain import review_feedback  # noqa: E402
 from domain.context import base, record_active_repo, store  # noqa: E402
 from domain.forge import ForgeError, pr_label  # noqa: E402
-from lib.config import forge_client, resolve_forge  # noqa: E402
+from lib.forge import forge_client
+from lib.repocli import list_pull_requests, pull_request_description
+from repokit.git.remote import remote
+from domain.forge import PullRequestIdentity  # noqa: E402
 
 _MAX_COMMENT_FINDINGS = 30   # 评论里最多列几条，避免超长 MR 评论
 
@@ -224,12 +227,20 @@ def _open_mr(repo: str, branch: str):
     """(forge, 该分支的开放 MR)——找一次，给 background 取标题/描述 + 发评论复用。无则补 None。"""
     if not branch:
         return None, None
-    forge = forge_client(repo)
-    if forge is None:
-        return None, None
+    forge = None
     try:
-        return forge, next((p for p in forge.prs_for_branch(branch) if p.is_open), None)
-    except ForgeError:
+        if remote(repo) is None:
+            return None, None
+        rows = list_pull_requests(repo, branch=branch, state="open")
+        if len(rows) > 1:
+            raise ForgeError("multiple open PRs match this branch")
+        if not rows:
+            return None, None
+        pr = rows[0]
+        forge = forge_client(repo)
+        return (forge.for_repository(pr.target_repository) if forge else None), pr
+    except ForgeError as error:
+        logging.getLogger(__name__).warning("Review PR context unavailable repo=%s error=%s", repo, error)
         return forge, None
 
 
@@ -237,10 +248,11 @@ def _pull_request_identity(repo: str, pr) -> dict | None:
     """The complete external identity attached to a PR-bound review."""
     if pr is None:
         return None
-    resolution = resolve_forge(repo)
-    if resolution is None:
+    origin = remote(repo)
+    if origin is None:
         return None
-    return resolution.pull_request_identity(pr.number).to_dict()
+    return PullRequestIdentity(source=origin.host, repository=pr.target_repository or origin.path,
+                               number=pr.number).to_dict()
 
 
 def _biz_id(pull_request: dict | None) -> str | None:
@@ -274,7 +286,7 @@ def _build_background(repo: str, target: str, forge, pr, extra: str | None) -> s
     if forge is not None and pr is not None:
         title = (pr.title or "").strip()
         try:
-            desc = (forge.description(pr.number) or "").strip()
+            desc = (pull_request_description(repo, pr.number, target_repository=pr.target_repository or None) or "").strip()
         except ForgeError:
             desc = ""
         if title or desc:

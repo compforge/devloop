@@ -9,7 +9,6 @@ export type JsonObject = { [key: string]: JsonValue };
 
 const DEFAULTS: JsonObject = {
   workspaces: [],
-  forges: {},
   lifecycle: { default: { pre_commit: [], post_commit: [] }, repos: {} },
   arch: {
     default: {
@@ -135,18 +134,10 @@ export function setWorkspaces(paths: readonly string[]): void {
   updateConfig((data) => { data.workspaces = [...paths]; });
 }
 
-export function forgeEntry(host: string, repo?: string): JsonObject {
-  return object(object(loadConfig(repo).forges)[host]);
-}
-
-export function forgeToken(host: string, provider: string, repo?: string): string | undefined {
-  const variables = provider === "github" ? ["GITHUB_TOKEN", "GH_TOKEN"] : provider === "gitlab" ? ["GITLAB_TOKEN"] : [];
-  for (const variable of variables) {
-    const token = process.env[variable]?.trim();
-    if (token) return token;
-  }
-  const configured = forgeEntry(host, repo).token;
-  return typeof configured === "string" && configured.trim() ? configured.trim() : undefined;
+/** Workflow destination; transport and credentials belong to RepoKit. */
+export function pullRequestTarget(repo?: string): string | undefined {
+  const value = object(loadConfig(repo).pull_request).target_repository;
+  return typeof value === "string" && value ? value : undefined;
 }
 
 export function lifecycleConfig(repo?: string): JsonObject { return object(object(loadConfig(repo).lifecycle).default); }

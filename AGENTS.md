@@ -44,7 +44,7 @@ devloop/                              # ← 仓库根（marketplace）
 │   ├── lib/                          #     TS 共享技术 seam
 │   ├── hooks/                        #     TS policy/runtime 与 hook manifests
 │   ├── scripts/                      #     skill-owned Python workflow 及其私有 domain/lib
-│   ├── config/                       #     用户配置模板（config.json：workspaces / gitlab / precommit）
+│   ├── config/                       #     用户配置模板（config.json：workspaces / lifecycle / review）
 │   └── README.md / AGENTS.md / CONCEPTS.md
 │
 ├── code-taste/                       # plugin: 架构、边界、命名与可维护性判断（skill-only）

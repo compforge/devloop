@@ -186,7 +186,7 @@ review.json 每次覆盖、只留最新一次；要统计"今天跑了几次 / �
 ```
 
 `pull_request` 是 review→fix→re-review 以及外部消费者关联 PR/MR 的 key；`source` 与
-`forges` 配置 key 一致，`repository` 是 origin 上的完整仓库路径。没有开放 PR/MR 的本地
+Repository 的 Forge host 一致，`repository` 是 origin 上的完整仓库路径。没有开放 PR/MR 的本地
 review 不带该 identity。`ts` + `secs` 支持按天计数与时长统计；per-repo，跨仓聚合即遍历各
 repo 此文件。`.devloop` 已 gitignore，不会被提交。
 

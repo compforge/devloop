@@ -1,62 +1,21 @@
-"""Unified config — `~/.devloop/config.json` plus optional local overrides.
+"""Development workflow configuration, with global and checkout-local policy layers.
 
-One file holds everything devloop depends on from the user / its environment, so
-the external dependencies (which forge, which token) are explicit in one place:
-
-    {
-      "workspaces": ["/abs/workspace/root", ...],   # Mode-A aggregate-workspace registry
-      "forges": {               # code-review hosts, keyed by the repo's origin host
-        "github.com": {
-          "token": "ghp_...",   # canonical token; env GITHUB_TOKEN/GH_TOKEN overrides it
-          "type":  "github"     # optional: inferred from the host when omitted
-        },
-        "gitlab.example.com": {
-          "token": "glpat-...",  # env GITLAB_TOKEN overrides it
-          "type":  "gitlab",
-          "api_host": ""         # optional: real API host when origin is an SSH alias / mirror
-        }
-      },
-      "lifecycle": {            # devops lifecycle hooks per phase (opt-in, default empty)
-        "default": {"pre_commit": [], "post_commit": []},
-        "repos":   {"/abs/repo": {"pre_commit": [], "post_commit": ["review"]}}
-      }
-    }
-
-Layering (low → high precedence), each layer may be PARTIAL:
-
-    _DEFAULTS < global < main repo local config < current checkout local config
-
-A repo or workspace can drop a `.devloop/config.json` next to its runtime state to
-override just a few keys (e.g. a different `forges` token for that repo); the
-nearest one to `repo_dir` wins, everything else falls through to the global file.
-Ancestor files are included once; Git identifies the main repo even for external
-worktrees. Each source resolves its default/repos policy before closer sources
-override it. Workspaces is global-only; forge token environment variables win.
-
-Global lives at a USER-LEVEL path (override the dir via `DEVLOOP_CONFIG_DIR`), never
-the versioned plugin dir — a `/plugin update` swaps that dir and would drop user
-config. Optional: every section has a default, so a fresh install just works; the
-global file is created on first write (e.g. when a workspace auto-registers). Writes
-always target the global file — local overrides are read-only, hand-authored.
+Repository access belongs to RepoKit. This loader owns workspaces, lifecycle,
+architecture, review and explicit pull_request.target_repository policy only.
 """
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
 
-from repokit.forge import ForgeConnection, detect_provider
-from repokit.forge.model import Forge, PullRequestIdentity
-from repokit.git.remote import remote
 
 from .git_state import main_repo_root
 
 # Section defaults — every load() deep-merges real layers over these, so a partial
-# config (e.g. only `workspaces`) still yields sane `forges` / `lifecycle`.
+# config (e.g. only `workspaces`) still yields sane lifecycle policies.
 _DEFAULTS: dict = {
     "workspaces": [],
-    "forges": {},
     # devops 生命周期 hook：相位 → [hook 名]。opt-in，默认全空 = dispatch 每相位 no-op、零行为
     # 变化。domain.lifecycle.dispatch 读它决定每个相位跑哪些 hook。
     "lifecycle": {
@@ -156,31 +115,10 @@ def set_workspaces(ws: list[str]) -> None:
     update(lambda d: d.__setitem__("workspaces", list(ws)))
 
 
-def forges(repo_dir: str | Path | None = None) -> dict:
-    """The host-keyed forge registry from the config closest to `repo_dir`."""
-    return load(repo_dir).get("forges") or {}
-
-
-def forge_entry(host: str, repo_dir: str | Path | None = None) -> dict:
-    """Config entry for one origin host (`{token, type?, api_host?}`); `{}` if none."""
-    e = forges(repo_dir).get(host)
-    return e if isinstance(e, dict) else {}
-
-
-# Provider → the conventional env var names each ecosystem already uses. Env wins over
-# config (CI-friendly) and is keyed by provider, not host, since that's the standard.
-_TOKEN_ENV = {"github": ("GITHUB_TOKEN", "GH_TOKEN"), "gitlab": ("GITLAB_TOKEN",)}
-
-
-def forge_token(host: str, provider: str, repo_dir: str | Path | None = None) -> str | None:
-    """Token for `host`: the provider's conventional env var wins, else `forges[host].token`
-    from the config closest to `repo_dir`. None if absent."""
-    for var in _TOKEN_ENV.get(provider, ()):
-        v = os.environ.get(var)
-        if v and v.strip():
-            return v.strip()
-    tok = (forge_entry(host, repo_dir).get("token") or "").strip()
-    return tok or None
+def pull_request_target(repo_dir: str | Path | None = None) -> str | None:
+    """The workflow's explicit proposal destination, independent of access settings."""
+    value = (load(repo_dir).get("pull_request") or {}).get("target_repository")
+    return value if isinstance(value, str) and value else None
 
 
 def lifecycle(repo_dir: str | Path | None = None) -> dict:
@@ -259,56 +197,3 @@ def _atomic_write(path: Path, content: str) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")
     tmp.replace(path)
-
-
-@dataclass(frozen=True)
-class ForgeResolution:
-    """The repo's forge identity, resolved ONCE from the three sources (origin remote /
-    config / env). `token` is None when no usable credential exists."""
-    provider: str
-    host: str        # host parsed from origin (the config key)
-    api_host: str    # host to hit for the API (config `api_host` override, else `host`)
-    path: str        # owner/repo (GitHub) or group/subgroup/proj (GitLab)
-    token: str | None
-
-    def connection(self, *, timeout: int = 10) -> ForgeConnection:
-        """Assemble native toolkit access; callers never launch repocli."""
-        return ForgeConnection(host=self.host, token=self.token or "", provider=self.provider,
-                               api_host=self.api_host, timeout=timeout)
-
-    def pull_request_identity(self, number: int) -> PullRequestIdentity:
-        return PullRequestIdentity(
-            source=self.host,
-            repository=self.path,
-            number=number,
-        )
-
-
-def resolve_forge(repo_dir: str | Path) -> ForgeResolution | None:
-    """origin + config + env → one ForgeResolution. None if origin is unresolvable.
-
-    Single place the three sources are combined, so call sites never re-derive provider /
-    host / token piecemeal.
-    """
-    observed = remote(repo_dir)
-    if observed is None:
-        return None
-    host, path = observed.host, observed.path
-    entry = forge_entry(host, repo_dir)
-    provider = detect_provider(host, entry.get("type"))
-    return ForgeResolution(
-        provider=provider,
-        host=host,
-        api_host=entry.get("api_host") or host,
-        path=path,
-        token=forge_token(host, provider, repo_dir),
-    )
-
-
-def forge_client(repo_dir: str | Path, *, timeout: int = 10) -> Forge | None:
-    """Build the forge adapter for this repo's origin. None if the remote is unresolvable
-    or no token is available (callers skip quietly — forge features are best-effort)."""
-    r = resolve_forge(repo_dir)
-    if r is None or not r.token:
-        return None
-    return r.connection(timeout=timeout).client(r.path)

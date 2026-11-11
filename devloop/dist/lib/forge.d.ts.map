@@ -1,1 +1,1 @@
-{"version":3,"file":"forge.d.ts","sourceRoot":"","sources":["../../lib/forge.ts"],"names":[],"mappings":"AAAA,OAAO,EAA2C,KAAK,kBAAkB,EAAE,MAAM,oBAAoB,CAAC;AAGtG;;;GAGG;AACH,wBAAsB,gBAAgB,CAAC,IAAI,EAAE,MAAM,GAAG,OAAO,CAAC,kBAAkB,GAAG,SAAS,CAAC,CAW5F"}
+{"version":3,"file":"forge.d.ts","sourceRoot":"","sources":["../../lib/forge.ts"],"names":[],"mappings":"AAAA,OAAO,EAAsB,KAAK,kBAAkB,EAAE,MAAM,oBAAoB,CAAC;AAGjF;;;;;GAKG;AACH,wBAAsB,gBAAgB,CAAC,IAAI,EAAE,MAAM,GAAG,OAAO,CAAC,kBAAkB,GAAG,SAAS,CAAC,CAM5F"}

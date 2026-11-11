@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { architectureConfig, forgeEntry, forgeToken, lifecycleConfig, loadConfig, saveConfig, workspaces } from "../lib/config.js";
+import { architectureConfig, pullRequestTarget, lifecycleConfig, loadConfig, saveConfig, workspaces } from "../lib/config.js";
 import { runGit } from "@compforge/repokit";
 
 let root: string;
@@ -43,17 +43,17 @@ describe("repository policy inheritance", () => {
     localConfig(root, { review: { tool: "ancestor", options: { verbose: true } } });
     localConfig(repo, {
       review: { tool: "main" },
-      forges: { "git.example.com": { type: "gitlab", token: "main-token", api_host: "api.example.com" } },
+      pull_request: { target_repository: "upstream/repo" },
     });
     expect(loadConfig(checkout).review).toEqual({ tool: "main", options: { verbose: true } });
-    expect(forgeEntry("git.example.com", checkout).token).toBe("main-token");
+    expect(pullRequestTarget(checkout)).toBe("upstream/repo");
     localConfig(checkout, {
       review: { options: { verbose: false } },
-      forges: { "git.example.com": { token: "" } },
+      pull_request: { target_repository: "" },
     });
     expect(loadConfig(checkout).review).toEqual({ tool: "main", options: { verbose: false } });
     expect(loadConfig(repo).review).toEqual({ tool: "main", options: { verbose: true } });
-    expect(forgeEntry("git.example.com", checkout)).toEqual({ type: "gitlab", token: "", api_host: "api.example.com" });
+    expect(pullRequestTarget(checkout)).toBeUndefined();
   });
 
   it("lets closer source defaults override global path-keyed policy", () => {
@@ -81,14 +81,11 @@ describe("repository policy inheritance", () => {
   });
 
   it("keeps workspace registration global and credential environment overrides explicit", () => {
-    saveConfig({ workspaces: ["/global"], forges: { "git.example.com": { token: "global-token" } } });
-    localConfig(repo, { workspaces: ["/local"], forges: { "git.example.com": { token: "local-token" } } });
+    saveConfig({ workspaces: ["/global"], pull_request: { target_repository: "upstream/repo" } });
+    localConfig(repo, { workspaces: ["/local"], pull_request: { target_repository: "fork/repo" } });
     expect(loadConfig(repo).workspaces).toEqual(["/global"]);
     expect(workspaces()).toEqual(["/global"]);
-    vi.stubEnv("GITLAB_TOKEN", "");
-    expect(forgeToken("git.example.com", "gitlab", repo)).toBe("local-token");
-    vi.stubEnv("GITLAB_TOKEN", "environment-token");
-    expect(forgeToken("git.example.com", "gitlab", repo)).toBe("environment-token");
+    expect(pullRequestTarget(repo)).toBe("fork/repo");
   });
 
   it("falls back to main-repository configuration when a local file is invalid", () => {

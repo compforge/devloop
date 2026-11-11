@@ -12,8 +12,8 @@ from pathlib import Path
 import logging
 
 from lib import git_state, parsers, repokit
-from repokit.repository import default_branch as repository_default_branch
-from lib.config import forge_client
+from repokit.state import default_branch as repository_default_branch
+from lib.forge import forge_client
 
 from .. import repo_layout
 from . import base, store

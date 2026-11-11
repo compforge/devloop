@@ -1,17 +1,23 @@
 {
   "workspaces": [],
-
-  "forges": {
-    "github.com": { "type": "github", "token": "" },
-    "gitlab.example.com": { "type": "gitlab", "token": "", "api_host": "" }
+  "review": {
+    "tool": "ccr"
   },
-
-  "review": { "tool": "ccr" },
-
   "lifecycle": {
-    "default": { "pre_commit": [], "post_commit": [] },
+    "default": {
+      "pre_commit": [],
+      "post_commit": []
+    },
     "repos": {
-      "/abs/repo": { "pre_commit": [], "post_commit": ["review"] }
+      "/abs/repo": {
+        "pre_commit": [],
+        "post_commit": [
+          "review"
+        ]
+      }
     }
+  },
+  "pull_request": {
+    "target_repository": ""
   }
 }

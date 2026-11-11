@@ -484,7 +484,7 @@ def test_push_is_git_only_without_validation_records():
         binary.write_text("#!/bin/sh\ntouch '" + str(root / "cli-ran") + "'\nexit 1\n")
         binary.chmod(0o755)
         # A local bare Git remote has no Forge; preserve real Git/staging/push execution.
-        with patch.object(config, "resolve_forge", return_value=None), patch.dict(os.environ, {
+        with patch.dict(os.environ, {
             "PATH": str(root) + os.pathsep + os.environ["PATH"], "DEVLOOP_REPOCLI": str(binary),
         }):
             assert flow.main(["push", "--repo", str(repo), "--message", "fix: source", "--file", "source.py"]) == 0

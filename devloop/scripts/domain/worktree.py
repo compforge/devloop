@@ -5,7 +5,7 @@ reuse and dependency preparation behind this module prevents callers from
 reproducing only the visible ``git worktree add`` step and skipping lifecycle policy.
 """
 from __future__ import annotations
-from repokit import git as operations
+from repokit import state as operations
 from repokit.git.state import checkout_info
 from repokit.state import RepositoryState
 

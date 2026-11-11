@@ -37,8 +37,21 @@
 ## 明确例外
 
 - `workspaces` 是用户级工作区注册表，只取全局配置，忽略本地同名字段。
-- Forge token 的非空环境变量优先于配置文件：GitHub 使用 `GITHUB_TOKEN` / `GH_TOKEN`，
-  GitLab 使用 `GITLAB_TOKEN`。这属于运行环境对凭据的显式覆盖。
 
-`review.tool`、`forges` 以及其他普通字段都遵循统一继承规则。
-示例结构见 [config.example.json](../config/config.example.json)；包含凭据的本地配置不要提交到仓库。
+`review.tool`、`pull_request.target_repository` 等工作流字段遵循统一继承规则。
+`pull_request.target_repository` 是可选的 PR 目标仓路径（如 `upstream/repository`），不决定访问身份。
+示例结构见 [config.example.json](../config/config.example.json)。
+
+## Repository 访问边界
+
+Forge host/provider、API 地址和凭据全部归 RepoKit 的 `~/.repokit/config.json`；devloop 不保存、
+解析或覆盖这些设置，也不从环境变量读取 token。Repository 元信息由 RepoKit 从仓库事实取得。
+配置缺少凭据是查询不可用，不代表仓库没有 PR。
+
+Repository 操作优先调用 `repocli`，按统一 envelope 检查 schema、command、outcome 与 data。
+用户交互的 PR 创建、更新、查询和清理由 skill 指导 AI 直接执行；review 的 PR 列表和正文读取
+也通过 CLI。评论线程、release 和包含祖先关系核验的分支关联暂未有对应 CLI 契约，使用 RepoKit
+SDK，由其 config 入口取得访问配置。devloop 不实现 Git/Forge 传输，不另建缓存，不回退到自己的 token。
+
+RepoKit 配置与 SDK 需要支持该配置契约：CLI 0.65.1、Python 0.25.0、TypeScript 0.19.0 或更新版本。
+配置文件权限与完整 schema 由 RepoKit 的 `docs/configuration.md` 维护。

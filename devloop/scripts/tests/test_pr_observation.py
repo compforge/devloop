@@ -65,7 +65,8 @@ def test_gate_distinguishes_missing_credentials_from_no_forge_origin():
     # +case=`Missing credentials cannot authorize a commit; an absent Forge origin is inapplicable`
     from contextlib import redirect_stderr
     from io import StringIO
-    from lib import config
+    import os
+    from tempfile import TemporaryDirectory
     from domain.forge import ForgeAuthError
 
     repo, _, _ = _fixture("gate_credentials")
@@ -73,18 +74,18 @@ def test_gate_distinguishes_missing_credentials_from_no_forge_origin():
     assert gate.evaluate(repo).active_pr is None  # Local filesystem origin.
     _git(repo, "remote", "set-url", "origin", "https://github.com/example/repo.git")
     command = _load_script("commit_flow")
-    with patch.object(config, "forge_token", return_value=None):
+    with TemporaryDirectory() as home, patch.dict(os.environ, {"REPOKIT_HOME": home, "GH_TOKEN": "ignored"}):
         try:
             gate.evaluate(repo)
         except ForgeAuthError as exc:
-            assert "no credential for github.com" in str(exc)
+            assert "no github credential for github.com" in str(exc)
         else:
             raise AssertionError("missing credentials must not authorize a gate")
         assert prstate.checkout_pr(repo) == ("", None)  # Presentation remains best-effort.
         with patch.object(command, "prepare_branch") as mutation, redirect_stderr(StringIO()) as error:
             assert command.main(["commit", "--repo", repo, "-m", "blocked"]) == 1
         mutation.assert_not_called()
-        assert "no credential" in error.getvalue()
+        assert "no github credential" in error.getvalue()
 
 
 def test_commit_only_rejects_unavailable_and_ambiguous_pr_queries():

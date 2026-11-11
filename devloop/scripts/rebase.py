@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI adapter for devloop's safe, resumable branch-rebase transaction."""
+"""Development-policy adapter for RepoCLI's resumable rebase operation."""
 from __future__ import annotations
 
 import sys

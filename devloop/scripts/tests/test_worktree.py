@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
 from _testkit import _git, _git_out, run_main  # noqa: E402  (bootstrap first)
 from domain import worktree  # noqa: E402
@@ -62,7 +63,8 @@ def _add_external_worktree(repo: str, tag: str) -> str:
     return str(path)
 
 
-def test_reused_worktree_refreshes_shared_home_without_recreating_source():
+@patch.object(worktree, "prepare_environment", return_value=[])
+def test_reused_worktree_refreshes_shared_home_without_recreating_source(_prepare):
     from repokit.state import RepositoryState
     from repokit.state import resolve_home
     from unittest.mock import patch
@@ -79,7 +81,8 @@ def test_reused_worktree_refreshes_shared_home_without_recreating_source():
     assert path is not None and "repository observation unavailable" in message
 
 
-def test_new_worktree_fetches_latest_target_tip():
+@patch.object(worktree, "prepare_environment", return_value=[])
+def test_new_worktree_fetches_latest_target_tip(_prepare):
     repo, _, actor = _fixture("fresh")
     stale_tip = _git_out(repo, "rev-parse", "origin/main")
     latest_tip = _advance_remote(actor)
@@ -103,7 +106,8 @@ def test_new_worktree_refuses_a_stale_base_when_fetch_fails():
     assert _git_out(repo, "branch", "--list", "worktree-offline") == ""
 
 
-def test_retained_branch_is_resumed_without_rewriting_it():
+@patch.object(worktree, "prepare_environment", return_value=[])
+def test_retained_branch_is_resumed_without_rewriting_it(_prepare):
     repo, _, actor = _fixture("resume")
     retained_tip = _git_out(repo, "rev-parse", "HEAD")
     _git(repo, "branch", "worktree-resume", retained_tip)
@@ -117,7 +121,8 @@ def test_retained_branch_is_resumed_without_rewriting_it():
     assert message == "reused existing branch"
 
 
-def test_create_and_reuse_leave_reclamation_to_pr_lifecycle():
+@patch.object(worktree, "prepare_environment", return_value=[])
+def test_create_and_reuse_leave_reclamation_to_pr_lifecycle(_prepare):
     repo, _, _ = _fixture("create_without_pruning")
     old = _add_worktree(repo, "old")
     # A leftover legacy setting must not resurrect count-based reclamation.
@@ -129,6 +134,17 @@ def test_create_and_reuse_leave_reclamation_to_pr_lifecycle():
     assert Path(old).is_dir()
     reused, _ = worktree.create_or_reuse(repo, "new")
     assert reused == created and Path(old).is_dir()
+
+
+@patch.object(worktree, "prepare_environment", return_value=["registry unavailable"])
+def test_preparation_warning_keeps_created_and_reused_worktree(_prepare):
+    repo, _, _ = _fixture("preparation_warning")
+    created, message = worktree.create_or_reuse(repo, "new")
+    assert created is not None and Path(created).is_dir()
+    assert "environment warning: registry unavailable" in message
+    reused, message = worktree.create_or_reuse(repo, "new")
+    assert reused == created and "environment warning: registry unavailable" in message
+    assert _prepare.call_count == 2
 
 
 def test_repo_context_topology_uses_checkout_locations():

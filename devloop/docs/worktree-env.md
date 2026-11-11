@@ -1,27 +1,23 @@
 # Worktree 依赖准备
 
-devloop 在 managed worktree 创建或复用时准备依赖；repocli 的 Python toolkit 拥有依赖观察和显式安装。
-worktree 创建与安装是两个独立操作，由 devloop 在 managed-worktree 流程中组合。
+devloop 在 managed worktree 创建或复用后调用一次 `repocli depot prepare --repo <checkout> --timeout 10m --json`。
+RepoKit 拥有 Component → Depot → Bin 的发现、安装根、指纹、锁定安装、回执与共享 Bin 去重。
+worktree 创建和依赖准备是独立操作，devloop 只决定准备时机及告警后继续的策略。
 
-## 归属与判定
+## 结果与策略
 
-repocli 解析 Component 对应的包管理器、锁文件及安装根。同一 Bun/pnpm/npm/Yarn/uv workspace 的成员
-可以共用 checkout 内的安装根，不能把每个 Component 都当成独立安装单位。依赖恢复和缓存策略遵循
-包管理器，不能复用另一个 checkout 的整个 node_modules/.venv。
+`scripts/domain/worktree.py` 只启动 CLI、核对结果协议并整理告警；不循环 Component、不调用原生依赖准备
+API，也不解析锁文件或构造安装命令。ready/prepared 和 ready/reused 不产生告警；present/preserved
+记录未验证提示，允许项目检查继续，不能称为 ready。missing、stale、unsupported、failed、uncertain
+和 not_run 的原因及安装器输出保留为 environment warning，不撤销已经创建或复用的 checkout。
 
-`scripts/domain/worktree.py` 只保留消费策略：ready 环境无需重新安装；present 表示用户已准备了本地依赖、
-但没有匹配的准备回执，允许执行项目自己的检查，不宣称锁文件一致性已获验证。有锁定安装命令的 missing
-环境以及 stale 环境调用 prepare_dependencies。有些 Component 的 manifest 仅用于发行包装；当 repocli
-报告 missing 且安装命令为空时，跳过自动准备并输出原因，让项目自己的检查决定结果，不创建依赖目录或准备回执。
-unsupported（如依赖目录软链接、异常占位文件）、安装失败、取消和观察失败保留原因并报告准备失败。
-AI 显式调用 repocli 验证并检查结果，不把依赖准备成功当作 lint/test 通过。
+CLI 缺失、超时、协议不匹配或观察不完整明确提示，不能回退到第二套准备实现。CLI 自身拥有 10 分钟
+整轮预算，外层进程等待额外留出 10 秒用于终止和结果序列化；失败或未知结果不自动重试。
+共享 lease、进程取消、安装支持范围与回执语义以 RepoKit Depot 文档为准。
 
-## 生命周期
-
-创建或复用 managed worktree 后预热依赖；独立验证前由 AI 按项目约定准备环境。同一进程中的并发准备
-由 repocli 按安装根串行并在锁内复查，避免 lint/test 各自安装同一 workspace。观察不执行项目脚本，
-安装只使用显式的锁定操作，不自动生成或升级锁文件；更详细的支持范围和进程预算以 repocli 的依赖准备
-API 为准。Go 等无需本地安装视图的 Component 不会被强加依赖目录。
+输出成本来自 `cost`，包含逐 Bin 安装、核验、回执和观察/锁等待时间，devloop 不重新计算或保存依赖缓存。
+AI 显式调用 `repocli validate` 并判断结果；prepare 成功不代表 lint/test 通过，validate 不隐式安装。
+独立准备时可以直接用 `repocli depot inspect/prepare`，无需新增 devloop 转发脚本。
 
 `scripts/python` 通过 uv 锁定脚本环境安装 devloop 自身依赖，位于 uv 缓存；它与被检查项目的依赖环境分开。
 它不借用项目 .venv，也不让被检查仓库决定 devloop 的运行依赖。

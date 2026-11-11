@@ -2,7 +2,7 @@
 """review — provider-neutral operations for devloop's automated review lifecycle.
 
 ReviewRun production, Finding inspection, Verdict persistence, and thread resolution share one
-domain surface. Generic PR/MR operations remain in `pr.py`; callers never format `ccr:label=`
+domain surface. Generic PR/MR operations are direct `repocli pr` commands; callers never format `ccr:label=`
 or couple a Verdict to discussion resolution themselves.
 """
 from __future__ import annotations
@@ -113,6 +113,8 @@ def cmd_findings(ns) -> int:
             f"{comment.id}  [{finding.verdict or 'PENDING'}]  "
             f"{location or '?'}  ccr:fp={finding.fp}"
         )
+        if comment.resolve_ref:
+            print(f"    thread={comment.resolve_ref}")
         body = (comment.body or "").strip().replace("\n", " ")
         print(f"    {body[:200]}")
     return 0

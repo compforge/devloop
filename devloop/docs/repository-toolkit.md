@@ -80,3 +80,11 @@ checkout 与 common Git directory 关系由 toolkit 解释。仓库级状态共�
 无法反查主 checkout 时使用 common directory 下的 `.devloop`。owner 与 commit_msg 仍属于当前 checkout。
 未知 checkout 位置保持未知，不据此推断资源已删除；Session 结束时仍释放可确认位置的 owner。
 Git status、ahead/behind 或祖先查询失败均保留失败语义，不伪造 clean、0/0 或非祖先事实。
+
+## Discussion 操作入口
+
+通用讨论读取、发表评论、回复与 resolve 由 skill 直接调用 `repocli pr discussion`，不保留
+`scripts/pr.py`。CLI 入口与输出约定见 [PR management](../skills/git-ops/references/pr-management.md#discussions)。
+`review.py` 继续拥有 Finding/Verdict、修复发布条件与 review 引擎编排；其内部原生 SDK 调用
+保留，不为替换通用入口新增 Python CLI wrapper。`review findings` 输出 comment ID 和可用的
+thread ID，前者用于 Verdict 命令，后者用于通用 discussion 命令。

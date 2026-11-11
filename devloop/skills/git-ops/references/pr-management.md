@@ -17,7 +17,7 @@ Forge access comes from RepoKit home config.json; do not inject token environmen
 The AI invokes these write commands directly; devloop owns no access configuration.
 
 Use [gcampr](commit-flow.md) for commit + push + create/reuse. Merge remains a human action.
-Successful PR writes perform best-effort local maintenance inside RepoKit; devloop supplies no
+Successful PR lifecycle writes perform best-effort local maintenance inside RepoKit; devloop supplies no
 cleanup callback. Read queries do not clean worktrees.
 
 Read PR identity and state from `data`, not envelope fields. A successful create/update with
@@ -32,11 +32,28 @@ fields for an update or terminal state for a close, not just PR existence. An em
 proves absence when the query succeeded. Honor `retryAt` when present; do not infer safe
 retries from error text.
 
-Review comments, replies, Verdicts and resolution retain their dedicated workflow:
+## Discussions
+
+Use repocli 0.67.0 or later for generic discussion operations:
 
 ```bash
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/pr.py comment <number|url> <comment-id>
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/pr.py reply <number> <comment-id> '<body>'
+repocli pr discussion list <number> --repo <path> --json
+repocli pr discussion show <number> <thread-id> --repo <path> --json
+repocli pr discussion create <number> --repo <path> --body-file <file> --json
+repocli pr discussion reply <number> <thread-id> --repo <path> --body-file <file> --json
+repocli pr discussion resolve <number> <thread-id> --repo <path> --json
 ```
 
-A generic reply does not record a Verdict or resolve a thread; use [review](../../review/SKILL.md).
+Use the returned thread `id`; comment IDs in `comments[]` are distinct. `show` and JSON
+preserve full Markdown and replies. `create` posts an unanchored conversation comment.
+Check `replyable`, `resolvable` and `resolution`: GitHub conversation comments cannot be
+replied to or resolved as review threads. For forks, pass the target repository explicitly.
+These operations do not run worktree maintenance.
+
+A successful reply returns the actual new comment ID and body. For an unknown write or lost
+output, read the same PR/thread and compare the message/author or resolution before retrying.
+Do not repeat a create/reply merely because its response was lost. A failed read is not absence.
+
+A generic reply does not record a Verdict, and platform resolution does not establish that a
+finding was fixed. For devloop findings use [review](../../review/SKILL.md): its domain commands
+own Verdict encoding and the validated/published-fix requirement before resolution.

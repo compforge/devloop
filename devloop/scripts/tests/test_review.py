@@ -954,19 +954,18 @@ def test_optional_review_access_failure_does_not_retract_pr_observation():
     assert pr.is_open
 
 
-def test_discussion_entrypoints_use_workflow_target_without_changing_access():
+def test_review_entrypoint_uses_workflow_target_without_changing_access():
     from types import SimpleNamespace
     from unittest.mock import patch
-    for name in ("pr", "review"):
-        command = _load_script(name)
-        forge = _FakeForge([])
-        with patch.object(command.cli, "resolve_repo_or_exit", return_value=(SimpleNamespace(git_root="/repo"), None)), \
-             patch.object(command, "forge_client", return_value=forge) as access, \
-             patch.object(command, "pull_request_target", return_value="upstream/repo"), \
-             patch.object(forge, "for_repository", return_value=forge) as destination:
-            assert command._forge_or_exit(SimpleNamespace(), name) is forge
-            access.assert_called_once_with("/repo")
-            destination.assert_called_once_with("upstream/repo")
+    command = _load_script("review")
+    forge = _FakeForge([])
+    with patch.object(command.cli, "resolve_repo_or_exit", return_value=(SimpleNamespace(git_root="/repo"), None)), \
+         patch.object(command, "forge_client", return_value=forge) as access, \
+         patch.object(command, "pull_request_target", return_value="upstream/repo"), \
+         patch.object(forge, "for_repository", return_value=forge) as destination:
+        assert command._forge_or_exit(SimpleNamespace(), "review") is forge
+        access.assert_called_once_with("/repo")
+        destination.assert_called_once_with("upstream/repo")
 
 
 

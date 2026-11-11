@@ -11,7 +11,6 @@ import subprocess
 from dataclasses import replace
 
 from _testkit import _FakeForge, _git, _load_script, run_main  # noqa: E402  (bootstrap first)
-from domain import git_policy
 from domain.context import Cadence, PullRequest  # noqa: E402
 from repokit.forge import detect_provider
 from repokit.git.remote import remote
@@ -142,48 +141,6 @@ def test_review_cli_separates_verdict_from_resolution():
     finally:
         reviewcli.forge_client = orig_forge
         reviewcli.cli.resolve_repo_or_exit = orig_resolve
-
-
-def test_release_cli_dispatch():
-    """`release` CLI over the facade: create validates semver + strict increment, defaults the
-    target to the repo trunk, requires semantic notes, and reads the latest release."""
-    from repokit.git import state as git_state
-    rel = _load_script("release")
-    fake = _FakeForge([])
-
-    class _R:
-        git_root = "/x"
-
-    orig_forge, orig_resolve = rel.forge_client, rel.cli.resolve_repo_or_exit
-    orig_trunk = git_policy.local_default_target
-    try:
-        rel.forge_client = lambda repo: fake
-        rel.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
-        git_policy.local_default_target = lambda repo: "main"
-
-        # Semantic notes are caller-owned: omission must not silently publish a raw PR list.
-        assert rel.main(["create", "v1.8.0"]) == 1
-        assert getattr(fake, "released", None) is None
-        # Caller-supplied semantic notes are accepted; target defaults to trunk.
-        notes = "## New Features\n\n- Add one user-visible capability."
-        assert rel.main(["create", "v1.8.0", "--notes", notes]) == 0
-        assert fake.released.tag == "v1.8.0" and fake.released.target == "main"
-        assert fake.released_notes == notes
-        # non-semver rejected before any call
-        fake.released = None
-        assert rel.main(["create", "1.8"]) == 1 and fake.released is None
-        # not-greater-than-last rejected (last is now v1.8.0)
-        assert rel.main(["create", "v1.8.0"]) == 1 and fake.released is None
-        assert rel.main(["create", "v1.7.0"]) == 1 and fake.released is None
-        # higher version accepted; explicit --target and --notes honored (no draft)
-        assert rel.main(["create", "v1.9.0", "--target", "abc123", "--notes", "manual"]) == 0
-        assert fake.released.tag == "v1.9.0" and fake.released.target == "abc123"
-        assert fake.released_notes == "manual"
-        # latest reads the newest
-        assert rel.main(["latest"]) == 0
-    finally:
-        rel.forge_client, rel.cli.resolve_repo_or_exit = orig_forge, orig_resolve
-        git_policy.local_default_target = orig_trunk
 
 
 def test_checkout_pr_without_forge():

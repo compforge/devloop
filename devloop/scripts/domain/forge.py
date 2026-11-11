@@ -8,7 +8,6 @@ from repokit.forge.model import (
     PullRequest as PullRequest,
     CommentResolution as CommentResolution,
     Comment as Comment,
-    Release as Release,
     MergeReadiness as MergeReadiness,
     Forge as Forge,
     parse_pr_number as parse_pr_number,

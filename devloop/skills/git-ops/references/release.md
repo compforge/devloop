@@ -1,20 +1,37 @@
 # Release
 
+Use repocli 0.70.0+ directly for Forge Release operations:
+
 ```bash
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/release.py latest
-<PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/release.py create <version> [--target <ref>] [--title ...] --notes-file <path>
+repocli release latest --repo <path> --json
+repocli release show <tag> --repo <path> --json
+repocli release create <tag> --target <verified-remote-commit> --title <name> --notes-file <path> --repo <path> --json
 ```
 
-Use `--repo <name|path>` when repository selection is ambiguous. The CLI creates a Forge Release
-and tag server-side; package publishing and deployment are separate project workflows.
+Read the project's release contract first. Select the version, version line and release target
+from its version source and requested scope. RepoKit accepts Git tag names, does not enforce
+SemVer progression and never chooses a default branch. `latest` reports the provider's selection
+in `data.selection`: GitHub's published latest Release or GitLab's released_at ordering; neither
+is a maximum-version calculation. Check the relevant version line before choosing a new version.
 
-Resolve the version from the project's version source and the requested release scope. The CLI
-requires `vX.Y.Z` newer than the latest release and defaults to remote trunk. Use another target
-when the task calls for it.
+Write notes from changes since the appropriate baseline, grouped by user-visible outcomes with
+upgrade/compatibility actions where needed. Provide meaningful notes unless the project's contract
+explicitly permits an empty body. `--notes-file -` reads stdin; file contents are preserved exactly.
+Use `--target-repository` for an explicit repository on the same Forge when origin is not the target.
 
-Write notes from the changes since the previous release, grouped by user-visible outcomes with
-upgrade/compatibility actions where needed. After publication, verify the tag target and Release
-body, then report the Release URL and any separately requested publication/deployment outcome.
+Accept publication only when `outcome` is `succeeded` and `data.confirmed` is true. Check
+`data.targetCommit` against the intended commit and inspect `data.release` for full notes and URL.
+An identical existing Release is a confirmed no-op; differing commit, name, notes or publication
+state is a conflict. There is no automatic overwrite or retry. `writeAttempted` does not prove
+creation. Inspect `cost.phases` for prepare/preflight/write/verify costs.
+
+For unknown results or interrupted output, use `release show` on the same repository/tag before
+retrying. A successful `data.release: null` is absence; a failed query is not. Compare the actual
+`targetCommit`, name, notes and draft/prerelease/upcoming state. A post-write conflict may leave
+remote objects, so report the observation and resolve the discrepancy before another mutation.
+
+Package publishing, deployment and assets remain project workflows. Report the confirmed Release
+URL separately from those outcomes. Release commands do not run PR/worktree maintenance.
 
 ## Repository-owned release workflows
 

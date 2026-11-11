@@ -78,7 +78,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.69.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.70.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

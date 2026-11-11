@@ -1,6 +1,6 @@
 {
   "name": "code-taste",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Engineering judgment for architecture, boundaries, naming, maintainability, documentation, and code review.",
   "author": {
     "name": "compforge",

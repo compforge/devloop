@@ -45,6 +45,24 @@ def test_parse_origin_and_detect_provider():
     assert detect_provider("git.acme.com", "github") == "github"        # GHE on custom host
 
 
+def test_review_findings_exposes_thread_identity_for_repocli():
+    """+case=Finding comment IDs stay distinct from platform thread IDs for CLI handoff."""
+    import io
+    from contextlib import redirect_stdout
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from domain.forge import Comment
+
+    reviewcli = _load_script("review")
+    comment = Comment(id="20", resolve_ref="PRRT_thread", reply_ref="20", body="finding ccr:fp=identity")
+    forge = SimpleNamespace(comments=lambda number: [comment])
+    output = io.StringIO()
+    with patch.object(reviewcli, "_forge_or_exit", return_value=forge), redirect_stdout(output):
+        assert reviewcli.main(["findings", "5"]) == 0
+    assert "20  [PENDING]" in output.getvalue()
+    assert "thread=PRRT_thread" in output.getvalue()
+
+
 def test_review_cli_separates_verdict_from_resolution():
     """The review CLI owns typed Verdicts; recording one never resolves its thread."""
     from domain.forge import Comment, CommentResolution
@@ -124,39 +142,6 @@ def test_review_cli_separates_verdict_from_resolution():
     finally:
         reviewcli.forge_client = orig_forge
         reviewcli.cli.resolve_repo_or_exit = orig_resolve
-
-
-def test_pr_reply_has_no_review_side_effects():
-    """Generic PR replies stay generic even when their body resembles a review label."""
-    from domain.forge import Comment
-    prcli = _load_script("pr")
-
-    class _F(_FakeForge):
-        def __init__(self, prs):
-            super().__init__(prs)
-            self.replied = []
-
-        def comments(self, number):
-            return [Comment(id="30", reply_ref="30", body="discussion")]
-
-        def reply(self, number, target, body):
-            self.replied.append((number, target.id, body))
-
-    fake = _F([PullRequest(number=5, state="open")])
-
-    class _R:
-        git_root = "/x"
-
-    orig_forge, orig_resolve = prcli.forge_client, prcli.cli.resolve_repo_or_exit
-    try:
-        prcli.forge_client = lambda repo: fake
-        prcli.cli.resolve_repo_or_exit = lambda ns, prog: (_R(), "test")
-        assert prcli.main(["reply", "5", "30", "ccr:label=minor — just text"]) == 0
-        assert fake.replied == [(5, "30", "ccr:label=minor — just text")]
-        assert prcli.main(["reply", "5", "999", "x"]) == 1
-    finally:
-        prcli.forge_client = orig_forge
-        prcli.cli.resolve_repo_or_exit = orig_resolve
 
 
 def test_release_cli_dispatch():

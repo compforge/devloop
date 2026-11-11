@@ -78,7 +78,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.65.1 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.67.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.
@@ -160,3 +160,10 @@ RepoKit owns Forge instance/provider, API host and credentials in `<home>/config
 Devloop does not load access settings or inject token environment variables. SDK fallbacks use
 RepoKit configuration; workflow configuration only selects the PR target repository.
 The configured access contract requires Python RepoKit 0.26.0 and TypeScript RepoKit 0.20.0.
+
+## Discussions
+
+Skills invoke `repocli pr discussion` directly for list/show/create/reply/resolve; there is no
+Python PR command wrapper. See [PR management](../skills/git-ops/references/pr-management.md#discussions)
+for opaque IDs, platform capabilities and recovery. Review Verdicts and fix authorization remain
+in devloop's review workflow; its SDK-backed execution is independent of the generic CLI entrypoints.

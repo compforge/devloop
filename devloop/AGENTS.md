@@ -14,7 +14,9 @@ enter repo → 基于 branch 开发 → 按 Component 验证 → commit / push �
 
 **领域主链是 `PR/MR → Repo → Component`**：PR/MR 始终锚定一个 repo；repo 是 git、branch、forge 状态和提交历史的边界；component 是 repo 内 build/lint/test 的验证单位。Branch 是本地开发上下文；worktree 是 branch 的可选 checkout，detached checkout 没有 branch 关联。
 Repository 信息获取和操作实现由 RepoKit 拥有，包括 Git/checkout、commit/push、PR 创建与观察。
-AI 通过 skill 直接调用 repocli；自动化程序直接消费 toolkit。devloop 不通过 subprocess 包装 repocli，不拼装平台请求。
+AI 通过 skill 消费 repocli 的命令结果（outcome、diagnostics、data 与 cost），负责领域验收和失败恢复；
+自动化程序直接消费 toolkit 领域对象。结果未知先观察，部分失败保留已确认动作。
+devloop 不通过 subprocess 包装 repocli，不拼装平台请求。CLI 消费契约见 [repocli](references/repocli.md)。
 
 **Workspace 是运行上下文，不是 PR/MR 的归属边界**：它可以聚合多个 repo，为项目知识和多 session 协作提供共同根；单仓库模式同样完整支持。跨 repo Requirement 与长期编排由 Baton/reqloop 拥有，devloop 不维护需求状态机。
 

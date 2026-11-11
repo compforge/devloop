@@ -5,6 +5,7 @@ description: Commit, push, rebase, manage GitHub PRs or GitLab MRs, create/resum
 
 Use devloop's managed scripts for Git transactions and `repocli pr` for PR operations; read-only Git inspection is unrestricted.
 Do not replace these workflows with raw Git mutations or provider-specific API calls.
+Before invoking repocli, read [its result and recovery contract](../../references/repocli.md#command-results-and-recovery).
 
 `<PLUGIN_ROOT>` is the installed plugin directory: `${CLAUDE_PLUGIN_ROOT}` on Claude Code,
 `${PLUGIN_ROOT}` on Codex and OpenCode V2. Run Python entrypoints through

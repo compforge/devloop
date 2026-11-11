@@ -6,7 +6,7 @@
 | Commit + push | `bash <PLUGIN_ROOT>/scripts/smart_gcamp.sh` |
 | Commit + push + PR/MR | AI runs the commit-and-push transaction, then `repocli pr create` |
 
-Before publishing code, run `repocli validate --repo <repo> --base <baseline> --check format,lint,test`.
+Before publishing code, run `repocli validate --repo <repo> --base <baseline> --check format,lint,test --json`.
 Use HEAD for uncommitted edits, or the target baseline for a committed branch. Inspect results and
 fix relevant failures. These commands are issued by the AI following the skill; the Git transaction
 neither launches repocli nor requires validation records.
@@ -36,7 +36,9 @@ repocli pr create --repo <repo> --head <branch> --base <target> --title '<title>
 Resolve the destination and base before creation. Reuse an existing proposal's base unless the
 user requests another target. Multiple candidates need an explicit selection. The CLI owns
 create/reuse identity and post-success maintenance. Report a PR failure separately from a
-successful commit/push, so retrying does not duplicate Git work.
+successful commit/push, so retrying does not duplicate Git work. Consume the command envelope
+using [PR result and recovery rules](pr-management.md); an unknown write requires observation
+before retry, while maintenance warnings do not undo a confirmed PR write.
 
 For a fork, pass `--target-repository owner/repo` to each PR query/write. Omission means the origin
 repository; fork metadata does not authorize publishing upstream. The PR base is independent of

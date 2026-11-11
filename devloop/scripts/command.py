@@ -15,6 +15,9 @@ caller instead of being silently misparsed.
 from __future__ import annotations
 
 import argparse
+import json
+import logging
+import subprocess
 import sys
 
 from domain import repo as repo_model
@@ -85,3 +88,20 @@ def resolve_repo_or_exit(
         print(f"{prog}: {how}", file=sys.stderr)
         raise SystemExit(1)
     return resolved, how
+
+
+def run_repocli(repo: str, operation: tuple[str, ...], arguments: list[str], *, timeout: int) -> dict:
+    """Bound the CLI protocol boundary; return domain failures for caller policy."""
+    result = subprocess.run(
+        ["repocli", *operation, *arguments, "--repo", repo, "--timeout", f"{timeout}s", "--json"],
+        capture_output=True, text=True, timeout=timeout + 10, check=False,
+    )
+    envelope = json.loads(result.stdout)
+    if (not isinstance(envelope, dict) or envelope.get("schemaVersion") != "1.0"
+            or envelope.get("command") != "repocli " + " ".join(operation)
+            or envelope.get("outcome") not in {"succeeded", "failed", "partial", "unknown"}
+            or (result.returncode == 0) != (envelope["outcome"] == "succeeded")):
+        raise ValueError("unsupported or contradictory repocli result")
+    logging.getLogger(__name__).info("RepoCLI operation=%s repo=%s outcome=%s cost=%s",
+                operation, repo, envelope["outcome"], envelope.get("cost"))
+    return envelope

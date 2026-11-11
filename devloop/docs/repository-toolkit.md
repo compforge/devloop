@@ -1,7 +1,7 @@
 # 仓库工具包与开发流程
 
 RepoKit 拥有 Repository 的组织、Git/Forge 操作、验证执行与资源维护。devloop 负责开发策略、
-managed Git 事务、review 和 Board。AI 按 skill 直接执行 `repocli validate`、`repocli pr`
+managed Git 策略、review 和 Board。AI 按 skill 直接执行 `repocli validate`、`repocli pr`
 和 `repocli clean` / `repocli worktree clean`。程序内的 Git/Forge 操作同样优先使用已有 CLI 契约；
 CLI 未覆盖的操作及本地结构化分析使用 toolkit。访问配置统一归 RepoKit。
 CLI 的版本基线与消费规则统一见 [repocli](../references/repocli.md)。原生 SDK 依赖独立锁定。
@@ -42,8 +42,11 @@ commit 失败也保留已经验证的 index 供检查。
 携带改动切分支时按具体 stash 对象恢复，保留 index 与工作区区别，并展示保留的恢复备份。
 结果 uncertain 时停止并提示检查现场；不擅自 pop stash 或释放尚未确认结果的 checkout owner。
 
-rebase 事务、lease、恢复与推送策略由 devloop 持有。Git 元数据路径和 backend 操作来自 toolkit；
-远端移动时精确 force-with-lease 拒绝覆盖。排序和本地忽略可 best-effort，必要事实读取失败必须停止。
+rebase 的 Git 事务、lease、恢复与远端核验归 RepoKit，devloop 通过 `repocli git rebase`
+调用；`rebase.py` 仅保留 PR target 选择、保护/失活分支与 session 权限检查及 Board 刷新。
+冲突期间允许 detached checkout，由 CLI 核验原始分支与 rebase 身份。`finish` 前由 skill 指导
+AI 验证，devloop 再检查发布策略；已确认 Git 结果不会因 Board 刷新失败而要求重试。
+排序和本地忽略可 best-effort，必要事实读取失败必须停止。
 
 ## PR 观察与 worktree 维护
 
@@ -55,7 +58,7 @@ review 的 PR 列表和正文通过 CLI 查询；分支关联、评论、readine
 统一组合 origin、config 与 client；devloop 不再解析 host/provider/凭据。Python 显式消费
 `repokit.cli` 查询 PR 列表和正文，目标仓库由 devloop 传入，CLI 解码与进程预算归 RepoKit。
 
-Python workflow 不设 `scripts/lib` 中转层。命令参数归 `scripts/command.py`；配置继承、
+Python workflow 不设 `scripts/lib` 中转层。命令参数与有界 CLI 协议解码归 `scripts/command.py`；配置继承、
 保护分支和 review 引擎归 `scripts/domain`；AGENTS 解析归 `domain/context/agents.py`；
 依赖准备时机归 `domain/worktree.py`，Component 验收与路径约束归 `domain/repo_layout.py`。
 通用 Git 查询与结果直接使用 RepoKit，不经 devloop 重导出。

@@ -31,6 +31,17 @@ existing branches/checkouts are never reset to the creation base. Diagnostics ca
 with failed state publication. An unknown result needs inspection before retry; do not fall back to SDK mutation.
 Depot preparation is a separate command. See [worktree workflow](../skills/git-ops/references/worktree.md).
 
+## Rebase lifecycle
+
+`repocli git rebase start --branch <source> --target <target> --remote origin --repo <checkout> --json`
+starts an explicit rewrite. `status`, `continue`, `abort` and `finish` operate on that checkout's
+saved RepoKit transaction. Require matching checkout/action, `confirmed=true` and the expected phase.
+`paused` means resolve/stage and continue; `ready` means local rewrite complete, still requiring validation;
+`published` from finish confirms the destination branch. Status's terminal phase is retained local evidence,
+not a fresh remote observation. Unknown writes require status/remote reconciliation before further action.
+The CLI freezes the publication commit and exact lease; finish reconciles equality before attempting another
+push. Devloop stores no rebase record and does not fall back to SDK mutations.
+
 ## Depot preparation
 
 Use `repocli depot inspect --repo <checkout> --json` to observe dependency Bins;
@@ -96,7 +107,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.72.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.73.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

@@ -6,7 +6,6 @@ reproducing only the visible ``git worktree add`` step and skipping lifecycle po
 """
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 from pathlib import Path
@@ -14,6 +13,7 @@ from pathlib import Path
 from repokit.git.state import checkout_info
 
 from domain import git_policy
+from command import run_repocli as _repocli
 
 logger = logging.getLogger(__name__)
 
@@ -116,21 +116,6 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
         return None, f"worktree ensure unavailable: {error}"
 
 
-def _repocli(repo: str, operation: tuple[str, str], arguments: list[str], *, timeout: int) -> dict:
-    """Bound the CLI protocol boundary; return domain failures for caller policy."""
-    result = subprocess.run(
-        ["repocli", *operation, *arguments, "--repo", repo, "--timeout", f"{timeout}s", "--json"],
-        capture_output=True, text=True, timeout=timeout + 10, check=False,
-    )
-    envelope = json.loads(result.stdout)
-    if (not isinstance(envelope, dict) or envelope.get("schemaVersion") != "1.0"
-            or envelope.get("command") != "repocli " + " ".join(operation)
-            or envelope.get("outcome") not in {"succeeded", "failed", "partial", "unknown"}
-            or (result.returncode == 0) != (envelope["outcome"] == "succeeded")):
-        raise ValueError("unsupported or contradictory repocli result")
-    logger.info("RepoCLI operation=%s repo=%s outcome=%s cost=%s",
-                operation, repo, envelope["outcome"], envelope.get("cost"))
-    return envelope
 
 
 def primary(repo_dir: str) -> str:

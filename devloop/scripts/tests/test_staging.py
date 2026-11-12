@@ -220,45 +220,6 @@ def test_validation_retains_staged_rename_and_sensitive_removal():
         assert {c.path for c in staged_changes(root)} == expected
 
 
-def test_branch_carry_preserves_index_and_reports_backup():
-    from domain import branch
-    from domain.context.session import SessionIdentity
-    with repository() as root:
-        (root / "a.py").write_text("staged")
-        _git(str(root), "add", "a.py")
-        (root / "a.py").write_text("working")
-        (root / "untracked").write_text("new")
-        before = _git_out(str(root), "write-tree")
-        result = branch.create(str(root), "next", "HEAD", carry_changes=True,
-                               identity=SessionIdentity("test", ""))
-        assert _git_out(str(root), "write-tree") == before
-        assert (root / "a.py").read_text() == "working"
-        assert (root / "untracked").read_text() == "new"
-        assert result.stash_oid and result.stash_oid in _git_out(str(root), "stash", "list", "--format=%H")
-
-
-def test_branch_checkout_failure_restores_partial_staging():
-    from unittest.mock import patch
-    from domain import branch
-    from domain.context.session import SessionIdentity
-    from repokit.git import GitResult
-    with repository() as root:
-        (root / "a.py").write_text("staged")
-        _git(str(root), "add", "a.py")
-        (root / "a.py").write_text("working")
-        before = _git_out(str(root), "write-tree")
-        with patch("repokit.git.create_branch", return_value=GitResult(1, "", "checkout failed")):
-            try:
-                branch.create(str(root), "next", "HEAD", carry_changes=True,
-                              identity=SessionIdentity("test", ""))
-            except branch.BranchError as exc:
-                assert "checkout failed" in str(exc)
-            else:
-                raise AssertionError("expected failure")
-        assert _git_out(str(root), "write-tree") == before
-        assert (root / "a.py").read_text() == "working"
-
-
 def add_gitlink(root, name="nested"):
     nested = root / name
     nested.mkdir()

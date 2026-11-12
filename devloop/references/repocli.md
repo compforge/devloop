@@ -31,6 +31,18 @@ existing branches/checkouts are never reset to the creation base. Diagnostics ca
 with failed state publication. An unknown result needs inspection before retry; do not fall back to SDK mutation.
 Depot preparation is a separate command. See [worktree workflow](../skills/git-ops/references/worktree.md).
 
+## Branch creation
+
+`repocli git branch create <name> --base <ref> [--remote origin] [--carry-changes] --repo <checkout> --json`
+creates and switches to the requested branch. A remote base is refreshed before creation; a local base is resolved once.
+Require matching checkout/branch, `data.branchConfirmed`, `data.changesRestored` and `data.confirmed` before continuing.
+A failure can still report a created branch: update development context but stop before commit.
+`data.stashOid` is a retained recovery backup; never pop a positional stash or automatically repeat apply.
+On unknown results use `repocli git branch status <name>` and inspect `data.recoveryPath` and the live index/tree.
+Unfinished operations block another create for that name. After deliberate manual recovery, archive the record named by
+`recoveryPath` before reusing the operation; keep the stash until its contents are accounted for.
+The devloop branch entrypoint adds session ownership and fork policy around this CLI operation.
+
 ## Rebase lifecycle
 
 `repocli git rebase start --branch <source> --target <target> --remote origin --repo <checkout> --json`
@@ -107,7 +119,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.73.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.74.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

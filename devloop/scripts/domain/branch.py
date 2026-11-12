@@ -1,14 +1,16 @@
-"""Branch lifecycle operations shared by start-work and commit workflows."""
+"""Development branch policy over RepoCLI's data-preserving branch operation."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
+from pathlib import Path
+import subprocess
 
-from repokit import git as operations
-from repokit.git import stash as stash
-
+from command import run_repocli
 from repokit.git import state as git_state
-
 from .context import RepoContext, session
+
+logger = logging.getLogger(__name__)
 
 
 class BranchError(RuntimeError):
@@ -25,122 +27,81 @@ class CreateResult:
     stash_oid: str | None = None
 
 
-def create(
-    repo: str,
-    name: str,
-    base: str,
-    *,
-    carry_changes: bool = False,
-    identity: session.SessionIdentity | None = None,
-) -> CreateResult:
-    """Create ``name`` from ``base`` and make it the current development branch.
+def create(repo: str, name: str, base: str, *, carry_changes: bool = False,
+           identity: session.SessionIdentity | None = None) -> CreateResult:
+    """+spec=RepoCLI owns Git writes and recovery. Confirmed branch identity advances devloop context even when restoring changes fails.
 
-    New work starts from a clean checkout by default. ``carry_changes`` is an explicit
-    compatibility path for commit flows that historically allowed edit-then-cut. The
-    operation refreshes remote bases, respects checkout ownership, preserves both tracked
-    and untracked changes when requested, and records the exact fork point.
+    +link=component://devloop/docs/repository-toolkit.md
     """
-    if not name:
-        raise BranchError("branch name is required")
-    try:
-        git_state.validate_branch_name(repo, name)
-    except ValueError as error:
-        raise BranchError(str(error)) from error
-
-    current = git_state.get_current_branch(repo)
     ident = identity or session.current_identity()
-    if current == name:
-        if not session.acquire(repo, ident.session_id, name, harness=ident.harness):
-            raise _owner_error(repo, ident)
-        return CreateResult(name=name, base=base, created=False, carried_changes=False, fork_from=None)
-    if git_state.rev_parse(repo, f"refs/heads/{name}"):
-        raise BranchError(
-            f"local branch {name!r} already exists; resume it explicitly instead of recreating it"
-        )
-
-    status = git_state.get_workspace_status(repo)
-    if not status["complete"]:
-        raise BranchError("cannot inspect working tree; branch was not created")
-    if status["dirty"] and not carry_changes:
-        raise BranchError(
-            "working tree is dirty "
-            f"({status['modified_count']} modified, {status['untracked_count']} untracked); "
-            "start new work from a clean checkout, use a managed worktree, or pass "
-            "--carry-changes when these changes intentionally belong to the new branch"
-        )
-
-    if base.startswith("origin/"):
-        target = base.split("/", 1)[1]
-        refspec = f"+refs/heads/{target}:refs/remotes/origin/{target}"
-        if not git_state.fetch(repo, refspec, timeout=30):
-            raise BranchError(
-                f"could not refresh {base}; branch was not created because its base may be stale"
-            )
-        if not git_state.rev_parse(repo, base):
-            raise BranchError(f"could not resolve refreshed {base}")
-    elif not git_state.rev_parse(repo, base):
-        raise BranchError(f"could not resolve branch base {base!r}")
-
-    previous_owner = session.read(repo, ident.harness) if ident.session_id else None
-    already_mine = bool(previous_owner and previous_owner.get("session_id") == ident.session_id)
+    previous = session.read(repo, ident.harness) if ident.session_id else None
+    already_mine = bool(previous and previous.get("session_id") == ident.session_id)
+    current = git_state.get_current_branch(repo)
     if not session.acquire(repo, ident.session_id, current or "", harness=ident.harness):
         raise _owner_error(repo, ident)
-
-    stash_oid: str | None = None
-    switched = False
-    uncertain = False
+    target = base.removeprefix("origin/")
+    arguments = [name, "--base", target]
+    if base.startswith("origin/"):
+        arguments += ["--remote", "origin"]
+    if carry_changes:
+        arguments.append("--carry-changes")
     try:
-        if status["dirty"]:
-            saved = stash.save(repo, include_untracked=True, message=f"devloop: cutting {name}")
-            stash_oid = saved.oid
-            uncertain = saved.result.uncertain
-            if not saved.result.ok:
-                raise BranchError(f"could not preserve local changes before creating {name!r}: {saved.result.detail}")
-
-        checkout = operations.create_branch(repo, name, base)
-        uncertain = checkout.uncertain
-        if not checkout.ok:
-            if stash_oid and not uncertain:
-                restored = stash.restore(repo, stash_oid)
-                uncertain = restored.uncertain
-                if not restored.ok:
-                    raise BranchError(
-                        f"could not cut {name!r} off {base}: {checkout.detail}; "
-                        f"restoring stash {stash_oid} also failed: {restored.detail}"
-                    )
-            raise BranchError(f"could not cut {name!r} off {base}: {checkout.detail}")
-        switched = True
-
-        # The checkout has already changed even if stash reapplication conflicts below. Refresh
-        # branch identity and ownership at that irreversible boundary so the next turn never sees
-        # the old branch in devloop state while resolving the conflict on the new one.
-        fork_from = base.split("/", 1)[1] if base.startswith("origin/") else base
-        RepoContext.refresh_branch(repo).set_fork_from(fork_from)
-        session.acquire(repo, ident.session_id, name, harness=ident.harness)
-
-        if stash_oid:
-            restored = stash.restore(repo, stash_oid)
-            if restored.uncertain:
-                raise BranchError(restored.detail)
-            if not restored.ok:
-                raise BranchError(
-                    f"cut {name!r} off {base} but reapplying local changes failed: "
-                    f"{restored.err or restored.out}. Recovery stash retained: {stash_oid}; "
-                    "inspect the index and working tree before retrying."
-                )
-
-        return CreateResult(
-            name=name,
-            base=base,
-            created=True,
-            carried_changes=stash_oid is not None,
-            stash_oid=stash_oid,
-            fork_from=fork_from,
-        )
-    except BranchError:
-        if ident.session_id and not already_mine and not switched and not uncertain:
-            session.release(repo, ident.session_id, harness=ident.harness)
-        raise
+        envelope = run_repocli(repo, ("git", "branch", "create"), arguments, timeout=300)
+        data = envelope.get("data")
+        if (not isinstance(data, dict) or data.get("branch") != name
+                or not isinstance(data.get("checkout"), str)
+                or Path(data["checkout"]).resolve() != Path(repo).resolve()
+                or not all(isinstance(data.get(k), bool) for k in
+                           ("branchConfirmed", "changesRestored", "confirmed", "writeAttempted"))
+                or not isinstance(data.get("currentBranch"), str)
+                or not isinstance(data.get("phase"), str)
+                or not isinstance(data.get("stashOid", ""), str)
+                or not isinstance(data.get("diagnostics"), list)
+                or not all(isinstance(d, dict) and isinstance(d.get("message"), str)
+                           for d in data["diagnostics"])
+                or not isinstance(envelope.get("error") or {}, dict)):
+            raise ValueError("invalid branch operation report")
+        switched = data["branchConfirmed"]
+        if switched and data["currentBranch"] != name:
+            raise ValueError("confirmed branch contradicts checkout identity")
+        if envelope["outcome"] == "succeeded" and (not data["confirmed"] or not switched
+                or not data["changesRestored"] or data.get("action") not in {"created", "reused"}):
+            raise ValueError("successful command lacks confirmed branch creation and change restoration")
+        created = data.get("action") == "created"
+        fork_from = target if created else None
+        if switched:
+            # Git has switched even if apply failed; keep owner/context on the new branch.
+            # A projection failure does not undo confirmed Git effects or authorize replay.
+            try:
+                ctx = RepoContext.refresh_branch(repo)
+                if created:
+                    ctx.set_fork_from(target)
+            except (OSError, ValueError) as error:
+                logger.warning("Branch confirmed but context refresh failed repo=%s branch=%s error=%s", repo, name, error)
+            try:
+                if not session.acquire(repo, ident.session_id, name, harness=ident.harness):
+                    logger.warning("Branch confirmed but owner refresh rejected repo=%s branch=%s", repo, name)
+            except (OSError, ValueError) as error:
+                logger.warning("Branch confirmed but owner refresh failed repo=%s branch=%s error=%s", repo, name, error)
+        for diagnostic in data["diagnostics"]:
+            logger.warning("Branch operation warning repo=%s branch=%s: %s", repo, name, diagnostic["message"])
+        if envelope["outcome"] != "succeeded":
+            # Release only a known unchanged checkout. Unknown/partial writes retain ownership.
+            if (not switched and envelope["outcome"] != "unknown" and not already_mine
+                    and (not data["writeAttempted"] or data["phase"] == "failed")):
+                session.release(repo, ident.session_id, harness=ident.harness)
+            problem = envelope.get("error") or {}
+            message = problem.get("message", "inspect the CLI result before retrying")
+            backup = f" Recovery stash retained: {data['stashOid']}." if data.get("stashOid") else ""
+            record = f" Recovery record: {data['recoveryPath']}." if data.get("recoveryPath") else ""
+            raise BranchError(f"branch create {envelope['outcome']}: {message}.{backup}{record}")
+        return CreateResult(name=name, base=base, created=created,
+                            carried_changes=created and bool(data.get("stashOid")),
+                            fork_from=fork_from, stash_oid=data.get("stashOid") or None)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        raise BranchError(
+            f"branch create result unavailable; inspect repocli git branch status {name!r} before retrying: {error}"
+        ) from error
 
 
 def _owner_error(repo: str, identity: session.SessionIdentity) -> BranchError:

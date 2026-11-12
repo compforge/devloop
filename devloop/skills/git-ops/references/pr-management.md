@@ -17,11 +17,11 @@ Forge access comes from RepoKit home config.json; do not inject token environmen
 The AI invokes these write commands directly; devloop owns no access configuration.
 
 Use [gcampr](commit-flow.md) for commit + push + create/reuse. Merge remains a human action.
-Successful PR lifecycle writes perform best-effort local maintenance inside RepoKit; devloop supplies no
-cleanup callback. Read queries do not clean worktrees.
+PR writes update affected observations. Worktree reclamation is explicit through `clean` or
+`worktree clean`; it is not part of PR write latency.
 
 Read PR identity and state from `data`, not envelope fields. A successful create/update with
-maintenance warnings remains a confirmed PR write: report the PR URL and warnings, then
+observation warnings remains a confirmed PR write: report the PR URL and warnings, then
 continue the requested workflow without recreating it. A partial result preserves completed
 actions. For `unknown`, `error.uncertain`, or lost output after a write, query the same target
 repository and head/base (or PR number) before retrying. If identity is ambiguous or the query

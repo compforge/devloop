@@ -116,7 +116,7 @@ def test_publish_uses_confirmed_commit_instead_of_rereading_head():
         create.assert_called_once_with(prepared(),"change",[])
         assert staged.committed and staged.commit==SHA
     result=envelope(targetCommit=SHA,remoteCommit=SHA)
-    with patch.object(flow.cli,"run_repocli",return_value=result) as invoke,patch.object(flow.git_state,"rev_parse",return_value="f"*40) as read:
+    with patch.object(flow.repokit_cli,"run",return_value=result) as invoke,patch.object(flow.git_state,"rev_parse",return_value="f"*40) as read:
         flow.publish(intent,flow.BranchResult("topic",False),staged,[])
         invoke.assert_called_once_with(repo,("git","push"),["--branch","topic","--commit",SHA,"--remote","origin","--set-upstream"],timeout=300)
         read.assert_not_called()

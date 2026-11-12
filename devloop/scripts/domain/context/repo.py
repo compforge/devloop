@@ -1,24 +1,18 @@
-"""Query-time repository view over workflow-owned segments and repocli observations.
+"""Transient repository view; RepoKit owns repository facts and creation provenance.
 
-meta, branch provenance, remote trunk tips and review evidence belong to devloop.
-PR lifecycle state and generic associations belong to repocli; they are never copied into
-.devloop. The selected pull_request exists only in this transient view.
+Only parsed AGENTS knowledge is cached in devloop. Session/task policy and review
+remain devloop-owned; repository observations are queried through the public SDK.
 """
 from __future__ import annotations
-from domain import git_policy
 
+import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-import logging
+from repokit.state import checkout_view, remote_branches
 
-from repokit.git import state as git_state
-
+from domain import git_policy
 from domain.context import agents as parsers
-
-from repokit.state import default_branch as repository_default_branch
-from repokit import forge_client
-from repokit.forge.model import ForgeError
 
 from .. import repo_layout
 from . import base, store
@@ -39,37 +33,15 @@ class RepoMeta:
     language: str | None = None
     default_branch: str = ""        # repo characteristic: the forge's default branch (canonical trunk).
 
-    @classmethod
-    def from_dict(cls, d: dict | None) -> "RepoMeta":
-        d = d or {}
-        return cls(
-            repo_dir=d.get("repo_dir", ""),
-            real_repo_dir=d.get("real_repo_dir", ""),
-            code_dir=d.get("code_dir", ""),
-            language=d.get("language"),
-            default_branch=d.get("default_branch", ""),
-        )
 
 
 @dataclass
 class Branch:
-    """One branch's facts — its name, its tip commit, where it forked from, and (for a
-    worktree entry) its path. A pure value object: "how fresh is this view" is a property of
-    whoever holds it (the segment's `fetched_at`), not of the branch itself."""
+    """Current branch identity and optional historical RepoKit creation provenance."""
     name: str | None = None
     commit: str = ""               # tip sha
-    fork_from: str | None = None   # branch it forked from; recorded by gcampr at cut, else inferred/None
+    creation_base: str | None = None   # RepoKit-confirmed creation base; never a task baseline
     path: str | None = ""          # None means a registered checkout with unknown location.
-
-    @classmethod
-    def from_dict(cls, d: dict | None) -> "Branch":
-        d = d or {}
-        return cls(
-            name=d.get("name"),
-            commit=d.get("commit", ""),
-            fork_from=d.get("fork_from"),
-            path=d.get("path", ""),
-        )
 
     def is_protected(self) -> bool:
         return git_policy.is_protected_branch(self.name)
@@ -77,32 +49,16 @@ class Branch:
 
 @dataclass
 class BranchTopology:
-    """The repo's branch topology across vantages — assembled by `RepoContext.load()` from
-    owner-disjoint segments (see module docstring). `local` is the working checkout
-    (refresh-owned, the DISPLAY copy); `remotes` are the server trunk tips (monitor-owned);
-    `worktrees` are the local linked worktrees (refresh-owned). `remotes_fetched_at`
-    carry from their owning segments at load time."""
+    """Transient display projection of RepoKit facts plus the selected task target."""
     local: Branch = field(default_factory=Branch)
-    remotes: list[Branch] = field(default_factory=list)        # monitor-owned (remote_branches.json)
+    remotes: list[Branch] = field(default_factory=list)        # RepoKit remote observation
     worktrees: list[Branch] = field(default_factory=list)
-    target: str = ""                                           # this checkout's trunk; derived from RepoMeta.default_branch at refresh
+    target: str = ""                                           # selected PR target or workflow default
     remotes_fetched_at: float | None = None                    # provenance of `remotes`
 
-    @classmethod
-    def from_local_dict(cls, d: dict | None) -> "BranchTopology":
-        """Build the refresh-owned half (local + worktrees) from branch.json. `target` is derived
-        from RepoMeta.default_branch by `load` (single source — not stored here); remotes /
-        remotes_fetched_at are merged in from their own segments."""
-        d = d or {}
-        return cls(
-            local=Branch.from_dict(d.get("local")),
-            worktrees=[Branch.from_dict(w) for w in (d.get("worktrees") or [])],
-        )
-
     def base_branch(self) -> str:
-        """The trunk this branch is measured against — its recorded fork point, else the
-        repo's canonical target."""
-        return self.local.fork_from or self.target
+        """Selected PR target or workflow default; creation provenance is historical."""
+        return self.target
 
     def remote_tip(self, name: str | None) -> Branch | None:
         return next((r for r in self.remotes if r.name == name), None)
@@ -117,162 +73,72 @@ class RepoContext:
     provider: str = ""
     updated_at: float = 0.0
 
-    # ── load (merge segments) ──────────────────────────────────────────────────
     @classmethod
     def load(cls, repo_dir: str | Path) -> "RepoContext | None":
-        """Assemble the in-memory view by merging the per-owner segment files.
-
-        `meta` is the existence marker: absent → not initialized → None (caller
-        refresh_all's). Every other segment defaults independently, so one missing /
-        corrupt file degrades to its default without losing the rest (fail-open)."""
-        meta = store.load_segment(repo_dir, "meta")
-        if meta is None:
+        knowledge = store.load_segment(repo_dir, "agents")
+        if knowledge is None:
             return None
-        # Branch-domain segments live under branches/<branch>/ — keyed by the LIVE branch (one
-        # rev-parse), not by whatever some cached file last observed. This kills the whole
-        # "stale branch.json after an unobserved checkout fools the display" class structurally:
-        # switching branches switches which segment directory is read.
+        return cls._observe(repo_dir, knowledge)
 
-        live = git_state.get_current_branch(repo_dir)
-        branch = BranchTopology.from_local_dict(
-            store.load_segment(repo_dir, store.branch_segment(live, "branch")) or {})
-        if not branch.local.name:
-            branch.local.name = live or ""   # fresh/missing segment: identity is still the live read
-        branch.target = (meta.get("repo") or {}).get("default_branch", "")   # single source: RepoMeta.default_branch
-        # monitor-owned remote trunk tips (remote_branches.json) + their provenance stamp.
-        rb = store.load_segment(repo_dir, "remote_branches") or {}
-        branch.remotes = [Branch.from_dict(r) for r in (rb.get("remotes") or [])]
-        branch.remotes_fetched_at = rb.get("fetched_at")
-        # Query the library for the live checkout; display availability is independent of gates.
-        from .prstate import checkout_pr
-        provider, association = checkout_pr(str(repo_dir))
-        selected = association.selected if association and association.branch == live else None
-        ctx = cls(
-            repo=RepoMeta.from_dict(meta.get("repo")),
-            agents_md=AgentsMd.from_dict(meta.get("agents_md") or {}),
-            branch=branch,
-            pull_request=selected,
-            provider=provider,
-            updated_at=float(meta.get("updated_at", 0) or 0),
-        )
-        if not ctx.repo.repo_dir:
-            ctx.repo.repo_dir = str(Path(repo_dir))
-        return ctx
-
-    # ── per-owner segment writers ──────────────────────────────────────────────
-    # Each writes exactly one file. A writer-role only ever calls its own saver, so
-    # two concurrent writers (e.g. the monitor and a refresh) touch disjoint files —
-    # the lost-update class is structurally impossible, no lock needed.
-    def _root(self) -> str:
-        return self.repo.repo_dir or self.repo.real_repo_dir
-
-    def _save_meta(self) -> None:
-        root = self._root()
-        if not root:
-            return
-        self.updated_at = base.now()
-        store.save_segment(root, "meta", {
-            "repo": asdict(self.repo),
-            "agents_md": asdict(self.agents_md),
-            "updated_at": self.updated_at,
-        })
-        git_policy.ensure_gitignore_excluded(root)   # keep /.devloop/ out of git
-
-    def _branch_seg(self, name: str) -> str:
-        """Branch-domain segment name for THIS context's branch (branches/<b>/<name>)."""
-        return store.branch_segment(self.branch.local.name or None, name)
-
-    def _save_branch(self) -> None:
-        """Refresh-owned: the LOCAL half only (local + worktrees + target). `remotes` is the
-        monitor's (remote_branches.json); PR association is queried, never written here."""
-        if not self._root():
-            return
-        store.save_segment(self._root(), self._branch_seg("branch"), {
-            "local": asdict(self.branch.local),
-            "worktrees": [asdict(w) for w in self.branch.worktrees],
-        })   # target not persisted here — derived from meta.default_branch (single source)
-
-
-    # ── refresh (re-derive from authoritative sources) ─────────────────────────
     @classmethod
-    def refresh_all(cls, repo_dir: str | Path) -> "RepoContext":
-        """Full rebuild (normal-impl boundary: SessionStart / enter / TTL).
-
-        Writes only the refresher-owned segments (meta + branch).
-        review / remote_branches live in their own files and are left untouched — their values
-        are merged in (via prev) only to keep the *returned* object complete."""
-        repo_dir_in = str(Path(repo_dir))
-        repo_dir_abs = str(Path(repo_dir).resolve())
+    def _observe(cls, repo_dir: str | Path, knowledge: dict) -> "RepoContext":
+        facts = checkout_view(repo_dir)
         code_dir, language = "", None
         try:
-            catalog = repo_layout.inspect_catalog(repo_dir_abs)
+            catalog = repo_layout.inspect_catalog(facts.root)
             if catalog.components:
                 component = catalog.default()
                 code_dir, language = component.path, component.language
         except repo_layout.InspectionError as exc:
-            # Optional context metadata must not turn a completed Git action into failure.
-            logging.getLogger(__name__).warning("Component context unavailable for %s: %s", repo_dir_abs, exc)
-        agents_md_path = repo_layout.find_agents_md(repo_dir_abs, code_dir)
-
-        prev = cls.load(repo_dir_abs) or cls()
-        # Optional metadata access must preserve RepoKit's cached/local fallback.
+            logging.getLogger(__name__).warning("Component context unavailable repo=%s error=%s", facts.root, exc)
+        from .prstate import checkout_pr
+        provider, association = checkout_pr(facts.root)
+        selected = association.selected if association and association.branch == facts.branch else None
+        # A task's comparison base follows its selected PR/default target. Creation
+        # provenance is exposed separately and never silently changes that selection.
+        target = selected.target_branch if selected else facts.default_branch or git_policy.local_default_target(facts.root)
+        remotes, observed_at = [], None
         try:
-            forge = forge_client(repo_dir_abs)
-        except ForgeError as error:
-            logging.getLogger(__name__).warning("Forge metadata access unavailable repo=%s error=%s", repo_dir_abs, error)
-            forge = None
-        observed = repository_default_branch(repo_dir_abs, forge=forge)
-        default_branch = observed.branch or git_policy.local_default_target(repo_dir_abs)
-        target = default_branch
-        items = parsers.parse_references_section(agents_md_path) if agents_md_path else []
-
-        branch = _build_topology(repo_dir_abs, target, prev.branch)
-        ctx = cls(
-            repo=RepoMeta(repo_dir=repo_dir_in, real_repo_dir=repo_dir_abs,
-                          code_dir=code_dir, language=language,
-                          default_branch=default_branch),
-            agents_md=AgentsMd(
-                path=agents_md_path,
-                references=[Reference(title=r.get("title", ""), path=r.get("path", ""),
-                                      hook=r.get("description")) for r in items],
-            ),
-            branch=branch,
-            pull_request=prev.current_pr(),
-            provider=prev.provider,
+            remote = remote_branches(facts.root, (target,))
+            remotes = [Branch(name=name, commit=sha) for name, sha in remote.tips]
+            observed_at = remote.observed_at
+        except OSError as exc:
+            logging.getLogger(__name__).warning("Remote context unavailable repo=%s error=%s", facts.root, exc)
+        return cls(
+            repo=RepoMeta(repo_dir=str(repo_dir), real_repo_dir=facts.root, code_dir=code_dir,
+                          language=language, default_branch=facts.default_branch or ""),
+            agents_md=AgentsMd.from_dict(knowledge.get("agents_md") or {}),
+            branch=BranchTopology(
+                local=Branch(name=facts.branch, commit=facts.head,
+                             creation_base=facts.creation.base_ref if facts.creation else None, path=facts.root),
+                worktrees=[Branch(name=e.branch, commit=e.head, path=e.path) for e in facts.checkouts],
+                target=target, remotes=remotes, remotes_fetched_at=observed_at),
+            pull_request=selected, provider=provider, updated_at=float(knowledge.get("updated_at", 0)),
         )
-        ctx._save_meta()
-        ctx._save_branch()
-        return ctx
+
+    @classmethod
+    def refresh_all(cls, repo_dir: str | Path) -> "RepoContext":
+        root = str(Path(repo_dir).resolve())
+        context = cls._observe(repo_dir, {})
+        agents_path = repo_layout.find_agents_md(root, context.repo.code_dir)
+        items = parsers.parse_references_section(agents_path) if agents_path else []
+        agents = AgentsMd(path=agents_path, references=[Reference(title=r.get("title", ""),
+            path=r.get("path", ""), hook=r.get("description")) for r in items])
+        knowledge = {"agents_md": asdict(agents), "updated_at": base.now()}
+        store.save_segment(root, "agents", knowledge)
+        git_policy.ensure_gitignore_excluded(root)
+        context.agents_md = agents
+        context.updated_at = knowledge["updated_at"]
+        return context
 
     @classmethod
     def refresh_branch(cls, repo_dir: str | Path) -> "RepoContext":
-        """Incremental branch refresh (fast; after a local git state change). No AGENTS.md
-        re-parse. Writes only branch.json. Not-yet-initialized → fall back to a full build."""
-        ctx = cls.load(repo_dir)
-        if ctx is None:
-            return cls.refresh_all(repo_dir)
-        # cached repo fact (zero network); local origin/HEAD only if cache empty
-        target = ctx.repo.default_branch or git_policy.local_default_target(ctx.repo.real_repo_dir)
-        ctx.branch = _build_topology(ctx.repo.real_repo_dir, target, ctx.branch)
-        ctx._save_branch()
-        return ctx
+        return cls.load(repo_dir) or cls.refresh_all(repo_dir)
 
     @classmethod
     def is_stale_at(cls, repo_dir: str | Path, ttl: float = REPO_STALE_SEC) -> bool:
-        meta = store.load_segment(repo_dir, "meta")
-        if meta is None:
-            return True
-        return base.is_stale(meta.get("updated_at"), ttl)
-
-    # ── mutators (each touches exactly one segment) ─────────────────────────────
-
-
-    def set_fork_from(self, fork_from: str | None) -> None:
-        """gcampr's surface: record where the (just-cut) current branch forked from — the one
-        branch fact git doesn't durably keep. Sticky: `_build_topology` preserves it across
-        refreshes, so a later rebuild-from-git won't clobber it."""
-        self.branch.local.fork_from = fork_from
-        self._save_branch()
+        knowledge = store.load_segment(repo_dir, "agents")
+        return knowledge is None or base.is_stale(knowledge.get("updated_at"), ttl)
 
     # ── PR derivation (DISPLAY-grade; write-gates use domain.context.gate) ─────────
     def current_pr(self) -> PullRequest | None:
@@ -329,25 +195,3 @@ class RepoContext:
             frozenset({PromptScope.SESSION}),
         )
         return render_prompt(items)
-
-# ── private builders / renderers ──────────────────────────────────────────────
-def _build_topology(repo_dir: str, target: str, prev: BranchTopology | None) -> BranchTopology:
-    """Rebuild the LOCAL half (identity + worktrees) from live git, preserving the
-    monitor-owned and git-unrecorded facts from `prev` so the returned object stays whole.
-
-    `fork_from` is git-unrecorded → carried from `prev` ONLY when the branch name is unchanged
-    (a switch drops the old branch's fork point; gcampr re-records on the next cut). remotes /
-    remotes_fetched_at are merged from prev (load re-reads them from disk anyway)."""
-    name = git_state.get_current_branch(repo_dir)
-    commit = git_state.get_head_sha(repo_dir)
-    fork_from = prev.local.fork_from if (prev is not None and prev.local.name == name) else None
-    worktrees = [Branch(name=e.branch, commit=e.head, path=e.path) for e in git_state.list_checkouts(repo_dir)]
-    topo = BranchTopology(
-        local=Branch(name=name, commit=commit, fork_from=fork_from),
-        worktrees=worktrees,
-        target=target,
-    )
-    if prev is not None:
-        topo.remotes = prev.remotes
-        topo.remotes_fetched_at = prev.remotes_fetched_at
-    return topo

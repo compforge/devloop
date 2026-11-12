@@ -10,11 +10,11 @@ The helper selects `.worktrees/<tag>`, `worktree-<tag>` and the base, then invok
 With an explicit repository, path, branch and base, the same lifecycle can be composed directly:
 
 ```bash
-repocli worktree ensure <path> --branch <branch> --base <base-branch> --remote origin --repo <repo> --json
-repocli depot prepare --repo <confirmed-checkout> --timeout 10m --json
+repocli worktree ensure <path> --branch <branch> --base <base-branch> --remote origin --repo <repo> --prepare --timeout 12m --json
 ```
 
-Require a successful envelope, `data.confirmed=true` and matching checkout/branch before preparation.
+Require a succeeded or partial envelope, `data.confirmed=true` and matching checkout/branch before using the checkout.
+`data.ready` and `data.preparation` report dependency readiness independently; partial preparation does not undo creation.
 `created` refreshes the remote base first; `resumed` restores an existing branch at a new path;
 `reused` verifies the registered checkout. Existing work is never reset or rebased.
 Unknown creation results require observation before retry. Publication and preparation warnings

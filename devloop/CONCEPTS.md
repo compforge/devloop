@@ -20,7 +20,7 @@ devloop 内多个 skill / 脚本共用的术语。架构理念见 [`AGENTS.md`](
 
 ## 保护分支
 
-分支是否受保护是**派生**的（**不存进** `branch.json`）：注入头部据此打 `⚠️ PROTECTED`，而 `protect-branch` guard 走 `domain/context/gate.ts::evaluateGate()` 按 live 分支名判。规则在 `lib/git-state.ts::isProtectedBranch()`：`main` / `master` 严格匹配；`release` 严格匹配或以 `release` 开头 / 结尾；`release` 出现在中间不算（`feat/release-notes` 不受保护）。
+分支是否受保护是**派生**的（不持久化为仓库事实）：注入头部据此打 `⚠️ PROTECTED`，而 `protect-branch` guard 走 `domain/context/gate.ts::evaluateGate()` 按 live 分支名判。规则在 `lib/git-state.ts::isProtectedBranch()`：`main` / `master` 严格匹配；`release` 严格匹配或以 `release` 开头 / 结尾；`release` 出现在中间不算（`feat/release-notes` 不受保护）。
 
 ## PR 模型（PR/MR 统一概念）
 
@@ -95,7 +95,7 @@ Board 展示历史执行事实，提交门禁负责实时有效性。旧记录�
 AGENTS.md 是文字知识源；`.devloop/*.json` 是由 hooks / scripts 维护的结构化运行态，不保存 AGENTS.md 正文。
 
 - Workspace 级：`<workspace_root>/.devloop/context.json`，保存 workspace AGENTS.md 的 References + 文件系统自发现的 subproject 清单（叠加 AGENTS.md 表润色，symlink 子项目附 canonical 路径映射）；`active/<session_id>.json` **一 session 一文件**保存该 session 绑定的最近活跃 repo（脚本在 workspace 根被调用时的解析兜底）——这是 session 态而非 workspace 态，owner 即 session，按 writer-owner 铁律落盘零例外；多 session 各干各的仓互不劫持。语义与生命周期见〈Session 运行态〉。
-- Repo 级（按**三域**布局；linked worktree 的 repo / branch 域解析到**主仓** `.devloop`，working-tree 域例外）：**repo 域**根下 `meta.json` / `remote_branches.json` + ledgers（`friction.jsonl` / `review-history.jsonl`，均只作 observability）；**branch 域** `branches/<branch>/` 下 `branch.json` / `lint.json` / `test.json` / `review.json`，`RepoContext.load()` 按 **live 分支**取段后合并成内存视图；**working-tree 域** owner 锁与一次性提交输入 `commit_msg` 留各 worktree 自己的 `.devloop`（并行 worktree 互不干扰，`commit_msg` 成功消费后清理、失败时留作重试）；主仓 `tmp/` 收进程间日志（如 review.log），随时可删。连续 review history 从 Forge comments 派生，不落 `.devloop`。`branch.json`（local + worktrees，refresh owned）与 `remote_branches.json`（远端 trunk tips，monitor owned）是同一分支拓扑的两个 owner——见 [`docs/branch-state.md`](./docs/branch-state.md)〈落盘:按 writer-owner 拆段〉。
+- Repo 级按 owner 保存工作流状态：repo 域保留 `agents.json` 知识缓存及 observability ledgers；branch 域保存 `review.json` 等任务证据。Repository metadata、branch/checkout 观测、创建来源与 remote tips 归 RepoKit；validation 执行历史也由 RepoKit 管理。`RepoContext` 查询这些事实形成内存视图，不复制到 `.devloop`。working-tree 域的 owner 锁与一次性 `commit_msg` 留各 worktree 自己的 `.devloop`；主仓 `tmp/` 存进程间临时文件。连续 review history 从 Forge comments 派生。见 [分支状态与决策边界](docs/branch-state.md)。
 
 ### Board 投递游标
 

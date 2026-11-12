@@ -2,7 +2,7 @@
 
 Use repocli directly to inspect repository changes. It reports changed source files,
 symbols and potentially affected files; RepoKit also owns validation execution and history.
-Skills invoke the CLI directly. Programmatic PR queries share a bounded result decoder;
+Skills invoke the CLI directly. Programmatic operations and queries use the explicit `repokit.cli` bounded client;
 it owns no credentials, retry policy or repository state.
 
 ```sh
@@ -29,7 +29,8 @@ creates or reuses the exact requested checkout. Require `data.confirmed=true` an
 action distinguishes `created`, `resumed` and `reused`. A new branch requires a successful remote refresh;
 existing branches/checkouts are never reset to the creation base. Diagnostics can retain a confirmed checkout
 with failed state publication. An unknown result needs inspection before retry; do not fall back to SDK mutation.
-Depot preparation is a separate command. See [worktree workflow](../skills/git-ops/references/worktree.md).
+Use `--prepare` to include Depot preparation in the same command. A confirmed checkout with incomplete
+preparation is `partial` with `data.ready=false`; preserve it and inspect `data.preparation`. See [worktree workflow](../skills/git-ops/references/worktree.md).
 
 ## Branch creation
 
@@ -41,7 +42,7 @@ A failure can still report a created branch: update development context but stop
 On unknown results use `repocli git branch status <name>` and inspect `data.recoveryPath` and the live index/tree.
 Unfinished operations block another create for that name. After deliberate manual recovery, archive the record named by
 `recoveryPath` before reusing the operation; keep the stash until its contents are accounted for.
-The devloop branch entrypoint adds session ownership and fork policy around this CLI operation.
+The devloop branch entrypoint adds session ownership and baseline policy around this CLI operation.
 
 ## Commit
 
@@ -153,7 +154,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.77.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.78.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.
@@ -234,7 +235,9 @@ and output delivery. See [validation](../skills/validate/references/spec.md) for
 RepoKit owns Forge instance/provider, API host and credentials in `<home>/config.json`.
 Devloop does not load access settings or inject token environment variables. SDK fallbacks use
 RepoKit configuration; workflow configuration only selects the PR target repository.
-The configured access contract requires Python RepoKit 0.26.0 and TypeScript RepoKit 0.20.0.
+This workflow requires Python RepoKit 0.27.0 and TypeScript RepoKit 0.20.0.
+The Python lock currently selects an immutable RepoKit source revision containing 0.27.0;
+after that SDK is published, replace the source requirement with the released version and regenerate the lock.
 
 ## Discussions
 

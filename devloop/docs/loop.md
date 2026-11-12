@@ -25,7 +25,7 @@ devloop 的两个杠杆沿循环分布：**状态源 + Board**（软提示）覆
 | 0 | session 启动 | `SessionStart` | TS `initializeBoard` | 状态预热；Board 投递 session items（References / subprojects）；注册全部 subproject 的 AGENTS.md `watchPaths`；workspace 自动注册 |
 | 1 | enter 子模块 | `cd` → `CwdChanged` | TS `afterCwdChanged` | 刷新 repo 段状态；记 `active.json`（不占有 owner 锁——enter 只选上下文） |
 | 2 | 每轮对话 | `UserPromptSubmit` | TS `userPromptOutput` | Board 按相关性投递变化/到期的 session/turn/event items，ui_only 不进入 prompt；`PostCompact` 只令状态 items 重放；AGENTS.md 被改时 `FileChanged` → TS `afterFileChanged` 刷新事实 |
-| 2b | 开始新工作 | 新任务需要独立 branch | `scripts/branch.py create` | 刷新 `origin/<target>`；clean checkout 上创建 branch、记录 `fork_from` 并占有 owner 锁；外来 owner 引导 managed worktree |
+| 2b | 开始新工作 | 新任务需要独立 branch | `scripts/branch.py create` | 刷新 `origin/<target>`；clean checkout 上创建 branch、由 RepoKit 记录创建来源，devloop 占有 owner 锁；外来 owner 引导 managed worktree |
 | 3 | 开发（编辑与命令） | `PreToolUse` | TS `recordToolCall` 记录原始调用；策略引擎规则处理编辑面（owner / branch merged / requirements）与命令面（保护分支 / checkout owner / worktree add / add-all / workspace cwd / pytest / pip） | 最近一小时的调用起点追加到 repo 的 `.devloop/tool-calls.jsonl`；策略 deny 或放行，全部 fail-open |
 | 3' | 开发后效 | `PostToolUse` / `PostToolUseFailure` | TS `recordToolCall`；TS `afterTool` | 时间线追加完成结果并滚动清理；git 状态命令后按**位置感知的有效目录**刷新对应 repo 的 branch 段。时间线不参与验证；检查执行与复用由 repocli 管理 |
 | 4 | 验证 | AI 按 validate skill 显式执行 | `repocli validate` → `format → lint ‖ test` | repocli 保存各 check 的结果与复用历史 |

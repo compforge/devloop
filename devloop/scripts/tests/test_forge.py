@@ -168,16 +168,6 @@ def test_pullrequest_and_cadence():
     assert c.should_emit("x", now=200, ttl=1800)            # PostCompact clear → emit
 
 
-def test_repo_meta_default_branch_roundtrip():
-    """默认开发目标投影经 asdict/from_dict 往返不丢。"""
-    from dataclasses import asdict
-
-    from domain.context.repo import RepoMeta
-    m = RepoMeta(repo_dir="/r", default_branch="release")
-    m2 = RepoMeta.from_dict(asdict(m))
-    assert m2.default_branch == "release"
-
-
 def test_merge_reminders_are_devloop_policy():
     from domain.forge import MergeReadiness, blocks_merge
     assert {state for state in MergeReadiness if blocks_merge(state)} == {
@@ -185,27 +175,31 @@ def test_merge_reminders_are_devloop_policy():
     }
 
 
-def test_repo_refresh_preserves_local_and_cached_metadata_without_forge_access():
-    """+case=Optional context refresh survives unavailable Forge credentials."""
+def test_repo_context_uses_repokit_facts_without_duplicate_repository_storage():
+    """+case=Task target and historical creation base remain distinct; only AGENTS knowledge is cached."""
     from tempfile import TemporaryDirectory
     from unittest.mock import patch
     from _repo_fixture import make_repo
-    from domain.context import repo as context
-    from repokit.forge.model import ForgeAuthError
-    from repokit.state.metadata import DefaultBranch
+    from domain.context import repo as context, prstate, store
+    from repokit.state import CheckoutView, BranchCreation, RemoteBranches
 
     with TemporaryDirectory() as directory:
-        root = make_repo(directory)
-        _git(root, "branch", "release")
-        _git(root, "remote", "add", "origin", "https://github.com/example/repo.git")
-        for observed, expected in (("release", "release"), (None, "main")):
-            with patch.object(context, "forge_client", side_effect=ForgeAuthError("no credential")), \
-                 patch.object(context, "repository_default_branch", return_value=DefaultBranch(observed, 0, False, "unavailable")) as metadata:
-                refreshed = context.RepoContext.refresh_all(root)
-                metadata.assert_called_once_with(str(root), forge=None)
-                assert refreshed.repo.default_branch == expected
-                assert refreshed.branch.local.name == "main"
-                assert context.RepoContext.load(root).repo.default_branch == expected
+        root = str(make_repo(directory))
+        facts = CheckoutView(root, "topic", "a" * 40, "release", (),
+            BranchCreation("topic", "old-base", "b" * 40, "origin", "/git", 1))
+        with patch.object(context, "checkout_view", return_value=facts), \
+             patch.object(context, "remote_branches", return_value=RemoteBranches((("release", "c" * 40),), 5)), \
+             patch.object(prstate, "checkout_pr", return_value=("", None)):
+            refreshed = context.RepoContext.refresh_all(root)
+            assert refreshed.repo.default_branch == "release"
+            assert refreshed.branch.local.name == "topic"
+            assert refreshed.branch.local.creation_base == "old-base"
+            assert refreshed.branch.base_branch() == "release"
+            assert refreshed.branch.remote_tip("release").commit == "c" * 40
+            assert context.RepoContext.load(root).branch.local.name == "topic"
+        assert store.load_segment(root, "agents") is not None
+        for name in ("meta", "branch", "remote_branches"):
+            assert store.load_segment(root, name) is None
 
 
 if __name__ == "__main__":

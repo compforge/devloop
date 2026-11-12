@@ -50,7 +50,7 @@ upstream 配置失败以 warning 保留已确认发布。
 新工作从显式目标基线创建分支。RepoKit 提供默认分支与远端 HEAD 缓存；明确缺失时才可按开发策略
 回退到本地 main/master。读取失败不是缺失，不允许借此绕过保护。
 分支创建与携带改动统一调用 `repocli git branch create`；远端基线刷新、精确 stash、index 恢复和恢复记录均归 RepoKit。
-`domain.branch` 只保留 session owner、基线选择的映射及 fork_from/context 更新。恢复失败仍消费已确认的新分支身份，
+`domain.branch` 只保留 session owner、基线选择的映射及 session/context 更新。恢复失败仍消费已确认的新分支身份，
 并展示 CLI 返回的恢复备份与记录位置。
 结果 uncertain 时停止并提示检查现场；不擅自 pop stash 或释放尚未确认结果的 checkout owner。
 
@@ -82,8 +82,8 @@ devloop 没有 after_success 清理回调、周期 task、monitor 注册或 Harn
 用户要求清理时，AI 按 monitor skill 直接执行 CLI；纯状态查询不清理。
 
 managed worktree 的命名、目标基线、任务/session 归属及依赖准备时机由 devloop 决定。
-创建、恢复、复用核验和登记统一调用 `repocli worktree ensure`；不再根据目录/分支自行拼装 Git 操作。
-依赖准备一次调用 `repocli depot prepare`，消费逐 Bin 结果和成本；安装成功不代表验证通过。详见 [worktree-env](worktree-env.md)。
+创建、恢复、复用核验和登记统一调用 `repocli worktree ensure --prepare`；不再根据目录/分支自行拼装 Git 操作。
+依赖准备由同一次 ensure 的 `--prepare` 完成，消费逐 Bin 结果和成本；安装成功不代表验证通过。详见 [worktree-env](worktree-env.md)。
 
 ## 组织事实与状态归属
 
@@ -112,3 +112,10 @@ thread ID，前者用于 Verdict 命令，后者用于通用 discussion 命令�
 原子推送和远端核验。命令遵守 Git tag 名称语法，版本号、递增规则、模块 tag 顺序与 CI 验收归
 项目契约和 skill。Forge Release 由 skill 直接调用 `repocli release latest/show/create`，
 查询、目标核验、重复创建和未知结果恢复归 RepoKit；devloop 不保留 Release Python 入口。
+
+## Repository 事实与工作流状态
+
+远端 Forge、本地 Git 与 RepoKit home 由 RepoKit 协调。devloop 通过显式 `repokit.cli` 执行和解码
+CLI 协议，通过原生 SDK 获取展示事实；不维护第二份 branch/meta/remote JSON。`RepoContext` 是瞬时读模型，
+`.devloop/agents.json` 只缓存解析后的 AGENTS 知识。分支创建来源归 RepoKit，任务基线仍由 PR target 或工作流选择。
+Session owner、任务、review、Board 与投递记录继续属于 devloop。代码不直接拼 RepoKit home 文件路径。

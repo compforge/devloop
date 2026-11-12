@@ -39,7 +39,9 @@ commit 失败也保留已经验证的 index 供检查。
 
 新工作从显式目标基线创建分支。RepoKit 提供默认分支与远端 HEAD 缓存；明确缺失时才可按开发策略
 回退到本地 main/master。读取失败不是缺失，不允许借此绕过保护。
-携带改动切分支时按具体 stash 对象恢复，保留 index 与工作区区别，并展示保留的恢复备份。
+分支创建与携带改动统一调用 `repocli git branch create`；远端基线刷新、精确 stash、index 恢复和恢复记录均归 RepoKit。
+`domain.branch` 只保留 session owner、基线选择的映射及 fork_from/context 更新。恢复失败仍消费已确认的新分支身份，
+并展示 CLI 返回的恢复备份与记录位置。
 结果 uncertain 时停止并提示检查现场；不擅自 pop stash 或释放尚未确认结果的 checkout owner。
 
 rebase 的 Git 事务、lease、恢复与远端核验归 RepoKit，devloop 通过 `repocli git rebase`

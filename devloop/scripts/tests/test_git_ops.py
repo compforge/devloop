@@ -138,113 +138,6 @@ def test_refusal_detail_quotes_pr_evidence():
     open_pr = PullRequest(number=7, state="open", source_branch="feat/a")
     assert sgo.refusal_detail(gv(open_pr), "fallback") == "fallback"
 
-def test_branch_create_requires_explicit_carry_for_dirty_tree():
-    """Starting new work is clean by default; the commit-flow compatibility path can explicitly
-    carry both tracked and untracked changes onto the fresh branch."""
-    from domain import branch as branch_domain
-    from domain.context import session
-
-    R = "/tmp/dlut_cut"
-    shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
-    _git(R, "init", "-q", "-b", "main"); _git(R, "config", "user.email", "t@t.t"); _git(R, "config", "user.name", "t")
-    v = Path(f"{R}/v")
-    # Mirror the session: feat lags main on the file the dirty edit touches. main advances v
-    # "83"→"84"; feat (cut earlier) still has "83"; the uncommitted bump on feat also reaches "84".
-    v.write_text("83"); _git(R, "add", "v"); _git(R, "commit", "-qm", "v83")
-    _git(R, "checkout", "-q", "-b", "feat"); Path(f"{R}/x").write_text("1"); _git(R, "add", "x"); _git(R, "commit", "-qm", "feat")
-    _git(R, "checkout", "-q", "main"); v.write_text("84"); _git(R, "add", "v"); _git(R, "commit", "-qm", "v84")
-    _git(R, "checkout", "-q", "feat"); v.write_text("84")
-    Path(f"{R}/new.txt").write_text("untracked")
-    identity = session.SessionIdentity("test", "")
-
-    try:
-        branch_domain.create(R, "newb", "main", identity=identity)
-        assert False, "dirty start-work must require explicit carry"
-    except branch_domain.BranchError as exc:
-        assert "working tree is dirty" in str(exc) and "--carry-changes" in str(exc)
-
-    result = branch_domain.create(
-        R,
-        "newb",
-        "main",
-        carry_changes=True,
-        identity=identity,
-    )
-    assert _git_out(R, "rev-parse", "--abbrev-ref", "HEAD") == "newb"
-    assert v.read_text() == "84" and Path(f"{R}/new.txt").read_text() == "untracked"
-    assert result.created and result.carried_changes and result.fork_from == "main"
-
-
-def test_branch_create_refreshes_remote_base():
-    """A new branch starts at the real remote target, not a stale origin/<target> mirror."""
-    from domain import branch as branch_domain
-    from domain.context import session
-
-    root = Path("/tmp/dlut_branch_fresh")
-    shutil.rmtree(root, ignore_errors=True)
-    remote, repo = root / "remote.git", root / "repo"
-    remote.mkdir(parents=True)
-    _git(str(remote), "init", "-q", "--bare")
-    repo.mkdir()
-    _git(str(repo), "init", "-q", "-b", "main")
-    _git(str(repo), "config", "user.email", "t@t.t")
-    _git(str(repo), "config", "user.name", "t")
-    (repo / "f").write_text("one")
-    _git(str(repo), "add", "f"); _git(str(repo), "commit", "-qm", "one")
-    first = _git_out(str(repo), "rev-parse", "HEAD")
-    _git(str(repo), "remote", "add", "origin", str(remote))
-    _git(str(repo), "push", "-qu", "origin", "main")
-    (repo / "f").write_text("two")
-    _git(str(repo), "add", "f"); _git(str(repo), "commit", "-qm", "two")
-    latest = _git_out(str(repo), "rev-parse", "HEAD")
-    _git(str(repo), "push", "-q", "origin", "main")
-    _git(str(repo), "checkout", "-q", "-b", "old", first)
-    _git(str(repo), "update-ref", "refs/remotes/origin/main", first)
-
-    result = branch_domain.create(
-        str(repo),
-        "feat/fresh",
-        "origin/main",
-        identity=session.SessionIdentity("test", ""),
-    )
-    assert result.created and _git_out(str(repo), "rev-parse", "HEAD") == latest
-
-
-def test_branch_create_records_new_identity_when_carry_conflicts():
-    """Once checkout succeeds, a stash conflict must leave branch state truthful and recoverable."""
-    from domain import branch as branch_domain
-    from domain.context import RepoContext, session
-
-    repo = "/tmp/dlut_branch_conflict"
-    shutil.rmtree(repo, ignore_errors=True); os.makedirs(repo)
-    _git(repo, "init", "-q", "-b", "main")
-    _git(repo, "config", "user.email", "t@t.t"); _git(repo, "config", "user.name", "t")
-    path = Path(repo, "f")
-    path.write_text("base\n"); _git(repo, "add", "f"); _git(repo, "commit", "-qm", "base")
-    _git(repo, "branch", "old")
-    path.write_text("main\n"); _git(repo, "commit", "-qam", "main")
-    _git(repo, "checkout", "-q", "old")
-    path.write_text("dirty\n")
-
-    try:
-        branch_domain.create(
-            repo,
-            "feat/conflict",
-            "main",
-            carry_changes=True,
-            identity=session.SessionIdentity("test", ""),
-        )
-        assert False, "conflicting carry must report a recoverable error"
-    except branch_domain.BranchError as exc:
-        assert "reapplying local changes failed" in str(exc)
-        assert "Recovery stash retained:" in str(exc)
-
-    assert _git_out(repo, "branch", "--show-current") == "feat/conflict"
-    assert "UU f" in _git_out(repo, "status", "--short")
-    assert _git_out(repo, "stash", "list")
-    assert RepoContext.load(repo).branch.local.fork_from == "main"
-
-
 def test_branch_create_respects_checkout_owner():
     """The script-owned checkout path enforces the same owner boundary as raw git guards."""
     from domain import branch as branch_domain
@@ -281,9 +174,12 @@ def test_branch_cli_routes_create_to_the_transaction():
     Path(repo, "f").write_text("x"); _git(repo, "add", "f"); _git(repo, "commit", "-qm", "init")
 
     output = io.StringIO()
-    with contextlib.redirect_stdout(output):
+    from unittest.mock import patch
+    from domain.branch import CreateResult
+    with patch("domain.branch.create", return_value=CreateResult("feat/cli", "main", True, False, "main")) as create, contextlib.redirect_stdout(output):
         rc = branch_cli.main(["create", "feat/cli", "--repo", repo, "--base", "main"])
-    assert rc == 0 and _git_out(repo, "branch", "--show-current") == "feat/cli"
+    assert rc == 0 and Path(create.call_args.args[0]).resolve() == Path(repo).resolve()
+    assert create.call_args.args[1:3] == ("feat/cli", "main")
     assert "action=branch-create" in output.getvalue() and "recorded fork_from=main" in output.getvalue()
 
 
@@ -579,53 +475,14 @@ def test_cli_argparser_hint_only_on_unrecognized():
     assert "USE --message-file" not in err2.getvalue()
 
 
-def test_unknown_status_blocks_branch_and_uncertain_checkout_preserves_stash():
-    from tempfile import TemporaryDirectory
-    from unittest.mock import patch
-    from domain import branch
-    from domain.context import session
-    from repokit import git as gitcmd
-
-    with TemporaryDirectory(prefix="devloop-outcome-") as root:
-        _git(root, "init", "-qb", "main")
-        _git(root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "init")
-        Path(root, "dirty").write_text("preserve")
-        original = gitcmd.git
-        calls = []
-
-        def fail_status(repo, *args, **kwargs):
-            return gitcmd.GitResult(1, "", "unavailable") if args[0] == "status" else original(repo, *args, **kwargs)
-
-        with patch("repokit.git.operations.git", side_effect=fail_status):
-            try:
-                branch.create(root, "feature", "main", identity=session.SessionIdentity("test", ""))
-                assert False, "unknown status must block branch creation"
-            except branch.BranchError as exc:
-                assert "cannot inspect" in str(exc)
-        assert _git_out(root, "branch", "--show-current") == "main"
-        assert Path(root, "dirty").read_text() == "preserve"
-
-        def timeout_checkout(repo, *args, **kwargs):
-            calls.append(args)
-            if args[0] == "checkout":
-                return gitcmd.GitResult(-1, "", "timeout", uncertain=True)
-            return original(repo, *args, **kwargs)
-
-        with patch("repokit.git.operations.git", side_effect=timeout_checkout):
-            try:
-                branch.create(root, "feature", "main", carry_changes=True, identity=session.SessionIdentity("test", ""))
-                assert False, "timeout must be reported"
-            except branch.BranchError as exc:
-                assert "outcome unknown" in str(exc)
-        assert not any(args[:2] == ("stash", "apply") for args in calls)
-        assert _git_out(root, "stash", "list")
-        result = gitcmd.GitResult(-1, "", "timeout", uncertain=True)
-        flow = _load_script("commit_flow")
-        try:
-            flow.check_operation(result)
-            assert False
-        except flow.SmartError as exc:
-            assert "outcome unknown" in str(exc)
+def test_uncertain_git_operation_stops_commit_flow():
+    from repokit.git import GitResult
+    flow = _load_script("commit_flow")
+    try:
+        flow.check_operation(GitResult(-1, "", "timeout", uncertain=True))
+        assert False
+    except flow.SmartError as exc:
+        assert "outcome unknown" in str(exc)
 
 
 if __name__ == "__main__":

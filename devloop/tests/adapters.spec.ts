@@ -1,6 +1,6 @@
 import { Context } from "@deepseek-ai/cordis";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PreToolDecision } from "@deepseek-ai/dsh-tools";
@@ -25,8 +25,11 @@ describe("harness adapters", () => {
     const root = mkdtempSync(join(tmpdir(), "devloop-codex-shape-"));
     try {
       execFileSync("git", ["init", "-q", "-b", "feature", root]);
+      writeFileSync(join(root, "AGENTS.md"), "# Project\n");
       const output = await sessionStartOutput({ hook_event_name: "SessionStart", cwd: root, session_id: "s1" }, "codex");
       expect(JSON.stringify(output)).not.toContain("watchPaths");
+      const claude = await sessionStartOutput({ hook_event_name: "SessionStart", cwd: root, session_id: "s1" }, "claude");
+      expect(JSON.stringify(claude)).toContain("watchPaths");
     } finally { rmSync(root, {recursive:true, force:true}); }
   });
 

@@ -13918,11 +13918,11 @@ async function validationHistory(repo) {
   try {
     const history = await listValidationRuns({ repository: repo, checkout: repo, limit: 3, signal });
     if (!history.total) return { total: 0, runs: [] };
-    const current = await snapshot(repo, { signal });
+    const current = await snapshot(repo, { signal }).catch(() => void 0);
     const runs = await Promise.all(history.runs.map(async (run2) => {
-      const detail = await readValidationRun(repo, run2.runID, { signal });
+      const detail = await readValidationRun(repo, run2.runID, { signal }).catch(() => void 0);
       let sourceState = "unknown";
-      if (current.complete && detail.inputs) sourceState = current.digest === detail.inputs.snapshot ? "unchanged" : "changed";
+      if (current?.complete && detail?.inputs) sourceState = current.digest === detail.inputs.snapshot ? "unchanged" : "changed";
       return {
         runID: run2.runID,
         component: run2.component,
@@ -13932,7 +13932,7 @@ async function validationHistory(repo) {
         startedAt: run2.startedAt,
         inputsConsistent: run2.inputsConsistent,
         sourceState,
-        evidenceComplete: detail.complete
+        evidenceComplete: detail?.complete ?? false
       };
     }));
     return { total: history.total, hasMore: history.hasMore, runs };

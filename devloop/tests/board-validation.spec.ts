@@ -8,9 +8,14 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { userPromptOutput } from "../adapters/process-hooks.js";
 import { branchSegment, loadSegment, saveSegment } from "../domain/context/store.js";
 import { snapshot } from "@compforge/repokit";
+import * as repokit from "@compforge/repokit";
 import { validationHistory } from "../domain/board/validation.js";
 import { boardItem } from "../domain/board/model.js";
 import { renderItem } from "../domain/board/render.js";
+
+vi.mock("@compforge/repokit", async importOriginal => ({
+  ...await importOriginal<typeof import("@compforge/repokit")>(),
+}));
 
 let root: string;
 beforeEach(() => {
@@ -19,7 +24,7 @@ beforeEach(() => {
   vi.stubEnv("REPOKIT_HOME", join(root, "repokit-home"));
   execFileSync("git", ["init", "-q", "-b", "feature", root]);
 });
-afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 
 // @case Legacy passing evidence and scope must not become current Board validation facts.
 it.each([false, true])("does not infer validation history from legacy records (present=%s)", async (present) => {
@@ -73,6 +78,16 @@ it("projects native history and invalidates the source comparison after an edit"
     });
     expect(bundle).toContain("source changed since this run");
     expect(bundle).not.toContain("Validation history unavailable");
+    // @case Comparison or detail failures preserve retained summaries with explicitly unknown evidence.
+    const comparison = vi.spyOn(repokit, "snapshot").mockRejectedValue(new Error("comparison timed out"));
+    const comparisonUnavailable = await render();
+    expect(comparisonUnavailable).toContain("test: passed");
+    expect(comparisonUnavailable).toContain("source comparison unavailable");
+    expect(comparisonUnavailable).not.toContain("Validation history unavailable");
+    comparison.mockRestore();
+    const details = vi.spyOn(repokit, "readValidationRun").mockRejectedValue(new Error("detail timed out"));
+    expect(await validationHistory(root)).toMatchObject({total: 1, runs: [{runID: "RUN", sourceState: "unknown", evidenceComplete: false}]});
+    details.mockRestore();
     writeFileSync(wal,"broken\n");
     const unavailable=await render();
     expect(unavailable).toContain("Validation history unavailable");

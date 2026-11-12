@@ -10,14 +10,15 @@ export async function validationHistory(repo: string): Promise<Record<string, un
   try {
     const history = await listValidationRuns({repository: repo, checkout: repo, limit: 3, signal});
     if (!history.total) return {total: 0, runs: []};
-    const current = await snapshot(repo, {signal});
+    // Retained summaries remain useful when comparison or evidence exceeds the shared read budget.
+    const current = await snapshot(repo, {signal}).catch(() => undefined);
     const runs = await Promise.all(history.runs.map(async run => {
-      const detail = await readValidationRun(repo, run.runID, {signal});
+      const detail = await readValidationRun(repo, run.runID, {signal}).catch(() => undefined);
       let sourceState = "unknown";
-      if (current.complete && detail.inputs) sourceState = current.digest === detail.inputs.snapshot ? "unchanged" : "changed";
+      if (current?.complete && detail?.inputs) sourceState = current.digest === detail.inputs.snapshot ? "unchanged" : "changed";
       return {runID: run.runID, component: run.component, check: run.check, status: run.status,
         scope: run.scope, startedAt: run.startedAt, inputsConsistent: run.inputsConsistent,
-        sourceState, evidenceComplete: detail.complete};
+        sourceState, evidenceComplete: detail?.complete ?? false};
     }));
     return {total: history.total, hasMore: history.hasMore, runs};
   } catch (error) {

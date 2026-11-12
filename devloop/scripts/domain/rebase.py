@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import logging
 import subprocess
-from pathlib import Path
 
-from command import run_repocli
+from repokit.cli import rebase_result
+from repokit.cli import run as run_repocli
+
 from .context import RepoContext, gate, session
 
 logger = logging.getLogger(__name__)
@@ -45,29 +46,8 @@ def _invoke(repo: str, action: str, arguments: list[str] | None = None, *, branc
             error = envelope.get("error")
             message = error.get("message") if isinstance(error, dict) else None
             raise RebaseError(f"rebase {action} {envelope['outcome']}: {message or 'inspect the CLI result before retrying'}")
-        data = envelope["data"]
-        phases = {"none", "unmanaged", "prepared", "paused", "ready", "publishing", "published", "aborted", "failed", "unknown"}
-        if (not isinstance(data, dict) or data.get("confirmed") is not True
-                or data.get("action") != action or data.get("phase") not in phases
-                or not isinstance(data.get("checkout"), str) or not data["checkout"]
-                or Path(data["checkout"]).resolve() != Path(repo).resolve()
-                or not isinstance(data.get("conflicts"), list)
-                or not all(isinstance(p, str) for p in data["conflicts"])
-                or not isinstance(data.get("diagnostics"), list)):
-            raise ValueError("invalid or unconfirmed rebase report")
+        data = rebase_result(envelope, repo, action, branch=branch, target=target)
         phase = data["phase"]
-        transaction = data.get("transaction")
-        if phase not in {"none", "unmanaged"}:
-            if (not isinstance(transaction, dict)
-                    or not all(isinstance(transaction.get(k), str) and transaction[k]
-                               for k in ("branch", "target", "expectedRemote", "targetCommit"))
-                    or (branch is not None and transaction["branch"] != branch)
-                    or (target is not None and transaction["target"] != target)):
-                raise ValueError("mismatching rebase transaction")
-        accepted = {"start": {"paused", "ready"}, "continue": {"paused", "ready"},
-                    "finish": {"published"}, "abort": {"aborted"}, "status": phases}
-        if phase not in accepted[action]:
-            raise ValueError("successful command contradicts rebase phase")
         plan = [f"rebase phase={phase}"]
         plan.extend(f"conflict: {path}" for path in data["conflicts"])
         for diagnostic in data["diagnostics"]:

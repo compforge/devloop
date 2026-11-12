@@ -27,7 +27,6 @@ MODULES = [
     "test_session",
     "test_board",
     "test_inspect",
-    "test_dependencies",
     "test_python",
     "test_review",
     "test_review_launch",

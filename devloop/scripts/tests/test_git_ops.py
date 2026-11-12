@@ -111,11 +111,11 @@ def test_branch_cli_routes_create_to_the_transaction():
     output = io.StringIO()
     from unittest.mock import patch
     from domain.branch import CreateResult
-    with patch("domain.branch.create", return_value=CreateResult("feat/cli", "main", True, False, "main")) as create, contextlib.redirect_stdout(output):
+    with patch("domain.branch.create", return_value=CreateResult("feat/cli", "main", True, False)) as create, contextlib.redirect_stdout(output):
         rc = branch_cli.main(["create", "feat/cli", "--repo", repo, "--base", "main"])
     assert rc == 0 and Path(create.call_args.args[0]).resolve() == Path(repo).resolve()
     assert create.call_args.args[1:3] == ("feat/cli", "main")
-    assert "action=branch-create" in output.getvalue() and "recorded fork_from=main" in output.getvalue()
+    assert "action=branch-create" in output.getvalue() and "off main" in output.getvalue()
 
 
 def test_prepare_branch_reads_gate_pr_state():

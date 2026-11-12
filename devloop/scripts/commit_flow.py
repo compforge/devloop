@@ -8,6 +8,7 @@ Branch protection, checkout ownership and exact staging selection remain live ch
 Fresh branches use an explicit base, and pushes reject unintended foreign commits.
 """
 from __future__ import annotations
+from repokit import cli as repokit_cli
 from domain import git_policy
 
 import argparse
@@ -178,7 +179,6 @@ def prepare_branch(intent: GitIntent, gv: gate.GateView, plan: list[str]) -> Bra
             raise SmartError(str(exc)) from exc
         carried = " (carried over local changes)" if created.carried_changes else ""
         plan.append(f"cut new branch '{created.name}' off {created.base}{carried}")
-        plan.append(f"recorded fork_from={created.fork_from}")
         if created.stash_oid:
             plan.append(f"restored index and worktree; recovery stash retained: {created.stash_oid}")
         return BranchResult(branch=intent.requested_branch, cut=True)
@@ -229,17 +229,9 @@ def publish_branch(repo: str, branch: str, plan: list[str], expected_commit: str
         raise SmartError("cannot freeze the source branch commit before publication")
     recovery = f"repocli git push --branch {branch!r} --commit {commit} --remote origin --check"
     try:
-        result = cli.run_repocli(repo, ("git", "push"),
+        result = repokit_cli.run(repo, ("git", "push"),
             ["--branch", branch, "--commit", commit, "--remote", "origin", "--set-upstream"], timeout=300)
-        data = result.get("data")
-        if (not isinstance(data, dict) or data.get("branch") != branch or data.get("target") != branch
-                or data.get("remote") != "origin" or data.get("targetCommit") != commit
-                or not isinstance(data.get("checkout"), str)
-                or Path(data["checkout"]).resolve() != Path(repo).resolve()
-                or not isinstance(data.get("confirmed"), bool)
-                or not isinstance(data.get("diagnostics"), list)
-                or not all(isinstance(d, dict) and isinstance(d.get("message"), str) for d in data["diagnostics"])):
-            raise ValueError("invalid or mismatching push report")
+        data = repokit_cli.push_result(result, repo, branch, commit, "origin")
         if result["outcome"] != "succeeded":
             error = result.get("error") or {}
             message = error.get("message") if isinstance(error, dict) else None

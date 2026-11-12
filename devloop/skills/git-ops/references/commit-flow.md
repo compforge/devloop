@@ -37,16 +37,16 @@ selects the Git baseline and defaults to the repository's local default target.
 After a successful push, the AI invokes [native PR commands](pr-management.md) directly:
 
 ```bash
-repocli pr list --repo <repo> --head <branch> --state open --json
 repocli pr create --repo <repo> --head <branch> --base <target> --title '<title>' --body-file <file> --json
 ```
 
-Resolve the destination and base before creation. Reuse an existing proposal's base unless the
+When destination and base are known, call create directly; it discovers and reuses the unique open proposal.
+Query first only when selecting an unknown target or resolving ambiguity. Resolve the destination and base before creation. Reuse an existing proposal's base unless the
 user requests another target. Multiple candidates need an explicit selection. The CLI owns
-create/reuse identity and post-success maintenance. Report a PR failure separately from a
+create/reuse identity and affected observation updates. Report a PR failure separately from a
 successful commit/push, so retrying does not duplicate Git work. Consume the command envelope
 using [PR result and recovery rules](pr-management.md); an unknown write requires observation
-before retry, while maintenance warnings do not undo a confirmed PR write.
+before retry, while observation warnings do not undo a confirmed PR write.
 
 For a fork, pass `--target-repository owner/repo` to each PR query/write. Omission means the origin
 repository; fork metadata does not authorize publishing upstream. The PR base is independent of

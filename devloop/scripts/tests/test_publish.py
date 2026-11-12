@@ -16,7 +16,7 @@ def envelope(**updates):
 
 def test_push_freezes_commit_and_consumes_confirmed_remote_identity():
     flow = _load_script("commit_flow")
-    with patch.object(flow.git_state,"rev_parse",return_value=SHA), patch.object(flow.cli,"run_repocli",return_value=envelope()) as invoke:
+    with patch.object(flow.git_state,"rev_parse",return_value=SHA), patch.object(flow.repokit_cli,"run",return_value=envelope()) as invoke:
         plan=[];flow.publish_branch(REPO,"topic",plan)
         invoke.assert_called_once_with(REPO,("git","push"),["--branch","topic","--commit",SHA,"--remote","origin","--set-upstream"],timeout=300)
         assert plan == [f"confirmed origin/topic at {SHA}"]
@@ -29,7 +29,7 @@ def test_unavailable_unknown_or_mismatched_push_never_retries():
              (envelope(confirmed=False),None), (envelope(remoteCommit="b"*40),None),
              (envelope(checkout="/other"),None), (envelope(targetCommit="b"*40),None)]
     for result,error in cases:
-        with patch.object(flow.git_state,"rev_parse",return_value=SHA), patch.object(flow.cli,"run_repocli",return_value=result,side_effect=error) as invoke:
+        with patch.object(flow.git_state,"rev_parse",return_value=SHA), patch.object(flow.repokit_cli,"run",return_value=result,side_effect=error) as invoke:
             try:flow.publish_branch(REPO,"topic",[]);assert False
             except flow.SmartError as exc:assert SHA in str(exc) and "--check" in str(exc)
             assert invoke.call_count==1
@@ -39,14 +39,14 @@ def test_unavailable_unknown_or_mismatched_push_never_retries():
 def test_upstream_warning_does_not_retract_confirmed_publication():
     flow = _load_script("commit_flow")
     result=envelope(diagnostics=[{"message":"upstream configuration failed; remote commit confirmed"}])
-    with patch.object(flow.git_state,"rev_parse",return_value=SHA), patch.object(flow.cli,"run_repocli",return_value=result):
+    with patch.object(flow.git_state,"rev_parse",return_value=SHA), patch.object(flow.repokit_cli,"run",return_value=result):
         plan=[];flow.publish_branch(REPO,"topic",plan)
         assert plan[0].startswith("confirmed ") and plan[1].startswith("warning: upstream")
 
 
 def test_missing_source_commit_never_calls_cli():
     flow = _load_script("commit_flow")
-    with patch.object(flow.git_state,"rev_parse",return_value=""), patch.object(flow.cli,"run_repocli") as invoke:
+    with patch.object(flow.git_state,"rev_parse",return_value=""), patch.object(flow.repokit_cli,"run") as invoke:
         try:flow.publish_branch(REPO,"topic",[]);assert False
         except flow.SmartError:pass
         invoke.assert_not_called()

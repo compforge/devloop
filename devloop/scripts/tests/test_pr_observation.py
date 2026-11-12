@@ -117,5 +117,29 @@ def test_gate_accepts_verified_absence_of_pr():
         assert gate.evaluate(repo).active_pr is None
 
 
+def test_gate_reads_repokit_target_instead_of_legacy_meta():
+    # +case=RepoKit default branch wins over stale devloop metadata and local fallback.
+    from repokit.state import DefaultBranch
+    from domain.context import store
+
+    repo, _, _ = _fixture("gate_repokit_target")
+    store.save_segment(repo, "meta", {"repo": {"default_branch": "obsolete"}})
+    with patch.object(prstate, "checkout_pr", return_value=("", None)), \
+         patch("repokit.state.default_branch", return_value=DefaultBranch("release", 1, True)), \
+         patch.object(gate.git_policy, "local_default_target", side_effect=AssertionError("fallback used")):
+        assert gate.evaluate(repo).target == "release"
+
+
+def test_gate_uses_workflow_fallback_only_when_repokit_target_is_unknown():
+    from repokit.state import DefaultBranch
+
+    repo, _, _ = _fixture("gate_unknown_target")
+    with patch.object(prstate, "checkout_pr", return_value=("", None)), \
+         patch("repokit.state.default_branch", return_value=DefaultBranch(None, 0, False)), \
+         patch.object(gate.git_policy, "local_default_target", return_value="main") as fallback:
+        assert gate.evaluate(repo).target == "main"
+        fallback.assert_called_once_with(repo)
+
+
 if __name__ == "__main__":
     run_main(globals())

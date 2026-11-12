@@ -1,13 +1,14 @@
 """Development branch policy over RepoCLI's data-preserving branch operation."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
-from pathlib import Path
 import subprocess
+from dataclasses import dataclass
 
-from command import run_repocli
+from repokit.cli import branch_result
+from repokit.cli import run as run_repocli
 from repokit.git import state as git_state
+
 from .context import RepoContext, session
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,6 @@ class CreateResult:
     base: str
     created: bool
     carried_changes: bool
-    fork_from: str | None
     stash_oid: str | None = None
 
 
@@ -47,35 +47,14 @@ def create(repo: str, name: str, base: str, *, carry_changes: bool = False,
         arguments.append("--carry-changes")
     try:
         envelope = run_repocli(repo, ("git", "branch", "create"), arguments, timeout=300)
-        data = envelope.get("data")
-        if (not isinstance(data, dict) or data.get("branch") != name
-                or not isinstance(data.get("checkout"), str)
-                or Path(data["checkout"]).resolve() != Path(repo).resolve()
-                or not all(isinstance(data.get(k), bool) for k in
-                           ("branchConfirmed", "changesRestored", "confirmed", "writeAttempted"))
-                or not isinstance(data.get("currentBranch"), str)
-                or not isinstance(data.get("phase"), str)
-                or not isinstance(data.get("stashOid", ""), str)
-                or not isinstance(data.get("diagnostics"), list)
-                or not all(isinstance(d, dict) and isinstance(d.get("message"), str)
-                           for d in data["diagnostics"])
-                or not isinstance(envelope.get("error") or {}, dict)):
-            raise ValueError("invalid branch operation report")
+        data = branch_result(envelope, repo, name)
         switched = data["branchConfirmed"]
-        if switched and data["currentBranch"] != name:
-            raise ValueError("confirmed branch contradicts checkout identity")
-        if envelope["outcome"] == "succeeded" and (not data["confirmed"] or not switched
-                or not data["changesRestored"] or data.get("action") not in {"created", "reused"}):
-            raise ValueError("successful command lacks confirmed branch creation and change restoration")
         created = data.get("action") == "created"
-        fork_from = target if created else None
         if switched:
             # Git has switched even if apply failed; keep owner/context on the new branch.
             # A projection failure does not undo confirmed Git effects or authorize replay.
             try:
-                ctx = RepoContext.refresh_branch(repo)
-                if created:
-                    ctx.set_fork_from(target)
+                RepoContext.refresh_branch(repo)
             except (OSError, ValueError) as error:
                 logger.warning("Branch confirmed but context refresh failed repo=%s branch=%s error=%s", repo, name, error)
             try:
@@ -97,7 +76,7 @@ def create(repo: str, name: str, base: str, *, carry_changes: bool = False,
             raise BranchError(f"branch create {envelope['outcome']}: {message}.{backup}{record}")
         return CreateResult(name=name, base=base, created=created,
                             carried_changes=created and bool(data.get("stashOid")),
-                            fork_from=fork_from, stash_oid=data.get("stashOid") or None)
+                            stash_oid=data.get("stashOid") or None)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
         raise BranchError(
             f"branch create result unavailable; inspect repocli git branch status {name!r} before retrying: {error}"

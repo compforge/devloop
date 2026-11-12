@@ -11,7 +11,7 @@ from _testkit import run_main  # noqa: E402
 from domain import rebase  # noqa: E402
 from domain.context.gate import GateView  # noqa: E402
 from domain.context.base import PullRequest  # noqa: E402
-import command  # noqa: E402
+from repokit import cli as repocli  # noqa: E402
 
 
 def view(branch="feature", state="open", target="main"):
@@ -111,15 +111,15 @@ def test_protocol_failure_has_no_fallback_and_preserves_recovery_guidance():
                subprocess.CompletedProcess([], 0, json.dumps({"schemaVersion": "other"})),
                subprocess.CompletedProcess([], 1, json.dumps(response("status", "ready")))]
     for result in invalid:
-        with patch.object(command.subprocess, "run", return_value=result):
+        with patch.object(repocli, "run_command", return_value=result):
             rejected(lambda: rebase.status("/repo"), "inspect repocli git rebase status")
     for error in (FileNotFoundError("repocli"), subprocess.TimeoutExpired("repocli", 310)):
-        with patch.object(command.subprocess, "run", side_effect=error):
+        with patch.object(repocli, "run_command", side_effect=error):
             rejected(lambda: rebase.status("/repo"), "inspect repocli git rebase status")
-    with patch.object(command.subprocess, "run", return_value=subprocess.CompletedProcess(
+    with patch.object(repocli, "run_command", return_value=subprocess.CompletedProcess(
             [], 0, json.dumps(response("status", "ready")))) as run:
         rebase.status("/repo")
-        assert run.call_args.kwargs["timeout"] == 310
+        assert run.call_args.kwargs["process_group"] is True
 
 
 if __name__ == "__main__":

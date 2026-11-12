@@ -15,8 +15,8 @@ def local_default_target(repo_dir: str | Path) -> str:
     """Read the default MR target from the *local* origin/HEAD cache — the offline FALLBACK.
 
     Pure-local, zero network, safe on hot paths. NOT the authority: `git fetch` never refreshes
-    `refs/remotes/origin/HEAD`, so this can lag. The authority is the forge value cached in
-    `RepoMeta.default_branch` (resolved on a TTL boundary) — callers prefer that and only fall
+    `refs/remotes/origin/HEAD`, so this can lag. The authority is the default-branch observation owned by
+    RepoKit state (resolved on a TTL boundary) — callers prefer that and only fall
     here when it's empty / unavailable. No "release" bias: when origin/HEAD is absent, fall back
     to whichever of main/master exists, else main.
     """

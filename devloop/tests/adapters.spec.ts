@@ -1,4 +1,8 @@
 import { Context } from "@deepseek-ai/cordis";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { PreToolDecision } from "@deepseek-ai/dsh-tools";
 import { describe, expect, it } from "vitest";
 import * as dshPlugin from "../adapters/dsh/index.js";
@@ -17,8 +21,16 @@ describe("harness adapters", () => {
   });
 
   it("does not emit Claude-only watchPaths to Codex", async () => {
-    const output = await sessionStartOutput({ hook_event_name: "SessionStart", cwd: process.cwd(), session_id: "s1" }, "codex");
-    expect(JSON.stringify(output)).not.toContain("watchPaths");
+    // Adapter shape must not depend on the developer checkout's live PR/history or workspace size.
+    const root = mkdtempSync(join(tmpdir(), "devloop-codex-shape-"));
+    try {
+      execFileSync("git", ["init", "-q", "-b", "feature", root]);
+      writeFileSync(join(root, "AGENTS.md"), "# Project\n");
+      const output = await sessionStartOutput({ hook_event_name: "SessionStart", cwd: root, session_id: "s1" }, "codex");
+      expect(JSON.stringify(output)).not.toContain("watchPaths");
+      const claude = await sessionStartOutput({ hook_event_name: "SessionStart", cwd: root, session_id: "s1" }, "claude");
+      expect(JSON.stringify(claude)).toContain("watchPaths");
+    } finally { rmSync(root, {recursive:true, force:true}); }
   });
 
   it("does not mutate readonly tool input after execution", () => {

@@ -119,3 +119,9 @@ thread ID，前者用于 Verdict 命令，后者用于通用 discussion 命令�
 CLI 协议，通过原生 SDK 获取展示事实；不维护第二份 branch/meta/remote JSON。`RepoContext` 是瞬时读模型，
 `.devloop/agents.json` 只缓存解析后的 AGENTS 知识。分支创建来源归 RepoKit，任务基线仍由 PR target 或工作流选择。
 Session owner、任务、review、Board 与投递记录继续属于 devloop。代码不直接拼 RepoKit home 文件路径。
+
+Board 的 `repo.validation` 通过 RepoKit 原生 TypeScript API 查询当前 checkout 最近三次保留 Run，
+不读取 `.devloop` 旧验证戳，也不解析 WAL 或维护验证缓存。空历史与读取失败分别展示。
+通过 RepoKit snapshot 与 Run input manifest 比较源码是否变化；即使源码相同，历史 passed 也不授予
+当前通过或复用资格。环境、工具链与外部输入的适用性仍由 RepoKit validation 决定。
+查询与源码比较共享 1 秒预算；超时显示 unavailable，不阻塞其它 Board 项目的投递。

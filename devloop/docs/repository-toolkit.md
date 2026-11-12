@@ -32,6 +32,8 @@ CLI 和 SDK 均由 RepoKit 的 `<home>/config.json` 解析 Forge 访问配置；
 ## Managed Git 事务
 
 提交范围、敏感文件、checkout owner、保护分支与外来提交检查由 devloop 负责，Git 动作由 RepoKit 执行。
+普通分支发布调用 `repocli git push`，携带冻结的源 commit；只有同一目标远端 SHA 核验一致才确认发布。
+响应未知使用相同 commit 的 `--check` 观察，不回退 SDK push、不自动重试。upstream 配置失败以 warning 保留已确认发布。
 显式 `--file` 限定完整 index 的路径范围；目录先展开成文件再检查敏感路径。
 已暂存的敏感文件删除允许提交，留在工作区的文件不会重新加入 index。
 候选 index 与 gitlink 注册检查通过后才安装 index；拒绝时保留原有暂存和部分 hunk。

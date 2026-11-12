@@ -18,6 +18,7 @@ MODULES = [
     "test_forge",
     "test_git_ops",
     "test_branch",
+    "test_publish",
     "test_git_policy",
     "test_staging",
     "test_worktree",

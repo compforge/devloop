@@ -43,6 +43,16 @@ Unfinished operations block another create for that name. After deliberate manua
 `recoveryPath` before reusing the operation; keep the stash until its contents are accounted for.
 The devloop branch entrypoint adds session ownership and fork policy around this CLI operation.
 
+## Branch publication
+
+`repocli git push --branch <source> --commit <full-sha> --remote origin [--target <destination>] [--set-upstream] --repo <checkout> --json`
+publishes one frozen local branch commit without force. Require matching checkout, source, destination and
+`targetCommit`, plus `confirmed=true` and `remoteCommit=targetCommit`. A nonzero Git push can still be
+confirmed by subsequent remote observation. Upstream configuration warnings do not retract publication.
+On missing or unknown results, run the same identity with `--check` to observe without pushing. Never replace
+the original commit with a newer HEAD for recovery. The command owns publication and reconciliation;
+devloop owns protection, PR lifecycle and foreign-commit gates.
+
 ## Rebase lifecycle
 
 `repocli git rebase start --branch <source> --target <target> --remote origin --repo <checkout> --json`
@@ -119,7 +129,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.74.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.75.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

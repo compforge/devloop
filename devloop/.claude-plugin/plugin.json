@@ -1,6 +1,6 @@
 {
   "name": "devloop",
-  "version": "0.4.81",
+  "version": "0.4.82",
   "description": "Shared Board and policy with skill-led Git/PR operations, explicit repocli validation, review, and native Harness hooks.",
   "author": {
     "name": "compforge",

@@ -198,8 +198,8 @@ def test_repo_context_uses_repokit_facts_without_duplicate_repository_storage():
             assert refreshed.branch.remote_tip("release").commit == "c" * 40
             assert context.RepoContext.load(root).branch.local.name == "topic"
         assert store.load_segment(root, "agents") is not None
-        for name in ("meta", "branch", "remote_branches"):
-            assert store.load_segment(root, name) is None
+        for name in ("meta", store.branch_segment("topic", "branch"), "remote_branches"):
+            assert not store.segment_file(root, name).exists()
 
 
 if __name__ == "__main__":

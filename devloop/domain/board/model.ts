@@ -4,6 +4,7 @@ export type BoardItemType =
   | "workspace"
   | "repo.references"
   | "repo.identity"
+  | "repo.validation"
   | "repo.pull-request"
   | "repo.pr-blocked"
   | "repo.review"

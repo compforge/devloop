@@ -1,16 +1,22 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { userPromptOutput } from "../adapters/process-hooks.js";
 import { branchSegment, loadSegment, saveSegment } from "../domain/context/store.js";
+import { snapshot } from "@compforge/repokit";
+import { validationHistory } from "../domain/board/validation.js";
+import { boardItem } from "../domain/board/model.js";
+import { renderItem } from "../domain/board/render.js";
 
 let root: string;
 beforeEach(() => {
   root = realpathSync(mkdtempSync(join(tmpdir(), "devloop-validation-")));
   vi.stubEnv("DEVLOOP_CONFIG_DIR", join(root, "config"));
+  vi.stubEnv("REPOKIT_HOME", join(root, "repokit-home"));
   execFileSync("git", ["init", "-q", "-b", "feature", root]);
 });
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
@@ -32,6 +38,44 @@ it.each([false, true])("does not infer validation history from legacy records (p
   }
   const output = JSON.stringify(await userPromptOutput({ cwd: root, session_id: "validation-session" }));
   expect(output).toContain("[Current repo:");
-  expect(output).not.toMatch(/Validation|validation scope|obsolete fallback|legacy-snapshot/);
+  expect(output).toContain("Validation history: no retained runs");
+  expect(output).not.toMatch(/validation scope|obsolete fallback|legacy-snapshot/);
   expect(loadSegment(root, segment)).toEqual(present ? record : undefined);
+});
+
+// @case Current source comparison is independent of historical check status and never grants a current pass.
+it("projects native history and invalidates the source comparison after an edit", async () => {
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "devloop-history-home-")));
+  vi.stubEnv("REPOKIT_HOME", home);
+  try {
+    execFileSync("git", ["-C",root,"remote","add","origin","https://github.com/example/board.git"]);
+    writeFileSync(join(root,"source.ts"),"export const value = 1;\n");
+    const observed=await snapshot(root);
+    const directory=join(home,"repositories","github--example--board");
+    for (const child of ["history","inputs","logs"]) mkdirSync(join(directory,child),{recursive:true});
+    const check={runID:"RUN",check:"test",scope:"full",status:"passed",durationSeconds:1};
+    const start={schemaVersion:2,type:"started",checkout:root,at:"2026-11-12T00:00:00Z",run:"RUN",component:".",inputs:"INPUT",check};
+    const end={...start,type:"finished",at:"2026-11-12T00:00:01Z",inputsConsistent:true};
+    const wal=join(directory,"history","00000000000000000001");
+    writeFileSync(wal,[start,end].map((e,i)=>JSON.stringify({index:String(i+1),data:"+"+JSON.stringify(e)})+"\n").join(""));
+    writeFileSync(join(directory,"inputs","INPUT.json"),JSON.stringify({schemaVersion:1,checkout:root,snapshot:observed.digest,files:{}}));
+    for (const stream of ["stdout","stderr"]) writeFileSync(join(directory,"logs",`2026-11-12.${stream}.jsonl`),JSON.stringify({runID:"RUN",output:""})+"\n");
+    const render=async()=>renderItem(boardItem("repo.validation","state",{workspaceRoot:root,repoRoot:root},await validationHistory(root)));
+    expect(await render()).toContain("source unchanged");
+    writeFileSync(join(root,"source.ts"),"export const value = 2;\n");
+    const changed=await render();
+    expect(changed).toContain("source changed since this run");
+    expect(changed).toContain("historical results, not current validation");
+    expect(changed).toContain("test: passed");
+    const bundle = execFileSync(process.execPath, [fileURLToPath(new URL("../dist/hooks/runtime.js", import.meta.url))], {
+      input: JSON.stringify({hook_event_name:"UserPromptSubmit",cwd:root,session_id:"history-bundle"}),
+      env: {...process.env, DEVLOOP_HARNESS:"codex"}, encoding:"utf8", timeout:10_000,
+    });
+    expect(bundle).toContain("source changed since this run");
+    expect(bundle).not.toContain("Validation history unavailable");
+    writeFileSync(wal,"broken\n");
+    const unavailable=await render();
+    expect(unavailable).toContain("Validation history unavailable");
+    expect(unavailable).not.toContain("no retained runs");
+  } finally {rmSync(home,{recursive:true,force:true});}
 });

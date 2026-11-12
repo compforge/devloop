@@ -42,6 +42,22 @@ export function renderItem(item) {
             return `Branch '${text(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
         return `${pullRequestLabel(text(payload.provider), number(payload.number))} ${text(payload.state)} (${text(payload.repository)})`;
     }
+    if (item.type === "repo.validation") {
+        if (payload.error)
+            return text(payload.error);
+        if (!number(payload.total))
+            return "Validation history: no retained runs for this checkout.";
+        const lines = rows(payload.runs).map(run => {
+            let source = "source comparison unavailable";
+            if (run.sourceState === "changed")
+                source = "source changed since this run";
+            else if (run.sourceState === "unchanged")
+                source = "source unchanged";
+            const consistency = run.inputsConsistent === false ? "; inputs changed during execution" : "";
+            return `  - ${text(run.component)} ${text(run.check)}: ${text(run.status)} (${text(run.scope)}), ${text(run.startedAt)}; ${source}${consistency}; run ${text(run.runID)}`;
+        });
+        return [`Validation history (${number(payload.total)} retained runs; historical results, not current validation):`, ...lines].join("\n");
+    }
     if (item.type === "repo.review")
         return renderReview(payload);
     return "";

@@ -7,6 +7,7 @@ import { branchSegment, loadSegment, segmentFile } from "../context/store.js";
 import { REVIEW_STALE_SECONDS, now } from "../context/base.js";
 import type { WorkspaceContext } from "../context/workspace.js";
 import { Board, boardItem } from "./model.js";
+import { validationHistory } from "./validation.js";
 
 /**
  * @spec Board only projects facts with an authoritative reader; legacy validation stamps are not evidence.
@@ -60,6 +61,7 @@ export async function projectBoard(root: string, workspace?: WorkspaceContext, r
     ...(staleBindingHours === undefined ? {} : { staleBindingHours }),
   }));
   // An unavailable identity cannot select detached-HEAD or another branch's persisted state.
+  items.push(boardItem("repo.validation", "state", scope, await validationHistory(repo)));
   if (branch === undefined) return new Board(root, items);
   let prContext: Awaited<ReturnType<typeof prContextForRepo>>;
   try {

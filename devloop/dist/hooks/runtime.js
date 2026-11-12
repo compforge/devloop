@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { createRequire } from "node:module"; const require = createRequire(import.meta.url);
+import { createRequire as __devloopCreateRequire } from "node:module"; const require = __devloopCreateRequire(import.meta.url);
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -1003,14 +1003,14 @@ var require_foldFlowLines = __commonJS({
     var FOLD_FLOW = "flow";
     var FOLD_BLOCK = "block";
     var FOLD_QUOTED = "quoted";
-    function foldFlowLines(text3, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
+    function foldFlowLines(text4, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
       if (!lineWidth || lineWidth < 0)
-        return text3;
+        return text4;
       if (lineWidth < minContentWidth)
         minContentWidth = 0;
       const endStep = Math.max(1 + minContentWidth, 1 + lineWidth - indent.length);
-      if (text3.length <= endStep)
-        return text3;
+      if (text4.length <= endStep)
+        return text4;
       const folds = [];
       const escapedFolds = {};
       let end = lineWidth - indent.length;
@@ -1027,14 +1027,14 @@ var require_foldFlowLines = __commonJS({
       let escStart = -1;
       let escEnd = -1;
       if (mode === FOLD_BLOCK) {
-        i = consumeMoreIndentedLines(text3, i, indent.length);
+        i = consumeMoreIndentedLines(text4, i, indent.length);
         if (i !== -1)
           end = i + endStep;
       }
-      for (let ch; ch = text3[i += 1]; ) {
+      for (let ch; ch = text4[i += 1]; ) {
         if (mode === FOLD_QUOTED && ch === "\\") {
           escStart = i;
-          switch (text3[i + 1]) {
+          switch (text4[i + 1]) {
             case "x":
               i += 3;
               break;
@@ -1051,12 +1051,12 @@ var require_foldFlowLines = __commonJS({
         }
         if (ch === "\n") {
           if (mode === FOLD_BLOCK)
-            i = consumeMoreIndentedLines(text3, i, indent.length);
+            i = consumeMoreIndentedLines(text4, i, indent.length);
           end = i + indent.length + endStep;
           split = void 0;
         } else {
           if (ch === " " && prev && prev !== " " && prev !== "\n" && prev !== "	") {
-            const next = text3[i + 1];
+            const next = text4[i + 1];
             if (next && next !== " " && next !== "\n" && next !== "	")
               split = i;
           }
@@ -1068,12 +1068,12 @@ var require_foldFlowLines = __commonJS({
             } else if (mode === FOLD_QUOTED) {
               while (prev === " " || prev === "	") {
                 prev = ch;
-                ch = text3[i += 1];
+                ch = text4[i += 1];
                 overflow = true;
               }
               const j = i > escEnd + 1 ? i - 2 : escStart - 1;
               if (escapedFolds[j])
-                return text3;
+                return text4;
               folds.push(j);
               escapedFolds[j] = true;
               end = j + endStep;
@@ -1088,39 +1088,39 @@ var require_foldFlowLines = __commonJS({
       if (overflow && onOverflow)
         onOverflow();
       if (folds.length === 0)
-        return text3;
+        return text4;
       if (onFold)
         onFold();
-      let res = text3.slice(0, folds[0]);
+      let res = text4.slice(0, folds[0]);
       for (let i2 = 0; i2 < folds.length; ++i2) {
         const fold = folds[i2];
-        const end2 = folds[i2 + 1] || text3.length;
+        const end2 = folds[i2 + 1] || text4.length;
         if (fold === 0)
           res = `
-${indent}${text3.slice(0, end2)}`;
+${indent}${text4.slice(0, end2)}`;
         else {
           if (mode === FOLD_QUOTED && escapedFolds[fold])
-            res += `${text3[fold]}\\`;
+            res += `${text4[fold]}\\`;
           res += `
-${indent}${text3.slice(fold + 1, end2)}`;
+${indent}${text4.slice(fold + 1, end2)}`;
         }
       }
       return res;
     }
-    function consumeMoreIndentedLines(text3, i, indent) {
+    function consumeMoreIndentedLines(text4, i, indent) {
       let end = i;
       let start = i + 1;
-      let ch = text3[start];
+      let ch = text4[start];
       while (ch === " " || ch === "	") {
         if (i < start + indent) {
-          ch = text3[++i];
+          ch = text4[++i];
         } else {
           do {
-            ch = text3[++i];
+            ch = text4[++i];
           } while (ch && ch !== "\n");
           end = i;
           start = i + 1;
-          ch = text3[start];
+          ch = text4[start];
         }
       }
       return end;
@@ -7369,7 +7369,7 @@ var require_dist = __commonJS({
 // node_modules/graceful-fs/polyfills.js
 var require_polyfills = __commonJS({
   "node_modules/graceful-fs/polyfills.js"(exports, module) {
-    var constants2 = __require("constants");
+    var constants3 = __require("constants");
     var origCwd = process.cwd;
     var cwd2 = null;
     var platform = process.env.GRACEFUL_FS_PLATFORM || process.platform;
@@ -7393,7 +7393,7 @@ var require_polyfills = __commonJS({
     var chdir;
     module.exports = patch;
     function patch(fs) {
-      if (constants2.hasOwnProperty("O_SYMLINK") && process.version.match(/^v0\.6\.[0-2]|^v0\.5\./)) {
+      if (constants3.hasOwnProperty("O_SYMLINK") && process.version.match(/^v0\.6\.[0-2]|^v0\.5\./)) {
         patchLchmod(fs);
       }
       if (!fs.lutimes) {
@@ -7495,7 +7495,7 @@ var require_polyfills = __commonJS({
         fs2.lchmod = function(path, mode, callback) {
           fs2.open(
             path,
-            constants2.O_WRONLY | constants2.O_SYMLINK,
+            constants3.O_WRONLY | constants3.O_SYMLINK,
             mode,
             function(err, fd) {
               if (err) {
@@ -7511,7 +7511,7 @@ var require_polyfills = __commonJS({
           );
         };
         fs2.lchmodSync = function(path, mode) {
-          var fd = fs2.openSync(path, constants2.O_WRONLY | constants2.O_SYMLINK, mode);
+          var fd = fs2.openSync(path, constants3.O_WRONLY | constants3.O_SYMLINK, mode);
           var threw = true;
           var ret;
           try {
@@ -7531,9 +7531,9 @@ var require_polyfills = __commonJS({
         };
       }
       function patchLutimes(fs2) {
-        if (constants2.hasOwnProperty("O_SYMLINK") && fs2.futimes) {
+        if (constants3.hasOwnProperty("O_SYMLINK") && fs2.futimes) {
           fs2.lutimes = function(path, at, mt, cb) {
-            fs2.open(path, constants2.O_SYMLINK, function(er, fd) {
+            fs2.open(path, constants3.O_SYMLINK, function(er, fd) {
               if (er) {
                 if (cb) cb(er);
                 return;
@@ -7546,7 +7546,7 @@ var require_polyfills = __commonJS({
             });
           };
           fs2.lutimesSync = function(path, at, mt) {
-            var fd = fs2.openSync(path, constants2.O_SYMLINK);
+            var fd = fs2.openSync(path, constants3.O_SYMLINK);
             var ret;
             var threw = true;
             try {
@@ -7858,8 +7858,8 @@ var require_graceful_fs = __commonJS({
       fs2.createReadStream = createReadStream;
       fs2.createWriteStream = createWriteStream;
       var fs$readFile = fs2.readFile;
-      fs2.readFile = readFile2;
-      function readFile2(path, options, cb) {
+      fs2.readFile = readFile4;
+      function readFile4(path, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
         return go$readFile(path, options, cb);
@@ -7930,9 +7930,9 @@ var require_graceful_fs = __commonJS({
         }
       }
       var fs$readdir = fs2.readdir;
-      fs2.readdir = readdir2;
+      fs2.readdir = readdir3;
       var noReaddirOptionVersions = /^v[0-5]\./;
-      function readdir2(path, options, cb) {
+      function readdir3(path, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
         var go$readdir = noReaddirOptionVersions.test(process.version) ? function go$readdir2(path2, options2, cb2, startTime) {
@@ -8035,7 +8035,7 @@ var require_graceful_fs = __commonJS({
       }
       function ReadStream$open() {
         var that = this;
-        open4(that.path, that.flags, that.mode, function(err, fd) {
+        open6(that.path, that.flags, that.mode, function(err, fd) {
           if (err) {
             if (that.autoClose)
               that.destroy();
@@ -8055,7 +8055,7 @@ var require_graceful_fs = __commonJS({
       }
       function WriteStream$open() {
         var that = this;
-        open4(that.path, that.flags, that.mode, function(err, fd) {
+        open6(that.path, that.flags, that.mode, function(err, fd) {
           if (err) {
             that.destroy();
             that.emit("error", err);
@@ -8072,8 +8072,8 @@ var require_graceful_fs = __commonJS({
         return new fs2.WriteStream(path, options);
       }
       var fs$open = fs2.open;
-      fs2.open = open4;
-      function open4(path, flags, mode, cb) {
+      fs2.open = open6;
+      function open6(path, flags, mode, cb) {
         if (typeof mode === "function")
           cb = mode, mode = null;
         return go$open(path, flags, mode, cb);
@@ -8865,12 +8865,12 @@ var require_adapter = __commonJS({
       return newFs;
     }
     function toPromise(method) {
-      return (...args) => new Promise((resolve14, reject) => {
-        args.push((err, result) => {
+      return (...args) => new Promise((resolve15, reject) => {
+        args.push((err, result2) => {
           if (err) {
             reject(err);
           } else {
-            resolve14(result);
+            resolve15(result2);
           }
         });
         method(...args);
@@ -8879,16 +8879,16 @@ var require_adapter = __commonJS({
     function toSync(method) {
       return (...args) => {
         let err;
-        let result;
+        let result2;
         args.push((_err, _result) => {
           err = _err;
-          result = _result;
+          result2 = _result;
         });
         method(...args);
         if (err) {
           throw err;
         }
-        return result;
+        return result2;
       };
     }
     function toSyncOptions(options) {
@@ -8947,11 +8947,11 @@ var require_proper_lockfile = __commonJS({
 import { readFileSync as readFileSync8 } from "node:fs";
 
 // adapters/process-hooks.ts
-import { basename as basename8, dirname as dirname11, isAbsolute as isAbsolute5, resolve as resolve13 } from "node:path";
+import { basename as basename9, dirname as dirname13, isAbsolute as isAbsolute5, resolve as resolve14 } from "node:path";
 
 // domain/repo-layout.ts
 import { existsSync as existsSync3, realpathSync as realpathSync3 } from "node:fs";
-import { basename as basename2, join as join7, relative, resolve as resolve3 } from "node:path";
+import { basename as basename3, join as join10, relative, resolve as resolve4 } from "node:path";
 
 // node_modules/@compforge/repokit/dist/inspect.js
 import { realpath as realpath2 } from "node:fs/promises";
@@ -8960,7 +8960,7 @@ import { isDeepStrictEqual } from "node:util";
 // node_modules/@compforge/repokit/dist/git/environment.js
 var local = /* @__PURE__ */ new Set(["GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_IMPLICIT_WORK_TREE", "GIT_GRAFT_FILE", "GIT_SHALLOW_FILE", "GIT_PREFIX", "GIT_NAMESPACE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_CONFIG", "GIT_CONFIG_PARAMETERS", "GIT_CONFIG_COUNT", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_SUPER_PREFIX"]);
 function checkoutEnvironment(source = process.env) {
-  const result = Object.fromEntries(Object.entries(source).filter(([key]) => !local.has(key) && !key.startsWith("GIT_CONFIG_KEY_") && !key.startsWith("GIT_CONFIG_VALUE_")));
+  const result2 = Object.fromEntries(Object.entries(source).filter(([key]) => !local.has(key) && !key.startsWith("GIT_CONFIG_KEY_") && !key.startsWith("GIT_CONFIG_VALUE_")));
   const count = Number(source.GIT_CONFIG_COUNT ?? 0), pairs = [];
   for (let i = 0; Number.isInteger(count) && i < Math.min(count, Object.keys(source).length); i++) {
     const key = source[`GIT_CONFIG_KEY_${i}`], value = source[`GIT_CONFIG_VALUE_${i}`];
@@ -8968,16 +8968,16 @@ function checkoutEnvironment(source = process.env) {
       pairs.push([key, value]);
   }
   if (pairs.length) {
-    result.GIT_CONFIG_COUNT = String(pairs.length);
+    result2.GIT_CONFIG_COUNT = String(pairs.length);
     pairs.forEach(([key, value], i) => {
-      result[`GIT_CONFIG_KEY_${i}`] = key;
-      result[`GIT_CONFIG_VALUE_${i}`] = value;
+      result2[`GIT_CONFIG_KEY_${i}`] = key;
+      result2[`GIT_CONFIG_VALUE_${i}`] = value;
     });
   }
   const parameters = splitParameters(source.GIT_CONFIG_PARAMETERS ?? "").filter((value) => portableConfig(value.split("=", 1)[0]));
   if (parameters.length)
-    result.GIT_CONFIG_PARAMETERS = parameters.map((value) => "'" + value.replaceAll("'", "'\\''") + "'").join(" ");
-  return result;
+    result2.GIT_CONFIG_PARAMETERS = parameters.map((value) => "'" + value.replaceAll("'", "'\\''") + "'").join(" ");
+  return result2;
 }
 function portableConfig(key) {
   key = key.toLowerCase();
@@ -9908,19 +9908,19 @@ function repository(forge, path) {
 // node_modules/@compforge/repokit/dist/git/operations.js
 import { spawnSync } from "node:child_process";
 function runGit(repo, args, timeoutMs = 5e3, raw = false) {
-  const result = spawnSync("git", ["-C", repo, ...args], {
+  const result2 = spawnSync("git", ["-C", repo, ...args], {
     env: checkoutEnvironment(),
     encoding: "utf8",
     timeout: timeoutMs,
     maxBuffer: 16 << 20
   });
-  const code = result.status ?? -1;
+  const code = result2.status ?? -1;
   return {
     code,
-    stdout: raw || result.stdout?.includes("\0") ? result.stdout ?? "" : (result.stdout ?? "").trim(),
-    stderr: (result.stderr || result.error?.message || "").trim(),
+    stdout: raw || result2.stdout?.includes("\0") ? result2.stdout ?? "" : (result2.stdout ?? "").trim(),
+    stderr: (result2.stderr || result2.error?.message || "").trim(),
     ok: code === 0,
-    uncertain: result.error?.code === "ETIMEDOUT"
+    uncertain: result2.error?.code === "ETIMEDOUT"
   };
 }
 
@@ -9950,8 +9950,8 @@ function parseRemoteUrl(value) {
   return host && path ? { host: host.toLowerCase(), path } : void 0;
 }
 function remote(repo, name = "origin") {
-  const result = runGit(repo, ["remote", "get-url", "--", name]);
-  return result.ok ? parseRemoteUrl(result.stdout) : void 0;
+  const result2 = runGit(repo, ["remote", "get-url", "--", name]);
+  return result2.ok ? parseRemoteUrl(result2.stdout) : void 0;
 }
 
 // node_modules/@compforge/repokit/dist/layout.js
@@ -9977,8 +9977,8 @@ function detectLanguage(files, root) {
         continue;
       if (ecosystem !== "node")
         return ecosystem;
-      const text3 = files.get(name)?.toString().toLowerCase() ?? "";
-      return text3.includes("typescript") || text3.includes("@types/") || files.has(posix2.join(root, "tsconfig.json")) ? "typescript" : "javascript";
+      const text4 = files.get(name)?.toString().toLowerCase() ?? "";
+      return text4.includes("typescript") || text4.includes("@types/") || files.has(posix2.join(root, "tsconfig.json")) ? "typescript" : "javascript";
     }
   }
   return "";
@@ -10087,7 +10087,7 @@ var Git = class _Git {
   }
   run(args, input, allowMissing = false, maxBuffer = 16 << 20) {
     this.signal.throwIfAborted();
-    return new Promise((resolve14, reject) => {
+    return new Promise((resolve15, reject) => {
       const child = execFile("git", ["-C", this.root, ...args], {
         env: checkoutEnvironment(),
         encoding: "buffer",
@@ -10098,7 +10098,7 @@ var Git = class _Git {
         if (error && !(allowMissing && error.code === 1))
           reject(error);
         else
-          resolve14(stdout);
+          resolve15(stdout);
       });
       child.stdin?.on("error", () => {
       });
@@ -10124,9 +10124,9 @@ var Git = class _Git {
   }
   async catalog(head, staged) {
     const committed = head !== "" || staged;
-    const output = await this.run(head ? ["ls-tree", "-r", "-z", "--full-tree", head] : ["ls-files", "--stage", "-z"]);
+    const output2 = await this.run(head ? ["ls-tree", "-r", "-z", "--full-tree", head] : ["ls-files", "--stage", "-z"]);
     const entries = /* @__PURE__ */ new Map();
-    for (const entry of output.toString().split("\0")) {
+    for (const entry of output2.toString().split("\0")) {
       if (!entry)
         continue;
       const tab = entry.indexOf("	");
@@ -10296,26 +10296,26 @@ async function inspect(options = {}) {
 import { appendFileSync, mkdirSync, readFileSync, existsSync, realpathSync, lstatSync, statSync } from "node:fs";
 import { join as join2, dirname as dirname2, basename } from "node:path";
 function gitPath(repo, name) {
-  const result = runGit(repo, ["rev-parse", "--path-format=absolute", "--git-path", name], 5e3, true);
-  if (!result.ok || !result.stdout)
-    throw new Error(`cannot resolve Git metadata path ${JSON.stringify(name)}: ${result.stderr}`);
-  return result.stdout.replace(/\n$/, "");
+  const result2 = runGit(repo, ["rev-parse", "--path-format=absolute", "--git-path", name], 5e3, true);
+  if (!result2.ok || !result2.stdout)
+    throw new Error(`cannot resolve Git metadata path ${JSON.stringify(name)}: ${result2.stderr}`);
+  return result2.stdout.replace(/\n$/, "");
 }
 function currentBranch(repo) {
-  const result = runGit(repo, ["branch", "--show-current"]);
-  if (!result.ok)
-    throw new Error(`cannot read current branch: ${result.stderr}`);
-  return result.stdout || void 0;
+  const result2 = runGit(repo, ["branch", "--show-current"]);
+  if (!result2.ok)
+    throw new Error(`cannot read current branch: ${result2.stderr}`);
+  return result2.stdout || void 0;
 }
 function divergence(repo, target) {
   const head = revParse(repo, "HEAD");
   const other = revParse(repo, target);
   if (!head || !other)
     return void 0;
-  const result = runGit(repo, ["rev-list", "--count", "--left-right", `${head}...${other}`]);
-  const values = result.stdout.split(/\s+/);
-  if (!result.ok || values.length !== 2 || !values.every((v) => /^\d+$/.test(v))) {
-    throw new Error(`cannot count divergence from ${target}: ${result.stderr || result.stdout}`);
+  const result2 = runGit(repo, ["rev-list", "--count", "--left-right", `${head}...${other}`]);
+  const values = result2.stdout.split(/\s+/);
+  if (!result2.ok || values.length !== 2 || !values.every((v) => /^\d+$/.test(v))) {
+    throw new Error(`cannot count divergence from ${target}: ${result2.stderr || result2.stdout}`);
   }
   return [Number(values[0]), Number(values[1])];
 }
@@ -10323,10 +10323,10 @@ function aheadBehind(repo, target = "main") {
   return divergence(repo, `refs/remotes/origin/${target}`);
 }
 function workspaceStatus(repo) {
-  const result = runGit(repo, ["status", "--porcelain"]);
-  if (!result.ok)
+  const result2 = runGit(repo, ["status", "--porcelain"]);
+  if (!result2.ok)
     return { dirty: false, complete: false, modifiedCount: 0, untrackedCount: 0 };
-  const lines = result.stdout.split("\n").filter(Boolean);
+  const lines = result2.stdout.split("\n").filter(Boolean);
   return {
     dirty: lines.length > 0,
     complete: true,
@@ -10335,12 +10335,12 @@ function workspaceStatus(repo) {
   };
 }
 function revParse(repo, ref) {
-  const result = runGit(repo, ["rev-parse", "--verify", "--quiet", "--end-of-options", ref]);
-  if (result.ok && result.stdout)
-    return result.stdout;
-  if (result.code === 1 && !result.stderr)
+  const result2 = runGit(repo, ["rev-parse", "--verify", "--quiet", "--end-of-options", ref]);
+  if (result2.ok && result2.stdout)
+    return result2.stdout;
+  if (result2.code === 1 && !result2.stderr)
     return "";
-  throw new Error(`cannot resolve revision ${ref}: ${result.stderr || result.stdout}`);
+  throw new Error(`cannot resolve revision ${ref}: ${result2.stderr || result2.stdout}`);
 }
 function headSha(repo) {
   return revParse(repo, "HEAD");
@@ -10351,17 +10351,17 @@ function targetExists(repo, target = "main") {
 function isAncestor(repo, ancestor, descendant) {
   if (!ancestor || !descendant)
     throw new Error("ancestry requires two revisions");
-  const result = runGit(repo, ["merge-base", "--is-ancestor", "--", ancestor, descendant]);
-  if (result.code === 0 || result.code === 1)
-    return result.code === 0;
-  throw new Error(`cannot compare ancestry ${ancestor} -> ${descendant}: ${result.stderr}`);
+  const result2 = runGit(repo, ["merge-base", "--is-ancestor", "--", ancestor, descendant]);
+  if (result2.code === 0 || result2.code === 1)
+    return result2.code === 0;
+  throw new Error(`cannot compare ancestry ${ancestor} -> ${descendant}: ${result2.stderr}`);
 }
 function listWorktrees(repo) {
-  const result = runGit(repo, ["worktree", "list", "--porcelain", "-z"]);
-  if (!result.ok)
-    throw new Error(result.stderr || "cannot list worktrees");
+  const result2 = runGit(repo, ["worktree", "list", "--porcelain", "-z"]);
+  if (!result2.ok)
+    throw new Error(result2.stderr || "cannot list worktrees");
   const entries = [];
-  for (const block of result.stdout.split("\0\0")) {
+  for (const block of result2.stdout.split("\0\0")) {
     const fields = new Map(block.split("\0").filter((line) => line.includes(" ")).map((line) => {
       const space = line.indexOf(" ");
       return [line.slice(0, space), line.slice(space + 1)];
@@ -10378,10 +10378,10 @@ function checkoutInfo(repo) {
 }
 function checkoutWithEntries(repo, entries) {
   const query = (path, flag) => {
-    const result = runGit(path, ["rev-parse", "--path-format=absolute", flag], 5e3, true);
-    if (!result.ok || !result.stdout)
-      throw new Error(result.stderr || `cannot resolve ${flag}`);
-    return realpathSync(result.stdout.replace(/\n$/, ""));
+    const result2 = runGit(path, ["rev-parse", "--path-format=absolute", flag], 5e3, true);
+    if (!result2.ok || !result2.stdout)
+      throw new Error(result2.stderr || `cannot resolve ${flag}`);
+    return realpathSync(result2.stdout.replace(/\n$/, ""));
   };
   const root = query(repo, "--show-toplevel");
   if (!existsSync(join2(root, ".git")))
@@ -10420,11 +10420,11 @@ function mainRepoRoot(repo) {
   return checkoutInfo(repo).mainRoot;
 }
 function localBranches(repo) {
-  const result = runGit(repo, ["for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)", "refs/heads"]);
+  const result2 = runGit(repo, ["for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)", "refs/heads"]);
   const branches = /* @__PURE__ */ new Map();
-  if (!result.ok)
-    throw new Error(result.stderr || "cannot list local branches");
-  for (const line of result.stdout.split("\n")) {
+  if (!result2.ok)
+    throw new Error(result2.stderr || "cannot list local branches");
+  for (const line of result2.stdout.split("\n")) {
     const [name, sha] = line.split("\0");
     if (!line)
       continue;
@@ -10451,10 +10451,10 @@ function findCheckout(directory) {
         throw error;
     }
     if (present) {
-      const result = runGit(candidate, ["rev-parse", "--show-toplevel"], 5e3, true);
-      if (!result.ok || !result.stdout)
-        throw new Error(result.stderr || "cannot discover checkout");
-      const root = result.stdout.replace(/\n$/, "");
+      const result2 = runGit(candidate, ["rev-parse", "--show-toplevel"], 5e3, true);
+      if (!result2.ok || !result2.stdout)
+        throw new Error(result2.stderr || "cannot discover checkout");
+      const root = result2.stdout.replace(/\n$/, "");
       if (realpathSync(root) !== candidate)
         throw new Error("Git environment does not match discovered checkout");
       return root;
@@ -10465,14 +10465,14 @@ function findCheckout(directory) {
 }
 function localDefaultBranch(repo, remote2 = "origin") {
   const prefix = `refs/remotes/${remote2}/`;
-  const result = runGit(repo, ["symbolic-ref", "--quiet", `${prefix}HEAD`]);
-  if (result.code === 1)
+  const result2 = runGit(repo, ["symbolic-ref", "--quiet", `${prefix}HEAD`]);
+  if (result2.code === 1)
     return void 0;
-  if (!result.ok)
-    throw new Error(`cannot read default branch for ${remote2}: ${result.stderr}`);
-  if (!result.stdout.startsWith(prefix) || result.stdout === prefix)
-    throw new Error(`invalid remote HEAD: ${result.stdout}`);
-  return result.stdout.slice(prefix.length);
+  if (!result2.ok)
+    throw new Error(`cannot read default branch for ${remote2}: ${result2.stderr}`);
+  if (!result2.stdout.startsWith(prefix) || result2.stdout === prefix)
+    throw new Error(`invalid remote HEAD: ${result2.stdout}`);
+  return result2.stdout.slice(prefix.length);
 }
 function addExclude(repo, pattern) {
   if (!pattern || /[\r\n]/.test(pattern))
@@ -10519,10 +10519,142 @@ function refExists(repo, ref) {
   return Boolean(revParse(repo, ref));
 }
 function isIgnored(repo, path) {
-  const result = runGit(repo, ["check-ignore", "-q", "--", path]);
-  if (result.code === 0 || result.code === 1)
-    return result.code === 0;
-  throw new Error(`cannot inspect ignore status: ${result.stderr}`);
+  const result2 = runGit(repo, ["check-ignore", "-q", "--", path]);
+  if (result2.code === 0 || result2.code === 1)
+    return result2.code === 0;
+  throw new Error(`cannot inspect ignore status: ${result2.stderr}`);
+}
+
+// node_modules/@compforge/repokit/dist/snapshot.js
+import { createHash } from "node:crypto";
+import { constants as constants2 } from "node:fs";
+import { lstat as lstat2, open as open2, readlink, realpath as realpath3 } from "node:fs/promises";
+import { dirname as dirname3, join as join3, posix as posix3 } from "node:path";
+async function snapshot(repository2, options = {}) {
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? 3e4);
+  const signal = options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
+  const root = await realpath3((await new Git(repository2, signal).run(["rev-parse", "--show-toplevel"])).toString().replace(/\n$/, ""));
+  const first = await capture(root, signal);
+  const second = await capture(root, signal);
+  return first.digest === second.digest ? second : { ...second, complete: false, diagnostics: [...second.diagnostics, "snapshot_changed"] };
+}
+function frame(name, data) {
+  return Buffer.concat([Buffer.from(`${Buffer.byteLength(name)}:${name}${data.length}:`), data]);
+}
+function sorted(names) {
+  return [...names].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b)));
+}
+async function capture(root, signal) {
+  const git = new Git(root, signal);
+  const entries = /* @__PURE__ */ new Map();
+  for (const record2 of (await git.run(["ls-files", "--stage", "-z"])).toString().split("\0")) {
+    if (!record2)
+      continue;
+    const tab = record2.indexOf("	");
+    const [mode, oid, stage] = record2.slice(0, tab).split(" ");
+    if (tab < 0 || stage !== "0")
+      throw new Error("unmerged or invalid index");
+    entries.set(record2.slice(tab + 1), [mode, oid]);
+  }
+  for (const name of (await git.run(["ls-files", "--others", "--exclude-standard", "-z"])).toString().split("\0")) {
+    if (name && !name.endsWith("/") && !entries.has(name))
+      entries.set(name, ["", ""]);
+  }
+  if (entries.size > 1e4)
+    throw new Error("repository exceeds 10000 files");
+  const digest2 = createHash("sha256").update("repocli-snapshot-v2\0");
+  const files = /* @__PURE__ */ new Set();
+  const links = /* @__PURE__ */ new Map();
+  const modules = /* @__PURE__ */ new Map();
+  const large = /* @__PURE__ */ new Map();
+  const issues = [];
+  let total = 0;
+  for (const name of sorted(entries.keys())) {
+    signal.throwIfAborted();
+    const path = join3(root, name);
+    if (entries.get(name)[0] === "160000") {
+      modules.set(name, await git.gitlinkOID(name, entries.get(name)[1]));
+      continue;
+    }
+    let info;
+    try {
+      info = await lstat2(path);
+      if (await realpath3(dirname3(path)) !== dirname3(path)) {
+        issues.push(`${name}: symlinked parent`);
+        continue;
+      }
+    } catch (error) {
+      if (error.code === "ENOENT")
+        continue;
+      throw error;
+    }
+    if (info.isSymbolicLink())
+      links.set(name, await readlink(path));
+    else if (info.isFile()) {
+      const file2 = await open2(path, constants2.O_RDONLY | constants2.O_NOFOLLOW | constants2.O_NONBLOCK);
+      try {
+        if (!(await file2.stat()).isFile())
+          throw new Error("file changed kind during snapshot");
+        const chunks = [];
+        const h = createHash("sha256");
+        const buffer = Buffer.alloc(65536);
+        let size = 0;
+        while (true) {
+          signal.throwIfAborted();
+          const { bytesRead } = await file2.read(buffer, 0, buffer.length, null);
+          if (!bytesRead)
+            break;
+          size += bytesRead;
+          if (info.size > 2 << 20)
+            h.update(buffer.subarray(0, bytesRead));
+          else {
+            if (size > 2 << 20)
+              throw new Error("file grew during snapshot");
+            chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+          }
+        }
+        if (info.size > 2 << 20)
+          large.set(name, `${size}:sha256:${h.digest("hex")}`);
+        else {
+          total += size;
+          if (total > 128 << 20)
+            throw new Error("snapshot exceeds 128 MiB");
+          digest2.update(frame(name, Buffer.concat(chunks)));
+        }
+        files.add(name);
+      } finally {
+        await file2.close();
+      }
+    } else
+      issues.push(`${name}: unsupported file kind`);
+  }
+  for (const name of links.keys()) {
+    let current = name;
+    const seen = /* @__PURE__ */ new Set();
+    while (links.has(current)) {
+      const target = links.get(current);
+      if (seen.has(current) || posix3.isAbsolute(target)) {
+        current = "";
+        break;
+      }
+      seen.add(current);
+      current = posix3.normalize(posix3.join(posix3.dirname(current), target));
+      if (current === ".." || current.startsWith("../")) {
+        current = "";
+        break;
+      }
+    }
+    const captured = files.has(current) || modules.has(current) || current !== "" && [...files].some((f) => current === "." || f.startsWith(current + "/"));
+    if (!captured)
+      issues.push(`${name}: symlink target is outside captured contents or cyclic/missing`);
+  }
+  for (const [kind, values] of [["symlink", links], ["gitlink", modules], ["large_file", large]]) {
+    for (const name of sorted(values.keys()))
+      digest2.update(Buffer.concat([Buffer.from(kind + ":"), frame(name, Buffer.from(values.get(name)))]));
+  }
+  for (const issue of sorted(issues))
+    digest2.update(`issue:${Buffer.byteLength(issue)}:${issue}`);
+  return { checkout: root, digest: `sha256:${digest2.digest("hex")}`, fileCount: files.size, complete: issues.length === 0, diagnostics: issues };
 }
 
 // node_modules/@compforge/repokit/dist/forge/model.js
@@ -10544,8 +10676,8 @@ var ForgeRateLimitError = class extends ForgeError {
 };
 
 // node_modules/@compforge/repokit/dist/forge/key.js
-function pullRequestKey(forge, path, number3) {
-  return { repository: { forge: { name: forge }, path }, number: number3 };
+function pullRequestKey(forge, path, number4) {
+  return { repository: { forge: { name: forge }, path }, number: number4 };
 }
 function assertPullRequestKey(value, forge) {
   if (value.repository.forge.name !== forge)
@@ -10557,9 +10689,9 @@ function assertPullRequestKey(value, forge) {
 }
 
 // node_modules/@compforge/repokit/dist/forge/query.js
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 function connectionKey(provider, forge, endpoint, token) {
-  return createHash("sha256").update(JSON.stringify([provider, forge, endpoint, token])).digest("hex");
+  return createHash2("sha256").update(JSON.stringify([provider, forge, endpoint, token])).digest("hex");
 }
 function scopeKey(scope, forge) {
   if (!scope || scope.kind !== "account" && scope.kind !== "repository")
@@ -10623,7 +10755,7 @@ var MAX_DISCOVERED_READS_PER_BATCH = 5;
 var MAX_TRACKED_READS_PER_BATCH = 5;
 var MAX_RETRIES_PER_BATCH = 2;
 var MAX_FAILED_READS = 500;
-var iso = (time) => new Date(time).toISOString();
+var iso = (time2) => new Date(time2).toISOString();
 var finiteTime = (value) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 var validWindow = (value) => Boolean(value && ["open", "all"].includes(value.state) && finiteTime(value.from) && finiteTime(value.to) && value.from <= value.to);
 function decode(query, binding, now2, forge) {
@@ -10843,7 +10975,7 @@ function pageContinuation(position, next) {
 // node_modules/@compforge/repokit/dist/forge/http.js
 import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as delay } from "node:timers/promises";
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 var DEFAULT_RATE_LIMIT_BACKOFF_MS = 6e4;
 var ForgeHttpClient = class {
   #fetch;
@@ -10937,7 +11069,7 @@ var ForgeHttpClient = class {
       return "";
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let size = 0, text3 = "";
+    let size = 0, text4 = "";
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -10946,9 +11078,9 @@ var ForgeHttpClient = class {
         size += value.byteLength;
         if (size > this.#maxResponseBytes)
           throw new ForgeError(`exceeded ${this.#maxResponseBytes} response bytes`);
-        text3 += decoder.decode(value, { stream: true });
+        text4 += decoder.decode(value, { stream: true });
       }
-      return text3 + decoder.decode();
+      return text4 + decoder.decode();
     } finally {
       await reader.cancel().catch(() => {
       });
@@ -10994,7 +11126,7 @@ function nonEmptyString(name, value) {
   return value;
 }
 function reviewActivityFingerprint(provider, tokens) {
-  return createHash2("sha256").update(JSON.stringify([provider, [...tokens].sort()])).digest("hex");
+  return createHash3("sha256").update(JSON.stringify([provider, [...tokens].sort()])).digest("hex");
 }
 
 // node_modules/@compforge/repokit/dist/forge/github.js
@@ -11122,14 +11254,14 @@ var GitHubForgeReader = class {
       per_page: String(position.pageSize),
       page: String(position.page)
     })}`, { headers: this.#headers() });
-    const result = record("GitHub PullRequest search", data);
-    if (result.incomplete_results !== false || !Number.isSafeInteger(result.total_count) || Number(result.total_count) < 0 || Number(result.total_count) > 1e3) {
+    const result2 = record("GitHub PullRequest search", data);
+    if (result2.incomplete_results !== false || !Number.isSafeInteger(result2.total_count) || Number(result2.total_count) < 0 || Number(result2.total_count) > 1e3) {
       throw new ForgeCoverageError("GitHub PullRequest search incomplete or exceeds 1000 results");
     }
-    if (!Array.isArray(result.items) || result.items.length > position.pageSize)
+    if (!Array.isArray(result2.items) || result2.items.length > position.pageSize)
       throw new Error("Invalid GitHub PullRequest page");
     const items = [], issues = [];
-    for (const [index, value] of result.items.entries())
+    for (const [index, value] of result2.items.entries())
       try {
         const row = record(`GitHub PullRequest row ${index}`, value);
         const repository2 = nonEmptyString("GitHub repository_url", row.repository_url);
@@ -11148,7 +11280,7 @@ var GitHubForgeReader = class {
       } catch (error) {
         issues.push(readIssue(error, "list", { scope: query.scope }));
       }
-    const next = nextPage(headers, position.page, "github") ?? (position.page * position.pageSize < Number(result.total_count) ? position.page + 1 : void 0);
+    const next = nextPage(headers, position.page, "github") ?? (position.page * position.pageSize < Number(result2.total_count) ? position.page + 1 : void 0);
     const nextCursor = pageContinuation(position, next);
     return { items, ...nextCursor ? { nextCursor } : {}, ...issues.length ? { issues } : {} };
   }
@@ -11252,14 +11384,14 @@ var GitHubForgeReader = class {
     repositoryPath(key.repository.path);
   }
   async #commentRows(endpoint) {
-    const result = [];
+    const result2 = [];
     for (let page = 1; page <= MAX_COMMENT_PAGES; page += 1) {
       const separator = endpoint.includes("?") ? "&" : "?";
       const { data, headers } = await this.#http.request("GET", `${endpoint}${separator}per_page=100&page=${page}`, { headers: this.#headers() });
-      result.push(...records("GitHub comments", data));
+      result2.push(...records("GitHub comments", data));
       const hasNextPage = headers.get("link")?.split(",").some((link) => /;\s*rel="next"/.test(link)) ?? false;
       if (!hasNextPage)
-        return result;
+        return result2;
     }
     throw new Error("GitHub comment pagination limit exceeded");
   }
@@ -11569,7 +11701,7 @@ var GitLabForgeReader = class {
   }
   async listPullRequestComments(key) {
     this.#assertPullRequestKey(key);
-    const result = [];
+    const result2 = [];
     let page = 1;
     for (let count = 0; count < MAX_DISCUSSION_PAGES; count += 1) {
       const { data, headers } = await this.#http.request("GET", `${this.#projectBase(key.repository.path)}/merge_requests/${key.number}/discussions?per_page=100&page=${page}`, { headers: this.#headers() });
@@ -11595,13 +11727,13 @@ var GitLabForgeReader = class {
           };
         };
         if (discussion.individual_note === true) {
-          result.push(...notes.map(toComment));
+          result2.push(...notes.map(toComment));
           continue;
         }
         const [root, ...replies] = notes.map(toComment);
         if (!root)
           continue;
-        result.push({
+        result2.push({
           ...root,
           replyable: true,
           replies: replies.sort((left, right) => left.createdAt.localeCompare(right.createdAt))
@@ -11609,7 +11741,7 @@ var GitLabForgeReader = class {
       }
       const nextPage2 = headers.get("x-next-page");
       if (!nextPage2) {
-        return result.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+        return result2.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
       }
       const parsed = Number(nextPage2);
       if (!Number.isSafeInteger(parsed) || parsed <= page) {
@@ -11688,8 +11820,9 @@ function createForgeReader(config, options = {}) {
 }
 
 // node_modules/@compforge/repokit/dist/state/identity.js
-import { createHash as createHash3 } from "node:crypto";
-var pathDigest = (value) => createHash3("sha256").update(value).digest("hex").slice(0, 32);
+import { createHash as createHash4 } from "node:crypto";
+import { basename as basename2, dirname as dirname4 } from "node:path";
+var pathDigest = (value) => createHash4("sha256").update(value).digest("hex").slice(0, 32);
 function namePart(value) {
   let name = [...Buffer.from(value)].map((c) => c >= 97 && c <= 122 || c >= 48 && c <= 57 || [95, 46, 126].includes(c) ? String.fromCharCode(c) : "%" + c.toString(16).toUpperCase().padStart(2, "0")).join("");
   if (["", ".", ".."].includes(name))
@@ -11699,6 +11832,10 @@ function namePart(value) {
 function repositoryKey(forge, path) {
   const name = [forge, ...path.split("/")].map(namePart).join("--");
   return name.length <= 240 ? name : name.slice(0, 160) + "--" + pathDigest(forge + "/" + path);
+}
+function localKey(common) {
+  const label = basename2(common) === ".git" ? basename2(dirname4(common)) : basename2(common);
+  return `local--${namePart(label)}--${createHash4("sha256").update(common).digest("hex").slice(0, 16)}`;
 }
 
 // node_modules/@compforge/repokit/dist/state/activity.js
@@ -11718,9 +11855,9 @@ async function recordAccess(store, key, signal, checkout) {
 
 // node_modules/@compforge/repokit/dist/state/home.js
 import { homedir } from "node:os";
-import { join as join3, resolve } from "node:path";
+import { join as join4, resolve } from "node:path";
 function resolveHome(home) {
-  const value = home ?? (process.env.REPOKIT_HOME || join3(homedir(), ".repokit"));
+  const value = home || process.env.REPOKIT_HOME || join4(homedir(), ".repokit");
   if (!value.trim())
     throw new Error("RepoKit home must be nonempty");
   return resolve(value);
@@ -11731,11 +11868,11 @@ import { setTimeout as delay3 } from "node:timers/promises";
 
 // node_modules/@compforge/repokit/dist/state/store.js
 var import_proper_lockfile = __toESM(require_proper_lockfile(), 1);
-import { createHash as createHash4, randomUUID } from "node:crypto";
-import { mkdir, open as open2, readFile, readdir, rename, rm } from "node:fs/promises";
-import { dirname as dirname3, join as join4, resolve as resolve2 } from "node:path";
+import { createHash as createHash5, randomUUID } from "node:crypto";
+import { mkdir, open as open3, readFile, readdir, rename, rm } from "node:fs/promises";
+import { dirname as dirname5, join as join5, resolve as resolve2 } from "node:path";
 import { setTimeout as delay2 } from "node:timers/promises";
-var digest = (value) => createHash4("sha256").update(JSON.stringify(value)).digest("hex");
+var digest = (value) => createHash5("sha256").update(JSON.stringify(value)).digest("hex");
 var ObservationStorageError = class extends Error {
 };
 var missing = (error) => error.code === "ENOENT";
@@ -11747,7 +11884,7 @@ var ObservationStore = class {
     this.root = resolve2(root);
   }
   path(...parts) {
-    return join4(this.root, ...parts);
+    return join5(this.root, ...parts);
   }
   async read(path) {
     try {
@@ -11761,8 +11898,8 @@ var ObservationStore = class {
   async write(path, value, assertOwned) {
     const temporary = `${path}.${randomUUID()}.tmp`;
     try {
-      await mkdir(dirname3(path), { recursive: true, mode: 448 });
-      const file2 = await open2(temporary, "wx", 384);
+      await mkdir(dirname5(path), { recursive: true, mode: 448 });
+      const file2 = await open3(temporary, "wx", 384);
       try {
         await file2.writeFile(JSON.stringify(value));
         await file2.sync();
@@ -11771,7 +11908,7 @@ var ObservationStore = class {
       }
       assertOwned();
       await rename(temporary, path);
-      const directory = await open2(dirname3(path), "r");
+      const directory = await open3(dirname5(path), "r");
       try {
         await directory.sync();
       } finally {
@@ -11785,7 +11922,7 @@ var ObservationStore = class {
     }
   }
   async locked(path, signal, operation) {
-    await mkdir(dirname3(path), { recursive: true, mode: 448 });
+    await mkdir(dirname5(path), { recursive: true, mode: 448 });
     let release, compromised;
     const deadline = Date.now() + 3e4;
     while (!release) {
@@ -11831,9 +11968,9 @@ var ObservationStore = class {
     };
     const paths = [];
     for (const repo of await directories(this.path("repositories"))) {
-      for (const number3 of await directories(this.path("repositories", repo, "prs"))) {
-        if (/^[1-9][0-9]*$/.test(number3)) {
-          paths.push(this.path("repositories", repo, "prs", number3, "observations", connection + ".json"));
+      for (const number4 of await directories(this.path("repositories", repo, "prs"))) {
+        if (/^[1-9][0-9]*$/.test(number4)) {
+          paths.push(this.path("repositories", repo, "prs", number4, "observations", connection + ".json"));
         }
       }
     }
@@ -11869,10 +12006,10 @@ var ObservationEngine = class {
     this.#timeout = positive("requestTimeoutMs", options.requestTimeoutMs ?? 2e4);
   }
   #time() {
-    const time = this.#now().getTime();
-    if (!Number.isSafeInteger(time) || time < 0)
+    const time2 = this.#now().getTime();
+    if (!Number.isSafeInteger(time2) || time2 < 0)
       throw new Error("Invalid observation clock");
-    return time;
+    return time2;
   }
   #repo(key) {
     return repositoryKey(key.repository.forge.name, key.repository.path);
@@ -12009,15 +12146,15 @@ var ObservationEngine = class {
     const pendingKeys = (watch.refresh === false ? [] : [...due.values()]).sort((a, b) => a.at - b.at || pullRequestId(a.key).localeCompare(pullRequestId(b.key)));
     const observations = [], issues = [];
     for (const { key } of pendingKeys.slice(0, 5)) {
-      const result = await this.get(key, { signal });
-      observations.push(result);
-      if (result.lastError)
-        issues.push(result.lastError);
+      const result2 = await this.get(key, { signal });
+      observations.push(result2);
+      if (result2.lastError)
+        issues.push(result2.lastError);
     }
     let pending = pendingKeys.length > 5;
     for (const scope of scopes) {
       const id = this.#scope(scope), path = this.#store.path("scans", `${id}.json`);
-      const result = await this.#store.locked(path, signal, async (assertOwned) => {
+      const result2 = await this.#store.locked(path, signal, async (assertOwned) => {
         const state = await this.#store.read(path);
         if (state && state.version !== 1)
           throw new ObservationStorageError(`Invalid PR scan state ${path}`);
@@ -12026,29 +12163,29 @@ var ObservationEngine = class {
           forge: this.reader.forge,
           listPullRequests: (query) => this.#request(() => this.reader.listPullRequests(query), signal),
           getPullRequest: async (key) => {
-            let result3;
+            let result4;
             try {
-              result3 = await this.#get(key, { signal }, id);
+              result4 = await this.#get(key, { signal }, id);
             } catch (error) {
               storageFailure = error;
               throw error;
             }
-            observations.push(result3);
-            if (!result3.snapshot || !result3.fresh || result3.lastError)
-              throw new ForgeError(result3.lastError?.message ?? "PR observation unavailable");
-            return result3.snapshot;
+            observations.push(result4);
+            if (!result4.snapshot || !result4.fresh || result4.lastError)
+              throw new ForgeError(result4.lastError?.message ?? "PR observation unavailable");
+            return result4.snapshot;
           }
         }, { connection: this.#connection, now: this.#now });
         const operation = () => scanner({ scope, cursor: state?.cursor, initialSince: watch.initialSince });
-        const result2 = this.reader.withSignal ? await this.reader.withSignal(signal, operation) : await operation();
+        const result3 = this.reader.withSignal ? await this.reader.withSignal(signal, operation) : await operation();
         if (storageFailure)
           throw storageFailure;
         assertOwned();
-        await this.#store.write(path, { version: 1, cursor: result2.cursor }, assertOwned);
-        return result2;
+        await this.#store.write(path, { version: 1, cursor: result3.cursor }, assertOwned);
+        return result3;
       });
-      pending ||= result.pending;
-      issues.push(...result.issues);
+      pending ||= result2.pending;
+      issues.push(...result2.issues);
     }
     for (const path of await this.#store.observations(this.#connection)) {
       const record2 = await this.#stored(path);
@@ -12251,7 +12388,7 @@ var PullRequestContext = class {
 };
 
 // node_modules/@compforge/repokit/dist/forge/connection.js
-import { createHash as createHash5 } from "node:crypto";
+import { createHash as createHash6 } from "node:crypto";
 function detectProvider(host, explicitType) {
   if (explicitType === "github" || explicitType === "gitlab")
     return explicitType;
@@ -12281,7 +12418,7 @@ var ForgeConnection = class {
     return this.host === "github.com" ? "github" : this.host === "gitlab.com" ? "gitlab" : this.host;
   }
   get identity() {
-    return createHash5("sha256").update(JSON.stringify([this.provider, this.name, this.apiHost, this.#token])).digest("hex");
+    return createHash6("sha256").update(JSON.stringify([this.provider, this.name, this.apiHost, this.#token])).digest("hex");
   }
   repository(path) {
     if (!path || path.startsWith("/") || path.endsWith("/"))
@@ -12304,20 +12441,40 @@ var ForgeConnection = class {
 };
 
 // node_modules/@compforge/repokit/dist/config.js
-import { open as open3 } from "node:fs/promises";
-import { join as join5 } from "node:path";
+import { isIP } from "node:net";
+import { open as open4 } from "node:fs/promises";
+import { join as join6 } from "node:path";
 var ConfigError = class extends Error {
 };
 function normalizeHost(value) {
-  const host = { github: "github.com", gitlab: "gitlab.com" }[value.toLowerCase()] ?? value.toLowerCase();
-  let valid = false;
-  try {
-    const url = new URL(`https://${host}`);
-    valid = !!host && !!url.hostname && (url.host === host || `${url.hostname}:443` === host);
-  } catch {
+  const name = value.toLowerCase();
+  let host = name;
+  if (name === "github")
+    host = "github.com";
+  else if (name === "gitlab")
+    host = "gitlab.com";
+  const invalid = () => new ConfigError("Invalid Forge host");
+  let port = "", hasPort = false;
+  if (host.startsWith("[")) {
+    const end = host.indexOf("]"), name2 = host.slice(1, end);
+    if (end < 0 || name2.includes("%") || isIP(name2) !== 6)
+      throw invalid();
+    const suffix = host.slice(end + 1);
+    if (suffix && !suffix.startsWith(":"))
+      throw invalid();
+    port = suffix.slice(1);
+    hasPort = !!suffix;
+  } else {
+    const colon = host.indexOf(":"), name2 = colon < 0 ? host : host.slice(0, colon);
+    hasPort = colon >= 0;
+    port = hasPort ? host.slice(colon + 1) : "";
+    if (name2.length > 253 || name2.split(".").some((label) => !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)))
+      throw invalid();
+    if (/^[0-9.]+$/.test(name2) && isIP(name2) !== 4)
+      throw invalid();
   }
-  if (!valid || host.trim() !== host || /[/@?#\\]/.test(host))
-    throw new ConfigError("Invalid Forge host");
+  if (hasPort && (!/^[0-9]{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535))
+    throw invalid();
   return host;
 }
 var RepoKitConfig = class {
@@ -12338,10 +12495,10 @@ var RepoKitConfig = class {
     const entry = this.#forges.get(host) ?? {};
     const provider = entry.provider || { "github.com": "github", "gitlab.com": "gitlab" }[host];
     if (provider !== "github" && provider !== "gitlab")
-      throw new ConfigError(`Configure a provider for Forge ${host} in ${join5(this.home, "config.json")}`);
+      throw new ConfigError(`Configure a provider for Forge ${host} in ${join6(this.home, "config.json")}`);
     const token = (entry.token ?? "").trim();
     if (!token)
-      throw new ForgeAuthError(`no ${provider} credential for ${host}; configure ${join5(this.home, "config.json")}`);
+      throw new ForgeAuthError(`no ${provider} credential for ${host}; configure ${join6(this.home, "config.json")}`);
     return new ForgeConnection({ host, provider, token, apiHost: entry.apiHost || void 0, home: this.home, timeoutMs: options.timeoutMs });
   }
 };
@@ -12349,10 +12506,10 @@ function object3(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 async function loadConfig(home) {
-  const root = resolveHome(home), path = join5(root, "config.json");
+  const root = resolveHome(home), path = join6(root, "config.json");
   let file2;
   try {
-    file2 = await open3(path, "r");
+    file2 = await open4(path, "r");
   } catch (error) {
     if (error.code === "ENOENT")
       return new RepoKitConfig(root);
@@ -12405,9 +12562,330 @@ async function pullRequestContext(checkout, options = {}) {
   return connection.pullRequestContext(checkout, { source: origin.path, targets: options.targets, reader: options.reader });
 }
 
+// node_modules/@compforge/repokit/dist/validation/history.js
+import { readFile as readFile3, realpath as realpath4 } from "node:fs/promises";
+import { join as join8, resolve as resolve3 } from "node:path";
+
+// node_modules/@compforge/repokit/dist/validation/store.js
+import { createRequire } from "node:module";
+import { open as open5, lstat as lstat3, readdir as readdir2, readFile as readFile2 } from "node:fs/promises";
+import { join as join7 } from "node:path";
+import { setTimeout as delay4 } from "node:timers/promises";
+var missing2 = (error) => error.code === "ENOENT";
+function object4(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid validation history object");
+  return value;
+}
+async function inspectHistory(directory, signal, read2) {
+  signal.throwIfAborted();
+  try {
+    if (!(await lstat3(join7(directory, "history"))).isDirectory())
+      throw new Error("Not a regular history directory");
+  } catch (error) {
+    if (missing2(error))
+      return read2([]);
+    throw error;
+  }
+  if (process.platform !== "darwin" && process.platform !== "linux")
+    throw new Error("Validation history requires Linux or macOS file locking");
+  const { flock } = createRequire(import.meta.url)("fs-ext");
+  const lock = (fd, flags) => new Promise((resolve15, reject) => flock(fd, flags, (error) => error ? reject(error) : resolve15()));
+  const file2 = await open5(join7(directory, "lock"), "a+", 384);
+  let owned = false;
+  try {
+    const deadline = AbortSignal.any([signal, AbortSignal.timeout(5e3)]);
+    for (; ; ) {
+      deadline.throwIfAborted();
+      try {
+        await lock(file2.fd, "exnb");
+        owned = true;
+        break;
+      } catch (error) {
+        if (!["EAGAIN", "EWOULDBLOCK"].includes(error.code ?? ""))
+          throw error;
+      }
+      await delay4(10, void 0, { signal: deadline });
+    }
+    return await read2(await readEvents(join7(directory, "history"), signal));
+  } finally {
+    try {
+      if (owned)
+        await lock(file2.fd, "un");
+    } finally {
+      await file2.close();
+    }
+  }
+}
+async function readEvents(directory, signal) {
+  let segments = (await readdir2(directory, { withFileTypes: true })).filter((entry) => !entry.isDirectory() && /^\d{20}(?:\.START|\.END)?$/.test(entry.name) && BigInt(entry.name.slice(0, 20)) > 0n).map((entry) => entry.name).sort();
+  const starts = segments.filter((name) => name.endsWith(".START"));
+  const ends = segments.filter((name) => name.endsWith(".END"));
+  if (starts.length > 1 || ends.length > 1 || starts.length && ends.length)
+    throw new Error("Corrupt validation history recovery segments");
+  if (starts.length)
+    segments = segments.slice(segments.indexOf(starts[0]));
+  if (ends.length) {
+    segments = segments.slice(0, segments.indexOf(ends[0]) + 1);
+    if (segments.length > 1 && segments.at(-2).slice(0, 20) === ends[0].slice(0, 20))
+      segments.splice(-2, 1);
+  }
+  const events = [];
+  let expected;
+  for (const name of segments) {
+    signal.throwIfAborted();
+    const first = BigInt(name.slice(0, 20));
+    if (expected !== void 0 && expected !== first)
+      throw new Error("Noncontiguous validation history segments");
+    expected = first;
+    const text4 = await readFile2(join7(directory, name), { encoding: "utf8", signal });
+    if (text4 && !text4.endsWith("\n"))
+      throw new Error("Incomplete validation history record");
+    for (const line of text4.split("\n").slice(0, -1)) {
+      signal.throwIfAborted();
+      const record2 = object4(JSON.parse(line));
+      if (typeof record2.data !== "string")
+        throw new Error("Invalid validation WAL payload");
+      let data;
+      if (record2.data.startsWith("+"))
+        data = record2.data.slice(1);
+      else if (record2.data.startsWith("$") && /^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2}==|[A-Za-z0-9_-]{3}=)?$/.test(record2.data.slice(1)))
+        data = Buffer.from(record2.data.slice(1), "base64url").toString("utf8");
+      else
+        throw new Error("Invalid validation WAL encoding");
+      events.push(object4(JSON.parse(data)));
+      expected++;
+    }
+  }
+  return events;
+}
+
+// node_modules/@compforge/repokit/dist/validation/history.js
+function fail(message) {
+  throw new Error(message);
+}
+function text(value) {
+  if (value == null)
+    return "";
+  if (typeof value !== "string")
+    fail("Expected string");
+  return value;
+}
+function time(value) {
+  const result2 = text(value);
+  if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:\d\d)$/.test(result2) || !Number.isFinite(Date.parse(result2)))
+    fail("Invalid history timestamp");
+  return result2;
+}
+function instant(value) {
+  const fraction = /\.(\d+)(?:Z|[+-])/.exec(value)?.[1] ?? "";
+  return BigInt(Date.parse(value.replace(/\.\d+/, ""))) * 1000000n + BigInt(fraction.padEnd(9, "0"));
+}
+function compareTime(a, b) {
+  const left = instant(a), right = instant(b);
+  if (left < right)
+    return -1;
+  return left > right ? 1 : 0;
+}
+function number(value) {
+  if (value == null)
+    return 0;
+  if (typeof value !== "number" || !Number.isFinite(value))
+    fail("Invalid history number");
+  return value;
+}
+function replay(events) {
+  const runs = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const check = object4(event.check), name = text(check.check), id = text(event.run), at = time(event.at);
+    text(event.component);
+    text(event.inputs);
+    text(check.status);
+    number(check.durationSeconds);
+    number(check.lookupSeconds);
+    if (check.checkedAt != null)
+      time(check.checkedAt);
+    if (event.schemaVersion !== 2 || !text(event.checkout) || !id || at.startsWith("0001-01-01T00:00:00") || !["lint", "test"].includes(name))
+      fail("Invalid validation history event");
+    const run2 = runs.get(id);
+    if (event.type === "started") {
+      if (run2)
+        fail(`Duplicate run ${id}`);
+      runs.set(id, { start: event, check: name, consistent: false, reuseCount: 0 });
+    } else if (event.type === "finished") {
+      if (!run2)
+        continue;
+      if (run2.result || run2.start.checkout !== event.checkout || run2.start.component !== event.component || run2.check !== name || run2.start.inputs !== event.inputs)
+        fail(`Invalid completion for run ${id}`);
+      if (event.inputsConsistent != null && typeof event.inputsConsistent !== "boolean")
+        fail("Invalid input consistency");
+      run2.result = check;
+      run2.finishedAt = at;
+      run2.consistent = event.inputsConsistent === true;
+    } else if (event.type === "reused") {
+      if (!run2)
+        continue;
+      if (!run2.result || !run2.consistent || run2.result.status !== "passed" || run2.start.checkout !== event.checkout || run2.start.component !== event.component || run2.check !== name)
+        fail(`Invalid reuse of run ${id}`);
+      run2.reuseCount++;
+      if (!run2.lastReusedAt || compareTime(at, run2.lastReusedAt) > 0)
+        run2.lastReusedAt = at;
+    } else
+      fail("Unknown validation history event");
+  }
+  return runs;
+}
+function result(run2) {
+  const check = object4(run2.result ?? run2.start.check);
+  if (check.runID !== run2.start.run || check.check !== run2.check)
+    fail("History check identity does not match its Run");
+  return { ...check, status: run2.result ? text(check.status) : "unfinished" };
+}
+function summary(run2) {
+  const check = result(run2);
+  return {
+    runID: text(run2.start.run),
+    checkout: text(run2.start.checkout),
+    component: text(run2.start.component),
+    check: run2.check,
+    scope: text(check.scope),
+    status: text(check.status),
+    startedAt: text(run2.start.at),
+    durationSeconds: number(check.durationSeconds),
+    inputsConsistent: run2.result ? run2.consistent : null,
+    inputID: text(run2.start.inputs),
+    reuseCount: run2.reuseCount,
+    ...run2.finishedAt ? { finishedAt: run2.finishedAt } : {},
+    ...run2.lastReusedAt ? { lastReusedAt: run2.lastReusedAt } : {}
+  };
+}
+function budget(options) {
+  const timeout = AbortSignal.timeout(options.timeoutMs ?? 5e3);
+  return options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
+}
+async function location(repository2, options, signal) {
+  const git = new Git(repository2, signal);
+  await git.run(["rev-parse", "--show-toplevel"]);
+  const origin = (await git.run(["config", "--get", "remote.origin.url"], void 0, true)).toString().trim();
+  const remote2 = parseRemoteUrl(origin);
+  let key;
+  if (remote2) {
+    let forge = remote2.host;
+    if (forge === "github.com")
+      forge = "github";
+    if (forge === "gitlab.com")
+      forge = "gitlab";
+    key = repositoryKey(forge, remote2.path);
+  } else {
+    const common = (await git.run(["rev-parse", "--path-format=absolute", "--git-common-dir"])).toString().trim();
+    key = localKey(await realpath4(common));
+  }
+  return { key, directory: join8(options.historyDir || join8(resolveHome(options.home), "repositories"), key) };
+}
+async function listValidationRuns(query) {
+  const limit = query.limit === void 0 || query.limit === 0 ? 20 : query.limit, offset = query.offset ?? 0;
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0)
+    fail("Limit must be 1\u2013100 and offset must be nonnegative");
+  if (query.check && !["lint", "test"].includes(query.check))
+    fail("Check must be lint or test");
+  if (query.status && !["passed", "failed", "cancelled", "uncertain", "unfinished"].includes(query.status))
+    fail("Invalid run status");
+  const signal = budget(query), { key, directory } = await location(query.repository, query, signal);
+  let checkout = query.checkout ? resolve3(query.checkout) : "";
+  if (checkout) {
+    try {
+      checkout = await realpath4(checkout);
+    } catch (error) {
+      if (!missing2(error))
+        throw error;
+    }
+  }
+  return inspectHistory(directory, signal, async (events) => {
+    const runs = [];
+    for (const run2 of replay(events).values()) {
+      signal.throwIfAborted();
+      if (checkout && run2.start.checkout !== checkout || query.component && run2.start.component !== query.component || query.check && run2.check !== query.check)
+        continue;
+      const row = summary(run2);
+      if (!query.status || row.status === query.status)
+        runs.push(row);
+    }
+    runs.sort((a, b) => compareTime(b.startedAt, a.startedAt) || Buffer.compare(Buffer.from(a.runID), Buffer.from(b.runID)));
+    return { repository: key, runs: runs.slice(offset, offset + limit), total: runs.length, offset, limit, hasMore: offset + limit < runs.length };
+  });
+}
+async function output(path, id, signal) {
+  let data;
+  try {
+    data = await readFile3(path, { encoding: "utf8", signal });
+  } catch (error) {
+    if (missing2(error))
+      return void 0;
+    throw error;
+  }
+  const lines = data.split("\n");
+  for (let i = 0; i < lines.length - 1; i++) {
+    signal.throwIfAborted();
+    const record2 = object4(JSON.parse(lines[i]));
+    if (record2.runID === id)
+      return text(record2.output);
+  }
+  if (lines.at(-1))
+    fail("Incomplete output record");
+  return void 0;
+}
+async function readValidationRun(repository2, runID, options = {}) {
+  if (!/^[A-Z2-7]+$/.test(runID))
+    fail("Invalid run ID");
+  const signal = budget(options), { key, directory } = await location(repository2, options, signal);
+  return inspectHistory(directory, signal, async (events) => {
+    const stored = replay(events).get(runID);
+    if (!stored)
+      throw Object.assign(new Error("Run is not present in retained repository history"), { code: "validation.run_not_found" });
+    const run2 = summary(stored), check = result(stored), diagnostics = [];
+    let inputs = null, stdout = "", stderr = "";
+    try {
+      if (!/^[A-Z2-7]+$/.test(run2.inputID))
+        fail("Invalid input record ID");
+      const raw = object4(JSON.parse(await readFile3(join8(directory, "inputs", run2.inputID + ".json"), { encoding: "utf8", signal })));
+      if (raw.schemaVersion !== 1 || raw.checkout !== run2.checkout || !text(raw.snapshot))
+        fail("Input manifest identity or schema is invalid");
+      object4(raw.files);
+      for (const value of Object.values(object4(raw.files))) {
+        const entry = object4(value);
+        text(entry.kind);
+        text(entry.digest);
+        if (entry.version != null && typeof entry.version !== "boolean")
+          fail("Invalid input version marker");
+      }
+      inputs = raw;
+    } catch (error) {
+      signal.throwIfAborted();
+      diagnostics.push({ artifact: "inputs", message: String(error) });
+    }
+    try {
+      const prefix = join8(directory, "logs", new Date(run2.startedAt).toISOString().slice(0, 10));
+      const out = await output(prefix + ".stdout.jsonl", runID, signal), err = await output(prefix + ".stderr.jsonl", runID, signal);
+      if (out !== void 0 && err !== void 0) {
+        stdout = out;
+        stderr = err;
+      } else if (out !== void 0 || err !== void 0)
+        fail("Incomplete daily output for run " + runID);
+      else {
+        stdout = await readFile3(join8(directory, "logs", runID, "stdout"), { encoding: "utf8", signal });
+        stderr = await readFile3(join8(directory, "logs", runID, "stderr"), { encoding: "utf8", signal });
+      }
+    } catch (error) {
+      signal.throwIfAborted();
+      diagnostics.push({ artifact: "output", message: String(error) });
+    }
+    return { repository: key, run: run2, result: { ...check, stdout, stderr }, inputs, complete: diagnostics.length === 0, diagnostics };
+  });
+}
+
 // lib/repokit.ts
 import { realpathSync as realpathSync2, existsSync as existsSync2 } from "node:fs";
-import { dirname as dirname4, join as join6, sep } from "node:path";
+import { dirname as dirname6, join as join9, sep } from "node:path";
 var InspectionError = class extends Error {
 };
 async function inspectRepository(repo) {
@@ -12416,8 +12894,8 @@ async function inspectRepository(repo) {
     if (!report.complete || report.diagnostics.length > 0) throw new Error("repository inspection incomplete");
     const checkout = realpathSync2(repo);
     for (const component of report.components) {
-      let ancestor = join6(checkout, component.root);
-      while (!existsSync2(ancestor)) ancestor = dirname4(ancestor);
+      let ancestor = join9(checkout, component.root);
+      while (!existsSync2(ancestor)) ancestor = dirname6(ancestor);
       const resolved = realpathSync2(ancestor);
       if (resolved !== checkout && !resolved.startsWith(checkout + sep)) throw new Error("component root escapes checkout");
     }
@@ -12452,7 +12930,7 @@ var Component = class _Component {
     return new _Component(pathValue, id.startsWith("../") ? path.replaceAll("\\", "/") : id, void 0);
   }
   static fromInfo(root, info) {
-    return new _Component(join7(root, info.root), info.root, info.language, info.name, info.tools ?? [], info.depot, info.toolEvidence ?? {});
+    return new _Component(join10(root, info.root), info.root, info.language, info.name, info.tools ?? [], info.depot, info.toolEvidence ?? {});
   }
 };
 function findGitRoot(path) {
@@ -12468,7 +12946,7 @@ var ComponentCatalog = class {
   report;
   components;
   owner(target) {
-    const path = relative(this.root, resolve3(target)).replaceAll("\\", "/");
+    const path = relative(this.root, resolve4(target)).replaceAll("\\", "/");
     if (path === ".." || path.startsWith("../")) return void 0;
     const binding = owner(this.report, path || ".");
     return binding ? this.components.find((component) => component.id === binding.root) : void 0;
@@ -12490,12 +12968,12 @@ function enclosingComponent(target, catalog) {
   return catalog.owner(target) ?? catalog.default();
 }
 function findAgentsDocument(repo, component) {
-  return [component ? join7(component, "AGENTS.md") : "", join7(repo, "AGENTS.md")].find((path) => path && existsSync3(path));
+  return [component ? join10(component, "AGENTS.md") : "", join10(repo, "AGENTS.md")].find((path) => path && existsSync3(path));
 }
 
 // domain/context/workspace.ts
 import { existsSync as existsSync6, lstatSync as lstatSync2, readdirSync, realpathSync as realpathSync4 } from "node:fs";
-import { join as join9, resolve as resolve6 } from "node:path";
+import { join as join12, resolve as resolve7 } from "node:path";
 
 // lib/git-state.ts
 var PROTECTED_BRANCHES = [/^main$/, /^master$/, /^release$/, /^release.*/, /.*release$/];
@@ -12518,7 +12996,7 @@ function ensureGitExclude(repo, pattern = "/.devloop/") {
 
 // lib/parsers.ts
 import { existsSync as existsSync4, readFileSync as readFileSync2 } from "node:fs";
-import { basename as basename3, dirname as dirname5, isAbsolute, resolve as resolve4 } from "node:path";
+import { basename as basename4, dirname as dirname7, isAbsolute, resolve as resolve5 } from "node:path";
 function read(path) {
   if (!existsSync4(path)) return void 0;
   try {
@@ -12530,7 +13008,7 @@ function read(path) {
 function concretePath(value, base) {
   if (value.includes("<") || value.includes(">")) return value;
   const expanded = value.startsWith("~") ? `${process.env.HOME ?? ""}${value.slice(1)}` : value;
-  return isAbsolute(expanded) ? expanded : resolve4(base, expanded);
+  return isAbsolute(expanded) ? expanded : resolve5(base, expanded);
 }
 function parseReferencesSection(path) {
   const content = read(path);
@@ -12550,13 +13028,13 @@ function parseReferencesSection(path) {
       const after = value.slice(link.index + link[0].length).replace(/^[:：—-]+/, "").trim();
       const title = before || link[1].trim();
       const description = before ? [link[1] !== link[2] ? link[1] : "", after].filter(Boolean).join(" ") : after || link[1];
-      entries.push({ title, path: concretePath(link[2].trim(), dirname5(path)), description });
+      entries.push({ title, path: concretePath(link[2].trim(), dirname7(path)), description });
       continue;
     }
     const bare = /`([^`]+\.md)`/.exec(value);
     if (bare?.[1]) {
       const description = `${value.slice(0, bare.index)} ${value.slice(bare.index + bare[0].length)}`.replace(/[:：—-]+/g, " ").trim();
-      entries.push({ title: basename3(bare[1]), path: concretePath(bare[1], dirname5(path)), description: description || basename3(bare[1]) });
+      entries.push({ title: basename4(bare[1]), path: concretePath(bare[1], dirname7(path)), description: description || basename4(bare[1]) });
     }
   }
   return entries;
@@ -12614,7 +13092,7 @@ function stale(timestamp, ttl, at = now()) {
 
 // domain/context/store.ts
 import { appendFileSync as appendFileSync2, existsSync as existsSync5, mkdirSync as mkdirSync2, readFileSync as readFileSync3, renameSync, writeFileSync } from "node:fs";
-import { dirname as dirname6, join as join8, parse as parse2, resolve as resolve5 } from "node:path";
+import { dirname as dirname8, join as join11, parse as parse2, resolve as resolve6 } from "node:path";
 var STATE_DIRECTORY_NAME = ".devloop";
 var WORKSPACE_STATE_FILE = "context.json";
 function sharedStateRoot(root) {
@@ -12622,24 +13100,24 @@ function sharedStateRoot(root) {
   return info ? info.mainRoot ?? info.commonDir : root;
 }
 function stateDirectory(root) {
-  return join8(sharedStateRoot(resolve5(root)), STATE_DIRECTORY_NAME);
+  return join11(sharedStateRoot(resolve6(root)), STATE_DIRECTORY_NAME);
 }
 function workingTreeStateDirectory(root) {
-  return join8(resolve5(root), STATE_DIRECTORY_NAME);
+  return join11(resolve6(root), STATE_DIRECTORY_NAME);
 }
 function branchSegment(branch, name) {
   return `branches/${branch ?? "@detached"}/${name}`;
 }
 function workspaceStateFile(root) {
-  return join8(stateDirectory(root), WORKSPACE_STATE_FILE);
+  return join11(stateDirectory(root), WORKSPACE_STATE_FILE);
 }
 function segmentFile(root, name) {
-  return join8(stateDirectory(root), `${name}.json`);
+  return join11(stateDirectory(root), `${name}.json`);
 }
 function atomicWrite(path, data) {
   try {
-    mkdirSync2(dirname6(path), { recursive: true });
-    const temporary = join8(dirname6(path), `${parse2(path).base}.${process.pid}.tmp`);
+    mkdirSync2(dirname8(path), { recursive: true });
+    const temporary = join11(dirname8(path), `${parse2(path).base}.${process.pid}.tmp`);
     writeFileSync(temporary, JSON.stringify(data, null, 2), "utf8");
     renameSync(temporary, path);
   } catch {
@@ -12668,8 +13146,8 @@ function saveSegment(root, name, data) {
 }
 function appendLedger(root, name, record2) {
   try {
-    const path = join8(stateDirectory(root), `${name}.jsonl`);
-    mkdirSync2(dirname6(path), { recursive: true });
+    const path = join11(stateDirectory(root), `${name}.jsonl`);
+    mkdirSync2(dirname8(path), { recursive: true });
     appendFileSync2(path, `${JSON.stringify(record2)}
 `, "utf8");
   } catch {
@@ -12685,7 +13163,7 @@ function discoverSubprojectNames(root) {
   try {
     return readdirSync(root).filter((name) => {
       if (name.startsWith(".") || DISCOVERY_SKIP.has(name)) return false;
-      const path = join9(root, name);
+      const path = join12(root, name);
       try {
         return (lstatSync2(path).isDirectory() || lstatSync2(path).isSymbolicLink()) && isGitRepository(path);
       } catch {
@@ -12700,11 +13178,11 @@ function mergeSubprojects(root, declared) {
   const byName = new Map(declared.map((entry) => [entry.name, entry]));
   return discoverSubprojectNames(root).map((name) => {
     const entry = byName.get(name);
-    const path = join9(root, name);
+    const path = join12(root, name);
     let canonical;
     try {
       const real = realpathSync4(path);
-      if (real !== resolve6(path)) canonical = real;
+      if (real !== resolve7(path)) canonical = real;
     } catch {
     }
     return {
@@ -12737,7 +13215,7 @@ var WorkspaceContext = class _WorkspaceContext {
       ...reference2.hook ? { hook: reference2.hook } : {}
     }));
     return new _WorkspaceContext(
-      record2.workspace_root || resolve6(root),
+      record2.workspace_root || resolve7(root),
       { ...record2.agents_md?.path ? { path: record2.agents_md.path } : {}, references },
       record2.subprojects.map((entry) => ({
         name: entry.name ?? "",
@@ -12751,8 +13229,8 @@ var WorkspaceContext = class _WorkspaceContext {
     );
   }
   static refresh(rootValue) {
-    const root = resolve6(rootValue);
-    const agentsPath = join9(root, "AGENTS.md");
+    const root = resolve7(rootValue);
+    const agentsPath = join12(root, "AGENTS.md");
     const hasAgents = existsSync6(agentsPath);
     const context = new _WorkspaceContext(
       root,
@@ -12793,7 +13271,7 @@ var WorkspaceContext = class _WorkspaceContext {
 
 // domain/context/session.ts
 import { closeSync, existsSync as existsSync7, mkdirSync as mkdirSync3, openSync, readFileSync as readFileSync4, readdirSync as readdirSync2, renameSync as renameSync2, statSync as statSync2, unlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { basename as basename4, dirname as dirname7, join as join10, resolve as resolve7 } from "node:path";
+import { basename as basename5, dirname as dirname9, join as join13, resolve as resolve8 } from "node:path";
 var OWNER_TTL_SECONDS = 1800;
 function identityFromEnvironment() {
   if (process.env.DEVLOOP_HARNESS === "opencode" && process.env.DEVLOOP_SESSION_ID) return { harness: "opencode", sessionId: process.env.DEVLOOP_SESSION_ID };
@@ -12806,10 +13284,10 @@ function safeHarness(harness) {
   return harness.trim().toLowerCase().replace(/[^A-Za-z0-9._-]/g, "-") || "unknown";
 }
 function lockFile(repo) {
-  return join10(workingTreeStateDirectory(repo), "owner.lock");
+  return join13(workingTreeStateDirectory(repo), "owner.lock");
 }
 function legacyLockFile(repo, harness) {
-  return join10(workingTreeStateDirectory(repo), `${safeHarness(harness)}.owner.lock`);
+  return join13(workingTreeStateDirectory(repo), `${safeHarness(harness)}.owner.lock`);
 }
 function readOwnerFile(path) {
   try {
@@ -12844,7 +13322,7 @@ function anyActiveOwner(repo, at = now()) {
   try {
     for (const name of readdirSync2(workingTreeStateDirectory(repo))) {
       if (!name.endsWith(".owner.lock")) continue;
-      const owner2 = readOwnerFile(join10(workingTreeStateDirectory(repo), name));
+      const owner2 = readOwnerFile(join13(workingTreeStateDirectory(repo), name));
       if (active(owner2, at)) return owner2;
     }
   } catch {
@@ -12922,13 +13400,13 @@ function ownerDescription(owner2) {
   return `branch '${owner2.branch || "?"}', session ${owner2.session_id.slice(0, 8)}...`;
 }
 function repositoryName(repo) {
-  return basename4(repo);
+  return basename5(repo);
 }
 function sessionName(sessionId2) {
   return (sessionId2 ?? identityFromEnvironment().sessionId).replace(/[^A-Za-z0-9._-]/g, "-") || "anon";
 }
 function activeRepoFile(workspaceRoot2, sessionId2) {
-  return join10(stateDirectory(workspaceRoot2), "active", `${sessionName(sessionId2)}.json`);
+  return join13(stateDirectory(workspaceRoot2), "active", `${sessionName(sessionId2)}.json`);
 }
 function activeBinding(path, enforceTtl) {
   try {
@@ -12946,9 +13424,9 @@ function activeBinding(path, enforceTtl) {
 function recordActiveRepo(workspaceRoot2, repo, sessionId2) {
   const path = activeRepoFile(workspaceRoot2, sessionId2);
   try {
-    mkdirSync3(dirname7(path), { recursive: true });
+    mkdirSync3(dirname9(path), { recursive: true });
     const temporary = `${path}.${process.pid}.tmp`;
-    writeFileSync2(temporary, JSON.stringify({ repo_dir: resolve7(repo), ts: now() }));
+    writeFileSync2(temporary, JSON.stringify({ repo_dir: resolve8(repo), ts: now() }));
     renameSync2(temporary, path);
   } catch {
   }
@@ -12971,15 +13449,15 @@ function recordSessionEvent(repo, sessionId2, kind, fields = {}) {
 
 // domain/context/tool-calls.ts
 import { existsSync as existsSync8, mkdirSync as mkdirSync4, readFileSync as readFileSync5, renameSync as renameSync3, statSync as statSync3, utimesSync, writeFileSync as writeFileSync3 } from "node:fs";
-import { join as join11 } from "node:path";
+import { join as join14 } from "node:path";
 var TOOL_CALL_SCHEMA = "devloop.tool-call/v1";
 var FILE_NAME = "tool-calls.jsonl";
 var WINDOW_SECONDS = 3600;
 var COMPACT_INTERVAL_SECONDS = 60;
 function appendToolCall(root, record2, at = Date.now() / 1e3) {
   const directory = stateDirectory(root);
-  const path = join11(directory, FILE_NAME);
-  const marker = join11(directory, "tool-calls.compact");
+  const path = join14(directory, FILE_NAME);
+  const marker = join14(directory, "tool-calls.compact");
   try {
     mkdirSync4(directory, { recursive: true });
     const due = !existsSync8(marker) || at - statSync3(marker).mtimeMs / 1e3 >= COMPACT_INTERVAL_SECONDS;
@@ -12995,7 +13473,7 @@ function appendToolCall(root, record2, at = Date.now() / 1e3) {
 function toolCallStartedAt(root, callId, at = Date.now() / 1e3) {
   if (!callId) return void 0;
   try {
-    const rows2 = readFileSync5(join11(stateDirectory(root), FILE_NAME), "utf8").trimEnd().split("\n").reverse();
+    const rows2 = readFileSync5(join14(stateDirectory(root), FILE_NAME), "utf8").trimEnd().split("\n").reverse();
     for (const row of rows2) {
       let value;
       try {
@@ -13035,12 +13513,12 @@ function compact(path, cutoff) {
 // domain/workspace.ts
 import { existsSync as existsSync10, statSync as statSync4 } from "node:fs";
 import { homedir as homedir3 } from "node:os";
-import { join as join13, resolve as resolve9 } from "node:path";
+import { join as join16, resolve as resolve10 } from "node:path";
 
 // lib/config.ts
 import { existsSync as existsSync9, mkdirSync as mkdirSync5, readFileSync as readFileSync6, renameSync as renameSync4, writeFileSync as writeFileSync4 } from "node:fs";
 import { homedir as homedir2 } from "node:os";
-import { dirname as dirname8, isAbsolute as isAbsolute2, join as join12, resolve as resolve8 } from "node:path";
+import { dirname as dirname10, isAbsolute as isAbsolute2, join as join15, resolve as resolve9 } from "node:path";
 var DEFAULTS = {
   workspaces: [],
   lifecycle: { default: { pre_commit: [], post_commit: [] }, repos: {} },
@@ -13053,27 +13531,27 @@ var DEFAULTS = {
     repos: {}
   }
 };
-function object4(value) {
+function object5(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
 }
 function expandPath(value) {
-  let expanded = value.startsWith("~") ? join12(homedir2(), value.slice(1)) : value;
+  let expanded = value.startsWith("~") ? join15(homedir2(), value.slice(1)) : value;
   expanded = expanded.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, braced, bare) => process.env[braced || bare] ?? "");
   return expanded;
 }
 function configDirectory() {
-  return process.env.DEVLOOP_CONFIG_DIR ? expandPath(process.env.DEVLOOP_CONFIG_DIR) : join12(homedir2(), ".devloop");
+  return process.env.DEVLOOP_CONFIG_DIR ? expandPath(process.env.DEVLOOP_CONFIG_DIR) : join15(homedir2(), ".devloop");
 }
 function configFile() {
-  return join12(configDirectory(), "config.json");
+  return join15(configDirectory(), "config.json");
 }
 function deepMerge(base, override) {
-  const result = { ...base };
+  const result2 = { ...base };
   for (const [key, value] of Object.entries(override)) {
-    const current = result[key];
-    result[key] = value !== null && typeof value === "object" && !Array.isArray(value) && current !== null && typeof current === "object" && !Array.isArray(current) ? deepMerge(current, value) : value;
+    const current = result2[key];
+    result2[key] = value !== null && typeof value === "object" && !Array.isArray(value) && current !== null && typeof current === "object" && !Array.isArray(current) ? deepMerge(current, value) : value;
   }
-  return result;
+  return result2;
 }
 function readJson2(path) {
   if (!existsSync9(path)) return void 0;
@@ -13085,31 +13563,31 @@ function readJson2(path) {
   }
 }
 function ancestorFiles(root) {
-  const global2 = resolve8(configFile());
-  const home = resolve8(homedir2());
+  const global2 = resolve9(configFile());
+  const home = resolve9(homedir2());
   const found = [];
   let current = root;
   while (true) {
-    const candidate = join12(current, ".devloop", "config.json");
-    if (resolve8(candidate) !== global2 && existsSync9(candidate)) found.push(candidate);
-    if (current === home || current === dirname8(current)) break;
-    current = dirname8(current);
+    const candidate = join15(current, ".devloop", "config.json");
+    if (resolve9(candidate) !== global2 && existsSync9(candidate)) found.push(candidate);
+    if (current === home || current === dirname10(current)) break;
+    current = dirname10(current);
   }
   return found.reverse();
 }
 function resolveLayer(layer, repoKeys) {
-  const result = { ...layer };
+  const result2 = { ...layer };
   for (const name of ["lifecycle", "arch"]) {
     if (!(name in layer)) continue;
-    const section = object4(layer[name]);
-    let policy = object4(section.default);
-    for (const key of repoKeys) policy = deepMerge(policy, object4(object4(section.repos)[key]));
-    result[name] = { ...section, default: policy };
+    const section = object5(layer[name]);
+    let policy = object5(section.default);
+    for (const key of repoKeys) policy = deepMerge(policy, object5(object5(section.repos)[key]));
+    result2[name] = { ...section, default: policy };
   }
-  return result;
+  return result2;
 }
 function loadConfig2(repo) {
-  const checkout = repo ? resolve8(expandPath(repo)) : void 0;
+  const checkout = repo ? resolve9(expandPath(repo)) : void 0;
   let main;
   try {
     main = checkout ? mainRepoRoot(checkout) : void 0;
@@ -13119,14 +13597,14 @@ function loadConfig2(repo) {
   const repoKeys = [...new Set([main, checkout].filter((path) => path !== void 0))];
   const files = [...new Set(repoKeys.flatMap(ancestorFiles))];
   const global2 = deepMerge(DEFAULTS, readJson2(configFile()) ?? {});
-  let result = resolveLayer(global2, repoKeys);
-  for (const path of files) result = deepMerge(result, resolveLayer(readJson2(path) ?? {}, repoKeys));
-  result.workspaces = global2.workspaces ?? [];
-  return result;
+  let result2 = resolveLayer(global2, repoKeys);
+  for (const path of files) result2 = deepMerge(result2, resolveLayer(readJson2(path) ?? {}, repoKeys));
+  result2.workspaces = global2.workspaces ?? [];
+  return result2;
 }
 function saveConfig(data) {
   const path = configFile();
-  mkdirSync5(dirname8(path), { recursive: true });
+  mkdirSync5(dirname10(path), { recursive: true });
   const temporary = `${path}.tmp`;
   writeFileSync4(temporary, `${JSON.stringify(data, null, 2)}
 `, "utf8");
@@ -13148,41 +13626,41 @@ function setWorkspaces(paths) {
   });
 }
 function pullRequestTarget(repo) {
-  const value = object4(loadConfig2(repo).pull_request).target_repository;
+  const value = object5(loadConfig2(repo).pull_request).target_repository;
   return typeof value === "string" && value ? value : void 0;
 }
 function architectureConfig(repo) {
-  return object4(object4(loadConfig2(repo).arch).default);
+  return object5(object5(loadConfig2(repo).arch).default);
 }
 
 // domain/workspace.ts
 function reserved(path) {
-  const root = resolve9(path);
+  const root = resolve10(path);
   return [
-    process.env.CODEX_HOME ?? join13(homedir3(), ".codex"),
-    process.env.CLAUDE_HOME ?? join13(homedir3(), ".claude")
-  ].some((candidate) => resolve9(expandPath(candidate)) === root);
+    process.env.CODEX_HOME ?? join16(homedir3(), ".codex"),
+    process.env.CLAUDE_HOME ?? join16(homedir3(), ".claude")
+  ].some((candidate) => resolve10(expandPath(candidate)) === root);
 }
 function registeredWorkspaces() {
-  return workspaces().map((path) => resolve9(path)).filter((path) => !reserved(path));
+  return workspaces().map((path) => resolve10(path)).filter((path) => !reserved(path));
 }
 function registerWorkspace(path) {
-  const root = resolve9(expandPath(path));
+  const root = resolve10(expandPath(path));
   if (reserved(root)) return;
   const current = [...registeredWorkspaces()];
   if (!current.includes(root)) setWorkspaces([...current, root]);
 }
 function maybeRegisterWorkspace(path) {
-  const root = resolve9(path);
+  const root = resolve10(path);
   if (reserved(root) || !existsSync10(root) || !statSync4(root).isDirectory() || checkoutAt(root) !== void 0) return void 0;
-  const agents = join13(root, "AGENTS.md");
+  const agents = join16(root, "AGENTS.md");
   if (!existsSync10(agents)) return void 0;
   if (discoverSubprojectNames(root).length === 0 && parseSubprojectsSection(agents).length === 0) return void 0;
   registerWorkspace(root);
   return root;
 }
 function findContainingWorkspace(path) {
-  const target = resolve9(path);
+  const target = resolve10(path);
   return registeredWorkspaces().find((root) => target === root || target.startsWith(`${root}/`));
 }
 
@@ -13199,54 +13677,66 @@ function pullRequestOpen(pr) {
 function vocabulary(provider) {
   return provider === "gitlab" ? ["MR", "!"] : ["PR", "#"];
 }
-function pullRequestLabel(provider, number3) {
+function pullRequestLabel(provider, number4) {
   const [noun, sigil] = vocabulary(provider);
-  return `${noun} ${sigil}${number3}`;
+  return `${noun} ${sigil}${number4}`;
 }
 
 // domain/board/render.ts
-import { basename as basename5 } from "node:path";
+import { basename as basename6 } from "node:path";
 function rows(value) {
   return Array.isArray(value) ? value.filter((item) => item !== null && typeof item === "object" && !Array.isArray(item)) : [];
 }
-function text(value) {
+function text2(value) {
   return typeof value === "string" ? value : "";
 }
-function number(value) {
+function number2(value) {
   return typeof value === "number" ? value : 0;
 }
 function reference(item) {
-  const title = text(item.title) || "?";
-  const path = text(item.path);
-  const description = text(item.description).trim();
-  const base = basename5(path);
+  const title = text2(item.title) || "?";
+  const path = text2(item.path);
+  const description = text2(item.description).trim();
+  const base = basename6(path);
   return description && description !== base && description !== path ? `${title} \u2014 ${description}  \u2190 ${base}` : `${title}  \u2190 ${base}`;
 }
 function renderItem(item) {
   const payload = item.payload;
   if (item.type === "workspace") {
-    const lines = [`[Workspace: ${text(payload.root)}]`];
+    const lines = [`[Workspace: ${text2(payload.root)}]`];
     const references = rows(payload.references);
     if (references.length) lines.push("AGENTS.md references (Read when the task touches these topics):", ...references.map((row) => `  - ${reference(row)}`));
     const projects = rows(payload.subprojects);
     if (projects.length) lines.push("Subprojects:", ...projects.slice(0, 12).map((project) => {
       const aliases = Array.isArray(project.aliases) && project.aliases.length ? ` (${project.aliases.join(", ")})` : "";
-      const note = [text(project.language), text(project.role)].filter(Boolean).join(" \xB7 ");
-      return `  - ${text(project.name)}${aliases}: ${note}${text(project.canonical) ? ` \u2192 ${text(project.canonical)}` : ""}`;
+      const note = [text2(project.language), text2(project.role)].filter(Boolean).join(" \xB7 ");
+      return `  - ${text2(project.name)}${aliases}: ${note}${text2(project.canonical) ? ` \u2192 ${text2(project.canonical)}` : ""}`;
     }));
     return lines.join("\n");
   }
   if (item.type === "repo.references") return ["Repo AGENTS.md references (Read when the task touches these topics):", ...rows(payload.references).map((row) => `  - ${reference(row)}`)].join("\n");
   if (item.type === "repo.identity") {
-    const dirty = payload.workspaceDirty ? `dirty(${number(payload.modifiedCount)} modified, ${number(payload.untrackedCount)} untracked)` : payload.workspaceDirty === null ? "unknown" : "clean";
+    const dirty = payload.workspaceDirty ? `dirty(${number2(payload.modifiedCount)} modified, ${number2(payload.untrackedCount)} untracked)` : payload.workspaceDirty === null ? "unknown" : "clean";
     const warnings = [payload.protected ? "PROTECTED" : "", typeof payload.staleBindingHours === "number" ? `repo binding is ${payload.staleBindingHours.toFixed(1)}h old; confirm the repo with cd` : ""].filter(Boolean);
-    if (payload.inspectionProblem) warnings.push(text(payload.inspectionProblem));
-    return `[Current repo: ${text(payload.codeDir) || text(payload.repoRoot)} (${text(payload.language) || "?"})] | Branch: ${text(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${typeof payload.ahead === "number" ? payload.ahead : "?"}, behind ${typeof payload.behind === "number" ? payload.behind : "?"} vs ${text(payload.baseBranch)}, target=${text(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` \u26A0\uFE0F ${warnings.join("; ")}` : ""}`;
+    if (payload.inspectionProblem) warnings.push(text2(payload.inspectionProblem));
+    return `[Current repo: ${text2(payload.codeDir) || text2(payload.repoRoot)} (${text2(payload.language) || "?"})] | Branch: ${text2(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${typeof payload.ahead === "number" ? payload.ahead : "?"}, behind ${typeof payload.behind === "number" ? payload.behind : "?"} vs ${text2(payload.baseBranch)}, target=${text2(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` \u26A0\uFE0F ${warnings.join("; ")}` : ""}`;
   }
   if (item.type === "repo.pull-request") {
-    if (payload.error) return `PR status unavailable: ${text(payload.error)}`;
-    if (payload.ambiguous) return `Branch '${text(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
-    return `${pullRequestLabel(text(payload.provider), number(payload.number))} ${text(payload.state)} (${text(payload.repository)})`;
+    if (payload.error) return `PR status unavailable: ${text2(payload.error)}`;
+    if (payload.ambiguous) return `Branch '${text2(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
+    return `${pullRequestLabel(text2(payload.provider), number2(payload.number))} ${text2(payload.state)} (${text2(payload.repository)})`;
+  }
+  if (item.type === "repo.validation") {
+    if (payload.error) return text2(payload.error);
+    if (!number2(payload.total)) return "Validation history: no retained runs for this checkout.";
+    const lines = rows(payload.runs).map((run2) => {
+      let source = "source comparison unavailable";
+      if (run2.sourceState === "changed") source = "source changed since this run";
+      else if (run2.sourceState === "unchanged") source = "source unchanged";
+      const consistency = run2.inputsConsistent === false ? "; inputs changed during execution" : "";
+      return `  - ${text2(run2.component)} ${text2(run2.check)}: ${text2(run2.status)} (${text2(run2.scope)}), ${text2(run2.startedAt)}; ${source}${consistency}; run ${text2(run2.runID)}`;
+    });
+    return [`Validation history (${number2(payload.total)} retained runs; historical results, not current validation):`, ...lines].join("\n");
   }
   if (item.type === "repo.review") return renderReview(payload);
   return "";
@@ -13255,20 +13745,20 @@ function renderPrompt(items) {
   return items.map(renderItem).filter(Boolean).join("\n\n");
 }
 function renderReview(payload) {
-  const status = text(payload.status);
-  const sha = text(payload.reviewedSha).slice(0, 9);
-  const artifact = text(payload.artifactPath);
+  const status = text2(payload.status);
+  const sha = text2(payload.reviewedSha).slice(0, 9);
+  const artifact = text2(payload.artifactPath);
   if (status === "running" || status === "stale") return `Review: ${status} on ${sha}; see ${artifact}`;
   const parts = [];
-  const findings = number(payload.findings);
-  const failed = number(payload.failedFiles);
+  const findings = number2(payload.findings);
+  const failed = number2(payload.failedFiles);
   if (findings) parts.push(`${findings} finding(s)`);
   if (failed) parts.push(`${failed} file(s) failed`);
   if (status === "error" || status === "failed") parts.push("review errored");
   else if (status === "completed_with_errors") parts.push("review incomplete");
   else if (status === "completed_with_warnings") parts.push("review warnings");
   else if (status !== "success") parts.push(`review ${status}`);
-  const message = text(payload.message).trim();
+  const message = text2(payload.message).trim();
   const reason = status !== "success" && message ? ` \u2014 ${message}` : "";
   return `Review: ${parts.length ? parts.join(", ") : "clean (no findings)"} on ${sha}${reason}; see ${artifact}`;
 }
@@ -13279,6 +13769,7 @@ var RULES = {
   "repo.references": { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
   "repo.pull-request": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
   "repo.identity": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
+  "repo.validation": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
   "repo.pr-blocked": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: 1, replayAfterCompact: false },
   "repo.review": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: REVIEW_NUDGE_CAP, replayAfterCompact: false },
   "repo.review-findings": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: REVIEW_FINDING_NUDGE_CAP, replayAfterCompact: false },
@@ -13303,7 +13794,7 @@ var PromptDelivery = class {
     return Object.fromEntries(Object.entries(raw).flatMap(([key, value]) => {
       if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
       const row = value;
-      return [[key, { item_type: text2(row.item_type ?? row.item_key), signature: text2(row.signature), count: number2(row.count), ...typeof row.last_emit_at === "number" ? { last_emit_at: row.last_emit_at } : {} }]];
+      return [[key, { item_type: text3(row.item_type ?? row.item_key), signature: text3(row.signature), count: number3(row.count), ...typeof row.last_emit_at === "number" ? { last_emit_at: row.last_emit_at } : {} }]];
     }));
   }
   deliver(view, trigger = "user_prompt") {
@@ -13354,10 +13845,10 @@ var PromptDelivery = class {
     }
   }
 };
-function text2(value) {
+function text3(value) {
   return typeof value === "string" ? value : "";
 }
-function number2(value) {
+function number3(value) {
   return typeof value === "number" ? value : 0;
 }
 
@@ -13368,7 +13859,7 @@ async function prContextForRepo(repo) {
 }
 
 // domain/board/model.ts
-import { createHash as createHash6 } from "node:crypto";
+import { createHash as createHash7 } from "node:crypto";
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
   if (value !== null && typeof value === "object") {
@@ -13385,7 +13876,7 @@ function boardItem(type, kind, scope, payload) {
     kind,
     scope,
     payload,
-    signature: createHash6("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
+    signature: createHash7("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
   };
 }
 var BoardView = class _BoardView {
@@ -13420,6 +13911,35 @@ var Board = class {
     return new BoardView(this.root, focus, items);
   }
 };
+
+// domain/board/validation.ts
+async function validationHistory(repo) {
+  const signal = AbortSignal.timeout(1e3);
+  try {
+    const history = await listValidationRuns({ repository: repo, checkout: repo, limit: 3, signal });
+    if (!history.total) return { total: 0, runs: [] };
+    const current = await snapshot(repo, { signal });
+    const runs = await Promise.all(history.runs.map(async (run2) => {
+      const detail = await readValidationRun(repo, run2.runID, { signal });
+      let sourceState = "unknown";
+      if (current.complete && detail.inputs) sourceState = current.digest === detail.inputs.snapshot ? "unchanged" : "changed";
+      return {
+        runID: run2.runID,
+        component: run2.component,
+        check: run2.check,
+        status: run2.status,
+        scope: run2.scope,
+        startedAt: run2.startedAt,
+        inputsConsistent: run2.inputsConsistent,
+        sourceState,
+        evidenceComplete: detail.complete
+      };
+    }));
+    return { total: history.total, hasMore: history.hasMore, runs };
+  } catch (error) {
+    return { error: `Validation history unavailable: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
 
 // domain/board/projection.ts
 async function projectBoard(root, workspace, repo, staleBindingHours) {
@@ -13495,6 +14015,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
     protected: isProtectedBranch(branch),
     ...staleBindingHours === void 0 ? {} : { staleBindingHours }
   }));
+  items.push(boardItem("repo.validation", "state", scope, await validationHistory(repo)));
   if (branch === void 0) return new Board(root, items);
   let prContext;
   try {
@@ -13565,9 +14086,9 @@ var BoardRuntime = class _BoardRuntime {
     return new _BoardRuntime(root, sessionId2, board, board.view({ workspaceRoot: root, ...repo ? { repoRoot: repo } : {} }), repo);
   }
   deliverPrompt(trigger = "user_prompt") {
-    const result = new PromptDelivery(this.root, this.sessionId).deliver(this.view, trigger);
-    if (result && this.repo) recordSessionEvent(this.repo, this.sessionId, "inject", { text: result });
-    return result;
+    const result2 = new PromptDelivery(this.root, this.sessionId).deliver(this.view, trigger);
+    if (result2 && this.repo) recordSessionEvent(this.repo, this.sessionId, "inject", { text: result2 });
+    return result2;
   }
   snapshot() {
     return this.view.select(itemsFor(this.view, "ui")).toJSON();
@@ -13581,7 +14102,7 @@ var BoardRuntime = class _BoardRuntime {
 };
 
 // hooks/core/project.ts
-import { basename as basename6, isAbsolute as isAbsolute3, resolve as resolve10 } from "node:path";
+import { basename as basename7, isAbsolute as isAbsolute3, resolve as resolve11 } from "node:path";
 var FILE_TOOLS = /* @__PURE__ */ new Set(["Edit", "Write", "MultiEdit", "NotebookEdit", "write", "edit", "str_replace_editor", "apply_patch"]);
 function splitShell(command2) {
   const parts = [];
@@ -13682,19 +14203,19 @@ function commandTarget(words, base) {
   if (argv.length === 0) return void 0;
   let workingDirectory = base;
   let dashC;
-  if (["git", "go", "make"].includes(basename6(argv[0]))) {
+  if (["git", "go", "make"].includes(basename7(argv[0]))) {
     const index = argv.indexOf("-C");
     if (index >= 0 && argv[index + 1]) {
       const configuredPath = argv[index + 1];
       dashC = configuredPath;
-      const path = isAbsolute3(configuredPath) ? configuredPath : base.path ? resolve10(base.path, configuredPath) : void 0;
+      const path = isAbsolute3(configuredPath) ? configuredPath : base.path ? resolve11(base.path, configuredPath) : void 0;
       workingDirectory = { ...path ? { path } : {}, source: "git -C" };
-      if (basename6(argv[0]) === "git") argv = [...argv.slice(0, index), ...argv.slice(index + 2)];
+      if (basename7(argv[0]) === "git") argv = [...argv.slice(0, index), ...argv.slice(index + 2)];
     }
   }
   let subcommand;
   let args = argv.slice(1);
-  if (basename6(argv[0]) === "git") {
+  if (basename7(argv[0]) === "git") {
     let index = 1;
     while (index < argv.length && argv[index].startsWith("-")) {
       if (["-c", "--git-dir", "--work-tree", "--namespace", "--config-env"].includes(argv[index])) index += 2;
@@ -13717,7 +14238,7 @@ function commandTargets(command2, base) {
     for (const nested of commandSubstitutions(trimmed)) targets.push(...commandTargets(nested, current));
     const words = shellWords(part);
     if (words[0] === "cd" && words[1]) {
-      const path = isAbsolute3(words[1]) ? words[1] : current.path ? resolve10(current.path, words[1]) : void 0;
+      const path = isAbsolute3(words[1]) ? words[1] : current.path ? resolve11(current.path, words[1]) : void 0;
       current = { ...path ? { path } : {}, source: "command cd" };
       continue;
     }
@@ -13734,14 +14255,14 @@ function commandTargets(command2, base) {
     for (const target of patchFileChanges(match2[2])) {
       targets.push({
         ...target,
-        path: isAbsolute3(target.path) || !current.path ? target.path : resolve10(current.path, target.path)
+        path: isAbsolute3(target.path) || !current.path ? target.path : resolve11(current.path, target.path)
       });
     }
   }
   return targets;
 }
 function wrappedCommand(words) {
-  const executable = basename6(words[0] ?? "");
+  const executable = basename7(words[0] ?? "");
   if (["bash", "sh", "zsh"].includes(executable)) {
     const commandIndex = words.findIndex((word, index) => index > 0 && /^-[^-]*c/.test(word));
     return commandIndex >= 0 ? words[commandIndex + 1] : void 0;
@@ -13831,7 +14352,7 @@ function projectTool(input) {
   if (toolName === "Bash" || toolName === "bash" || toolName === "shell" || toolName === "exec_command") {
     const command2 = typeof toolInput.command === "string" ? toolInput.command : typeof toolInput.cmd === "string" ? toolInput.cmd : "";
     const configured = typeof toolInput.workdir === "string" && toolInput.workdir.trim() ? toolInput.workdir : void 0;
-    const path = configured ? isAbsolute3(configured) ? configured : resolve10(cwd2, configured) : input.harness === "codex" && toolName === "Bash" ? void 0 : cwd2;
+    const path = configured ? isAbsolute3(configured) ? configured : resolve11(cwd2, configured) : input.harness === "codex" && toolName === "Bash" ? void 0 : cwd2;
     return { targets: commandTargets(command2, { ...path ? { path } : {}, source: configured ? "tool workdir" : "hook cwd" }), cwd: cwd2, tool: toolName, command: command2 };
   }
   if (toolName === "apply_patch" || input.harness === "opencode" && toolName === "patch") {
@@ -13881,14 +14402,14 @@ async function evaluate(change, context, rules) {
 }
 
 // hooks/core/context.ts
-import { dirname as dirname9, isAbsolute as isAbsolute4, resolve as resolve11 } from "node:path";
+import { dirname as dirname11, isAbsolute as isAbsolute4, resolve as resolve12 } from "node:path";
 var PolicyContext = class _PolicyContext {
   constructor(cwd2, identity2, anchorPath = "", inspections = /* @__PURE__ */ new Map()) {
     this.inspections = inspections;
     this.cwd = cwd2;
     this.identity = identity2;
-    this.anchorPath = anchorPath ? isAbsolute4(anchorPath) ? anchorPath : resolve11(cwd2, anchorPath) : "";
-    this.anchorDirectory = this.anchorPath ? dirname9(this.anchorPath) : cwd2;
+    this.anchorPath = anchorPath ? isAbsolute4(anchorPath) ? anchorPath : resolve12(cwd2, anchorPath) : "";
+    this.anchorDirectory = this.anchorPath ? dirname11(this.anchorPath) : cwd2;
   }
   inspections;
   cwd;
@@ -13900,7 +14421,7 @@ var PolicyContext = class _PolicyContext {
     return target.workingDirectory.path ? new _PolicyContext(target.workingDirectory.path, this.identity, "", this.inspections) : this;
   }
   catalog(repo) {
-    const key = resolve11(repo);
+    const key = resolve12(repo);
     if (!this.inspections.has(key)) this.inspections.set(key, inspectCatalog(key));
     return this.inspections.get(key);
   }
@@ -13920,7 +14441,7 @@ var PolicyContext = class _PolicyContext {
 
 // hooks/rules/index.ts
 import { existsSync as existsSync11, readFileSync as readFileSync7 } from "node:fs";
-import { basename as basename7, dirname as dirname10, extname, join as join14, resolve as resolve12 } from "node:path";
+import { basename as basename8, dirname as dirname12, extname, join as join17, resolve as resolve13 } from "node:path";
 
 // domain/context/gate.ts
 async function evaluateGate(repo) {
@@ -13977,7 +14498,7 @@ var worktreeAdd = {
       if (repo) primary = listCheckouts(repo).find((entry) => entry.primary)?.path ?? repo;
     } catch {
     }
-    return finding("worktree-add", `Direct \`git worktree add\` bypasses devloop lifecycle policy. Use \`"<PLUGIN_ROOT>/scripts/python" "<PLUGIN_ROOT>/scripts/checkout.py" ${basename7(primary)} --worktree <tag>\`.`, commandLine(command(target)));
+    return finding("worktree-add", `Direct \`git worktree add\` bypasses devloop lifecycle policy. Use \`"<PLUGIN_ROOT>/scripts/python" "<PLUGIN_ROOT>/scripts/checkout.py" ${basename8(primary)} --worktree <tag>\`.`, commandLine(command(target)));
   }
 };
 function tagOnlyPush(args, repo) {
@@ -14028,7 +14549,7 @@ var checkoutOwner = {
   }
 };
 function pipInstallArgs(argv) {
-  const base = basename7(argv[0] ?? "");
+  const base = basename8(argv[0] ?? "");
   const index = argv.indexOf("install");
   if ((base === "pip" || base === "pip3") && index > 0) return argv.slice(index + 1);
   if (base.startsWith("python") && argv[1] === "-m" && argv[2] === "pip" && index >= 3) return argv.slice(index + 1);
@@ -14048,7 +14569,7 @@ var pipInstall = {
     const catalog = await context.catalog(repo);
     if (catalog.components.length === 0) return [];
     const component = enclosingComponent(runDirectory, catalog).path;
-    if (!existsSync11(join14(component, "pyproject.toml")) || !existsSync11(join14(component, "uv.lock"))) return [];
+    if (!existsSync11(join17(component, "pyproject.toml")) || !existsSync11(join17(component, "uv.lock"))) return [];
     return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
   }
 };
@@ -14061,7 +14582,7 @@ var PROJECT_COMMANDS = {
   cargo: /* @__PURE__ */ new Set(["bench", "build", "check", "clippy", "fmt", "run", "test"])
 };
 function projectLocal(value) {
-  const base = basename7(value.argv[0] ?? "");
+  const base = basename8(value.argv[0] ?? "");
   if (base === "pytest") return true;
   if (base === "make") return !value.args.every((arg) => ["-h", "--help", "-v", "--version", "help"].includes(arg));
   if (["npm", "pnpm"].includes(base) && value.argv.some((arg) => arg === "-g" || arg === "--global")) return false;
@@ -14069,7 +14590,7 @@ function projectLocal(value) {
   return subcommand !== void 0 && PROJECT_COMMANDS[base]?.has(subcommand) === true;
 }
 function workspaceRoot(path) {
-  return workspaces().some((root) => resolve12(root) === resolve12(path)) || WorkspaceContext.load(path) !== void 0 && !findGitRoot(path);
+  return workspaces().some((root) => resolve13(root) === resolve13(path)) || WorkspaceContext.load(path) !== void 0 && !findGitRoot(path);
 }
 var workspaceCwd = {
   name: "workspace-cwd",
@@ -14079,7 +14600,7 @@ var workspaceCwd = {
     const path = command(target).workingDirectory.path;
     if (!path || !workspaceRoot(path)) return [];
     const names = WorkspaceContext.load(path)?.subprojects.slice(0, 10).map((item) => item.name).join(", ");
-    return finding("workspace-cwd", `You're at aggregate workspace '${resolve12(path)}', not a subproject. Enter a repository or pass --repo explicitly.${names ? ` Subprojects: ${names}` : ""}`, commandLine(command(target)));
+    return finding("workspace-cwd", `You're at aggregate workspace '${resolve13(path)}', not a subproject. Enter a repository or pass --repo explicitly.${names ? ` Subprojects: ${names}` : ""}`, commandLine(command(target)));
   }
 };
 var editOwner = {
@@ -14118,9 +14639,9 @@ var requirementsEdit = {
   applies: () => true,
   check: (target, context) => {
     const path = context.anchorPath || file(target).path;
-    if (basename7(path) !== "requirements.txt") return [];
-    const parent = dirname10(path);
-    return existsSync11(join14(parent, "pyproject.toml")) || existsSync11(join14(dirname10(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
+    if (basename8(path) !== "requirements.txt") return [];
+    const parent = dirname12(path);
+    return existsSync11(join17(parent, "pyproject.toml")) || existsSync11(join17(dirname12(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
   }
 };
 function stringArray(value) {
@@ -14172,10 +14693,10 @@ var layerDeps = {
     const layers = config.layers !== null && typeof config.layers === "object" && !Array.isArray(config.layers) ? config.layers : {};
     const order = stringArray(config.order);
     const ownLayer = layerOf(value.path, layers);
-    const text3 = resultingText(value);
-    if (!ownLayer || text3 === void 0 || !order.includes(ownLayer)) return [];
+    const text4 = resultingText(value);
+    if (!ownLayer || text4 === void 0 || !order.includes(ownLayer)) return [];
     const rank = new Map(order.map((layer, index) => [layer, index]));
-    return importedModules(text3, extname(value.path).toLowerCase()).flatMap((module) => {
+    return importedModules(text4, extname(value.path).toLowerCase()).flatMap((module) => {
       const dependency = importLayer(module, order);
       return dependency && dependency !== ownLayer && rank.get(dependency) < rank.get(ownLayer) ? [{ rule: "layer-deps", severity: "deny", message: `Layer violation: ${ownLayer} file ${value.path} must not depend on higher layer ${dependency} (import: ${module}). Move cross-layer orchestration to ${dependency}.`, locator: value.path }] : [];
     });
@@ -14208,19 +14729,19 @@ async function evaluateTool(input) {
     sessionId: typeof input.toolInput.session_id === "string" ? input.toolInput.session_id : ""
   };
   const context = new PolicyContext(input.cwd, identity2);
-  const result = await evaluate(change, context, RULES2);
-  if (result.action === "deny" && context.gitRoot) {
-    recordDeniedDecision(context.gitRoot, result, {
+  const result2 = await evaluate(change, context, RULES2);
+  if (result2.action === "deny" && context.gitRoot) {
+    recordDeniedDecision(context.gitRoot, result2, {
       tool: input.toolName,
       cwd: input.cwd,
       sessionId: identity2.sessionId
     });
   }
-  return result;
+  return result2;
 }
 async function deniedReason(input) {
-  const result = await evaluateTool(input);
-  return result.action === "deny" ? decisionMessage(result) : void 0;
+  const result2 = await evaluateTool(input);
+  return result2.action === "deny" ? decisionMessage(result2) : void 0;
 }
 
 // adapters/hook-payload.ts
@@ -14344,7 +14865,7 @@ function afterTool(payload, harness) {
 }
 function afterFileChanged(payload) {
   const path = string2(payload.file_path);
-  if (basename8(path) !== "AGENTS.md") return;
+  if (basename9(path) !== "AGENTS.md") return;
   const workspace = findContainingWorkspace(path);
   if (workspace) WorkspaceContext.refresh(workspace);
 }
@@ -14358,15 +14879,15 @@ function recordToolCall(payload, harness) {
   const anchors = [];
   for (const target of change.targets) {
     if (target.kind === "file_change") {
-      const path = isAbsolute5(target.path) ? target.path : resolve13(directory, target.path);
-      anchors.push(dirname11(path));
+      const path = isAbsolute5(target.path) ? target.path : resolve14(directory, target.path);
+      anchors.push(dirname13(path));
     } else if (target.workingDirectory.path) anchors.push(target.workingDirectory.path);
   }
   for (const key of ["file_path", "notebook_path", "path"]) {
     const value = toolInput[key];
     if (typeof value !== "string" || !value.trim()) continue;
-    const path = isAbsolute5(value) ? value : resolve13(directory, value);
-    anchors.push(dirname11(path));
+    const path = isAbsolute5(value) ? value : resolve14(directory, value);
+    anchors.push(dirname13(path));
   }
   if (anchors.length === 0) anchors.push(directory);
   const timestamp = Date.now() / 1e3;

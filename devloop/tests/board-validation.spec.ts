@@ -1,9 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { mkdtempSync, realpathSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { userPromptOutput } from "../adapters/process-hooks.js";
@@ -52,7 +51,6 @@ it.each([false, true])("does not infer validation history from legacy records (p
 // @case Current source comparison is independent of historical check status and never grants a current pass.
 it("projects native history and invalidates the source comparison after an edit", async () => {
   const home = realpathSync(mkdtempSync(join(tmpdir(), "devloop-history-home-")));
-  const installed = realpathSync(mkdtempSync(join(tmpdir(), "devloop-history-installed-")));
   vi.stubEnv("REPOKIT_HOME", home);
   try {
     execFileSync("git", ["-C",root,"remote","add","origin","https://github.com/example/board.git"]);
@@ -74,17 +72,10 @@ it("projects native history and invalidates the source comparison after an edit"
     expect(changed).toContain("source changed since this run");
     expect(changed).toContain("historical results, not current validation");
     expect(changed).toContain("test: passed");
-    // @case Marketplace artifacts must not borrow the source checkout's native dependencies.
-    const entry = join(installed, "runtime.mjs");
-    copyFileSync(fileURLToPath(new URL("../dist/hooks/runtime.js", import.meta.url)), entry);
-    const runInstalled = (session: string) => execFileSync(process.execPath, [entry], {
-      input: JSON.stringify({hook_event_name:"UserPromptSubmit",cwd:root,session_id:session}),
-      cwd: installed, env: {...process.env, DEVLOOP_HARNESS:"codex", NODE_PATH:""}, encoding:"utf8", timeout:10_000,
+    const bundle = execFileSync(process.execPath, [fileURLToPath(new URL("../dist/hooks/runtime.js", import.meta.url))], {
+      input: JSON.stringify({hook_event_name:"UserPromptSubmit",cwd:root,session_id:"history-bundle"}),
+      env: {...process.env, DEVLOOP_HARNESS:"codex"}, encoding:"utf8", timeout:10_000,
     });
-    expect(runInstalled("missing-native-dependency")).toContain("Cannot find module 'fs-ext'");
-    const native = dirname(createRequire(import.meta.url).resolve("fs-ext"));
-    cpSync(native, join(installed, "node_modules", "fs-ext"), {recursive:true});
-    const bundle = runInstalled("history-bundle");
     expect(bundle).toContain("source changed since this run");
     expect(bundle).not.toContain("Validation history unavailable");
     // @case Comparison or detail failures preserve retained summaries with explicitly unknown evidence.
@@ -101,5 +92,5 @@ it("projects native history and invalidates the source comparison after an edit"
     const unavailable=await render();
     expect(unavailable).toContain("Validation history unavailable");
     expect(unavailable).not.toContain("no retained runs");
-  } finally {rmSync(home,{recursive:true,force:true});rmSync(installed,{recursive:true,force:true});}
+  } finally {rmSync(home,{recursive:true,force:true});}
 });

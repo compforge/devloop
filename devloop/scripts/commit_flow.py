@@ -311,8 +311,40 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
             )
 
     if intent.mode == "push":
-        check_operation(operations.push(repo, current, upstream=True))
-        plan.append(f"pushed origin/{current}")
+        publish_branch(repo, current, plan)
+
+
+def publish_branch(repo: str, branch: str, plan: list[str]) -> None:
+    """+spec=Publish one frozen commit through RepoCLI; only matching remote evidence confirms success, including after a lost push response.
+
+    +link=component://devloop/docs/repository-toolkit.md
+    """
+    commit = git_state.rev_parse(repo, f"refs/heads/{branch}")
+    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+        raise SmartError("cannot freeze the source branch commit before publication")
+    recovery = f"repocli git push --branch {branch!r} --commit {commit} --remote origin --check"
+    try:
+        result = cli.run_repocli(repo, ("git", "push"),
+            ["--branch", branch, "--commit", commit, "--remote", "origin", "--set-upstream"], timeout=300)
+        data = result.get("data")
+        if (not isinstance(data, dict) or data.get("branch") != branch or data.get("target") != branch
+                or data.get("remote") != "origin" or data.get("targetCommit") != commit
+                or not isinstance(data.get("checkout"), str)
+                or Path(data["checkout"]).resolve() != Path(repo).resolve()
+                or not isinstance(data.get("confirmed"), bool)
+                or not isinstance(data.get("diagnostics"), list)
+                or not all(isinstance(d, dict) and isinstance(d.get("message"), str) for d in data["diagnostics"])):
+            raise ValueError("invalid or mismatching push report")
+        if result["outcome"] != "succeeded":
+            error = result.get("error") or {}
+            message = error.get("message") if isinstance(error, dict) else None
+            raise SmartError(f"push {result['outcome']}: {message or 'remote publication not confirmed'}; inspect with {recovery}")
+        if not data["confirmed"] or data.get("remoteCommit") != commit:
+            raise ValueError("successful command lacks matching remote commit evidence")
+        plan.append(f"confirmed origin/{branch} at {commit}")
+        plan.extend(f"warning: {d['message']}" for d in data["diagnostics"])
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        raise SmartError(f"push result unavailable; inspect with {recovery} before retrying: {error}") from error
 
 # The failure that bites gcampr callers most: a --message whose quotes/specials broke shell
 # parsing, so its tail leaks as stray argv → "unrecognized arguments". Handed to cli.ArgParser

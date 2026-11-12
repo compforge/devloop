@@ -1,6 +1,6 @@
 ---
 name: validate
-description: Run a repository or Component's Makefile format/lint/test through repocli and explain its scope and results. Use to validate changes, format code, run tests, or verify before committing or pushing.
+description: Run a repository or Component's Makefile format/lint/test through repocli and explain its scope and results. Use to validate changes, format code, run tests, verify before committing or pushing, or diagnose past validation failures and slow checks.
 ---
 
 Use repocli directly for project checks. The project owns its Makefile recipes;
@@ -42,6 +42,12 @@ scope, executed/reused checks, failures and unavailable checks. Input inconsiste
 passing evidence; a focused pass, format success or a single check does not prove full validation.
 Report `cost.wallSeconds` and the slowest Component/check steps with their current execution
 and lookup times. Use `cost.validation`, not historical reused check durations, for this round's cost.
+
+For past failures or slow checks, use `repocli validate history list` to select a run,
+then `repocli validate history show <runID>` for captured output, test timings and input evidence.
+Read [history diagnosis](references/spec.md#history-diagnosis) for filtering and interpretation.
+Query retained evidence before rerunning just to recover logs. Validate current changes normally;
+historical success does not establish that the current inputs pass.
 
 Read [the validation contract](references/spec.md) for result and Makefile semantics and
 [repocli](../../references/repocli.md) for installation and repository analysis.

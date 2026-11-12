@@ -126,6 +126,10 @@ The AI selects validation scope and runs the CLI directly; commit hooks do not e
 Automated repository queries prefer the CLI; SDKs cover operations without an equivalent CLI contract. Inspect the report before publishing code. See
 [validation](../skills/validate/SKILL.md) and [repository-toolkit](../docs/repository-toolkit.md).
 
+Use `repocli validate history list/show` for retained executions, logs, slow cases and input evidence;
+`validate --history` returns aggregate statistics. See
+[history diagnosis](../skills/validate/references/spec.md#history-diagnosis) for query semantics.
+
 ## Installation and compatibility
 
 Python entrypoints run through `<PLUGIN_ROOT>/scripts/python`. Its PEP 723 script
@@ -149,7 +153,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.76.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.77.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

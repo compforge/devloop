@@ -51,3 +51,37 @@ devloop does not import it into a commit gate or maintain a second reuse cache.
 See [repository-toolkit](../../../docs/repository-toolkit.md) for CLI/toolkit ownership
 and skill-led validation. An unsupported CLI contract stops validation;
 it does not trigger a second Make runner or a historical-protocol fallback.
+
+## History diagnosis
+
+Use a live checkout to identify the Repository. List retained executions, then inspect a run:
+
+```sh
+repocli validate history list --repo <repo> --check test --status failed --limit 20 --json
+repocli validate history list --repo <repo> --component <root> --checkout <checkout-path> --json
+repocli validate history show <runID> --repo <repo> --json
+```
+
+The default list spans all of that Repository's checkouts. `--checkout` matches an exact historical
+path, including a removed worktree; `--component` is a repository-relative root (`.` for the root).
+Omit `--status` when investigating slow checks regardless of success. Lists are newest first,
+not slowest first; use `data.total`, `data.hasMore` and `--offset` to navigate the retained records.
+Each actual execution appears once; reuse updates its counters without creating another execution.
+`repocli validate --history` provides aggregate statistics.
+
+In detail, `data.run` identifies checkout, Component/check, scope, status and input consistency;
+`data.result` contains the original command, file scope, captured stdout/stderr and `testTimings`.
+Use those timings to locate slow cases and compare focused selections. Parent/child timings and
+parallel tests can overlap, so do not sum them as wall time. `data.inputs` supplies snapshot and
+file digests; it does not expose source contents or environment values. JSON preserves the captured
+output; text shows bounded excerpts. Use `--output <file>` to retain the result when needed.
+
+A successful query can contain a failed historical check. Detail `data.complete` means evidence
+availability, not passing validation. On `partial`, keep the available run and report diagnostics
+for missing evidence. A missing run or a failed store read is not a successful empty history.
+`unfinished` means no completion event was retained; it does not prove the process is still running.
+
+Report historical execution from `data.run.durationSeconds` and result timings, separately from
+this query's `cost.wallSeconds` and `history.query` phase. Completion events are recorded after
+input verification, so subtracting run timestamps does not measure check execution.
+History informs diagnosis; RepoKit still decides reuse during normal validation of current inputs.

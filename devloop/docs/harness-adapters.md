@@ -57,13 +57,7 @@ npm --prefix devloop run build
 ```
 
 构建先生成公共 ESM/types，再将进程 hook 与其 repocli 依赖打包到 `dist/hooks/runtime.js`。
-Git marketplace 直接执行这个已提交产物。RepoKit 历史查询的 `fs-ext` 原生锁模块不能嵌入 JS bundle，
-安装或更新后显式运行 `scripts/setup-runtime`，按锁文件准备生产依赖并确认原生模块可加载。
-准备时使用 `--no-bin-links`，避免 npm executable symlink 导致 Codex 插件指纹检查拒绝加载；
-准备完成后再审核 hook 信任，因为依赖内容也参与插件指纹。
-Hook 运行时不下载依赖；缺少原生模块时保留其他 Board 内容并报告历史 unavailable。
-安装产物回归必须在隔离目录运行，不能借用源码 checkout 的 `node_modules`。
-npm 消费方通过 package exports 加载 `@compforge/devloop` 或 `@compforge/devloop/dsh`，DSH profile 通过包内声明的 bundle layer 自动加载后者。
+Git marketplace 直接执行这个已提交产物，不要求安装 `node_modules`，运行时不下载依赖；npm 消费方通过 package exports 加载 `@compforge/devloop` 或 `@compforge/devloop/dsh`，DSH profile 通过包内声明的 bundle layer 自动加载后者。
 
 原生仓库识别是异步操作，`inspectCatalog`、`defaultComponent`、`discoverComponents`、
 `resolveRepo`、`BoardRuntime.resolve` 和 `evaluateTool` 返回 Promise，调用方必须等待结果。

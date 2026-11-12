@@ -47,7 +47,19 @@ codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 
-Codex 如果要求审核 hook，可在 `/hooks` 中信任 devloop hooks。
+Codex 的 hook 审核在下述依赖准备完成后进行：在 `/hooks` 中检查并信任 devloop hooks。
+
+Claude/Codex 的 Git marketplace 安装和每次版本更新后，在安装目录执行：
+
+```sh
+sh <PLUGIN_ROOT>/scripts/setup-runtime
+```
+
+`<PLUGIN_ROOT>` 是 Harness 缓存中的插件目录；Codex 的 `codex plugin add devloop@devloop --json`
+返回 `installedPath`。该命令按锁文件准备生产依赖，并检查 `fs-ext` 原生锁模块可加载；需要 npm、
+Python 和 C/C++ 编译工具链，支持 Linux/macOS。安装禁用 npm executable links，避免 Codex
+因插件内的符号链接拒绝加载 hooks。首次准备需要联网。Hook 不自动安装依赖；
+未准备时，历史读取会明确显示 unavailable。准备成功后新开 session。
 
 ### DeepSeek Harness
 
@@ -182,6 +194,8 @@ codex plugin marketplace upgrade devloop
 codex plugin remove devloop@devloop
 codex plugin add devloop@devloop
 ```
+
+Claude/Codex 更新后，按快速开始中的说明在新安装目录重新执行 `scripts/setup-runtime`。
 
 更新后新开一个 session，使运行时重新加载 hooks 和 skills。用户级配置保存在 `~/.devloop/`，不会被插件更新删除。
 

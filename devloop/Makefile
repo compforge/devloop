@@ -7,6 +7,7 @@ format:
 lint:
 	uvx --from ruff==0.16.10 ruff check --select E9,F63,F7,F82 scripts
 	sh -n scripts/python
+	sh -n scripts/setup-runtime
 	npm run typecheck
 lint-ci: lint
 test:

@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+set -eu
+
+# Native RepoKit history locking cannot be embedded in the JavaScript hook bundle.
+# Prepare it explicitly at installation time; hooks never install dependencies.
+plugin_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$plugin_root"
+# Codex fingerprints plugin files and rejects npm's executable symlinks.
+npm ci --omit=dev --no-bin-links --no-audit --no-fund
+node -e 'require("fs-ext"); process.stdout.write("devloop runtime dependencies ready\n")'

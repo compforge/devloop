@@ -61,7 +61,15 @@ codex plugin marketplace add https://github.com/compforge/devloop.git
 codex plugin add devloop@devloop
 ```
 
-If Codex asks for hook review, open `/hooks` and trust the devloop hooks.
+After dependency setup below, open `/hooks` to review and trust devloop hooks if Codex requests it.
+
+After a Claude/Codex Git marketplace installation or version update, run
+`sh <PLUGIN_ROOT>/scripts/setup-runtime` in the installed plugin directory. For Codex,
+`codex plugin add devloop@devloop --json` returns that directory as `installedPath`.
+This prepares locked production dependencies and checks the native history lock module.
+Linux/macOS, npm, Python and a C/C++ build toolchain are required. Hooks do not install
+dependencies. Setup disables npm executable symlinks, which Codex rejects inside plugin contents.
+Start a new session after setup and hook review; see the [installation details](devloop/README.md#codex).
 
 ### DeepSeek Harness
 
@@ -146,6 +154,8 @@ codex plugin add devloop@devloop
 ```
 
 Start a new session after updating so the runtime reloads hooks and skills. User configuration under `~/.devloop/` is preserved.
+
+Run `sh <PLUGIN_ROOT>/scripts/setup-runtime` in the new plugin directory before starting that session.
 
 ## Plugins
 

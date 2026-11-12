@@ -85,12 +85,24 @@ def test_mismatching_or_unconfirmed_reports_never_authorize_preparation():
 
 
 def test_observation_and_environment_warnings_preserve_confirmed_checkout():
-    report = _ensure_report(ready=False, diagnostics=[{"code": "state.observation_unavailable", "message": "metadata unavailable"}])
-    report.update(outcome="partial", error={"message": "registry unavailable"})
+    # +case=Partial preparation preserves the checkout and each failed bin's path and diagnostic.
+    report = _ensure_report(ready=False,
+        diagnostics=[{"code": "state.observation_unavailable", "message": "metadata unavailable"}],
+        preparation={"complete": False, "bins": [
+            {"path": "node_modules", "status": "missing", "error": {"message": "registry unavailable"}, "stderr": "connection reset"},
+            {"path": ".venv", "status": "missing", "reason": "lockfile missing", "stderr": "inspect uv.lock"},
+            {"path": "cache", "status": "unknown", "error": None},
+            {"path": "ready-output", "status": "ready"},
+        ]})
+    report.update(outcome="partial", error={"message": "preparation incomplete"})
     with (patch.object(worktree.git_policy, "local_default_target", return_value="main"),
           patch.object(worktree, "_repocli", return_value=report) as invoke):
         path, message = worktree.create_or_reuse("/repo", "topic")
-    assert path is not None and "metadata unavailable" in message and "registry unavailable" in message
+    assert path == str(Path("/repo/.worktrees/topic").resolve())
+    for detail in ("metadata unavailable", "preparation incomplete", "node_modules: registry unavailable",
+                   "connection reset", ".venv: lockfile missing", "inspect uv.lock", "cache: unknown"):
+        assert detail in message, message
+    assert "ready-output" not in message
     assert invoke.call_count == 1
 
 

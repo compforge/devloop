@@ -44,12 +44,13 @@ def test_branch_maps_policy_to_cli_and_refreshes_confirmed_identity():
         release.assert_not_called()
 
 
-def test_branch_reuse_keeps_fork_policy_and_has_no_new_carry():
+def test_branch_reuse_refreshes_context_without_new_carry():
     with ExitStack() as stack:
         invoke, _, _, refresh = mocks(stack, {"outcome": "succeeded", "data": report(action="reused", writeAttempted=False)})
         result = create("HEAD", carry=False)
         assert not result.created and not result.carried_changes
         assert invoke.call_args.args[2] == ["topic", "--base", "HEAD"]
+        refresh.assert_called_once_with(REPO)
 
 
 # +case=A failed carry still updates the confirmed branch projection, retains owner and surfaces the exact recovery backup.

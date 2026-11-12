@@ -54,8 +54,11 @@ prompt scope 或重放行为。Requirement 等长期领域对象由 Baton Plugin
 
 Board 本体和 view 都不持久化事实副本。`DeliveryReceiptStore` 只保存每个 session 的
 条目 revision、次数和投递时间；这些数据可以安全删除或过期。repo、branch、PR 等事实仍由对应 owner 提供。
-验证历史由 RepoKit 保存；当前 SDK 尚无历史读取 API，Board 暂不展示该项，
-也不读取旧 `.devloop` 验证记录来推断是否执行过检查。
+验证历史由 RepoKit 保存，Board 通过其 TS 原生 API 读取当前 checkout 最近三次执行。
+列表按需携带输入摘要，与当前 snapshot 比较后展示源码 unchanged / changed / unknown；
+输入缺口不抹去已知执行，历史成功也不授予当前通过或复用结论。完整日志只在显式查询详情时读取。
+Board 不读取旧 `.devloop` 验证记录来推断是否执行过检查；查询预算或历史读取失败明确显示 unavailable，
+不当作没有历史。能力契约与调用边界见 [仓库工具包](repository-toolkit.md#验证与-pr-交付)。
 硬门禁继续读取 live truth，不依赖 Board 的展示视图或投递游标。
 
 ### 状态与事件分开重放

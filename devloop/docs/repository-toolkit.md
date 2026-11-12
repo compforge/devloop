@@ -23,8 +23,12 @@ repocli 默认在 RepoKit home（`REPOKIT_HOME` 或默认 `~/.repokit`）保存�
 AI 通过 `repocli validate history list/show` 查询保留的执行、日志、慢 case 和输入证据；
 `repocli validate --history` 提供汇总统计。历史用于诊断，当前输入的验证与复用仍由正常 validate 决定。
 查询与结果判读见 [验证历史诊断](../skills/validate/references/spec.md#history-diagnosis)。
-当前 TS/Python SDK 尚未提供验证历史读取 API，因此 Board 暂不展示验证历史；
-接入必须消费 RepoKit 公共原生读取 API，不读取 WAL 内部格式、不复制历史、不包装 CLI 子进程。
+Board 使用 RepoKit TS 原生 `listValidationRuns`，按 checkout 查询最近三次执行，
+以 `includeInputs` 一次取得本页输入摘要，再与当前 snapshot 比较。它不读取完整日志、
+不直接解析 WAL、不复制历史，也不包装 CLI 子进程。输入摘要完整不代表日志齐全；
+源码未变不证明工具链或外部输入未变，更不授予当前通过或复用结论。
+Go/TS 的支持范围与公共错误分类以 [RepoKit validation 契约](https://github.com/compforge/repokit/blob/main/docs/validation.md#原生历史查询-api-与存储边界) 为准；
+Python 尚未提供原生历史读取。
 Board 不读取 `.devloop/validation_results`、分支 lint/test 引用或 `validation_scope`。
 
 `gcampr` 是 skill 编排：验证 → managed commit/push → 原生 PR 创建或更新 → 检查并启动 review。

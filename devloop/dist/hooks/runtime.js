@@ -10124,9 +10124,9 @@ var Git = class _Git {
   }
   async catalog(head, staged) {
     const committed = head !== "" || staged;
-    const output2 = await this.run(head ? ["ls-tree", "-r", "-z", "--full-tree", head] : ["ls-files", "--stage", "-z"]);
+    const output = await this.run(head ? ["ls-tree", "-r", "-z", "--full-tree", head] : ["ls-files", "--stage", "-z"]);
     const entries = /* @__PURE__ */ new Map();
-    for (const entry of output2.toString().split("\0")) {
+    for (const entry of output.toString().split("\0")) {
       if (!entry)
         continue;
       const tab = entry.indexOf("	");
@@ -12562,6 +12562,36 @@ async function pullRequestContext(checkout, options = {}) {
   return connection.pullRequestContext(checkout, { source: origin.path, targets: options.targets, reader: options.reader });
 }
 
+// node_modules/@compforge/repokit/dist/validation/errors.js
+var ValidationHistoryError = class extends Error {
+  code;
+  op;
+  subject;
+  constructor(code, message, op, subject, cause) {
+    super(message, { cause });
+    this.code = code;
+    this.op = op;
+    this.subject = subject;
+    this.name = "ValidationHistoryError";
+  }
+};
+function historyError(error, op, subject, signal) {
+  if (error instanceof ValidationHistoryError)
+    return error;
+  const reason = signal?.aborted ? signal.reason : error;
+  const problem = reason;
+  let code = "validation.history_failed";
+  if (problem?.name === "TimeoutError" || problem?.cause?.name === "TimeoutError")
+    code = "execution.deadline_exceeded";
+  else if (signal?.aborted || problem?.name === "AbortError")
+    code = "execution.canceled";
+  else if (problem?.code === "EACCES" || problem?.code === "EPERM")
+    code = "filesystem.permission_denied";
+  else if (problem?.code === "ENOENT")
+    code = "filesystem.not_found";
+  return new ValidationHistoryError(code, error instanceof Error ? error.message : String(error), op, subject, error);
+}
+
 // node_modules/@compforge/repokit/dist/validation/history.js
 import { readFile as readFile3, realpath as realpath4 } from "node:fs/promises";
 import { join as join8, resolve as resolve3 } from "node:path";
@@ -12760,7 +12790,9 @@ function summary(run2) {
   };
 }
 function budget(options) {
-  const timeout = AbortSignal.timeout(options.timeoutMs ?? 5e3);
+  if (options.timeoutMs === void 0)
+    return options.signal ?? new AbortController().signal;
+  const timeout = AbortSignal.timeout(options.timeoutMs);
   return options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
 }
 async function location(repository2, options, signal) {
@@ -12783,104 +12815,82 @@ async function location(repository2, options, signal) {
   return { key, directory: join8(options.historyDir || join8(resolveHome(options.home), "repositories"), key) };
 }
 async function listValidationRuns(query) {
-  const limit = query.limit === void 0 || query.limit === 0 ? 20 : query.limit, offset = query.offset ?? 0;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0)
-    fail("Limit must be 1\u2013100 and offset must be nonnegative");
-  if (query.check && !["lint", "test"].includes(query.check))
-    fail("Check must be lint or test");
-  if (query.status && !["passed", "failed", "cancelled", "uncertain", "unfinished"].includes(query.status))
-    fail("Invalid run status");
-  const signal = budget(query), { key, directory } = await location(query.repository, query, signal);
-  let checkout = query.checkout ? resolve3(query.checkout) : "";
-  if (checkout) {
-    try {
-      checkout = await realpath4(checkout);
-    } catch (error) {
-      if (!missing2(error))
-        throw error;
-    }
-  }
-  return inspectHistory(directory, signal, async (events) => {
-    const runs = [];
-    for (const run2 of replay(events).values()) {
-      signal.throwIfAborted();
-      if (checkout && run2.start.checkout !== checkout || query.component && run2.start.component !== query.component || query.check && run2.check !== query.check)
-        continue;
-      const row = summary(run2);
-      if (!query.status || row.status === query.status)
-        runs.push(row);
-    }
-    runs.sort((a, b) => compareTime(b.startedAt, a.startedAt) || Buffer.compare(Buffer.from(a.runID), Buffer.from(b.runID)));
-    return { repository: key, runs: runs.slice(offset, offset + limit), total: runs.length, offset, limit, hasMore: offset + limit < runs.length };
-  });
-}
-async function output(path, id, signal) {
-  let data;
+  let signal;
+  const op = "validation.history.list";
+  const invalid = (message) => {
+    throw new ValidationHistoryError("validation.invalid_query", message, op, query.repository);
+  };
   try {
-    data = await readFile3(path, { encoding: "utf8", signal });
+    const limit = query.limit === void 0 || query.limit === 0 ? 20 : query.limit, offset = query.offset ?? 0;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0)
+      invalid("Limit must be 1\u2013100 and offset must be nonnegative");
+    if (query.check && !["lint", "test"].includes(query.check))
+      invalid("Check must be lint or test");
+    if (query.status && !["passed", "failed", "cancelled", "uncertain", "unfinished"].includes(query.status))
+      invalid("Invalid run status");
+    signal = budget(query);
+    const budgetSignal = signal, { key, directory } = await location(query.repository, query, budgetSignal);
+    let checkout = query.checkout ? resolve3(query.checkout) : "";
+    if (checkout) {
+      try {
+        checkout = await realpath4(checkout);
+      } catch (error) {
+        if (!missing2(error))
+          throw error;
+      }
+    }
+    return await inspectHistory(directory, budgetSignal, async (events) => {
+      const runs = [];
+      for (const run2 of replay(events).values()) {
+        budgetSignal.throwIfAborted();
+        if (checkout && run2.start.checkout !== checkout || query.component && run2.start.component !== query.component || query.check && run2.check !== query.check)
+          continue;
+        const row = summary(run2);
+        if (!query.status || row.status === query.status)
+          runs.push(row);
+      }
+      runs.sort((a, b) => compareTime(b.startedAt, a.startedAt) || Buffer.compare(Buffer.from(a.runID), Buffer.from(b.runID)));
+      const page = runs.slice(offset, offset + limit);
+      const selected = query.includeInputs ? await Promise.all(page.map(async (run2) => {
+        const evidence = await inputEvidence(directory, run2, budgetSignal);
+        const inputs = {
+          complete: evidence.inputs !== null,
+          diagnostics: evidence.diagnostics,
+          ...evidence.inputs ? { snapshot: evidence.inputs.snapshot } : {}
+        };
+        return { ...run2, inputs };
+      })) : page;
+      budgetSignal.throwIfAborted();
+      return { repository: key, runs: selected, total: runs.length, offset, limit, hasMore: offset + limit < runs.length };
+    });
   } catch (error) {
-    if (missing2(error))
-      return void 0;
-    throw error;
+    throw historyError(error, op, query.repository, signal);
   }
-  const lines = data.split("\n");
-  for (let i = 0; i < lines.length - 1; i++) {
-    signal.throwIfAborted();
-    const record2 = object4(JSON.parse(lines[i]));
-    if (record2.runID === id)
-      return text(record2.output);
-  }
-  if (lines.at(-1))
-    fail("Incomplete output record");
-  return void 0;
 }
-async function readValidationRun(repository2, runID, options = {}) {
-  if (!/^[A-Z2-7]+$/.test(runID))
-    fail("Invalid run ID");
-  const signal = budget(options), { key, directory } = await location(repository2, options, signal);
-  return inspectHistory(directory, signal, async (events) => {
-    const stored = replay(events).get(runID);
-    if (!stored)
-      throw Object.assign(new Error("Run is not present in retained repository history"), { code: "validation.run_not_found" });
-    const run2 = summary(stored), check = result(stored), diagnostics = [];
-    let inputs = null, stdout = "", stderr = "";
-    try {
-      if (!/^[A-Z2-7]+$/.test(run2.inputID))
-        fail("Invalid input record ID");
-      const raw = object4(JSON.parse(await readFile3(join8(directory, "inputs", run2.inputID + ".json"), { encoding: "utf8", signal })));
-      if (raw.schemaVersion !== 1 || raw.checkout !== run2.checkout || !text(raw.snapshot))
-        fail("Input manifest identity or schema is invalid");
-      object4(raw.files);
-      for (const value of Object.values(object4(raw.files))) {
-        const entry = object4(value);
-        text(entry.kind);
-        text(entry.digest);
-        if (entry.version != null && typeof entry.version !== "boolean")
-          fail("Invalid input version marker");
-      }
-      inputs = raw;
-    } catch (error) {
-      signal.throwIfAborted();
-      diagnostics.push({ artifact: "inputs", message: String(error) });
+async function inputEvidence(directory, run2, signal) {
+  let inputs = null;
+  const diagnostics = [];
+  try {
+    if (!/^[A-Z2-7]+$/.test(run2.inputID))
+      fail("Invalid input record ID");
+    const raw = object4(JSON.parse(await readFile3(join8(directory, "inputs", run2.inputID + ".json"), { encoding: "utf8", signal })));
+    if (raw.schemaVersion !== 1 || raw.checkout !== run2.checkout || !text(raw.snapshot))
+      fail("Input manifest identity or schema is invalid");
+    object4(raw.files);
+    for (const value of Object.values(object4(raw.files))) {
+      const entry = object4(value);
+      text(entry.kind);
+      text(entry.digest);
+      if (entry.version != null && typeof entry.version !== "boolean")
+        fail("Invalid input version marker");
     }
-    try {
-      const prefix = join8(directory, "logs", new Date(run2.startedAt).toISOString().slice(0, 10));
-      const out = await output(prefix + ".stdout.jsonl", runID, signal), err = await output(prefix + ".stderr.jsonl", runID, signal);
-      if (out !== void 0 && err !== void 0) {
-        stdout = out;
-        stderr = err;
-      } else if (out !== void 0 || err !== void 0)
-        fail("Incomplete daily output for run " + runID);
-      else {
-        stdout = await readFile3(join8(directory, "logs", runID, "stdout"), { encoding: "utf8", signal });
-        stderr = await readFile3(join8(directory, "logs", runID, "stderr"), { encoding: "utf8", signal });
-      }
-    } catch (error) {
-      signal.throwIfAborted();
-      diagnostics.push({ artifact: "output", message: String(error) });
-    }
-    return { repository: key, run: run2, result: { ...check, stdout, stderr }, inputs, complete: diagnostics.length === 0, diagnostics };
-  });
+    inputs = raw;
+  } catch (error) {
+    signal.throwIfAborted();
+    diagnostics.push({ artifact: "inputs", message: String(error) });
+  }
+  signal.throwIfAborted();
+  return { inputs, diagnostics };
 }
 
 // lib/repokit.ts
@@ -13916,13 +13926,12 @@ var Board = class {
 async function validationHistory(repo) {
   const signal = AbortSignal.timeout(1e3);
   try {
-    const history = await listValidationRuns({ repository: repo, checkout: repo, limit: 3, signal });
+    const history = await listValidationRuns({ repository: repo, checkout: repo, limit: 3, includeInputs: true, signal });
     if (!history.total) return { total: 0, runs: [] };
     const current = await snapshot(repo, { signal }).catch(() => void 0);
-    const runs = await Promise.all(history.runs.map(async (run2) => {
-      const detail = await readValidationRun(repo, run2.runID, { signal }).catch(() => void 0);
+    const runs = history.runs.map((run2) => {
       let sourceState = "unknown";
-      if (current?.complete && detail?.inputs) sourceState = current.digest === detail.inputs.snapshot ? "unchanged" : "changed";
+      if (current?.complete && run2.inputs?.complete) sourceState = current.digest === run2.inputs.snapshot ? "unchanged" : "changed";
       return {
         runID: run2.runID,
         component: run2.component,
@@ -13932,9 +13941,9 @@ async function validationHistory(repo) {
         startedAt: run2.startedAt,
         inputsConsistent: run2.inputsConsistent,
         sourceState,
-        evidenceComplete: detail?.complete ?? false
+        inputsComplete: run2.inputs?.complete ?? false
       };
-    }));
+    });
     return { total: history.total, hasMore: history.hasMore, runs };
   } catch (error) {
     return { error: `Validation history unavailable: ${error instanceof Error ? error.message : String(error)}` };

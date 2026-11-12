@@ -13,7 +13,15 @@ neither launches repocli nor requires validation records.
 
 Select the actual repository with `--repo <path>`. Repeat `--file <path>` for explicit, repo-relative
 commit scope, including untracked files. Existing staged files outside that scope cause refusal.
-Without `--file`, only tracked modifications are selected. Preserve unrelated staging.
+Paths are literal checkout-root-relative names; no cwd-based rebasing is performed.
+Without `--file`, only tracked modifications and existing staging are selected. A sensitive write
+in the complete candidate causes refusal; sensitive deletions remain allowed. Preserve unrelated staging.
+
+The managed transaction consumes `repocli git commit plan/create` (CLI 0.76.0+). It checks policy
+against the candidate and passes its frozen branch/head/tree/index fingerprint back for creation.
+Hooks still run natively; a changed tree or unknown result stops publication. Use the reported
+`git commit check` identity and recovery path before retrying; confirmed commits are never recreated
+merely because index installation or a later workflow action failed.
 
 Pass `--message` or `--message-file`; fully overwrite the one-shot `<repo>/.devloop/commit_msg`
 for multiline text and pass that path. It is removed after success and retained after failure.

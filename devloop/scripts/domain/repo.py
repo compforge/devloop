@@ -30,7 +30,7 @@ from pathlib import Path
 
 from domain import repo_layout
 
-from . import repo_layout, staging, workspace
+from . import repo_layout, workspace
 from .context import RepoContext, WorkspaceContext
 from .context.session import active_repo_candidates, load_active_repo
 from .context.workspace import workspace_for_repo
@@ -63,14 +63,6 @@ class RepoResolution:
     path: str | None = None
     candidates: tuple[tuple[str, str], ...] = ()
     reason: str = ""
-
-
-def changed_paths_in_scope(git_root: str | Path, scopes: list[str]) -> list[str] | None:
-    """Use the same literal file selection as staging; failed observation is unknown."""
-    try:
-        return list(staging.select(str(git_root), scopes).paths)
-    except (OSError, ValueError, subprocess.SubprocessError, staging.StagingError):
-        return None
 
 
 def committed_paths(git_root: str | Path, rev: str = "HEAD") -> list[str] | None:

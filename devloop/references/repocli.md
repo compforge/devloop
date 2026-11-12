@@ -43,6 +43,26 @@ Unfinished operations block another create for that name. After deliberate manua
 `recoveryPath` before reusing the operation; keep the stash until its contents are accounted for.
 The devloop branch entrypoint adds session ownership and fork policy around this CLI operation.
 
+## Commit
+
+`repocli git commit plan --mode staged|tracked|files [--file <root-relative-literal>]` returns
+branch/head/tree/indexFingerprint and complete candidate changes without installing the index.
+`staged` preserves partial staging; `tracked` omits untracked files; `files` includes explicit
+non-ignored files/directories and rejects any staged content outside scope. Inspect the complete
+candidate before authorizing it. Plan can run clean filters and write Git objects.
+
+`repocli git commit create` takes the same selection plus `--branch`, `--head`, `--tree`,
+`--index-fingerprint` and `--message` or `--message-file`. Require matching checkout and intent,
+`confirmed=true`, actual tree/parents matching the plan and `indexInstalled=true` before continuing.
+Native Git hooks can change messages; changed commit trees are reported as mismatches without
+resetting the commit. A confirmed commit with an uninstalled index needs repair, never another commit.
+
+For unknown output, use `repocli git commit check --repo <checkout> --branch <original> --head <parent>
+--tree <planned-tree>`. Keep the original intent; do not substitute current HEAD. Check is read-only;
+known different content has `confirmed=false`. Inspect `recoveryPath` when returned. Initial commits
+use `head=unborn`. Devloop retains sensitive-path, session and lifecycle policies; it owns no index
+transaction and has no SDK commit fallback.
+
 ## Branch publication
 
 `repocli git push --branch <source> --commit <full-sha> --remote origin [--target <destination>] [--set-upstream] --repo <checkout> --json`
@@ -129,7 +149,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.75.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.76.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

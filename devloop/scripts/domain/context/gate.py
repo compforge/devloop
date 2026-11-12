@@ -4,8 +4,9 @@ from domain import git_policy
 
 from dataclasses import dataclass
 
+from repokit import state as repository_state
 from repokit.git import state as git_state
-from . import prstate, store
+from . import prstate
 from .base import PullRequest
 
 
@@ -16,7 +17,7 @@ class GateView:
     git_root: str
     branch: str | None        # LIVE current branch (None on detached HEAD)
     head_sha: str             # LIVE HEAD sha
-    target: str               # canonical trunk (stable → from the cached branch segment)
+    target: str               # RepoKit default branch, otherwise the workflow fallback
     provider: str
     active_pr: PullRequest | None
 
@@ -38,14 +39,11 @@ def evaluate(git_root: str) -> GateView:
     head = git_state.get_head_sha(git_root)
     provider, association = prstate.checkout_pr(git_root, required=True)
     active_pr = association.selected if association else None
+    # RepoKit owns default-branch observations; devloop only chooses the unknown-target fallback.
+    target = repository_state.default_branch(git_root).branch or git_policy.local_default_target(git_root)
 
     if git_state.get_current_branch(git_root) != branch or git_state.get_head_sha(git_root) != head:
         raise OSError("checkout changed during PR decision")
-
-    # target is stable (the repo's trunk) → read the cached repo fact (meta.default_branch, the
-    # single source); only identity must be live. Fall back to a live local derive if uninitialized.
-    mseg = store.load_segment(git_root, "meta") or {}
-    target = (mseg.get("repo") or {}).get("default_branch") or git_policy.local_default_target(git_root)
 
     return GateView(
         git_root=str(git_root),

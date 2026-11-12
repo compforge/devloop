@@ -134,7 +134,7 @@ Use `repocli validate history list/show` for retained executions, logs, slow cas
 ## Installation and compatibility
 
 Python entrypoints run through `<PLUGIN_ROOT>/scripts/python`. Its PEP 723 script
-declares a compatible toolkit version range; the adjacent lockfile records the resolved
+declares the toolkit requirement; the adjacent lockfile records the resolved
 toolkit and transitive versions used for validation. uv owns the cached script environment,
 outside both the plugin installation and the inspected repository;
 it does not select the target project's virtual environment or uv configuration.
@@ -145,7 +145,7 @@ Warm the environment before offline work:
 <PLUGIN_ROOT>/scripts/python -c 'import repokit'
 ```
 
-Update the pinned PyPI version in `devloop/scripts/_python.py`, then run
+Update the pinned package version or immutable source revision in `devloop/scripts/_python.py`, then run
 `uv lock --script devloop/scripts/_python.py`.
 For the TypeScript library, use `npm update @compforge/repokit` in the plugin directory.
 Validate the resulting dependencies before committing either lockfile. Keep the Python
@@ -236,7 +236,7 @@ RepoKit owns Forge instance/provider, API host and credentials in `<home>/config
 Devloop does not load access settings or inject token environment variables. SDK fallbacks use
 RepoKit configuration; workflow configuration only selects the PR target repository.
 This workflow requires Python RepoKit 0.27.0 and TypeScript RepoKit 0.20.0.
-The Python lock currently selects an immutable RepoKit source revision containing 0.27.0;
+The Python lock selects a merged RepoKit source revision containing SDK 0.27.0 and its review fixes;
 after that SDK is published, replace the source requirement with the released version and regenerate the lock.
 
 ## Discussions

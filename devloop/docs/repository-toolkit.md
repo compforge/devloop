@@ -20,10 +20,12 @@ CLI 缺失或检查失败应明确报告，不能换一个执行器声称通过�
 commit/push 脚本不自动执行检查，也不消费验证记录作为门禁。
 
 repocli 默认在 RepoKit home（`REPOKIT_HOME` 或默认 `~/.repokit`）保存执行历史。devloop 不装配第二套验证输入、回执或复用缓存。
-Board 不再读取旧 `.devloop/validation_results`、分支 lint/test 引用或 `validation_scope`。
-当前 TS/Python SDK 尚未提供验证历史读取 API，因此 Board 暂不展示验证历史；历史查询使用
-`repocli validate --history`。恢复展示必须消费 RepoKit 公共读取 API，不读取 WAL 内部格式、
-不复制历史、不包装 CLI 子进程。旧磁盘记录保留，但不再参与展示或决策。
+AI 通过 `repocli validate history list/show` 查询保留的执行、日志、慢 case 和输入证据；
+`repocli validate --history` 提供汇总统计。历史用于诊断，当前输入的验证与复用仍由正常 validate 决定。
+查询与结果判读见 [验证历史诊断](../skills/validate/references/spec.md#history-diagnosis)。
+当前 TS/Python SDK 尚未提供验证历史读取 API，因此 Board 暂不展示验证历史；
+接入必须消费 RepoKit 公共原生读取 API，不读取 WAL 内部格式、不复制历史、不包装 CLI 子进程。
+Board 不读取 `.devloop/validation_results`、分支 lint/test 引用或 `validation_scope`。
 
 `gcampr` 是 skill 编排：验证 → managed commit/push → 原生 PR 创建或更新 → 检查并启动 review。
 PR 标题、正文和目标仓由 AI 显式传给 CLI，不自动把 commit message 追加到已有 PR。

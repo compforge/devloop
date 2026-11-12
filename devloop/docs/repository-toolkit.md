@@ -31,13 +31,19 @@ CLI 和 SDK 均由 RepoKit 的 `<home>/config.json` 解析 Forge 访问配置；
 
 ## Managed Git 事务
 
-提交范围、敏感文件、checkout owner、保护分支与外来提交检查由 devloop 负责，Git 动作由 RepoKit 执行。
-普通分支发布调用 `repocli git push`，携带冻结的源 commit；只有同一目标远端 SHA 核验一致才确认发布。
-响应未知使用相同 commit 的 `--check` 观察，不回退 SDK push、不自动重试。upstream 配置失败以 warning 保留已确认发布。
-显式 `--file` 限定完整 index 的路径范围；目录先展开成文件再检查敏感路径。
-已暂存的敏感文件删除允许提交，留在工作区的文件不会重新加入 index。
-候选 index 与 gitlink 注册检查通过后才安装 index；拒绝时保留原有暂存和部分 hunk。
-commit 失败也保留已经验证的 index 供检查。
+提交范围由调用方选择，路径解释、候选 index、gitlink 注册和提交核验由 RepoKit 负责。
+`domain.commit` 消费 `repocli git commit plan/create`，只检查敏感路径及返回身份；保护分支、
+checkout owner、PR 生命周期和外来提交检查仍归 devloop。预览固定 branch、父 commit、tree 和
+index 指纹，pre_commit hook 消费同一份路径；hook 改变输入时 create 拒绝并要求重新审查。
+不传 `--file` 使用 tracked 模式；显式参数是 checkout 根相对字面路径，目录由 CLI 展开，
+不再猜测调用 cwd。范围外已有暂存拒绝提交；候选敏感写入整体拒绝，不悄悄过滤，敏感删除允许。
+
+原生 Git hooks 由 CLI 执行。只有实际 commit 的父版本和 tree 匹配计划，且 index 安装完成，
+managed flow 才继续；hook 改变提交树、未知响应或 index 安装失败会停止并展示核验/恢复指引。
+已经生成的 commit 不自动 reset 或重做。失败候选由 RepoKit 保存在 Git 目录，devloop 不另存事务。
+普通分支发布调用 `repocli git push`，直接携带刚确认的 commit；没有新提交时才读取当前 branch tip。
+只有同一目标远端 SHA 核验一致才确认发布。响应未知使用原 SHA 观察，不回退 SDK、不自动重试。
+upstream 配置失败以 warning 保留已确认发布。
 
 新工作从显式目标基线创建分支。RepoKit 提供默认分支与远端 HEAD 缓存；明确缺失时才可按开发策略
 回退到本地 main/master。读取失败不是缺失，不允许借此绕过保护。

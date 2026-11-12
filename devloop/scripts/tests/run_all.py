@@ -20,7 +20,7 @@ MODULES = [
     "test_branch",
     "test_publish",
     "test_git_policy",
-    "test_staging",
+    "test_commit",
     "test_worktree",
     "test_pr_observation",
     "test_rebase",

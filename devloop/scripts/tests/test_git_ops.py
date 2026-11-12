@@ -24,75 +24,10 @@ def test_workflow_entrypoints_are_executable():
 
 
 def test_sensitive_filter():
-    from domain.staging import is_sensitive
+    from domain.commit import is_sensitive
     assert is_sensitive(".env") and is_sensitive("sub/.env.local")
     assert is_sensitive("a/.idea/x") and is_sensitive("pkg/__pycache__/m.pyc")
     assert not is_sensitive("src/main.py") and not is_sensitive("README.md")
-
-def test_gitlink_guard_exempts_registered_submodule():
-    """160000 守卫只拦**未注册**的嵌套仓（误 add 的 accident）；`.gitmodules` 注册过的
-    submodule 指针 bump 是合法提交（super-repo 的本职就是 bump 指针），放行。"""
-    sgo = _load_script("commit_flow")
-    R = "/tmp/dlut_gitlink"; shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
-    _git(R, "init", "-q"); _git(R, "config", "user.email", "t@t.t"); _git(R, "config", "user.name", "t")
-    Path(f"{R}/README").write_text("x"); _git(R, "add", "README"); _git(R, "commit", "-qm", "init")
-    # 嵌套一个独立 git 仓：git add 会把它作为 160000 gitlink 收进 index
-    S = f"{R}/sub"; os.makedirs(S)
-    _git(S, "init", "-q"); _git(S, "config", "user.email", "t@t.t"); _git(S, "config", "user.name", "t")
-    Path(f"{S}/f").write_text("1"); _git(S, "add", "f"); _git(S, "commit", "-qm", "s")
-    # 未注册 → 拦，且 index 保持原样
-    try:
-        sgo.stage(R, [], [])
-        assert False, "expected SmartError for unregistered gitlink"
-    except sgo.SmartError as e:
-        assert "gitlink" in str(e)
-    assert _git_out(R, "diff", "--cached", "--name-only") == ""
-    # 注册进 .gitmodules → 放行，gitlink 留在 index
-    Path(f"{R}/.gitmodules").write_text('[submodule "sub"]\n\tpath = sub\n\turl = ./sub\n')
-    sgo.stage(R, [], [])
-    assert "sub" in _git_out(R, "diff", "--cached", "--name-only").splitlines()
-
-def test_staging_preserves_literal_paths_and_sensitive_policy():
-    from tempfile import TemporaryDirectory
-    from repokit.git.index import staged_changes
-
-    sgo = _load_script("commit_flow")
-    with TemporaryDirectory() as repo:
-        _git(repo, "init", "-q")
-        _git(repo, "config", "user.email", "fixture@example.invalid")
-        _git(repo, "config", "user.name", "Fixture")
-        names = ['line\nbreak.py', ' literal -> 中文.py ', 'quote".py', '[a].py']
-        for name in names:
-            Path(repo, name).write_text("base")
-        Path(repo, "nested").mkdir()
-        Path(repo, "nested/.env").write_text("sensitive")
-        Path(repo, "nested/code.py").write_text("code")
-        plan = []
-        sgo.stage(repo, [], plan)
-        assert {e.path for e in staged_changes(repo)} == {*names, "nested/code.py"}
-        assert any("skipped sensitive: nested/.env" in line for line in plan)
-        _git(repo, "commit", "-qm", "base")
-        # A missing explicit path is resolved against the invocation directory
-        # using tracked deletion facts, without stripping whitespace or escapes.
-        Path(repo, "nested/code.py").unlink()
-        assert sgo.normalize_files(repo, ["code.py"], Path(repo, "nested"), []) == ["nested/code.py"]
-        name = names[0]
-        renamed = 'renamed\nfile.py'
-        _git(repo, "mv", name, renamed)
-        sgo.stage(repo, [], [])
-        assert {e.path for e in staged_changes(repo)} == {name, renamed, "nested/code.py"}
-
-
-def test_failed_git_facts_do_not_become_empty_staging():
-    from tempfile import TemporaryDirectory
-    sgo = _load_script("commit_flow")
-    with TemporaryDirectory() as directory:
-        try:
-            sgo.stage(directory, [], [])
-        except OSError:
-            pass
-        else:
-            raise AssertionError("failed status must not become nothing to stage")
 
 
 def test_decide_branch_is_intent_driven():
@@ -213,60 +148,6 @@ def test_prepare_branch_reads_gate_pr_state():
     assert res.branch == "feat/a" and res.cut is False
     assert any("continuing in-flight PR #7" in line for line in plan)
 
-def test_normalize_files_rebase():
-    """--file 自动 rebase 到 repo-root 相对路径——调用方从 workspace 根 / server 子目录
-    传来的路径不再死于裸 `git add` 报错;git 不认识的不存在路径保持原样。"""
-    sgo = _load_script("commit_flow")
-    R = "/tmp/dlut_nf"
-    shutil.rmtree(R, ignore_errors=True)
-    os.makedirs(f"{R}/repo/server", exist_ok=True)
-    _git(f"{R}/repo", "init", "-q")
-    Path(f"{R}/repo/server/a.py").write_text("x")
-    plan: list[str] = []
-    assert sgo.normalize_files(f"{R}/repo", [f"{R}/repo/server/a.py"], "/", plan) == ["server/a.py"]
-    assert any("rebased" in line for line in plan)
-    assert sgo.normalize_files(f"{R}/repo", ["a.py"], f"{R}/repo/server", []) == ["server/a.py"]
-    assert sgo.normalize_files(f"{R}/repo", ["server/a.py"], "/", []) == ["server/a.py"]   # 已正确 → 不动
-    assert sgo.normalize_files(f"{R}/repo", ["gone.py"], "/", []) == ["gone.py"]           # 不存在 → 不动
-
-def test_normalize_files_deleted_path_rebase():
-    """已删除文件以 cwd 相对路径传入 --file 时也能 rebase——存在性检查对删除文件
-    永远打不中(两边都不存在),改查 git 删除清单(ls-files -d);未跟踪的不存在路径
-    仍原样透传,交给 git 报 pathspec。"""
-    sgo = _load_script("commit_flow")
-    R = "/tmp/dlut_nfd"
-    shutil.rmtree(R, ignore_errors=True)
-    os.makedirs(f"{R}/repo/server", exist_ok=True)
-    repo = f"{R}/repo"
-    _git(repo, "init", "-q"); _git(repo, "config", "user.email", "t@t.t"); _git(repo, "config", "user.name", "t")
-    Path(f"{repo}/server/a.py").write_text("x")
-    _git(repo, "add", "server/a.py"); _git(repo, "commit", "-qm", "i")
-    os.remove(f"{repo}/server/a.py")
-    plan: list[str] = []
-    assert sgo.normalize_files(repo, ["a.py"], f"{repo}/server", plan) == ["server/a.py"]
-    assert any("rebased" in line for line in plan)
-    assert sgo.normalize_files(repo, ["server/a.py"], "/", []) == ["server/a.py"]  # 已是 repo 相对 → 不动
-    assert sgo.normalize_files(repo, ["gone.py"], f"{repo}/server", []) == ["gone.py"]  # 未跟踪 → 不动
-
-def test_version_bump_mix_hint():
-    """版本 bump 与功能文件混在同一 commit → PLAN 软提示(不拦);单独 bump 不提示。"""
-    sgo = _load_script("commit_flow")
-    R = "/tmp/dlut_vb"
-    shutil.rmtree(R, ignore_errors=True); os.makedirs(R)
-    _git(R, "init", "-q"); _git(R, "config", "user.email", "t@t.t"); _git(R, "config", "user.name", "t")
-    Path(f"{R}/pyproject.toml").write_text('version = "0.0.1"\n')
-    Path(f"{R}/a.py").write_text("x = 1\n")
-    _git(R, "add", "."); _git(R, "commit", "-qm", "i")
-    Path(f"{R}/pyproject.toml").write_text('version = "0.0.2"\n')
-    Path(f"{R}/a.py").write_text("x = 2\n")
-    _git(R, "add", ".")
-    plan: list[str] = []
-    sgo.warn_mixed_version_bump(R, plan)
-    assert any("version bump" in line for line in plan)
-    _git(R, "reset", "-q"); _git(R, "add", "pyproject.toml")
-    plan = []
-    sgo.warn_mixed_version_bump(R, plan)
-    assert plan == []
 
 def test_message_file_and_stdin_input():
     """Commit message via --message-file (path) or -F - (stdin) — the shell-escaping-free path
@@ -347,10 +228,14 @@ def test_commit_flow_retains_scratch_on_failure_and_cleans_on_success():
     finally:
         sgo.prepare_branch = original_prepare
 
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    from unittest.mock import patch
+    from domain.commit import Prepared
+    prepared = Prepared(R, "main", "a"*40, "b"*40, "c"*64, "tracked", (), ("a",))
+    with patch.object(sgo.commit_domain, "prepare", return_value=prepared), patch.object(sgo.commit_domain, "create", return_value="d"*40) as commit, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         assert sgo.main(["commit", "--message-file", str(scratch), "--repo", R]) == 0
+        assert commit.call_args.args[1] == "fix: preserve retry input\n\nExplain why."
     assert not scratch.exists()
-    assert _git_out(R, "log", "-1", "--format=%B") == "fix: preserve retry input\n\nExplain why."
+
 
 def test_push_requires_cli_but_does_not_run_validation():
     # +case=`push-cli-unavailable` +link=`component://docs/repository-toolkit.md`
@@ -473,16 +358,6 @@ def test_cli_argparser_hint_only_on_unrecognized():
     with contextlib.redirect_stderr(err2), contextlib.suppress(SystemExit):
         ap.parse_args(["zzz"])                         # bad choice → no hint
     assert "USE --message-file" not in err2.getvalue()
-
-
-def test_uncertain_git_operation_stops_commit_flow():
-    from repokit.git import GitResult
-    flow = _load_script("commit_flow")
-    try:
-        flow.check_operation(GitResult(-1, "", "timeout", uncertain=True))
-        assert False
-    except flow.SmartError as exc:
-        assert "outcome unknown" in str(exc)
 
 
 if __name__ == "__main__":

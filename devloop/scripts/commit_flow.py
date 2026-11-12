@@ -9,21 +9,19 @@ Fresh branches use an explicit base, and pushes reject unintended foreign commit
 """
 from __future__ import annotations
 from domain import git_policy
-from repokit import git as operations
-from repokit.git import index as git_index
 
 import argparse
 import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from domain import branch as branch_domain, lifecycle, repo as repo_model, staging  # noqa: E402
+from domain import branch as branch_domain, lifecycle, repo as repo_model, commit as commit_domain  # noqa: E402
 from domain.context import RepoContext, gate, record_active_repo, store
 from domain.forge import ForgeError, PullRequest, pr_label  # noqa: E402
 import command as cli
@@ -72,6 +70,7 @@ class BranchResult:
 @dataclass(frozen=True)
 class StageResult:
     committed: bool
+    commit: str = ""
 
 
 def decide_branch(
@@ -99,90 +98,6 @@ def decide_branch(
     if protected or stale:
         return ("error", "protected branch" if protected else "current branch's MR is merged/closed")
     return ("continue", None)
-
-
-def normalize_files(repo: str, files: list[str], invoke_cwd: str | Path, plan: list[str]) -> list[str]:
-    """Rebase explicit --file entries onto repo-root-relative paths.
-
-    `git add` runs at the repo root, but callers pass paths relative to wherever they
-    happened to run (the workspace root, a server/ code dir, ...) — a mis-based path
-    used to die with a raw `git add` error. Rewrite absolute paths and paths that exist
-    relative to the invoking cwd (but not the repo root); for paths that exist nowhere
-    (a deletion staged by name), fall back to a syntactic rebase validated against
-    git's own deletion list — anything else is left for git to report.
-    """
-    repo_real = Path(repo).resolve()
-    deleted: set[str] | None = None   # lazy: only fetched when an existence check misses
-    out: list[str] = []
-    for f in files:
-        p = Path(os.path.expanduser(f))
-        rebased: Path | None = None
-        if p.is_absolute():
-            try:
-                rebased = (p.parent.resolve() / p.name).relative_to(repo_real)
-            except ValueError:
-                pass   # outside the repo — let git report it
-        elif not (repo_real / f).exists():
-            cand = Path(invoke_cwd) / f
-            if cand.exists():
-                try:
-                    rebased = (cand.parent.resolve() / cand.name).relative_to(repo_real)
-                except ValueError:
-                    pass
-            else:
-                # Deleted file: exists at neither base, so the existence-based rebase above
-                # can never fire for it — and a cwd-relative --file entry for one used to
-                # die as a raw pathspec error, failing the whole batch `git add`. Resolve
-                # syntactically and accept only paths git itself reports as deleted-tracked.
-                if deleted is None:
-                    deleted = set(git_index.deleted_tracked_paths(repo))
-                if deleted:
-                    try:
-                        rel = (cand.parent.resolve() / cand.name).relative_to(repo_real)
-                    except ValueError:
-                        pass   # invoke_cwd outside the repo — can't form an in-repo path
-                    else:
-                        if str(rel) in deleted:
-                            rebased = rel
-        if rebased is not None and str(rebased) != f:
-            plan.append(f"rebased --file path: {f} → {rebased}")
-            out.append(str(rebased))
-        else:
-            out.append(f)
-    return out
-
-
-def stage(repo: str, files: list[str], plan: list[str]) -> None:
-    try:
-        check_operation(staging.stage(repo, files, plan))
-    except staging.StagingError as exc:
-        raise SmartError(str(exc)) from exc
-
-
-_VERSION_BASENAMES = {"pyproject.toml", "package.json", "plugin.json", "VERSION", "version.py", "__version__.py"}
-_VERSION_LINE_RE = re.compile(r'^[+-]\s*"?version"?\s*[:=]', re.IGNORECASE)
-
-
-def warn_mixed_version_bump(repo: str, plan: list[str]) -> None:
-    """Soft hint (a PLAN line, never a block): a version bump riding along with feature
-    files is the 'tangled bump needs a manual discard later' friction — flag it so the
-    caller can split with repeatable --file when the bump is unrelated. Amend/release commits
-    that intentionally pair them just read past the note."""
-    staged = [change.path for change in git_index.staged_changes(repo)]
-    vfiles = [f for f in staged if Path(f).name in _VERSION_BASENAMES]
-    others = [f for f in staged if Path(f).name not in _VERSION_BASENAMES]
-    if not vfiles or not others:
-        return
-    bumped = [
-        f for f in vfiles
-        if any(_VERSION_LINE_RE.match(line)
-               for line in git_index.staged_patch(repo, f).splitlines())
-    ]
-    if bumped:
-        plan.append(
-            f"note: version bump in {', '.join(bumped)} is mixed with {len(others)} other file(s) — "
-            "if the bump is unrelated, split it out with --file"
-        )
 
 
 def resolve_intent(ns: argparse.Namespace, invoke_cwd: str) -> GitIntent:
@@ -276,19 +191,9 @@ def prepare_branch(intent: GitIntent, gv: gate.GateView, plan: list[str]) -> Bra
     return BranchResult(branch=gv.branch or "", cut=False)
 
 
-def stage_and_commit(intent: GitIntent, plan: list[str]) -> StageResult:
-    """Phase 3: stage (sensitive blocklist + gitlink guard), commit when anything is staged.
-    `intent.files` 已在 main() 归一过（仓根相对）——这里不再自己归一，否则 gate 与 staging
-    会各拿一份、且 PLAN 重复报 rebase。"""
-    stage(intent.repo, intent.files, plan)
-    warn_mixed_version_bump(intent.repo, plan)
-    staged = git_index.staged_changes(intent.repo)
-    if not staged:
-        plan.append("nothing staged — skipped commit")
-        return StageResult(committed=False)
-    check_operation(operations.commit(intent.repo, intent.message))
-    plan.append("committed")
-    return StageResult(committed=True)
+def stage_and_commit(intent: GitIntent, prepared: commit_domain.Prepared, plan: list[str]) -> StageResult:
+    commit = commit_domain.create(prepared, intent.message, plan)
+    return StageResult(bool(commit), commit)
 
 
 def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: list[str]) -> None:
@@ -311,15 +216,15 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
             )
 
     if intent.mode == "push":
-        publish_branch(repo, current, plan)
+        publish_branch(repo, current, plan, staged.commit)
 
 
-def publish_branch(repo: str, branch: str, plan: list[str]) -> None:
+def publish_branch(repo: str, branch: str, plan: list[str], expected_commit: str = "") -> None:
     """+spec=Publish one frozen commit through RepoCLI; only matching remote evidence confirms success, including after a lost push response.
 
     +link=component://devloop/docs/repository-toolkit.md
     """
-    commit = git_state.rev_parse(repo, f"refs/heads/{branch}")
+    commit = expected_commit or git_state.rev_parse(repo, f"refs/heads/{branch}")
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
         raise SmartError("cannot freeze the source branch commit before publication")
     recovery = f"repocli git push --branch {branch!r} --commit {commit} --remote origin --check"
@@ -428,38 +333,15 @@ def _build_parser() -> cli.ArgParser:
     )
     ap.add_argument(
         "--file", "-f", action="append", default=[], metavar="PATH",
-        help="explicit file to stage; repeat for multiple paths",
+        help="literal checkout-root-relative file/directory; repeat to select the complete commit scope",
     )
     cli.add_repo_arg(ap, positional=False)  # --repo/-r only; gcampr takes no positional repo
     return ap
 
 
-def phase_paths(intent: GitIntent, phase: str) -> list[str] | None:
-    """本相位的「本次改动」是哪些文件（仓相对）——**每个相位的答案不同**，且只有这里知道。
-
-    工作树、刚提交的 commit 和 PR 分支对应不同范围；工作流在相位边界冻结路径，
-    action 不重新猜测这次操作涉及哪些文件。
-
-    - `pre_commit`：**将要提交的**那些文件。`--file` 给了则把同一 staging scope 展开成其中真实
-      改动的叶子文件——不是「工作树里所有脏文件」：后者是超集，会把你压根不打算提交的 component
-      交给当前 action。文件选择与 staging 保持一致。
-      没给 `--file` → 冻结当前工作树改动。
-    - `post_commit`：刚落地的那个 commit 自身。
-    """
-    if phase == "pre_commit":
-        paths = repo_model.changed_paths_in_scope(intent.repo, intent.files)
-        return paths if intent.files else (paths or None)
-    if phase == "post_commit":
-        return repo_model.committed_paths(intent.repo)
-    # 新相位必须在上面显式选一种取法。**不 fallthrough 到分支范围**：那会让一个未来的相位
-    # （如 pre_push）悄悄拿到「整条分支」的语义而看不出问题——而「每个相位的答案不同」正是本
-    # 函数存在的全部理由，默认值一填就把这个约定架空了。None = 不知道 → handler 保守全跑。
-    return None
-
-
-def run_lifecycle_gate(intent: GitIntent, phase: str, plan: list[str]) -> lifecycle.DispatchResult:
+def run_lifecycle_gate(intent: GitIntent, phase: str, paths: list[str], plan: list[str]) -> lifecycle.DispatchResult:
     """Run lifecycle actions; skill instructions own validation before publication."""
-    res = lifecycle.dispatch(phase, intent.repo, paths=phase_paths(intent, phase))
+    res = lifecycle.dispatch(phase, intent.repo, paths=paths)
     if not res.results:
         return res
 
@@ -526,25 +408,17 @@ def main(argv: list[str]) -> int:
         f"mode={intent.mode} repo={Path(intent.repo).name} ({intent.source}) "
         f"branch={gv.branch} target={intent.target}"
     ]
-    # `--file` 在这里归一**一次**（仓根相对）：pre_commit action 拿它当操作范围、staging 拿它
-    # 当 `git add` 目标——两处必须是同一份，各自归一必然漂。`GitIntent` 的契约本就是
-    # 「resolved ONCE from argv + state」，`files` 此前是唯一一个还生着的字段（原地归一在
-    # stage_and_commit 里，gate 比它早跑，压根看不到）。
     try:
-        if intent.files:
-            intent = replace(intent, files=normalize_files(intent.repo, intent.files, intent.invoke_cwd, plan))
-        # signal hook（如 review）可配在任意相位（由 config 决定）；每相位的 relay 在它所「裹」的
-        # git 动作完成后 detach 起：pre/post_commit 在 commit 后。
-        # review 的 MR 评论是机会性的——relay 跑时查到分支有开放 MR 就发，没有就只落 review.json。
         branch = prepare_branch(intent, gv, plan)
-        pre_c = run_lifecycle_gate(intent, "pre_commit", plan)   # configured lifecycle actions
-        staged = stage_and_commit(intent, plan)
+        prepared = commit_domain.prepare(intent.repo, branch.branch, intent.files)
+        pre_c = run_lifecycle_gate(intent, "pre_commit", list(prepared.paths), plan)   # configured lifecycle actions
+        staged = stage_and_commit(intent, prepared, plan)
         if staged.committed:
-            post_c = run_lifecycle_gate(intent, "post_commit", plan)
+            post_c = run_lifecycle_gate(intent, "post_commit", list(prepared.paths), plan)
             launch_background_relays(pre_c.to_launch + post_c.to_launch, intent.repo, plan)
         publish(intent, branch, staged, plan)
         RepoContext.refresh_branch(intent.repo)
-    except (SmartError, OSError) as e:
+    except (SmartError, commit_domain.CommitError, OSError) as e:
         _banner(plan)
         print(f"\n✗ {e}", file=sys.stderr)
         return 1
@@ -558,12 +432,6 @@ def _banner(plan: list[str]) -> None:
     print("PLAN:")
     for line in plan:
         print(f"  - {line}")
-
-
-def check_operation(result: operations.GitResult) -> str:
-    if not result.ok:
-        raise SmartError(result.detail)
-    return result.out
 
 
 if __name__ == "__main__":

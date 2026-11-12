@@ -29,11 +29,11 @@ def test_unavailable_unknown_or_mismatched_push_never_retries():
              (envelope(confirmed=False),None), (envelope(remoteCommit="b"*40),None),
              (envelope(checkout="/other"),None), (envelope(targetCommit="b"*40),None)]
     for result,error in cases:
-        with patch.object(flow.git_state,"rev_parse",return_value=SHA), patch.object(flow.cli,"run_repocli",return_value=result,side_effect=error) as invoke, patch.object(flow.operations,"push") as fallback:
+        with patch.object(flow.git_state,"rev_parse",return_value=SHA), patch.object(flow.cli,"run_repocli",return_value=result,side_effect=error) as invoke:
             try:flow.publish_branch(REPO,"topic",[]);assert False
             except flow.SmartError as exc:assert SHA in str(exc) and "--check" in str(exc)
             assert invoke.call_count==1
-            fallback.assert_not_called()
+
 
 
 def test_upstream_warning_does_not_retract_confirmed_publication():

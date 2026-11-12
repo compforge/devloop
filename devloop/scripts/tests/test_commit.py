@@ -61,12 +61,21 @@ def test_create_forwards_frozen_intent_and_requires_matching_commit():
         assert args == ["--mode", "files", "--branch", "topic", "--head", HEAD, "--tree", TREE,
                         "--index-fingerprint", INDEX, "--message", "message", "--file", "src"]
         assert SHA in plan[0]
-    cases=[created() for _ in range(6)]
-    for result,updates in zip(cases,[dict(confirmed=False),dict(actualTree="f"*40),dict(parents=[]),dict(commit="bad"),dict(checkout="/other"),dict(tree="f"*40)]):
-        result["data"].update(updates)
+    for updates in [dict(confirmed=False), dict(actualTree="f"*40), dict(parents=[]), dict(commit="bad")]:
+        result=created();result["data"].update(updates)
         with patch.object(commit,"_call",return_value=result) as call:
             try:commit.create(prepared(),"message",[]);assert False
-            except commit.CommitError as e:assert "check" in str(e)
+            except commit.CommitError as e:assert "commit not confirmed" in str(e)
+            assert call.call_count==1
+
+
+def test_create_rejects_wrong_report_identity_before_accepting_confirmation():
+    for updates in [dict(checkout="/other"), dict(tree="f"*40), dict(head="f"*40),
+                    dict(indexFingerprint="f"*64), dict(branch="other"), dict(action="plan")]:
+        result=created();result["data"].update(updates)
+        with patch.object(commit,"_call",return_value=result) as call:
+            try:commit.create(prepared(),"message",[]);assert False
+            except commit.CommitError as e:assert "invalid or mismatching commit report" in str(e)
             assert call.call_count==1
 
 
@@ -95,12 +104,21 @@ def test_empty_selection_has_no_commit_call():
         call.assert_not_called()
 
 
+# +case=The workflow carries its confirmed commit through StageResult and publish into the exact CLI push argument, even if the local branch later advances.
 def test_publish_uses_confirmed_commit_instead_of_rereading_head():
+    from types import SimpleNamespace
     flow=_load_script("commit_flow")
     from test_publish import envelope
+    repo="/tmp/devloop-push-contract"
+    intent=SimpleNamespace(repo=repo,target="main",mode="push",explicit_base=False,message="change")
+    with patch.object(flow.commit_domain,"create",return_value=SHA) as create:
+        staged=flow.stage_and_commit(intent,prepared(),[])
+        create.assert_called_once_with(prepared(),"change",[])
+        assert staged.committed and staged.commit==SHA
     result=envelope(targetCommit=SHA,remoteCommit=SHA)
-    with patch.object(flow.cli,"run_repocli",return_value=result),patch.object(flow.git_state,"rev_parse") as read:
-        flow.publish_branch("/tmp/devloop-push-contract","topic",[],SHA)
+    with patch.object(flow.cli,"run_repocli",return_value=result) as invoke,patch.object(flow.git_state,"rev_parse",return_value="f"*40) as read:
+        flow.publish(intent,flow.BranchResult("topic",False),staged,[])
+        invoke.assert_called_once_with(repo,("git","push"),["--branch","topic","--commit",SHA,"--remote","origin","--set-upstream"],timeout=300)
         read.assert_not_called()
 
 

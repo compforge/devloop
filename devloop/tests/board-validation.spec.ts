@@ -94,6 +94,8 @@ it("projects native history and invalidates the source comparison after an edit"
     expect(details).not.toHaveBeenCalled();
     rmSync(join(directory,"inputs","INPUT.json"));
     expect(await validationHistory(root)).toMatchObject({total: 1, runs: [{runID: "RUN", sourceState: "unknown", inputsComplete: false}]});
+    expect(details).not.toHaveBeenCalled();
+    expect(lists).toHaveBeenCalledTimes(2);
     details.mockRestore();
     lists.mockRestore();
     writeFileSync(wal,"broken\n");

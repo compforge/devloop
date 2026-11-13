@@ -53,8 +53,15 @@ export class BoardView {
 }
 
 export class Board {
-  constructor(readonly root: string, readonly items: readonly BoardItem[]) {}
-  view(focus?: BoardFocus): BoardView {
+  private readonly entries = new Map<string, BoardItem>();
+  constructor(readonly root: string, items: readonly BoardItem[] = []) { for (const item of items) this.append(item); }
+  get items(): readonly BoardItem[] { return [...this.entries.values()]; }
+  /**
+   * @spec Producers upsert facts by identity; full/delta consumers observe the latest revision.
+   * @see {@link component://docs/board.md}
+   */
+  append(item: BoardItem): void { this.entries.set(item.id, item); }
+  full(focus?: BoardFocus): BoardView {
     const items = !focus?.repoRoot ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
     return new BoardView(this.root, focus, items);
   }

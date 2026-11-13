@@ -27,8 +27,14 @@ export declare class BoardView {
 }
 export declare class Board {
     readonly root: string;
-    readonly items: readonly BoardItem[];
-    constructor(root: string, items: readonly BoardItem[]);
-    view(focus?: BoardFocus): BoardView;
+    private readonly entries;
+    constructor(root: string, items?: readonly BoardItem[]);
+    get items(): readonly BoardItem[];
+    /**
+     * @spec Producers upsert facts by identity; full/delta consumers observe the latest revision.
+     * @see {@link component://docs/board.md}
+     */
+    append(item: BoardItem): void;
+    full(focus?: BoardFocus): BoardView;
 }
 //# sourceMappingURL=model.d.ts.map

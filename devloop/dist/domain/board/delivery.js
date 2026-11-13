@@ -1,7 +1,7 @@
 import { unlinkSync } from "node:fs";
-import { REVIEW_FINDING_NUDGE_CAP, REVIEW_NUDGE_CAP, SESSION_TTL_SECONDS, TURN_TTL_SECONDS, now } from "../context/base.js";
 import { loadSegment, saveSegment, segmentFile } from "../context/store.js";
 import { sessionName } from "../context/session.js";
+import { boardItem } from "./model.js";
 import { renderPrompt } from "./render.js";
 const RULES = {
     workspace: { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
@@ -9,17 +9,13 @@ const RULES = {
     "repo.pull-request": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
     "repo.identity": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
     "repo.validation": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
-    "repo.pr-blocked": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: 1, replayAfterCompact: false },
-    "repo.review": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: REVIEW_NUDGE_CAP, replayAfterCompact: false },
-    "repo.review-findings": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: REVIEW_FINDING_NUDGE_CAP, replayAfterCompact: false },
+    "repo.pr-blocked": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
+    "repo.review": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
+    "repo.review-findings": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
     "repo.pr-history": { channels: ["ui"], replayAfterCompact: true },
 };
 export function itemsFor(view, channel) {
-    return view.items.filter((item) => RULES[item.type].channels.includes(channel));
-}
-/** Uncapped facts must remain visible when a Harness rebuilds request-local context. */
-export function promptFactsFor(view) {
-    return itemsFor(view, "prompt").filter((item) => RULES[item.type].maxDeliveries === undefined);
+    return view.items.filter(item => RULES[item.type].channels.includes(channel));
 }
 export class PromptDelivery {
     root;
@@ -30,67 +26,75 @@ export class PromptDelivery {
     }
     segment() { return `board/sessions/${sessionName(this.sessionId)}`; }
     load() {
-        const raw = loadSegment(this.root, this.segment())?.items;
-        if (raw === null || typeof raw !== "object" || Array.isArray(raw))
-            return {};
-        return Object.fromEntries(Object.entries(raw).flatMap(([key, value]) => {
-            if (value === null || typeof value !== "object" || Array.isArray(value))
-                return [];
-            const row = value;
-            return [[key, { item_type: text(row.item_type ?? row.item_key), signature: text(row.signature), count: number(row.count), ...(typeof row.last_emit_at === "number" ? { last_emit_at: row.last_emit_at } : {}) }]];
-        }));
+        const raw = loadSegment(this.root, this.segment());
+        const items = raw?.items;
+        if (items === null || typeof items !== "object" || Array.isArray(items))
+            return { items: {} };
+        const marks = {};
+        for (const [id, value] of Object.entries(items)) {
+            if (!value || typeof value !== "object" || Array.isArray(value))
+                continue;
+            const row = value, type = row.item_type;
+            if (!Object.hasOwn(RULES, type) || typeof row.signature !== "string")
+                continue;
+            const scope = row.scope;
+            marks[id] = { item_type: type, signature: row.signature,
+                ...(scope && typeof scope.workspaceRoot === "string" && (scope.repoRoot === undefined || typeof scope.repoRoot === "string") ? { scope } : {}) };
+        }
+        return { items: marks, ...(typeof raw?.focus === "string" ? { focus: raw.focus } : {}) };
+    }
+    /**
+     * @spec Only new, changed or removed visible items are delivered. Elapsed time never reopens delivery.
+     * @spec Inspection is read-only; acknowledgment advances only the inspected revisions.
+     * @see {@link component://docs/board.md}
+     */
+    delta(view, trigger = "user_prompt") {
+        const receipt = this.load(), focus = view.focus?.repoRoot ?? view.root;
+        const changedFocus = receipt.focus !== undefined && receipt.focus !== focus;
+        const eligible = (type) => RULES[type]?.channels.includes("prompt") && (trigger !== "session_start" || RULES[type].promptScope === "session");
+        const present = new Set(view.items.map(item => item.id));
+        const items = view.items.filter(item => eligible(item.type) && (receipt.items[item.id]?.signature !== item.signature || changedFocus && RULES[item.type].replayAfterCompact));
+        for (const [id, mark] of Object.entries(receipt.items)) {
+            // An out-of-focus item has not been removed from its source.
+            if (!mark.scope || view.focus?.repoRoot && mark.scope.repoRoot && mark.scope.repoRoot !== view.focus.repoRoot || !eligible(mark.item_type))
+                continue;
+            if (!present.has(id))
+                items.push(boardItem(mark.item_type, "state", mark.scope, { removed: true }));
+        }
+        let acknowledged = false;
+        return { items, acknowledge: () => {
+                if (acknowledged || items.length === 0)
+                    return;
+                const latest = this.load();
+                for (const item of items) {
+                    if (item.payload.removed)
+                        delete latest.items[item.id];
+                    else
+                        latest.items[item.id] = { item_type: item.type, signature: item.signature, scope: item.scope };
+                }
+                saveSegment(this.root, this.segment(), { items: latest.items, focus });
+                acknowledged = true;
+            } };
     }
     deliver(view, trigger = "user_prompt") {
-        const due = this.deliverItems(view, trigger);
-        return due.length ? renderPrompt(due) : undefined;
-    }
-    /** Select and mark items once; request-local adapters retain the selection for their turn. */
-    deliverItems(view, trigger = "user_prompt") {
-        const receipt = this.load();
-        const at = now();
-        const due = view.items.filter((item) => {
-            const rule = RULES[item.type];
-            if (!rule.channels.includes("prompt") || trigger === "session_start" && rule.promptScope !== "session")
-                return false;
-            const mark = receipt[item.id];
-            if (!mark || mark.signature !== item.signature)
-                return true;
-            if (rule.maxDeliveries !== undefined)
-                return mark.count < rule.maxDeliveries;
-            const ttl = rule.promptScope === "session" ? SESSION_TTL_SECONDS : TURN_TTL_SECONDS;
-            return mark.last_emit_at === undefined || at - mark.last_emit_at >= ttl;
-        });
-        if (due.length === 0)
-            return [];
-        for (const item of due) {
-            const previous = receipt[item.id];
-            const same = previous?.signature === item.signature;
-            receipt[item.id] = { item_type: item.type, signature: item.signature, count: same ? previous.count + 1 : 1, last_emit_at: at };
-        }
-        saveSegment(this.root, this.segment(), { items: receipt });
-        return due;
+        const delta = this.delta(view, trigger);
+        if (!delta.items.length)
+            return undefined;
+        const content = renderPrompt(delta.items);
+        if (content)
+            delta.acknowledge();
+        return content || undefined;
     }
     afterCompact() {
         const receipt = this.load();
-        let changed = false;
-        for (const mark of Object.values(receipt)) {
-            const type = mark.item_type;
-            const rule = RULES[type];
-            if (rule?.replayAfterCompact) {
+        for (const mark of Object.values(receipt.items))
+            if (RULES[mark.item_type]?.replayAfterCompact)
                 mark.signature = "";
-                mark.count = 0;
-                delete mark.last_emit_at;
-                changed = true;
-            }
-        }
-        if (changed)
-            saveSegment(this.root, this.segment(), { items: receipt });
+        saveSegment(this.root, this.segment(), receipt);
     }
     clear() { try {
         unlinkSync(segmentFile(this.root, this.segment()));
     }
     catch { /* absent */ } }
 }
-function text(value) { return typeof value === "string" ? value : ""; }
-function number(value) { return typeof value === "number" ? value : 0; }
 //# sourceMappingURL=delivery.js.map

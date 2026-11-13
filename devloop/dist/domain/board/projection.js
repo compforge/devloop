@@ -12,9 +12,9 @@ import { validationHistory } from "./validation.js";
  * @see {@link component://docs/repository-toolkit.md}
  */
 export async function projectBoard(root, workspace, repo, staleBindingHours) {
-    const items = [];
+    const board = new Board(root);
     if (workspace && (workspace.agentsDocument.references.length > 0 || workspace.subprojects.length > 0)) {
-        items.push(boardItem("workspace", "state", { workspaceRoot: root }, {
+        board.append(boardItem("workspace", "state", { workspaceRoot: root }, {
             root: workspace.workspaceRoot,
             references: workspace.agentsDocument.references.map((item) => ({ title: item.title, path: item.path, description: item.hook ?? "" })),
             subprojects: workspace.subprojects.map((item) => ({
@@ -23,7 +23,7 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
         }));
     }
     if (!repo)
-        return new Board(root, items);
+        return board;
     const scope = { workspaceRoot: root, repoRoot: repo };
     let component, inspectionProblem = "";
     try {
@@ -39,7 +39,7 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
     const agents = findAgentsDocument(repo, component?.path);
     const references = agents ? parseReferencesSection(agents) : [];
     if (references.length > 0) {
-        items.push(boardItem("repo.references", "state", scope, {
+        board.append(boardItem("repo.references", "state", scope, {
             references: references.map((item) => ({ title: item.title, path: item.path, description: item.description })),
         }));
     }
@@ -70,17 +70,17 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
     catch {
         linkedWorktree = null;
     }
-    items.push(boardItem("repo.identity", "state", scope, {
+    board.append(boardItem("repo.identity", "state", scope, {
         codeDir, repoRoot: repo, language: component?.language ?? "", inspectionProblem, branch,
         linkedWorktree, ahead, behind, baseBranch: base,
         targetBranch: base, workspaceDirty: status.complete ? status.dirty : null, modifiedCount: status.modifiedCount,
         untrackedCount: status.untrackedCount, protected: isProtectedBranch(branch),
-        ...(staleBindingHours === undefined ? {} : { staleBindingHours }),
+        ...(staleBindingHours === undefined ? {} : { staleBindingHours: Math.floor(staleBindingHours * 10) / 10 }),
     }));
     // An unavailable identity cannot select detached-HEAD or another branch's persisted state.
-    items.push(boardItem("repo.validation", "state", scope, await validationHistory(repo)));
+    board.append(boardItem("repo.validation", "state", scope, await validationHistory(repo)));
     if (branch === undefined)
-        return new Board(root, items);
+        return board;
     let prContext;
     try {
         prContext = branch ? await prContextForRepo(repo) : undefined;
@@ -88,7 +88,7 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
             // @why Prompt display has a short wait budget; repocli still owns cache and refresh policy.
             const view = await prContext.getCheckout({ signal: AbortSignal.timeout(1_000) });
             if (view?.selected || view?.error || view?.ambiguous)
-                items.push(boardItem("repo.pull-request", "state", scope, {
+                board.append(boardItem("repo.pull-request", "state", scope, {
                     branch: view.branch, provider: prContext.reader.provider,
                     ...(view.selected ? { repository: view.selected.repository.path, number: view.selected.number, state: view.selected.state, url: view.selected.url } : {}),
                     ...(view.error ? { error: view.error } : {}), ambiguous: view.ambiguous,
@@ -96,7 +96,7 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
         }
     }
     catch (error) {
-        items.push(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) }));
+        board.append(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) }));
     }
     finally {
         prContext?.close();
@@ -109,7 +109,7 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
         const reviewStatus = review.status === "running" && now() - generatedAt > REVIEW_STALE_SECONDS ? "stale" : review.status;
         // Review is branch-owned persisted state. Keep delivery receipts out of its
         // projection so prompt and UI observe the same result, including failures.
-        items.push(boardItem("repo.review", "event", scope, {
+        board.append(boardItem("repo.review", "event", scope, {
             status: reviewStatus, reviewedSha: review.reviewed_sha,
             findings: typeof review.count === "number" ? review.count : 0,
             failedFiles: typeof review.failed === "number" ? review.failed : 0,
@@ -117,6 +117,6 @@ export async function projectBoard(root, workspace, repo, staleBindingHours) {
             artifactPath: segmentFile(repo, reviewSegment),
         }));
     }
-    return new Board(root, items);
+    return board;
 }
 //# sourceMappingURL=projection.js.map

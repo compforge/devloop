@@ -3,13 +3,14 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Context } from "@opencode/plugin/promise/plugin";
-import type { SessionContext, SessionPrompt } from "@opencode/plugin/promise/session";
+import type { SessionContext } from "@opencode/plugin/promise/session";
 import type { ShellCreateBefore } from "@opencode/plugin/promise/shell";
 import type { Info, ToolContext } from "@opencode/plugin/promise/tool";
 import type { Skill } from "@opencode/schema/skill";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import plugin from "../adapters/opencode/index.js";
 import * as lifecycle from "../adapters/process-hooks.js";
+import { BoardRuntime } from "../domain/board/runtime.js";
 import { evaluateTool } from "../hooks/core/policy.js";
 import { acquireOwner, readOwner } from "../domain/context/session.js";
 
@@ -101,16 +102,17 @@ describe("OpenCode V2 adapter", () => {
     expect(readFileSync(git.path, "utf8")).toContain("name: git-ops");
   });
 
-  it("retains Board context in successive requests and restores it after compaction/resume", async () => {
+  it("reads a fresh full Board for each rebuilt request without consuming deltas", async () => {
     const first = await context();
     expect(JSON.stringify(first.system)).toContain("design.md");
     expect(JSON.stringify((await context()).system)).toContain("design.md");
-    await invoke("session.prompt", { sessionID: "ses_a", messageID: "msg_2" } as SessionPrompt);
+    expect((await context()).system).toHaveLength(1);
+    const board = await BoardRuntime.resolve(root, "ses_a");
+    expect(board?.delta().items.some(item => item.type === "repo.references")).toBe(true);
     const nextTurn = JSON.stringify((await context()).system);
     expect(nextTurn).toContain("design.md");
     expect(nextTurn).toContain("Branch: feature");
     expect(nextTurn).toContain("Validation history: no retained runs");
-    await invoke("session.compaction", { sessionID: "ses_a" });
     expect(JSON.stringify((await context()).system)).toContain("design.md");
   });
 

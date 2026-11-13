@@ -99,17 +99,16 @@ AGENTS.md 是文字知识源；`.devloop/*.json` 是由 hooks / scripts 维护�
 
 ### Board 投递游标
 
-Board 的边界是：**状态源提供事实，Board 决定如何组织和投递**。它按当前 session
-选择相关 workspace/repo 事实，产出结构化 `BoardItem`，再由统一 policy 分配到
-`session` / `turn` / `event` / `ui_only` surface。每个 item 单独去重，避免一个
-事实变化带着整块上下文重投；近期但无关的 PR 等事实可留在 `ui_only`，不进入 prompt。
+状态源只提交事实；Board 按当前 focus 组织 `BoardItem`，内部维护 revision 与投递基线。
+consumer 选择 `full()` 或 `delta()`：full 是无副作用的完整 view；delta 返回新增、变化、删除项，
+确认投递后才推进基线。producer、Harness adapter 都不自行计算差分。
 
-`<dev-root>/.devloop/board/sessions/<session_id>.json` 只记录该 session 已收到的
-item 签名、次数与时间，不复制业务事实。PostCompact 只清状态 item 的投递记忆；
-review 结果、Finding 待判定提醒等 event 保持已消费状态，`ui_only` 不产生投递游标。完整
-设计见 [`docs/board.md`](./docs/board.md)。
+Claude/Codex/DSH 保留注入历史，使用 delta；OpenCode 每次重建请求，使用 full。
+同一 revision 不因 TTL 到期再次投递。切换 repo、首次进入及 PostCompact 明确恢复当前状态；
+已消费 event 不因 compaction 重放。只有 UI channel 的内容不产生 prompt 投递记录。
 
-schema / TTL / cap 数值在 `domain/context/base.ts`，不在文档复述。
+游标按 session 保存在 `.devloop/board/sessions/`，只含 revision、scope、focus，不复制业务事实。
+具体接口、删除通知与恢复语义见 [Board](docs/board.md)。
 
 ## 脚本的 repo 解析
 

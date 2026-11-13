@@ -3,11 +3,11 @@ revision = 3
 requires-python = ">=3.11"
 
 [manifest]
-requirements = [{ name = "compforge-repokit", specifier = ">=0.27.1,<0.28" }]
+requirements = [{ name = "compforge-repokit", specifier = ">=0.28.0,<0.29" }]
 
 [[package]]
 name = "compforge-repokit"
-version = "0.27.1"
+version = "0.28.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "harness-common" },
@@ -15,9 +15,9 @@ dependencies = [
     { name = "tree-sitter" },
     { name = "tree-sitter-make" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/86/45ab3b39bab9a7ba8d047c86d3d0b9cf1ce5b53492462e1f1218df2015ca/compforge_repokit-0.27.1.tar.gz", hash = "sha256:cc026d0bae684f8aa410b60b31baeef1ef555d08e9b2565f185f9a7f8e23120a", size = 168788, upload-time = "2026-11-12T11:16:40.218Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/01/f0e5d7c4172f0eb5a84d4c40da06599fe2a2927e5e8ac5f5f8679355304e/compforge_repokit-0.28.0.tar.gz", hash = "sha256:2136255c79ce8fde9a3991ef332d69f190dfefc2bf042b2bbeb35f34fd500300", size = 170678, upload-time = "2026-11-13T01:46:04.911Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/37/7a/7fa0c4f7e49367a0544af8ad3df469ec79f9de4313d96b51e34cabb37f0c/compforge_repokit-0.27.1-py3-none-any.whl", hash = "sha256:8c8f588c5f42f3960b200e75f0620a80a8418265cde0ed43ee82b3d53aa26c26", size = 117039, upload-time = "2026-11-12T11:16:38.799Z" },
+    { url = "https://files.pythonhosted.org/packages/15/01/849edfe71899ae4b51316a39df9a1f39416491033b708141bf313388da45/compforge_repokit-0.28.0-py3-none-any.whl", hash = "sha256:a92ea3ebe84572680a9365eebfa88f163ef3a990801cd4bc1c6136f6c6e3f2de", size = 118282, upload-time = "2026-11-13T01:46:03.115Z" },
 ]
 
 [[package]]

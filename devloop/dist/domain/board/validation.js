@@ -1,4 +1,4 @@
-import { listValidationRuns, readValidationRun, snapshot } from "@compforge/repokit";
+import { listValidationRuns, snapshot } from "@compforge/repokit";
 /**
  * @spec Board displays retained executions, never a current pass or a reuse decision.
  * A source comparison does not attest the toolchain, environment or declared external inputs.
@@ -7,20 +7,19 @@ import { listValidationRuns, readValidationRun, snapshot } from "@compforge/repo
 export async function validationHistory(repo) {
     const signal = AbortSignal.timeout(1_000);
     try {
-        const history = await listValidationRuns({ repository: repo, checkout: repo, limit: 3, signal });
+        const history = await listValidationRuns({ repository: repo, checkout: repo, limit: 3, includeInputs: true, signal });
         if (!history.total)
             return { total: 0, runs: [] };
-        // Retained summaries remain useful when comparison or evidence exceeds the shared read budget.
+        // Input summaries are read in one SDK query; only source capture spends the remaining budget.
         const current = await snapshot(repo, { signal }).catch(() => undefined);
-        const runs = await Promise.all(history.runs.map(async (run) => {
-            const detail = await readValidationRun(repo, run.runID, { signal }).catch(() => undefined);
+        const runs = history.runs.map(run => {
             let sourceState = "unknown";
-            if (current?.complete && detail?.inputs)
-                sourceState = current.digest === detail.inputs.snapshot ? "unchanged" : "changed";
+            if (current?.complete && run.inputs?.complete)
+                sourceState = current.digest === run.inputs.snapshot ? "unchanged" : "changed";
             return { runID: run.runID, component: run.component, check: run.check, status: run.status,
                 scope: run.scope, startedAt: run.startedAt, inputsConsistent: run.inputsConsistent,
-                sourceState, evidenceComplete: detail?.complete ?? false };
-        }));
+                sourceState, inputsComplete: run.inputs?.complete ?? false };
+        });
         return { total: history.total, hasMore: history.hasMore, runs };
     }
     catch (error) {

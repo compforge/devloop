@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { parse } from "yaml";
 import { initializeBoard, afterTool, endSession, recordToolCall } from "../process-hooks.js";
 import { BoardRuntime } from "../../domain/board/runtime.js";
-import { itemsFor, promptFactsFor, PromptDelivery } from "../../domain/board/delivery.js";
 import { renderPrompt } from "../../domain/board/render.js";
 import { findGitRoot } from "../../domain/repo-layout.js";
 import { decisionMessage } from "../../hooks/core/domain.js";
@@ -99,7 +98,6 @@ async function setup(ctx) {
         else if (state.cwd !== cwd) {
             state.cwd = cwd;
             state.roots.add(cwd);
-            delete state.selected;
             try {
                 await initializeBoard({ cwd, session_id: sessionID });
             }
@@ -109,37 +107,13 @@ async function setup(ctx) {
         }
         return state;
     };
-    await ctx.session.hook("prompt", async (event) => {
-        try {
-            delete (await stateFor(event.sessionID)).selected;
-        }
-        catch (error) {
-            log("prompt_failed", error, event.sessionID);
-        }
-    });
-    await ctx.session.hook("compaction", (event) => {
-        const state = sessions.get(event.sessionID);
-        if (state) {
-            state.compacted = true;
-            delete state.selected;
-        }
-    });
     await ctx.session.hook("context", async (event) => {
         try {
             const state = await stateFor(event.sessionID);
             const board = await BoardRuntime.resolve(state.cwd, event.sessionID);
             if (!board)
                 return;
-            if (state.compacted) {
-                board.afterCompact();
-                delete state.compacted;
-            }
-            if (!state.selected) {
-                const due = new PromptDelivery(board.root, event.sessionID).deliverItems(board.view);
-                state.selected = new Set(due.map((item) => item.id));
-            }
-            const facts = new Set(promptFactsFor(board.view).map((item) => item.id));
-            const content = renderPrompt(itemsFor(board.view, "prompt").filter((item) => facts.has(item.id) || state.selected.has(item.id)));
+            const content = renderPrompt(board.full().items);
             if (content)
                 event.system.push({ type: "text", text: content });
         }

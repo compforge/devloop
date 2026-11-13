@@ -235,9 +235,12 @@ and output delivery. See [validation](../skills/validate/references/spec.md) for
 RepoKit owns Forge instance/provider, API host and credentials in `<home>/config.json`.
 Devloop does not load access settings or inject token environment variables. SDK fallbacks use
 RepoKit configuration; workflow configuration only selects the PR target repository.
-This workflow requires Python RepoKit 0.27.1 and TypeScript RepoKit 0.21.0.
-Both locks select published registry packages. TypeScript history queries use native `fs-ext`
-locking on Linux/macOS; installation requires native build tooling.
+This workflow requires Python RepoKit 0.28.0 and TypeScript RepoKit 0.23.0.
+The lockfiles pin registry packages. Publish the required RepoKit version before releasing
+this plugin. For joint development, build and pack the SDK, then install its tarball with
+`npm install --no-save --package-lock=false <tarball>`; keep local paths out of the manifests.
+TypeScript history queries use native `fs-ext` locking on Linux/macOS;
+installation requires native build tooling.
 
 ## Discussions
 

@@ -26,7 +26,7 @@ AGENTS.md 是项目边界与 References 的**文字知识源**；`.devloop/*.jso
 
 **两个控制杠杆**：
 
-1. **Board 消除信息滞后**：状态源持续提供当前 subproject 的 branch / 工作区 / PR / review，加上 workspace 级的子项目清单与 AGENTS.md References；Board 按相关性组织 payload-first 条目，以独立的 item kind、delivery channel、prompt scope 与 replay policy 决定投递——AI 改第一行前就掌握现状，长历史又不浪费 prompt token。
+1. **Board 消除信息滞后**：状态源持续提供当前 subproject 的 branch / 工作区 / PR / review，加上 workspace 级的子项目清单与 AGENTS.md References；Board 按相关性组织 payload-first 条目，由 Board 内部维护 revision 与投递基线，按 Harness 的 context 生命周期选择 full 或 delta——AI 改第一行前就掌握现状，长历史又不浪费 prompt token。
 2. **执行守卫提前拒绝高置信风险**：PreToolUse `deny` 覆盖保护分支、过期分支改文件和误带文件等常见路径；command hook 超时、异常或 Harness 未覆盖的执行路径会 fail-open，因此它是护栏而非安全边界。
 
 **实现取向**：native-first——控制能力优先坐到 CLI 原生事件和统一技术 seam 上；独立 `.devloop/` 命名空间，状态与其它工具互不干扰。Lifecycle hook 尽量跨 Harness 共用；PR、验证和清理由 skill 指导 AI 直接调用 repocli。

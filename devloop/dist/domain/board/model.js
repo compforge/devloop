@@ -35,13 +35,21 @@ export class BoardView {
 }
 export class Board {
     root;
-    items;
-    constructor(root, items) {
+    entries = new Map();
+    constructor(root, items = []) {
         this.root = root;
-        this.items = items;
+        for (const item of items)
+            this.append(item);
     }
-    view(focus) {
-        const items = !focus?.repoRoot ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
+    get items() { return [...this.entries.values()]; }
+    /**
+     * @spec Producers upsert facts by identity; full/delta consumers observe the latest revision.
+     * @see {@link component://docs/board.md}
+     */
+    append(item) { this.entries.set(item.id, item); }
+    /** @spec No focus reads all repositories; an explicit workspace-only focus excludes repository facts. */
+    full(focus) {
+        const items = !focus ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
         return new BoardView(this.root, focus, items);
     }
 }

@@ -28,7 +28,7 @@ export async function initializeBoard(payload: HookPayload): Promise<{ readonly 
   const root = workspaceRoot ?? repo;
   if (!root) return { watchPaths: [] };
   const board = await projectBoard(root, workspace, repo);
-  const runtime = new BoardRuntime(root, sessionId(payload), board, board.view({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
+  const runtime = new BoardRuntime(root, sessionId(payload), board, board.full({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
   const watchPaths = new Set<string>();
   if (workspace?.agentsDocument.path) watchPaths.add(workspace.agentsDocument.path);
   for (const project of workspace?.subprojects ?? []) {

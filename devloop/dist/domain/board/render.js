@@ -12,6 +12,8 @@ function reference(item) {
 }
 export function renderItem(item) {
     const payload = item.payload;
+    if (payload.removed)
+        return `Board item removed: ${item.type} (${item.scope.repoRoot ?? item.scope.workspaceRoot}). Previous information for this item no longer applies.`;
     if (item.type === "workspace") {
         const lines = [`[Workspace: ${text(payload.root)}]`];
         const references = rows(payload.references);

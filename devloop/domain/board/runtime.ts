@@ -1,13 +1,16 @@
+import { renderPrompt } from "./render.js";
 import { findGitRoot } from "../repo-layout.js";
 import { findContainingWorkspace } from "../workspace.js";
 import { loadActiveRepo, loadActiveRepoLenient, recordSessionEvent } from "../context/session.js";
 import { WorkspaceContext } from "../context/workspace.js";
-import { itemsFor, PromptDelivery, type PromptTrigger } from "./delivery.js";
+import { itemsFor, PromptDelivery, type BoardDelta, type PromptTrigger } from "./delivery.js";
 import { projectBoard } from "./projection.js";
-import type { Board, BoardView } from "./model.js";
+import type { Board, BoardFocus, BoardView } from "./model.js";
 
 export class BoardRuntime {
-  constructor(readonly root: string, readonly sessionId: string | undefined, readonly board: Board, readonly view: BoardView, readonly repo?: string) {}
+  private readonly focus: BoardFocus | undefined;
+  constructor(readonly root: string, readonly sessionId: string | undefined, readonly board: Board, view: BoardView, readonly repo?: string) { this.focus = view.focus; }
+  get view(): BoardView { return this.board.full(this.focus); }
   static async resolve(cwd: string, sessionId?: string): Promise<BoardRuntime | undefined> {
     let workspaceRoot = findContainingWorkspace(cwd);
     let repo = findGitRoot(cwd);
@@ -24,11 +27,17 @@ export class BoardRuntime {
     const root = workspaceRoot ?? repo;
     if (!root) return undefined;
     const board = await projectBoard(root, workspace, repo, staleHours);
-    return new BoardRuntime(root, sessionId, board, board.view({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
+    return new BoardRuntime(root, sessionId, board, board.full({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
   }
+  delta(trigger: PromptTrigger = "user_prompt"): BoardDelta { return new PromptDelivery(this.root, this.sessionId).delta(this.view, trigger); }
+  full(): BoardView { return this.view; }
   deliverPrompt(trigger: PromptTrigger = "user_prompt"): string | undefined {
-    const result = new PromptDelivery(this.root, this.sessionId).deliver(this.view, trigger);
-    if (result && this.repo) recordSessionEvent(this.repo, this.sessionId, "inject", { text: result });
+    const delta = this.delta(trigger);
+    const result = delta.items.length ? renderPrompt(delta.items) || undefined : undefined;
+    if (result) {
+      if (this.repo) recordSessionEvent(this.repo, this.sessionId, "inject", {text:result});
+      delta.acknowledge();
+    }
     return result;
   }
   snapshot(): Record<string, unknown> { return this.view.select(itemsFor(this.view, "ui")).toJSON(); }

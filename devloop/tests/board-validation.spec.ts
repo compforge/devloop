@@ -78,16 +78,26 @@ it("projects native history and invalidates the source comparison after an edit"
     });
     expect(bundle).toContain("source changed since this run");
     expect(bundle).not.toContain("Validation history unavailable");
-    // @case Comparison or detail failures preserve retained summaries with explicitly unknown evidence.
+    // @case Source capture failure preserves the retained summary without granting a current pass.
     const comparison = vi.spyOn(repokit, "snapshot").mockRejectedValue(new Error("comparison timed out"));
     const comparisonUnavailable = await render();
     expect(comparisonUnavailable).toContain("test: passed");
     expect(comparisonUnavailable).toContain("source comparison unavailable");
     expect(comparisonUnavailable).not.toContain("Validation history unavailable");
     comparison.mockRestore();
-    const details = vi.spyOn(repokit, "readValidationRun").mockRejectedValue(new Error("detail timed out"));
-    expect(await validationHistory(root)).toMatchObject({total: 1, runs: [{runID: "RUN", sourceState: "unknown", evidenceComplete: false}]});
+    // @case Board asks for a single page with input summaries and never fetches run details or logs.
+    const details = vi.spyOn(repokit, "readValidationRun");
+    const lists = vi.spyOn(repokit, "listValidationRuns");
+    rmSync(join(directory,"logs"),{recursive:true});
+    expect(await validationHistory(root)).toMatchObject({total: 1, runs: [{runID: "RUN", sourceState: "changed", inputsComplete: true}]});
+    expect(lists).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({includeInputs:true,limit:3,checkout:root}));
+    expect(details).not.toHaveBeenCalled();
+    rmSync(join(directory,"inputs","INPUT.json"));
+    expect(await validationHistory(root)).toMatchObject({total: 1, runs: [{runID: "RUN", sourceState: "unknown", inputsComplete: false}]});
+    expect(details).not.toHaveBeenCalled();
+    expect(lists).toHaveBeenCalledTimes(2);
     details.mockRestore();
+    lists.mockRestore();
     writeFileSync(wal,"broken\n");
     const unavailable=await render();
     expect(unavailable).toContain("Validation history unavailable");

@@ -1003,14 +1003,14 @@ var require_foldFlowLines = __commonJS({
     var FOLD_FLOW = "flow";
     var FOLD_BLOCK = "block";
     var FOLD_QUOTED = "quoted";
-    function foldFlowLines(text4, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
+    function foldFlowLines(text3, indent, mode = "flow", { indentAtStart, lineWidth = 80, minContentWidth = 20, onFold, onOverflow } = {}) {
       if (!lineWidth || lineWidth < 0)
-        return text4;
+        return text3;
       if (lineWidth < minContentWidth)
         minContentWidth = 0;
       const endStep = Math.max(1 + minContentWidth, 1 + lineWidth - indent.length);
-      if (text4.length <= endStep)
-        return text4;
+      if (text3.length <= endStep)
+        return text3;
       const folds = [];
       const escapedFolds = {};
       let end = lineWidth - indent.length;
@@ -1027,14 +1027,14 @@ var require_foldFlowLines = __commonJS({
       let escStart = -1;
       let escEnd = -1;
       if (mode === FOLD_BLOCK) {
-        i = consumeMoreIndentedLines(text4, i, indent.length);
+        i = consumeMoreIndentedLines(text3, i, indent.length);
         if (i !== -1)
           end = i + endStep;
       }
-      for (let ch; ch = text4[i += 1]; ) {
+      for (let ch; ch = text3[i += 1]; ) {
         if (mode === FOLD_QUOTED && ch === "\\") {
           escStart = i;
-          switch (text4[i + 1]) {
+          switch (text3[i + 1]) {
             case "x":
               i += 3;
               break;
@@ -1051,12 +1051,12 @@ var require_foldFlowLines = __commonJS({
         }
         if (ch === "\n") {
           if (mode === FOLD_BLOCK)
-            i = consumeMoreIndentedLines(text4, i, indent.length);
+            i = consumeMoreIndentedLines(text3, i, indent.length);
           end = i + indent.length + endStep;
           split = void 0;
         } else {
           if (ch === " " && prev && prev !== " " && prev !== "\n" && prev !== "	") {
-            const next = text4[i + 1];
+            const next = text3[i + 1];
             if (next && next !== " " && next !== "\n" && next !== "	")
               split = i;
           }
@@ -1068,12 +1068,12 @@ var require_foldFlowLines = __commonJS({
             } else if (mode === FOLD_QUOTED) {
               while (prev === " " || prev === "	") {
                 prev = ch;
-                ch = text4[i += 1];
+                ch = text3[i += 1];
                 overflow = true;
               }
               const j = i > escEnd + 1 ? i - 2 : escStart - 1;
               if (escapedFolds[j])
-                return text4;
+                return text3;
               folds.push(j);
               escapedFolds[j] = true;
               end = j + endStep;
@@ -1088,39 +1088,39 @@ var require_foldFlowLines = __commonJS({
       if (overflow && onOverflow)
         onOverflow();
       if (folds.length === 0)
-        return text4;
+        return text3;
       if (onFold)
         onFold();
-      let res = text4.slice(0, folds[0]);
+      let res = text3.slice(0, folds[0]);
       for (let i2 = 0; i2 < folds.length; ++i2) {
         const fold = folds[i2];
-        const end2 = folds[i2 + 1] || text4.length;
+        const end2 = folds[i2 + 1] || text3.length;
         if (fold === 0)
           res = `
-${indent}${text4.slice(0, end2)}`;
+${indent}${text3.slice(0, end2)}`;
         else {
           if (mode === FOLD_QUOTED && escapedFolds[fold])
-            res += `${text4[fold]}\\`;
+            res += `${text3[fold]}\\`;
           res += `
-${indent}${text4.slice(fold + 1, end2)}`;
+${indent}${text3.slice(fold + 1, end2)}`;
         }
       }
       return res;
     }
-    function consumeMoreIndentedLines(text4, i, indent) {
+    function consumeMoreIndentedLines(text3, i, indent) {
       let end = i;
       let start = i + 1;
-      let ch = text4[start];
+      let ch = text3[start];
       while (ch === " " || ch === "	") {
         if (i < start + indent) {
-          ch = text4[++i];
+          ch = text3[++i];
         } else {
           do {
-            ch = text4[++i];
+            ch = text3[++i];
           } while (ch && ch !== "\n");
           end = i;
           start = i + 1;
-          ch = text4[start];
+          ch = text3[start];
         }
       }
       return end;
@@ -9977,8 +9977,8 @@ function detectLanguage(files, root) {
         continue;
       if (ecosystem !== "node")
         return ecosystem;
-      const text4 = files.get(name)?.toString().toLowerCase() ?? "";
-      return text4.includes("typescript") || text4.includes("@types/") || files.has(posix2.join(root, "tsconfig.json")) ? "typescript" : "javascript";
+      const text3 = files.get(name)?.toString().toLowerCase() ?? "";
+      return text3.includes("typescript") || text3.includes("@types/") || files.has(posix2.join(root, "tsconfig.json")) ? "typescript" : "javascript";
     }
   }
   return "";
@@ -10124,9 +10124,9 @@ var Git = class _Git {
   }
   async catalog(head, staged) {
     const committed = head !== "" || staged;
-    const output2 = await this.run(head ? ["ls-tree", "-r", "-z", "--full-tree", head] : ["ls-files", "--stage", "-z"]);
+    const output = await this.run(head ? ["ls-tree", "-r", "-z", "--full-tree", head] : ["ls-files", "--stage", "-z"]);
     const entries = /* @__PURE__ */ new Map();
-    for (const entry of output2.toString().split("\0")) {
+    for (const entry of output.toString().split("\0")) {
       if (!entry)
         continue;
       const tab = entry.indexOf("	");
@@ -10657,17 +10657,78 @@ async function capture(root, signal) {
   return { checkout: root, digest: `sha256:${digest2.digest("hex")}`, fileCount: files.size, complete: issues.length === 0, diagnostics: issues };
 }
 
+// node_modules/@compforge/repokit/dist/errors.js
+var RepoKitError = class extends Error {
+  code;
+  op;
+  subject;
+  hint;
+  uncertain;
+  httpStatus;
+  retryAt;
+  constructor(code, message, options = {}) {
+    super(message, { cause: options.cause });
+    this.code = code;
+    this.name = "RepoKitError";
+    this.op = options.op ?? "";
+    this.subject = options.subject ?? "";
+    this.hint = options.hint ?? "";
+    this.uncertain = options.uncertain ?? false;
+    this.httpStatus = options.httpStatus ?? 0;
+    this.retryAt = options.retryAt;
+  }
+  toJSON() {
+    return {
+      code: this.code,
+      message: this.message,
+      ...this.op ? { op: this.op } : {},
+      ...this.subject ? { subject: this.subject } : {},
+      ...this.hint ? { hint: this.hint } : {},
+      ...this.uncertain ? { uncertain: true } : {},
+      ...this.httpStatus ? { httpStatus: this.httpStatus } : {},
+      ...this.retryAt ? { retryAt: this.retryAt } : {}
+    };
+  }
+  text() {
+    let text3 = `[${this.code}]`;
+    if (this.op)
+      text3 += ` ${this.op}`;
+    if (this.subject)
+      text3 += ` (${this.subject})`;
+    text3 += `: ${this.message}`;
+    if (this.uncertain)
+      text3 += "; outcome unknown";
+    if (this.httpStatus)
+      text3 += `; HTTP ${this.httpStatus}`;
+    if (this.retryAt)
+      text3 += `; retry after ${this.retryAt}`;
+    if (this.hint)
+      text3 += `
+Hint: ${this.hint}`;
+    return text3;
+  }
+};
+
 // node_modules/@compforge/repokit/dist/forge/model.js
-var ForgeError = class extends Error {
+var ForgeError = class extends RepoKitError {
+  static errorCode = "forge.request_failed";
+  constructor(message = "", options) {
+    super(new.target.errorCode, message, options);
+    this.name = new.target.name;
+  }
 };
 var ForgeCoverageError = class extends ForgeError {
+  static errorCode = "forge.coverage_incomplete";
 };
 var ForgeAuthError = class extends ForgeError {
+  static errorCode = "forge.authentication_required";
 };
 var ForgeNotFound = class extends ForgeError {
+  static errorCode = "forge.not_found";
 };
 var ForgeRateLimitError = class extends ForgeError {
   retryAfterMs;
+  static errorCode = "forge.rate_limited";
   constructor(message, retryAfterMs2) {
     super(message);
     this.retryAfterMs = retryAfterMs2;
@@ -10676,8 +10737,8 @@ var ForgeRateLimitError = class extends ForgeError {
 };
 
 // node_modules/@compforge/repokit/dist/forge/key.js
-function pullRequestKey(forge, path, number4) {
-  return { repository: { forge: { name: forge }, path }, number: number4 };
+function pullRequestKey(forge, path, number3) {
+  return { repository: { forge: { name: forge }, path }, number: number3 };
 }
 function assertPullRequestKey(value, forge) {
   if (value.repository.forge.name !== forge)
@@ -11069,7 +11130,7 @@ var ForgeHttpClient = class {
       return "";
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let size = 0, text4 = "";
+    let size = 0, text3 = "";
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -11078,9 +11139,9 @@ var ForgeHttpClient = class {
         size += value.byteLength;
         if (size > this.#maxResponseBytes)
           throw new ForgeError(`exceeded ${this.#maxResponseBytes} response bytes`);
-        text4 += decoder.decode(value, { stream: true });
+        text3 += decoder.decode(value, { stream: true });
       }
-      return text4 + decoder.decode();
+      return text3 + decoder.decode();
     } finally {
       await reader.cancel().catch(() => {
       });
@@ -11873,7 +11934,11 @@ import { mkdir, open as open3, readFile, readdir, rename, rm } from "node:fs/pro
 import { dirname as dirname5, join as join5, resolve as resolve2 } from "node:path";
 import { setTimeout as delay2 } from "node:timers/promises";
 var digest = (value) => createHash5("sha256").update(JSON.stringify(value)).digest("hex");
-var ObservationStorageError = class extends Error {
+var ObservationStorageError = class extends RepoKitError {
+  constructor(message = "", options) {
+    super("state.storage_failed", message, options);
+    this.name = "ObservationStorageError";
+  }
 };
 var missing = (error) => error.code === "ENOENT";
 var ObservationStore = class {
@@ -11968,9 +12033,9 @@ var ObservationStore = class {
     };
     const paths = [];
     for (const repo of await directories(this.path("repositories"))) {
-      for (const number4 of await directories(this.path("repositories", repo, "prs"))) {
-        if (/^[1-9][0-9]*$/.test(number4)) {
-          paths.push(this.path("repositories", repo, "prs", number4, "observations", connection + ".json"));
+      for (const number3 of await directories(this.path("repositories", repo, "prs"))) {
+        if (/^[1-9][0-9]*$/.test(number3)) {
+          paths.push(this.path("repositories", repo, "prs", number3, "observations", connection + ".json"));
         }
       }
     }
@@ -12444,7 +12509,11 @@ var ForgeConnection = class {
 import { isIP } from "node:net";
 import { open as open4 } from "node:fs/promises";
 import { join as join6 } from "node:path";
-var ConfigError = class extends Error {
+var ConfigError = class extends RepoKitError {
+  constructor(message = "", options) {
+    super("config.invalid", message, options);
+    this.name = "ConfigError";
+  }
 };
 function normalizeHost(value) {
   const name = value.toLowerCase();
@@ -12562,6 +12631,30 @@ async function pullRequestContext(checkout, options = {}) {
   return connection.pullRequestContext(checkout, { source: origin.path, targets: options.targets, reader: options.reader });
 }
 
+// node_modules/@compforge/repokit/dist/validation/errors.js
+var ValidationHistoryError = class extends RepoKitError {
+  constructor(code, message, op, subject, cause) {
+    super(code, message, { op, subject, cause });
+    this.name = "ValidationHistoryError";
+  }
+};
+function historyError(error, op, subject, signal) {
+  if (error instanceof ValidationHistoryError)
+    return error;
+  const reason = signal?.aborted ? signal.reason : error;
+  const problem = reason;
+  let code = "validation.history_failed";
+  if (problem?.name === "TimeoutError" || problem?.cause?.name === "TimeoutError")
+    code = "execution.deadline_exceeded";
+  else if (signal?.aborted || problem?.name === "AbortError")
+    code = "execution.canceled";
+  else if (problem?.code === "EACCES" || problem?.code === "EPERM")
+    code = "filesystem.permission_denied";
+  else if (problem?.code === "ENOENT")
+    code = "filesystem.not_found";
+  return new ValidationHistoryError(code, error instanceof Error ? error.message : String(error), op, subject, error);
+}
+
 // node_modules/@compforge/repokit/dist/validation/history.js
 import { readFile as readFile3, realpath as realpath4 } from "node:fs/promises";
 import { join as join8, resolve as resolve3 } from "node:path";
@@ -12638,10 +12731,10 @@ async function readEvents(directory, signal) {
     if (expected !== void 0 && expected !== first)
       throw new Error("Noncontiguous validation history segments");
     expected = first;
-    const text4 = await readFile2(join7(directory, name), { encoding: "utf8", signal });
-    if (text4 && !text4.endsWith("\n"))
+    const text3 = await readFile2(join7(directory, name), { encoding: "utf8", signal });
+    if (text3 && !text3.endsWith("\n"))
       throw new Error("Incomplete validation history record");
-    for (const line of text4.split("\n").slice(0, -1)) {
+    for (const line of text3.split("\n").slice(0, -1)) {
       signal.throwIfAborted();
       const record2 = object4(JSON.parse(line));
       if (typeof record2.data !== "string")
@@ -12760,7 +12853,9 @@ function summary(run2) {
   };
 }
 function budget(options) {
-  const timeout = AbortSignal.timeout(options.timeoutMs ?? 5e3);
+  if (options.timeoutMs === void 0)
+    return options.signal ?? new AbortController().signal;
+  const timeout = AbortSignal.timeout(options.timeoutMs);
   return options.signal ? AbortSignal.any([timeout, options.signal]) : timeout;
 }
 async function location(repository2, options, signal) {
@@ -12783,104 +12878,82 @@ async function location(repository2, options, signal) {
   return { key, directory: join8(options.historyDir || join8(resolveHome(options.home), "repositories"), key) };
 }
 async function listValidationRuns(query) {
-  const limit = query.limit === void 0 || query.limit === 0 ? 20 : query.limit, offset = query.offset ?? 0;
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0)
-    fail("Limit must be 1\u2013100 and offset must be nonnegative");
-  if (query.check && !["lint", "test"].includes(query.check))
-    fail("Check must be lint or test");
-  if (query.status && !["passed", "failed", "cancelled", "uncertain", "unfinished"].includes(query.status))
-    fail("Invalid run status");
-  const signal = budget(query), { key, directory } = await location(query.repository, query, signal);
-  let checkout = query.checkout ? resolve3(query.checkout) : "";
-  if (checkout) {
-    try {
-      checkout = await realpath4(checkout);
-    } catch (error) {
-      if (!missing2(error))
-        throw error;
-    }
-  }
-  return inspectHistory(directory, signal, async (events) => {
-    const runs = [];
-    for (const run2 of replay(events).values()) {
-      signal.throwIfAborted();
-      if (checkout && run2.start.checkout !== checkout || query.component && run2.start.component !== query.component || query.check && run2.check !== query.check)
-        continue;
-      const row = summary(run2);
-      if (!query.status || row.status === query.status)
-        runs.push(row);
-    }
-    runs.sort((a, b) => compareTime(b.startedAt, a.startedAt) || Buffer.compare(Buffer.from(a.runID), Buffer.from(b.runID)));
-    return { repository: key, runs: runs.slice(offset, offset + limit), total: runs.length, offset, limit, hasMore: offset + limit < runs.length };
-  });
-}
-async function output(path, id, signal) {
-  let data;
+  let signal;
+  const op = "validation.history.list";
+  const invalid = (message) => {
+    throw new ValidationHistoryError("validation.invalid_query", message, op, query.repository);
+  };
   try {
-    data = await readFile3(path, { encoding: "utf8", signal });
+    const limit = query.limit === void 0 || query.limit === 0 ? 20 : query.limit, offset = query.offset ?? 0;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100 || !Number.isInteger(offset) || offset < 0)
+      invalid("Limit must be 1\u2013100 and offset must be nonnegative");
+    if (query.check && !["lint", "test"].includes(query.check))
+      invalid("Check must be lint or test");
+    if (query.status && !["passed", "failed", "cancelled", "uncertain", "unfinished"].includes(query.status))
+      invalid("Invalid run status");
+    signal = budget(query);
+    const budgetSignal = signal, { key, directory } = await location(query.repository, query, budgetSignal);
+    let checkout = query.checkout ? resolve3(query.checkout) : "";
+    if (checkout) {
+      try {
+        checkout = await realpath4(checkout);
+      } catch (error) {
+        if (!missing2(error))
+          throw error;
+      }
+    }
+    return await inspectHistory(directory, budgetSignal, async (events) => {
+      const runs = [];
+      for (const run2 of replay(events).values()) {
+        budgetSignal.throwIfAborted();
+        if (checkout && run2.start.checkout !== checkout || query.component && run2.start.component !== query.component || query.check && run2.check !== query.check)
+          continue;
+        const row = summary(run2);
+        if (!query.status || row.status === query.status)
+          runs.push(row);
+      }
+      runs.sort((a, b) => compareTime(b.startedAt, a.startedAt) || Buffer.compare(Buffer.from(a.runID), Buffer.from(b.runID)));
+      const page = runs.slice(offset, offset + limit);
+      const selected = query.includeInputs ? await Promise.all(page.map(async (run2) => {
+        const evidence = await inputEvidence(directory, run2, budgetSignal);
+        const inputs = {
+          complete: evidence.inputs !== null,
+          diagnostics: evidence.diagnostics,
+          ...evidence.inputs ? { snapshot: evidence.inputs.snapshot } : {}
+        };
+        return { ...run2, inputs };
+      })) : page;
+      budgetSignal.throwIfAborted();
+      return { repository: key, runs: selected, total: runs.length, offset, limit, hasMore: offset + limit < runs.length };
+    });
   } catch (error) {
-    if (missing2(error))
-      return void 0;
-    throw error;
+    throw historyError(error, op, query.repository, signal);
   }
-  const lines = data.split("\n");
-  for (let i = 0; i < lines.length - 1; i++) {
-    signal.throwIfAborted();
-    const record2 = object4(JSON.parse(lines[i]));
-    if (record2.runID === id)
-      return text(record2.output);
-  }
-  if (lines.at(-1))
-    fail("Incomplete output record");
-  return void 0;
 }
-async function readValidationRun(repository2, runID, options = {}) {
-  if (!/^[A-Z2-7]+$/.test(runID))
-    fail("Invalid run ID");
-  const signal = budget(options), { key, directory } = await location(repository2, options, signal);
-  return inspectHistory(directory, signal, async (events) => {
-    const stored = replay(events).get(runID);
-    if (!stored)
-      throw Object.assign(new Error("Run is not present in retained repository history"), { code: "validation.run_not_found" });
-    const run2 = summary(stored), check = result(stored), diagnostics = [];
-    let inputs = null, stdout = "", stderr = "";
-    try {
-      if (!/^[A-Z2-7]+$/.test(run2.inputID))
-        fail("Invalid input record ID");
-      const raw = object4(JSON.parse(await readFile3(join8(directory, "inputs", run2.inputID + ".json"), { encoding: "utf8", signal })));
-      if (raw.schemaVersion !== 1 || raw.checkout !== run2.checkout || !text(raw.snapshot))
-        fail("Input manifest identity or schema is invalid");
-      object4(raw.files);
-      for (const value of Object.values(object4(raw.files))) {
-        const entry = object4(value);
-        text(entry.kind);
-        text(entry.digest);
-        if (entry.version != null && typeof entry.version !== "boolean")
-          fail("Invalid input version marker");
-      }
-      inputs = raw;
-    } catch (error) {
-      signal.throwIfAborted();
-      diagnostics.push({ artifact: "inputs", message: String(error) });
+async function inputEvidence(directory, run2, signal) {
+  let inputs = null;
+  const diagnostics = [];
+  try {
+    if (!/^[A-Z2-7]+$/.test(run2.inputID))
+      fail("Invalid input record ID");
+    const raw = object4(JSON.parse(await readFile3(join8(directory, "inputs", run2.inputID + ".json"), { encoding: "utf8", signal })));
+    if (raw.schemaVersion !== 1 || raw.checkout !== run2.checkout || !text(raw.snapshot))
+      fail("Input manifest identity or schema is invalid");
+    object4(raw.files);
+    for (const value of Object.values(object4(raw.files))) {
+      const entry = object4(value);
+      text(entry.kind);
+      text(entry.digest);
+      if (entry.version != null && typeof entry.version !== "boolean")
+        fail("Invalid input version marker");
     }
-    try {
-      const prefix = join8(directory, "logs", new Date(run2.startedAt).toISOString().slice(0, 10));
-      const out = await output(prefix + ".stdout.jsonl", runID, signal), err = await output(prefix + ".stderr.jsonl", runID, signal);
-      if (out !== void 0 && err !== void 0) {
-        stdout = out;
-        stderr = err;
-      } else if (out !== void 0 || err !== void 0)
-        fail("Incomplete daily output for run " + runID);
-      else {
-        stdout = await readFile3(join8(directory, "logs", runID, "stdout"), { encoding: "utf8", signal });
-        stderr = await readFile3(join8(directory, "logs", runID, "stderr"), { encoding: "utf8", signal });
-      }
-    } catch (error) {
-      signal.throwIfAborted();
-      diagnostics.push({ artifact: "output", message: String(error) });
-    }
-    return { repository: key, run: run2, result: { ...check, stdout, stderr }, inputs, complete: diagnostics.length === 0, diagnostics };
-  });
+    inputs = raw;
+  } catch (error) {
+    signal.throwIfAborted();
+    diagnostics.push({ artifact: "inputs", message: String(error) });
+  }
+  signal.throwIfAborted();
+  return { inputs, diagnostics };
 }
 
 // lib/repokit.ts
@@ -13074,12 +13147,8 @@ function parseSubprojectsSection(path) {
 
 // domain/context/base.ts
 var WORKSPACE_STALE_SECONDS = 600;
-var TURN_TTL_SECONDS = 1800;
-var SESSION_TTL_SECONDS = 14400;
 var ACTIVE_REPO_TTL_SECONDS = 21600;
 var REVIEW_STALE_SECONDS = 1800;
-var REVIEW_FINDING_NUDGE_CAP = 3;
-var REVIEW_NUDGE_CAP = 1;
 function referenceFrom(entry) {
   return { title: entry.title, path: entry.path, ...entry.description ? { hook: entry.description } : {} };
 }
@@ -13664,9 +13733,6 @@ function findContainingWorkspace(path) {
   return registeredWorkspaces().find((root) => target === root || target.startsWith(`${root}/`));
 }
 
-// domain/board/delivery.ts
-import { unlinkSync as unlinkSync2 } from "node:fs";
-
 // domain/forge.ts
 function pullRequestInactive(pr) {
   return pr.state === "merged" || pr.state === "closed";
@@ -13677,9 +13743,9 @@ function pullRequestOpen(pr) {
 function vocabulary(provider) {
   return provider === "gitlab" ? ["MR", "!"] : ["PR", "#"];
 }
-function pullRequestLabel(provider, number4) {
+function pullRequestLabel(provider, number3) {
   const [noun, sigil] = vocabulary(provider);
-  return `${noun} ${sigil}${number4}`;
+  return `${noun} ${sigil}${number3}`;
 }
 
 // domain/board/render.ts
@@ -13702,6 +13768,7 @@ function reference(item) {
 }
 function renderItem(item) {
   const payload = item.payload;
+  if (payload.removed) return `Board item removed: ${item.type} (${item.scope.repoRoot ?? item.scope.workspaceRoot}). Previous information for this item no longer applies.`;
   if (item.type === "workspace") {
     const lines = [`[Workspace: ${text2(payload.root)}]`];
     const references = rows(payload.references);
@@ -13764,99 +13831,7 @@ function renderReview(payload) {
 }
 
 // domain/board/delivery.ts
-var RULES = {
-  workspace: { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
-  "repo.references": { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
-  "repo.pull-request": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
-  "repo.identity": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
-  "repo.validation": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
-  "repo.pr-blocked": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: 1, replayAfterCompact: false },
-  "repo.review": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: REVIEW_NUDGE_CAP, replayAfterCompact: false },
-  "repo.review-findings": { channels: ["prompt", "ui"], promptScope: "turn", maxDeliveries: REVIEW_FINDING_NUDGE_CAP, replayAfterCompact: false },
-  "repo.pr-history": { channels: ["ui"], replayAfterCompact: true }
-};
-function itemsFor(view, channel) {
-  return view.items.filter((item) => RULES[item.type].channels.includes(channel));
-}
-var PromptDelivery = class {
-  constructor(root, sessionId2) {
-    this.root = root;
-    this.sessionId = sessionId2;
-  }
-  root;
-  sessionId;
-  segment() {
-    return `board/sessions/${sessionName(this.sessionId)}`;
-  }
-  load() {
-    const raw = loadSegment(this.root, this.segment())?.items;
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
-    return Object.fromEntries(Object.entries(raw).flatMap(([key, value]) => {
-      if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
-      const row = value;
-      return [[key, { item_type: text3(row.item_type ?? row.item_key), signature: text3(row.signature), count: number3(row.count), ...typeof row.last_emit_at === "number" ? { last_emit_at: row.last_emit_at } : {} }]];
-    }));
-  }
-  deliver(view, trigger = "user_prompt") {
-    const due = this.deliverItems(view, trigger);
-    return due.length ? renderPrompt(due) : void 0;
-  }
-  /** Select and mark items once; request-local adapters retain the selection for their turn. */
-  deliverItems(view, trigger = "user_prompt") {
-    const receipt = this.load();
-    const at = now();
-    const due = view.items.filter((item) => {
-      const rule = RULES[item.type];
-      if (!rule.channels.includes("prompt") || trigger === "session_start" && rule.promptScope !== "session") return false;
-      const mark = receipt[item.id];
-      if (!mark || mark.signature !== item.signature) return true;
-      if (rule.maxDeliveries !== void 0) return mark.count < rule.maxDeliveries;
-      const ttl = rule.promptScope === "session" ? SESSION_TTL_SECONDS : TURN_TTL_SECONDS;
-      return mark.last_emit_at === void 0 || at - mark.last_emit_at >= ttl;
-    });
-    if (due.length === 0) return [];
-    for (const item of due) {
-      const previous = receipt[item.id];
-      const same = previous?.signature === item.signature;
-      receipt[item.id] = { item_type: item.type, signature: item.signature, count: same ? previous.count + 1 : 1, last_emit_at: at };
-    }
-    saveSegment(this.root, this.segment(), { items: receipt });
-    return due;
-  }
-  afterCompact() {
-    const receipt = this.load();
-    let changed = false;
-    for (const mark of Object.values(receipt)) {
-      const type = mark.item_type;
-      const rule = RULES[type];
-      if (rule?.replayAfterCompact) {
-        mark.signature = "";
-        mark.count = 0;
-        delete mark.last_emit_at;
-        changed = true;
-      }
-    }
-    if (changed) saveSegment(this.root, this.segment(), { items: receipt });
-  }
-  clear() {
-    try {
-      unlinkSync2(segmentFile(this.root, this.segment()));
-    } catch {
-    }
-  }
-};
-function text3(value) {
-  return typeof value === "string" ? value : "";
-}
-function number3(value) {
-  return typeof value === "number" ? value : 0;
-}
-
-// lib/forge.ts
-async function prContextForRepo(repo) {
-  const target = pullRequestTarget(repo);
-  return pullRequestContext(repo, target ? { targets: [target] } : {});
-}
+import { unlinkSync as unlinkSync2 } from "node:fs";
 
 // domain/board/model.ts
 import { createHash as createHash7 } from "node:crypto";
@@ -13900,29 +13875,130 @@ var BoardView = class _BoardView {
   }
 };
 var Board = class {
-  constructor(root, items) {
+  constructor(root, items = []) {
     this.root = root;
-    this.items = items;
+    for (const item of items) this.append(item);
   }
   root;
-  items;
-  view(focus) {
-    const items = !focus?.repoRoot ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
+  entries = /* @__PURE__ */ new Map();
+  get items() {
+    return [...this.entries.values()];
+  }
+  /**
+   * @spec Producers upsert facts by identity; full/delta consumers observe the latest revision.
+   * @see {@link component://docs/board.md}
+   */
+  append(item) {
+    this.entries.set(item.id, item);
+  }
+  /** @spec No focus reads all repositories; an explicit workspace-only focus excludes repository facts. */
+  full(focus) {
+    const items = !focus ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
     return new BoardView(this.root, focus, items);
   }
 };
+
+// domain/board/delivery.ts
+var RULES = {
+  workspace: { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
+  "repo.references": { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
+  "repo.pull-request": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
+  "repo.identity": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
+  "repo.validation": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
+  "repo.pr-blocked": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
+  "repo.review": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
+  "repo.review-findings": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
+  "repo.pr-history": { channels: ["ui"], replayAfterCompact: true }
+};
+function itemsFor(view, channel) {
+  return view.items.filter((item) => RULES[item.type].channels.includes(channel));
+}
+var PromptDelivery = class {
+  constructor(root, sessionId2) {
+    this.root = root;
+    this.sessionId = sessionId2;
+  }
+  root;
+  sessionId;
+  segment() {
+    return `board/sessions/${sessionName(this.sessionId)}`;
+  }
+  load() {
+    const raw = loadSegment(this.root, this.segment());
+    const items = raw?.items;
+    if (items === null || typeof items !== "object" || Array.isArray(items)) return { items: {} };
+    const marks = {};
+    for (const [id, value] of Object.entries(items)) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const row = value, type = row.item_type;
+      if (!Object.hasOwn(RULES, type) || typeof row.signature !== "string") continue;
+      const scope = row.scope;
+      marks[id] = {
+        item_type: type,
+        signature: row.signature,
+        ...scope && typeof scope.workspaceRoot === "string" && (scope.repoRoot === void 0 || typeof scope.repoRoot === "string") ? { scope } : {}
+      };
+    }
+    return { items: marks, ...typeof raw?.focus === "string" ? { focus: raw.focus } : {} };
+  }
+  /**
+   * @spec Only new, changed or removed visible items are delivered. Elapsed time never reopens delivery.
+   * @spec Inspection is read-only; acknowledgment advances only the inspected revisions.
+   * @spec Repository facts outside an explicit focus retain their receipts, including a workspace-only focus.
+   * @see {@link component://docs/board.md}
+   */
+  delta(view, trigger = "user_prompt") {
+    const receipt = this.load(), focus = view.focus?.repoRoot ?? view.root;
+    const changedFocus = receipt.focus !== void 0 && receipt.focus !== focus;
+    const eligible = (type) => RULES[type]?.channels.includes("prompt") && (trigger !== "session_start" || RULES[type].promptScope === "session");
+    const present = new Set(view.items.map((item) => item.id));
+    const items = view.items.filter((item) => eligible(item.type) && (receipt.items[item.id]?.signature !== item.signature || changedFocus && RULES[item.type].replayAfterCompact));
+    for (const [id, mark] of Object.entries(receipt.items)) {
+      if (!mark.scope || !eligible(mark.item_type)) continue;
+      if (view.focus && mark.scope.repoRoot && mark.scope.repoRoot !== view.focus.repoRoot) continue;
+      if (!present.has(id)) items.push(boardItem(mark.item_type, "state", mark.scope, { removed: true }));
+    }
+    let acknowledged = false;
+    return { items, acknowledge: () => {
+      if (acknowledged || items.length === 0) return;
+      const latest = this.load();
+      for (const item of items) {
+        if (item.payload.removed) delete latest.items[item.id];
+        else latest.items[item.id] = { item_type: item.type, signature: item.signature, scope: item.scope };
+      }
+      saveSegment(this.root, this.segment(), { items: latest.items, focus });
+      acknowledged = true;
+    } };
+  }
+  afterCompact() {
+    const receipt = this.load();
+    for (const mark of Object.values(receipt.items)) if (RULES[mark.item_type]?.replayAfterCompact) mark.signature = "";
+    saveSegment(this.root, this.segment(), receipt);
+  }
+  clear() {
+    try {
+      unlinkSync2(segmentFile(this.root, this.segment()));
+    } catch {
+    }
+  }
+};
+
+// lib/forge.ts
+async function prContextForRepo(repo) {
+  const target = pullRequestTarget(repo);
+  return pullRequestContext(repo, target ? { targets: [target] } : {});
+}
 
 // domain/board/validation.ts
 async function validationHistory(repo) {
   const signal = AbortSignal.timeout(1e3);
   try {
-    const history = await listValidationRuns({ repository: repo, checkout: repo, limit: 3, signal });
+    const history = await listValidationRuns({ repository: repo, checkout: repo, limit: 3, includeInputs: true, signal });
     if (!history.total) return { total: 0, runs: [] };
     const current = await snapshot(repo, { signal }).catch(() => void 0);
-    const runs = await Promise.all(history.runs.map(async (run2) => {
-      const detail = await readValidationRun(repo, run2.runID, { signal }).catch(() => void 0);
+    const runs = history.runs.map((run2) => {
       let sourceState = "unknown";
-      if (current?.complete && detail?.inputs) sourceState = current.digest === detail.inputs.snapshot ? "unchanged" : "changed";
+      if (current?.complete && run2.inputs?.complete) sourceState = current.digest === run2.inputs.snapshot ? "unchanged" : "changed";
       return {
         runID: run2.runID,
         component: run2.component,
@@ -13932,9 +14008,9 @@ async function validationHistory(repo) {
         startedAt: run2.startedAt,
         inputsConsistent: run2.inputsConsistent,
         sourceState,
-        evidenceComplete: detail?.complete ?? false
+        inputsComplete: run2.inputs?.complete ?? false
       };
-    }));
+    });
     return { total: history.total, hasMore: history.hasMore, runs };
   } catch (error) {
     return { error: `Validation history unavailable: ${error instanceof Error ? error.message : String(error)}` };
@@ -13943,9 +14019,9 @@ async function validationHistory(repo) {
 
 // domain/board/projection.ts
 async function projectBoard(root, workspace, repo, staleBindingHours) {
-  const items = [];
+  const board = new Board(root);
   if (workspace && (workspace.agentsDocument.references.length > 0 || workspace.subprojects.length > 0)) {
-    items.push(boardItem("workspace", "state", { workspaceRoot: root }, {
+    board.append(boardItem("workspace", "state", { workspaceRoot: root }, {
       root: workspace.workspaceRoot,
       references: workspace.agentsDocument.references.map((item) => ({ title: item.title, path: item.path, description: item.hook ?? "" })),
       subprojects: workspace.subprojects.map((item) => ({
@@ -13957,7 +14033,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
       }))
     }));
   }
-  if (!repo) return new Board(root, items);
+  if (!repo) return board;
   const scope = { workspaceRoot: root, repoRoot: repo };
   let component, inspectionProblem = "";
   try {
@@ -13970,7 +14046,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   const agents = findAgentsDocument(repo, component?.path);
   const references = agents ? parseReferencesSection(agents) : [];
   if (references.length > 0) {
-    items.push(boardItem("repo.references", "state", scope, {
+    board.append(boardItem("repo.references", "state", scope, {
       references: references.map((item) => ({ title: item.title, path: item.path, description: item.description }))
     }));
   }
@@ -13998,7 +14074,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   } catch {
     linkedWorktree = null;
   }
-  items.push(boardItem("repo.identity", "state", scope, {
+  board.append(boardItem("repo.identity", "state", scope, {
     codeDir,
     repoRoot: repo,
     language: component?.language ?? "",
@@ -14013,16 +14089,16 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
     modifiedCount: status.modifiedCount,
     untrackedCount: status.untrackedCount,
     protected: isProtectedBranch(branch),
-    ...staleBindingHours === void 0 ? {} : { staleBindingHours }
+    ...staleBindingHours === void 0 ? {} : { staleBindingHours: Math.floor(staleBindingHours * 10) / 10 }
   }));
-  items.push(boardItem("repo.validation", "state", scope, await validationHistory(repo)));
-  if (branch === void 0) return new Board(root, items);
+  board.append(boardItem("repo.validation", "state", scope, await validationHistory(repo)));
+  if (branch === void 0) return board;
   let prContext;
   try {
     prContext = branch ? await prContextForRepo(repo) : void 0;
     if (prContext) {
       const view = await prContext.getCheckout({ signal: AbortSignal.timeout(1e3) });
-      if (view?.selected || view?.error || view?.ambiguous) items.push(boardItem("repo.pull-request", "state", scope, {
+      if (view?.selected || view?.error || view?.ambiguous) board.append(boardItem("repo.pull-request", "state", scope, {
         branch: view.branch,
         provider: prContext.reader.provider,
         ...view.selected ? { repository: view.selected.repository.path, number: view.selected.number, state: view.selected.state, url: view.selected.url } : {},
@@ -14031,7 +14107,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
       }));
     }
   } catch (error) {
-    items.push(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) }));
+    board.append(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) }));
   } finally {
     prContext?.close();
   }
@@ -14040,7 +14116,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   if (review && typeof review.status === "string" && review.status && review.status !== "skipped" && typeof review.reviewed_sha === "string" && review.reviewed_sha) {
     const generatedAt = typeof review.generated_at === "number" ? review.generated_at : 0;
     const reviewStatus = review.status === "running" && now() - generatedAt > REVIEW_STALE_SECONDS ? "stale" : review.status;
-    items.push(boardItem("repo.review", "event", scope, {
+    board.append(boardItem("repo.review", "event", scope, {
       status: reviewStatus,
       reviewedSha: review.reviewed_sha,
       findings: typeof review.count === "number" ? review.count : 0,
@@ -14049,7 +14125,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
       artifactPath: segmentFile(repo, reviewSegment)
     }));
   }
-  return new Board(root, items);
+  return board;
 }
 
 // domain/board/runtime.ts
@@ -14058,14 +14134,17 @@ var BoardRuntime = class _BoardRuntime {
     this.root = root;
     this.sessionId = sessionId2;
     this.board = board;
-    this.view = view;
     this.repo = repo;
+    this.focus = view.focus;
   }
   root;
   sessionId;
   board;
-  view;
   repo;
+  focus;
+  get view() {
+    return this.board.full(this.focus);
+  }
   static async resolve(cwd2, sessionId2) {
     let workspaceRoot2 = findContainingWorkspace(cwd2);
     let repo = findGitRoot(cwd2);
@@ -14083,11 +14162,21 @@ var BoardRuntime = class _BoardRuntime {
     const root = workspaceRoot2 ?? repo;
     if (!root) return void 0;
     const board = await projectBoard(root, workspace, repo, staleHours);
-    return new _BoardRuntime(root, sessionId2, board, board.view({ workspaceRoot: root, ...repo ? { repoRoot: repo } : {} }), repo);
+    return new _BoardRuntime(root, sessionId2, board, board.full({ workspaceRoot: root, ...repo ? { repoRoot: repo } : {} }), repo);
+  }
+  delta(trigger = "user_prompt") {
+    return new PromptDelivery(this.root, this.sessionId).delta(this.view, trigger);
+  }
+  full() {
+    return this.view;
   }
   deliverPrompt(trigger = "user_prompt") {
-    const result2 = new PromptDelivery(this.root, this.sessionId).deliver(this.view, trigger);
-    if (result2 && this.repo) recordSessionEvent(this.repo, this.sessionId, "inject", { text: result2 });
+    const delta = this.delta(trigger);
+    const result2 = delta.items.length ? renderPrompt(delta.items) || void 0 : void 0;
+    if (result2) {
+      if (this.repo) recordSessionEvent(this.repo, this.sessionId, "inject", { text: result2 });
+      delta.acknowledge();
+    }
     return result2;
   }
   snapshot() {
@@ -14693,10 +14782,10 @@ var layerDeps = {
     const layers = config.layers !== null && typeof config.layers === "object" && !Array.isArray(config.layers) ? config.layers : {};
     const order = stringArray(config.order);
     const ownLayer = layerOf(value.path, layers);
-    const text4 = resultingText(value);
-    if (!ownLayer || text4 === void 0 || !order.includes(ownLayer)) return [];
+    const text3 = resultingText(value);
+    if (!ownLayer || text3 === void 0 || !order.includes(ownLayer)) return [];
     const rank = new Map(order.map((layer, index) => [layer, index]));
-    return importedModules(text4, extname(value.path).toLowerCase()).flatMap((module) => {
+    return importedModules(text3, extname(value.path).toLowerCase()).flatMap((module) => {
       const dependency = importLayer(module, order);
       return dependency && dependency !== ownLayer && rank.get(dependency) < rank.get(ownLayer) ? [{ rule: "layer-deps", severity: "deny", message: `Layer violation: ${ownLayer} file ${value.path} must not depend on higher layer ${dependency} (import: ${module}). Move cross-layer orchestration to ${dependency}.`, locator: value.path }] : [];
     });
@@ -14809,7 +14898,7 @@ async function initializeBoard(payload) {
   const root = workspaceRoot2 ?? repo;
   if (!root) return { watchPaths: [] };
   const board = await projectBoard(root, workspace, repo);
-  const runtime = new BoardRuntime(root, sessionId(payload), board, board.view({ workspaceRoot: root, ...repo ? { repoRoot: repo } : {} }), repo);
+  const runtime = new BoardRuntime(root, sessionId(payload), board, board.full({ workspaceRoot: root, ...repo ? { repoRoot: repo } : {} }), repo);
   const watchPaths = /* @__PURE__ */ new Set();
   if (workspace?.agentsDocument.path) watchPaths.add(workspace.agentsDocument.path);
   for (const project of workspace?.subprojects ?? []) {

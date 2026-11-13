@@ -1,3 +1,4 @@
+import { renderPrompt } from "./render.js";
 import { findGitRoot } from "../repo-layout.js";
 import { findContainingWorkspace } from "../workspace.js";
 import { loadActiveRepo, loadActiveRepoLenient, recordSessionEvent } from "../context/session.js";
@@ -8,15 +9,16 @@ export class BoardRuntime {
     root;
     sessionId;
     board;
-    view;
     repo;
+    focus;
     constructor(root, sessionId, board, view, repo) {
         this.root = root;
         this.sessionId = sessionId;
         this.board = board;
-        this.view = view;
         this.repo = repo;
+        this.focus = view.focus;
     }
+    get view() { return this.board.full(this.focus); }
     static async resolve(cwd, sessionId) {
         let workspaceRoot = findContainingWorkspace(cwd);
         let repo = findGitRoot(cwd);
@@ -36,12 +38,18 @@ export class BoardRuntime {
         if (!root)
             return undefined;
         const board = await projectBoard(root, workspace, repo, staleHours);
-        return new BoardRuntime(root, sessionId, board, board.view({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
+        return new BoardRuntime(root, sessionId, board, board.full({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
     }
+    delta(trigger = "user_prompt") { return new PromptDelivery(this.root, this.sessionId).delta(this.view, trigger); }
+    full() { return this.view; }
     deliverPrompt(trigger = "user_prompt") {
-        const result = new PromptDelivery(this.root, this.sessionId).deliver(this.view, trigger);
-        if (result && this.repo)
-            recordSessionEvent(this.repo, this.sessionId, "inject", { text: result });
+        const delta = this.delta(trigger);
+        const result = delta.items.length ? renderPrompt(delta.items) || undefined : undefined;
+        if (result) {
+            if (this.repo)
+                recordSessionEvent(this.repo, this.sessionId, "inject", { text: result });
+            delta.acknowledge();
+        }
         return result;
     }
     snapshot() { return this.view.select(itemsFor(this.view, "ui")).toJSON(); }

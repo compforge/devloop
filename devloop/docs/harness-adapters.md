@@ -73,10 +73,10 @@ baseline is `@opencode/plugin` / OpenCode `2.1.2`; V1 hooks are a different prot
 
 - `skill.transform` registers the bundled Markdown assets with namespaced IDs, real file paths,
   and resolved `<PLUGIN_ROOT>` paths. YAML frontmatter is parsed once during setup.
-- `session.prompt` starts a new Board delivery window. The first primary `context` hook selects
-  due turn items through the shared receipt policy; subsequent requests retain that selection
-  and render current payloads. Uncapped facts (workspace/references, repo identity, and validation)
-  remain visible in every request. This is request-local context, not durable chat history. Compaction resets replayable delivery marks.
+- `session.context` renders `BoardRuntime.full()` for each rebuilt request. It does not consume delta
+  receipts or keep adapter-owned revision/selection state. Every request contains one current Board
+  view; compaction/resume naturally reconstructs it from facts. Retained-history hosts instead use
+  the Board delta path, which emits unchanged revisions only after an explicit baseline reset.
 - Tool admission uses the session's current location/subpath, not the plugin's loading location.
   Board initialization, checkout tracking, and tool-ledger failures are isolated from admission;
   they cannot bypass policy evaluation or replace an explicit deny.

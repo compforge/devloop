@@ -8,7 +8,6 @@ import type { Skill } from "@opencode/schema/skill";
 import { parse } from "yaml";
 import { initializeBoard, afterTool, endSession, recordToolCall } from "../process-hooks.js";
 import { BoardRuntime } from "../../domain/board/runtime.js";
-import { renderPrompt } from "../../domain/board/render.js";
 import { findGitRoot } from "../../domain/repo-layout.js";
 import { decisionMessage } from "../../hooks/core/domain.js";
 import { projectTool } from "../../hooks/core/project.js";
@@ -52,7 +51,7 @@ interface SessionState {
 
 /**
  * @spec OpenCode request-local Board context remains visible throughout a user turn.
- * @why Context hooks are not durable history; delivery receipts alone cannot replay them.
+ * @why Context hooks are not durable history; consuming a queue cannot preserve them across requests.
  * @link ../../docs/harness-adapters.md
  * @case ../../tests/opencode.spec.ts
  */
@@ -98,11 +97,11 @@ async function setup(ctx: Context): Promise<() => void> {
       state = { cwd, roots: new Set([cwd]) };
       sessions.set(sessionID, state);
       try {
-        await initializeBoard({ cwd, session_id: sessionID });
+        await initializeBoard({ cwd, session_id: sessionID }, "opencode");
       } catch (error) { log("board_initialization_failed", error, sessionID, cwd); }
     } else if (state.cwd !== cwd) {
       state.cwd = cwd; state.roots.add(cwd);
-      try { await initializeBoard({ cwd, session_id: sessionID }); }
+      try { await initializeBoard({ cwd, session_id: sessionID }, "opencode"); }
       catch (error) { log("board_initialization_failed", error, sessionID, cwd); }
     }
     return state;
@@ -111,9 +110,9 @@ async function setup(ctx: Context): Promise<() => void> {
   await ctx.session.hook("context", async (event) => {
     try {
       const state = await stateFor(event.sessionID);
-      const board = await BoardRuntime.resolve(state.cwd, event.sessionID);
+      const board = await BoardRuntime.resolve(state.cwd, event.sessionID, "opencode");
       if (!board) return;
-      const content = renderPrompt(board.full().items);
+      const content = await board.text();
       if (content) event.system.push({ type: "text", text: content });
     } catch (error) { log("context_failed", error, event.sessionID); }
   });
@@ -171,11 +170,11 @@ async function setup(ctx: Context): Promise<() => void> {
    * @spec An unavailable checkout must not prevent cleanup of other checkouts or sessions.
    * @case ../../tests/opencode.spec.ts
    */
-  const close = (sessionId: string): void => {
+  const close = async (sessionId: string): Promise<void> => {
     const state = sessions.get(sessionId);
     if (!state) return;
     for (const cwd of state.roots) {
-      try { endSession({ cwd, session_id: sessionId }, "opencode"); }
+      try { await endSession({ cwd, session_id: sessionId }, "opencode"); }
       catch (error) { log("session_cleanup_failed", error, sessionId, cwd); }
     }
     sessions.delete(sessionId);
@@ -183,7 +182,7 @@ async function setup(ctx: Context): Promise<() => void> {
   const events = new AbortController();
   void (async () => {
     for await (const event of ctx.event.subscribe({ signal: events.signal })) {
-      if (event.type === "session.deleted") close(event.data.sessionID);
+      if (event.type === "session.deleted") await close(event.data.sessionID);
       if (["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"].includes(event.type) && "sessionID" in event.data) {
         const sessionId = String(event.data.sessionID);
         for (const cwd of sessions.get(sessionId)?.roots ?? []) {
@@ -195,7 +194,7 @@ async function setup(ctx: Context): Promise<() => void> {
       }
     }
   })().catch((error: unknown) => { if (!events.signal.aborted) log("events_failed", error); });
-  return () => { events.abort(); for (const sessionId of sessions.keys()) close(sessionId); };
+  return async () => { events.abort(); for (const sessionId of sessions.keys()) await close(sessionId); };
 }
 
 export default { id: "devloop", setup } satisfies Plugin;

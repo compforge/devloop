@@ -1,69 +1,81 @@
-import { createHash } from "node:crypto";
+export type NoteScope = "workspace" | "repo" | "component" | "branch";
+export type NoteText = MergeableText | string;
 
-export type BoardItemType =
-  | "workspace"
-  | "repo.references"
-  | "repo.identity"
-  | "repo.validation"
-  | "repo.pull-request"
-  | "repo.pr-blocked"
-  | "repo.review"
-  | "repo.review-findings"
-  | "repo.pr-history";
-export type BoardItemKind = "state" | "event" | "detail";
-
-export interface BoardScope { readonly workspaceRoot: string; readonly repoRoot?: string }
-export interface BoardItem {
+export interface MergeableText {
+  /** Merge this update into previous, returning a new full value without mutating either input. */
+  merge(previous: MergeableText | string): MergeableText;
+  /** Complete text for prompts and persistence; future merges must accept this string. */
+  text(): string;
+}
+export interface NoteUpdate {
   readonly id: string;
-  readonly type: BoardItemType;
-  readonly kind: BoardItemKind;
-  readonly scope: BoardScope;
-  readonly payload: Readonly<Record<string, unknown>>;
-  readonly signature: string;
+  readonly scope: NoteScope;
+  readonly content: NoteText;
 }
-export interface BoardFocus { readonly workspaceRoot: string; readonly repoRoot?: string }
-
-function stable(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, stable(item)]));
-  }
-  return value;
+export interface Note {
+  readonly id: string;
+  readonly scope: NoteScope;
+  readonly full: NoteText;
+  readonly queue: readonly NoteText[];
 }
+interface StoredNote { scope: NoteScope; full: string; queue: string[] }
+export interface BoardSnapshot { schemaVersion: 1; notes: Record<string, StoredNote> }
+interface MutableNote { id: string; scope: NoteScope; full: NoteText; queue: NoteText[] }
+const SCOPES: readonly NoteScope[] = ["workspace", "repo", "component", "branch"];
+export function textOf(value: NoteText): string { return typeof value === "string" ? value : value.text(); }
 
-export function boardItem(type: BoardItemType, kind: BoardItemKind, scope: BoardScope, payload: Record<string, unknown>): BoardItem {
-  const owner = scope.repoRoot ?? scope.workspaceRoot;
-  const identity = { type, kind, scope, payload };
-  return {
-    id: `${owner}:${type}`, type, kind, scope, payload,
-    signature: createHash("sha1").update(JSON.stringify(stable(identity))).digest("hex"),
-  };
-}
-
-export class BoardView {
-  constructor(readonly root: string, readonly focus: BoardFocus | undefined, readonly items: readonly BoardItem[]) {}
-  select(items: readonly BoardItem[]): BoardView { return new BoardView(this.root, this.focus, items); }
-  toJSON(): Record<string, unknown> {
-    return {
-      root: this.root,
-      focus: this.focus ?? null,
-      items: this.items.map(({ signature: _signature, ...item }) => item),
-    };
-  }
-}
-
+/**
+ * @spec IDs are opaque; producers own identity and scope. Absence is never deletion.
+ * @spec Only updates that change the full text enter the queue, in arrival order per note.
+ * @see {@link component://docs/board.md}
+ */
 export class Board {
-  private readonly entries = new Map<string, BoardItem>();
-  constructor(readonly root: string, items: readonly BoardItem[] = []) { for (const item of items) this.append(item); }
-  get items(): readonly BoardItem[] { return [...this.entries.values()]; }
+  private readonly entries = new Map<string, MutableNote>();
+  get notes(): readonly Note[] { return [...this.entries.values()].map(note => ({...note, queue:[...note.queue]})); }
+
+  upsert({id, scope, content}: NoteUpdate): void {
+    const previous = this.entries.get(id);
+    if (previous && previous.scope !== scope) throw new Error(`Board note scope changed: ${id}`);
+    const full = previous && typeof content !== "string" ? content.merge(previous.full) : content;
+    if (previous) {
+      if (textOf(full) === textOf(previous.full)) return;
+      previous.full = full;
+      previous.queue.push(content);
+    } else {
+      textOf(full);
+      this.entries.set(id, {id, scope, full, queue:[content]});
+    }
+  }
+  remove(id: string): void { this.entries.delete(id); }
+  private selected(ids?: Iterable<string>): MutableNote[] {
+    const selected = ids === undefined ? undefined : new Set(ids);
+    return SCOPES.flatMap(scope => [...this.entries.values()].filter(note => note.scope === scope && (!selected || selected.has(note.id))));
+  }
+  /** Scope controls grouping order, never prompt metadata or a containment hierarchy. */
+  text(ids?: Iterable<string>): string { return this.selected(ids).map(note => textOf(note.full)).filter(Boolean).join("\n\n"); }
   /**
-   * @spec Producers upsert facts by identity; full/delta consumers observe the latest revision.
-   * @see {@link component://docs/board.md}
+   * @spec Delta consumes captured queue prefixes only after all text has rendered successfully.
+   * @spec Full reads never consume updates. No cursor, receipt or acknowledgment survives a delta call.
    */
-  append(item: BoardItem): void { this.entries.set(item.id, item); }
-  /** @spec No focus reads all repositories; an explicit workspace-only focus excludes repository facts. */
-  full(focus?: BoardFocus): BoardView {
-    const items = !focus ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
-    return new BoardView(this.root, focus, items);
+  delta(ids?: Iterable<string>): string {
+    const batch = this.selected(ids).map(note => ({note, queue:note.queue.slice()}));
+    const result = batch.flatMap(({queue}) => queue.map(textOf)).filter(Boolean).join("\n\n");
+    for (const {note, queue} of batch) note.queue.splice(0, queue.length);
+    return result;
+  }
+  snapshot(): BoardSnapshot {
+    return {schemaVersion:1, notes:Object.fromEntries([...this.entries].map(([id,note]) =>
+      [id, {scope:note.scope, full:textOf(note.full), queue:note.queue.map(textOf)}]))};
+  }
+  static restore(value: unknown): Board {
+    const object = (entry: unknown): entry is Record<string, unknown> => entry !== null && typeof entry === "object" && !Array.isArray(entry);
+    if (!object(value) || value.schemaVersion !== 1 || !object(value.notes)) throw new Error("Invalid Board snapshot");
+    const board = new Board();
+    for (const [id, note] of Object.entries(value.notes)) {
+      if (!object(note) || !SCOPES.includes(note.scope as NoteScope) || typeof note.full !== "string"
+        || !Array.isArray(note.queue) || !note.queue.every(item => typeof item === "string")) throw new Error(`Invalid Board note: ${id}`);
+      board.entries.set(id, {id, scope:note.scope as NoteScope, full:note.full, queue:[...note.queue] as string[]});
+    }
+    return board;
   }
 }

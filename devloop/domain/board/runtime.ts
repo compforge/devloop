@@ -1,17 +1,19 @@
-import { renderPrompt } from "./render.js";
 import { findGitRoot } from "../repo-layout.js";
 import { findContainingWorkspace } from "../workspace.js";
-import { loadActiveRepo, loadActiveRepoLenient, recordSessionEvent } from "../context/session.js";
+import { loadActiveRepo, loadActiveRepoLenient, recordSessionEvent, identityFromEnvironment } from "../context/session.js";
 import { WorkspaceContext } from "../context/workspace.js";
-import { itemsFor, PromptDelivery, type BoardDelta, type PromptTrigger } from "./delivery.js";
-import { projectBoard } from "./projection.js";
-import type { Board, BoardFocus, BoardView } from "./model.js";
+import { projectNotes } from "./projection.js";
+import { BoardStore, type BoardSession } from "./store.js";
 
+export type PromptTrigger = "session_start" | "user_prompt";
+
+/** Harness facade: producers select relevant IDs; the Board only merges and consumes notes. */
 export class BoardRuntime {
-  private readonly focus: BoardFocus | undefined;
-  constructor(readonly root: string, readonly sessionId: string | undefined, readonly board: Board, view: BoardView, readonly repo?: string) { this.focus = view.focus; }
-  get view(): BoardView { return this.board.full(this.focus); }
-  static async resolve(cwd: string, sessionId?: string): Promise<BoardRuntime | undefined> {
+  readonly store: BoardStore;
+  constructor(readonly root: string, readonly session: BoardSession, readonly workspace?: WorkspaceContext,
+    readonly repo?: string, readonly staleHours?: number) { this.store = new BoardStore(session); }
+
+  static async resolve(cwd: string, sessionId?: string, harness = "claude"): Promise<BoardRuntime | undefined> {
     let workspaceRoot = findContainingWorkspace(cwd);
     let repo = findGitRoot(cwd);
     let staleHours: number | undefined;
@@ -25,22 +27,35 @@ export class BoardRuntime {
       }
     }
     const root = workspaceRoot ?? repo;
-    if (!root) return undefined;
-    const board = await projectBoard(root, workspace, repo, staleHours);
-    return new BoardRuntime(root, sessionId, board, board.full({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
+    return root ? new BoardRuntime(root, {harness, sessionId:sessionId || identityFromEnvironment().sessionId || "anon"}, workspace, repo, staleHours) : undefined;
   }
-  delta(trigger: PromptTrigger = "user_prompt"): BoardDelta { return new PromptDelivery(this.root, this.sessionId).delta(this.view, trigger); }
-  full(): BoardView { return this.view; }
-  deliverPrompt(trigger: PromptTrigger = "user_prompt"): string | undefined {
-    const delta = this.delta(trigger);
-    const result = delta.items.length ? renderPrompt(delta.items) || undefined : undefined;
-    if (result) {
-      if (this.repo) recordSessionEvent(this.repo, this.sessionId, "inject", {text:result});
-      delta.acknowledge();
-    }
-    return result;
+
+  private async read(mode: "text" | "delta", trigger: PromptTrigger): Promise<string> {
+    // Project under the same lock as the update: concurrent hooks cannot commit older observations last.
+    return this.store.transaction(mode, async board => {
+      const projection = await projectNotes(this.root, this.workspace, this.repo, this.staleHours);
+      for (const note of projection.notes) board.upsert(note);
+      const ids = trigger === "session_start" ? projection.startupIds : projection.notes.map(note => note.id);
+      return mode === "text" ? board.text(ids) : board.delta(ids);
+    });
   }
-  snapshot(): Record<string, unknown> { return this.view.select(itemsFor(this.view, "ui")).toJSON(); }
-  afterCompact(): void { new PromptDelivery(this.root, this.sessionId).afterCompact(); }
-  close(): void { new PromptDelivery(this.root, this.sessionId).clear(); }
+  text(): Promise<string> { return this.read("text", "user_prompt"); }
+  delta(trigger: PromptTrigger = "user_prompt"): Promise<string> { return this.read("delta", trigger); }
+  async deliverPrompt(trigger: PromptTrigger = "user_prompt"): Promise<string | undefined> {
+    const text = await this.delta(trigger);
+    if (text && this.repo) recordSessionEvent(this.repo, this.session.sessionId, "inject", {text});
+    return text || undefined;
+  }
+  async afterCompact(): Promise<void> {
+    await this.store.transaction("compact", async board => {
+      const projection = await projectNotes(this.root, this.workspace, this.repo, this.staleHours);
+      const restore = new Set(projection.restoreIds);
+      for (const note of projection.notes) {
+        // A compacted context needs one latest state, not intermediate state updates. Review queues survive.
+        if (restore.has(note.id)) board.remove(note.id);
+        board.upsert(note);
+      }
+    });
+  }
+  close(): Promise<void> { return this.store.clear(); }
 }

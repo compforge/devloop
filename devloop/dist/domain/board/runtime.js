@@ -1,25 +1,26 @@
-import { renderPrompt } from "./render.js";
 import { findGitRoot } from "../repo-layout.js";
 import { findContainingWorkspace } from "../workspace.js";
-import { loadActiveRepo, loadActiveRepoLenient, recordSessionEvent } from "../context/session.js";
+import { loadActiveRepo, loadActiveRepoLenient, recordSessionEvent, identityFromEnvironment } from "../context/session.js";
 import { WorkspaceContext } from "../context/workspace.js";
-import { itemsFor, PromptDelivery } from "./delivery.js";
-import { projectBoard } from "./projection.js";
+import { projectNotes } from "./projection.js";
+import { BoardStore } from "./store.js";
+/** Harness facade: producers select relevant IDs; the Board only merges and consumes notes. */
 export class BoardRuntime {
     root;
-    sessionId;
-    board;
+    session;
+    workspace;
     repo;
-    focus;
-    constructor(root, sessionId, board, view, repo) {
+    staleHours;
+    store;
+    constructor(root, session, workspace, repo, staleHours) {
         this.root = root;
-        this.sessionId = sessionId;
-        this.board = board;
+        this.session = session;
+        this.workspace = workspace;
         this.repo = repo;
-        this.focus = view.focus;
+        this.staleHours = staleHours;
+        this.store = new BoardStore(session);
     }
-    get view() { return this.board.full(this.focus); }
-    static async resolve(cwd, sessionId) {
+    static async resolve(cwd, sessionId, harness = "claude") {
         let workspaceRoot = findContainingWorkspace(cwd);
         let repo = findGitRoot(cwd);
         let staleHours;
@@ -35,25 +36,38 @@ export class BoardRuntime {
             }
         }
         const root = workspaceRoot ?? repo;
-        if (!root)
-            return undefined;
-        const board = await projectBoard(root, workspace, repo, staleHours);
-        return new BoardRuntime(root, sessionId, board, board.full({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
+        return root ? new BoardRuntime(root, { harness, sessionId: sessionId || identityFromEnvironment().sessionId || "anon" }, workspace, repo, staleHours) : undefined;
     }
-    delta(trigger = "user_prompt") { return new PromptDelivery(this.root, this.sessionId).delta(this.view, trigger); }
-    full() { return this.view; }
-    deliverPrompt(trigger = "user_prompt") {
-        const delta = this.delta(trigger);
-        const result = delta.items.length ? renderPrompt(delta.items) || undefined : undefined;
-        if (result) {
-            if (this.repo)
-                recordSessionEvent(this.repo, this.sessionId, "inject", { text: result });
-            delta.acknowledge();
-        }
-        return result;
+    async read(mode, trigger) {
+        // Project under the same lock as the update: concurrent hooks cannot commit older observations last.
+        return this.store.transaction(mode, async (board) => {
+            const projection = await projectNotes(this.root, this.workspace, this.repo, this.staleHours);
+            for (const note of projection.notes)
+                board.upsert(note);
+            const ids = trigger === "session_start" ? projection.startupIds : projection.notes.map(note => note.id);
+            return mode === "text" ? board.text(ids) : board.delta(ids);
+        });
     }
-    snapshot() { return this.view.select(itemsFor(this.view, "ui")).toJSON(); }
-    afterCompact() { new PromptDelivery(this.root, this.sessionId).afterCompact(); }
-    close() { new PromptDelivery(this.root, this.sessionId).clear(); }
+    text() { return this.read("text", "user_prompt"); }
+    delta(trigger = "user_prompt") { return this.read("delta", trigger); }
+    async deliverPrompt(trigger = "user_prompt") {
+        const text = await this.delta(trigger);
+        if (text && this.repo)
+            recordSessionEvent(this.repo, this.session.sessionId, "inject", { text });
+        return text || undefined;
+    }
+    async afterCompact() {
+        await this.store.transaction("compact", async (board) => {
+            const projection = await projectNotes(this.root, this.workspace, this.repo, this.staleHours);
+            const restore = new Set(projection.restoreIds);
+            for (const note of projection.notes) {
+                // A compacted context needs one latest state, not intermediate state updates. Review queues survive.
+                if (restore.has(note.id))
+                    board.remove(note.id);
+                board.upsert(note);
+            }
+        });
+    }
+    close() { return this.store.clear(); }
 }
 //# sourceMappingURL=runtime.js.map

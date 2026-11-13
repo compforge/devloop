@@ -30,7 +30,7 @@ export const Config: Schema<Config> = Schema.object({
  */
 export function apply(ctx: Context, config: Config = {}): void {
   const boardFor = (agent: Agent): Promise<BoardRuntime | undefined> =>
-    BoardRuntime.resolve(agent.session.header.cwd ?? config.cwd ?? process.cwd(), String(agent.id));
+    BoardRuntime.resolve(agent.session.header.cwd ?? config.cwd ?? process.cwd(), String(agent.id), "dsh");
   const contextMessage = (content: string) => createUserMessage({
     content: [{ type: "text", text: content }],
     source: { kind: "plugin", plugin: name },
@@ -40,17 +40,17 @@ export function apply(ctx: Context, config: Config = {}): void {
     const board = (await initializeBoard({
       cwd: agent.session.header.cwd ?? config.cwd ?? process.cwd(),
       session_id: String(agent.id),
-    })).runtime ?? await boardFor(agent);
+    }, "dsh")).runtime ?? await boardFor(agent);
     if (!board) return;
-    if (source === "compact") board.afterCompact();
-    const content = board.deliverPrompt("session_start");
+    if (source === "compact") await board.afterCompact();
+    const content = await board.deliverPrompt("session_start");
     if (content) agent.inject(contextMessage(content));
   });
 
   ctx.on("agent/pre-step", async ({ agent }, next): Promise<PreStepDecision> => {
     const downstream = await next();
     if (downstream.kind !== "enter") return downstream;
-    const content = (await boardFor(agent))?.deliverPrompt("user_prompt");
+    const content = await (await boardFor(agent))?.deliverPrompt("user_prompt");
     // Goal rounds can start a fresh request series even when Board adds context.
     return content
       ? { ...downstream, messages: [...downstream.messages, contextMessage(content)] }
@@ -95,8 +95,8 @@ export function apply(ctx: Context, config: Config = {}): void {
     return downstream;
   });
 
-  ctx.on("agent/disposed", ({ agent }) => {
-    endSession({
+  ctx.on("agent/disposed", async ({ agent }) => {
+    await endSession({
       cwd: agent.session.header.cwd ?? config.cwd ?? process.cwd(),
       session_id: String(agent.id),
     }, "dsh");

@@ -49,9 +49,7 @@ describe("Review state through the TypeScript Board", () => {
   ])("delivers %s (%i findings, %i failures)", async (status, count, failed, expected) => {
     record({ status, count, failed });
     const board = await runtime();
-    const item = board.view.items.find((item) => item.type === "repo.review");
-    expect(item?.payload).toMatchObject({ status, reviewedSha: sha, findings: count, failedFiles: failed });
-    expect(JSON.stringify(board.snapshot())).toContain('"repo.review"');
+    expect(await board.text()).toContain(expected);
     const output = await prompt();
     expect(output).toContain("Review:");
     expect(output).toContain(expected);
@@ -87,10 +85,30 @@ describe("Review state through the TypeScript Board", () => {
     expect(await prompt()).toContain("review errored");
   });
 
+
+  // @case A -> empty B -> A retains A's consumed review; B's own review has an independent queue.
+  it("retains branch notes across focus changes and process-like runtime reloads", async () => {
+    record({status:"success", count:1});
+    expect(await prompt()).toContain("1 finding(s)");
+    execFileSync("git", ["-C",root,"symbolic-ref","HEAD","refs/heads/other"]);
+    const empty = await prompt();
+    expect(empty).not.toContain("Review:");
+    expect(empty).not.toContain("removed");
+    record({status:"success", count:2}, "other");
+    expect(await prompt()).toContain("2 finding(s)");
+    execFileSync("git", ["-C",root,"symbolic-ref","HEAD","refs/heads/feature"]);
+    expect(await prompt()).not.toContain("Review:");
+    expect(await (await runtime()).text()).toContain("1 finding(s)");
+    execFileSync("git", ["-C",root,"symbolic-ref","HEAD","refs/heads/other"]);
+    expect(await prompt()).not.toContain("Review:");
+    record({status:"success", count:3}, "other");
+    expect(await prompt()).toContain("3 finding(s)");
+  });
+
   // case:review-result-delivery A status transition reopens delivery; compaction does not.
   it("delivers changes once without replaying events after compaction", async () => {
     record({ status: "running" });
-    expect((await runtime()).deliverPrompt("session_start") ?? "").not.toContain("Review:");
+    expect(await (await runtime()).deliverPrompt("session_start") ?? "").not.toContain("Review:");
     expect(await prompt()).toContain("Review: running");
     expect(await prompt()).not.toContain("Review:");
     record({ status: "error", message: "review runner not found" });

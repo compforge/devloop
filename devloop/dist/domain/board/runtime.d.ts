@@ -1,19 +1,21 @@
-import { type BoardDelta, type PromptTrigger } from "./delivery.js";
-import type { Board, BoardView } from "./model.js";
+import { WorkspaceContext } from "../context/workspace.js";
+import { BoardStore, type BoardSession } from "./store.js";
+export type PromptTrigger = "session_start" | "user_prompt";
+/** Harness facade: producers select relevant IDs; the Board only merges and consumes notes. */
 export declare class BoardRuntime {
     readonly root: string;
-    readonly sessionId: string | undefined;
-    readonly board: Board;
+    readonly session: BoardSession;
+    readonly workspace?: WorkspaceContext | undefined;
     readonly repo?: string | undefined;
-    private readonly focus;
-    constructor(root: string, sessionId: string | undefined, board: Board, view: BoardView, repo?: string | undefined);
-    get view(): BoardView;
-    static resolve(cwd: string, sessionId?: string): Promise<BoardRuntime | undefined>;
-    delta(trigger?: PromptTrigger): BoardDelta;
-    full(): BoardView;
-    deliverPrompt(trigger?: PromptTrigger): string | undefined;
-    snapshot(): Record<string, unknown>;
-    afterCompact(): void;
-    close(): void;
+    readonly staleHours?: number | undefined;
+    readonly store: BoardStore;
+    constructor(root: string, session: BoardSession, workspace?: WorkspaceContext | undefined, repo?: string | undefined, staleHours?: number | undefined);
+    static resolve(cwd: string, sessionId?: string, harness?: string): Promise<BoardRuntime | undefined>;
+    private read;
+    text(): Promise<string>;
+    delta(trigger?: PromptTrigger): Promise<string>;
+    deliverPrompt(trigger?: PromptTrigger): Promise<string | undefined>;
+    afterCompact(): Promise<void>;
+    close(): Promise<void>;
 }
 //# sourceMappingURL=runtime.d.ts.map

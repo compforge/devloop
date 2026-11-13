@@ -107,8 +107,8 @@ describe("OpenCode V2 adapter", () => {
     expect(JSON.stringify(first.system)).toContain("design.md");
     expect(JSON.stringify((await context()).system)).toContain("design.md");
     expect((await context()).system).toHaveLength(1);
-    const board = await BoardRuntime.resolve(root, "ses_a");
-    expect(board?.delta().items.some(item => item.type === "repo.references")).toBe(true);
+    const board = await BoardRuntime.resolve(root, "ses_a", "opencode");
+    expect(await board?.delta()).toContain("design.md");
     const nextTurn = JSON.stringify((await context()).system);
     expect(nextTurn).toContain("design.md");
     expect(nextTurn).toContain("Branch: feature");

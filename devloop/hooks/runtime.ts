@@ -17,12 +17,12 @@ async function run(payload: HookPayload, adapter: ProcessHookAdapter): Promise<R
   recordToolCall(payload, adapter.harness);
   if (event === "PreToolUse") return adapter.preTool(payload);
   if (event === "SessionStart") return sessionStartOutput(payload, adapter.harness);
-  if (event === "UserPromptSubmit") return userPromptOutput(payload);
-  if (event === "PostCompact") await afterCompact(payload);
+  if (event === "UserPromptSubmit") return userPromptOutput(payload, adapter.harness);
+  if (event === "PostCompact") await afterCompact(payload, adapter.harness);
   else if (event === "PostToolUse") afterTool(payload, adapter.harness);
   else if (event === "CwdChanged") afterCwdChanged(payload);
   else if (event === "FileChanged") afterFileChanged(payload);
-  else if (event === "SessionEnd") endSession(payload, adapter.harness);
+  else if (event === "SessionEnd") await endSession(payload, adapter.harness);
   return {};
 }
 

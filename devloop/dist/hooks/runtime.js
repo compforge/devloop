@@ -7433,7 +7433,7 @@ var require_polyfills = __commonJS({
       }
       if (platform === "win32") {
         fs.rename = typeof fs.rename !== "function" ? fs.rename : (function(fs$rename) {
-          function rename2(from, to, cb) {
+          function rename3(from, to, cb) {
             var start = Date.now();
             var backoff = 0;
             fs$rename(from, to, function CB(er) {
@@ -7453,8 +7453,8 @@ var require_polyfills = __commonJS({
               if (cb) cb(er);
             });
           }
-          if (Object.setPrototypeOf) Object.setPrototypeOf(rename2, fs$rename);
-          return rename2;
+          if (Object.setPrototypeOf) Object.setPrototypeOf(rename3, fs$rename);
+          return rename3;
         })(fs.rename);
       }
       fs.read = typeof fs.read !== "function" ? fs.read : (function(fs$read) {
@@ -7858,8 +7858,8 @@ var require_graceful_fs = __commonJS({
       fs2.createReadStream = createReadStream;
       fs2.createWriteStream = createWriteStream;
       var fs$readFile = fs2.readFile;
-      fs2.readFile = readFile4;
-      function readFile4(path, options, cb) {
+      fs2.readFile = readFile5;
+      function readFile5(path, options, cb) {
         if (typeof options === "function")
           cb = options, options = null;
         return go$readFile(path, options, cb);
@@ -8035,7 +8035,7 @@ var require_graceful_fs = __commonJS({
       }
       function ReadStream$open() {
         var that = this;
-        open6(that.path, that.flags, that.mode, function(err, fd) {
+        open7(that.path, that.flags, that.mode, function(err, fd) {
           if (err) {
             if (that.autoClose)
               that.destroy();
@@ -8055,7 +8055,7 @@ var require_graceful_fs = __commonJS({
       }
       function WriteStream$open() {
         var that = this;
-        open6(that.path, that.flags, that.mode, function(err, fd) {
+        open7(that.path, that.flags, that.mode, function(err, fd) {
           if (err) {
             that.destroy();
             that.emit("error", err);
@@ -8072,8 +8072,8 @@ var require_graceful_fs = __commonJS({
         return new fs2.WriteStream(path, options);
       }
       var fs$open = fs2.open;
-      fs2.open = open6;
-      function open6(path, flags, mode, cb) {
+      fs2.open = open7;
+      function open7(path, flags, mode, cb) {
         if (typeof mode === "function")
           cb = mode, mode = null;
         return go$open(path, flags, mode, cb);
@@ -13210,9 +13210,6 @@ function saveWorkspace(root, data) {
 function loadSegment(root, name) {
   return readJson(segmentFile(root, name));
 }
-function saveSegment(root, name, data) {
-  atomicWrite(segmentFile(root, name), data);
-}
 function appendLedger(root, name, record2) {
   try {
     const path = join11(stateDirectory(root), `${name}.jsonl`);
@@ -13733,6 +13730,12 @@ function findContainingWorkspace(path) {
   return registeredWorkspaces().find((root) => target === root || target.startsWith(`${root}/`));
 }
 
+// lib/forge.ts
+async function prContextForRepo(repo) {
+  const target = pullRequestTarget(repo);
+  return pullRequestContext(repo, target ? { targets: [target] } : {});
+}
+
 // domain/forge.ts
 function pullRequestInactive(pr) {
   return pr.state === "merged" || pr.state === "closed";
@@ -13766,10 +13769,8 @@ function reference(item) {
   const base = basename6(path);
   return description && description !== base && description !== path ? `${title} \u2014 ${description}  \u2190 ${base}` : `${title}  \u2190 ${base}`;
 }
-function renderItem(item) {
-  const payload = item.payload;
-  if (payload.removed) return `Board item removed: ${item.type} (${item.scope.repoRoot ?? item.scope.workspaceRoot}). Previous information for this item no longer applies.`;
-  if (item.type === "workspace") {
+function renderFact(type, payload) {
+  if (type === "workspace") {
     const lines = [`[Workspace: ${text2(payload.root)}]`];
     const references = rows(payload.references);
     if (references.length) lines.push("AGENTS.md references (Read when the task touches these topics):", ...references.map((row) => `  - ${reference(row)}`));
@@ -13781,19 +13782,19 @@ function renderItem(item) {
     }));
     return lines.join("\n");
   }
-  if (item.type === "repo.references") return ["Repo AGENTS.md references (Read when the task touches these topics):", ...rows(payload.references).map((row) => `  - ${reference(row)}`)].join("\n");
-  if (item.type === "repo.identity") {
+  if (type === "repo.references") return ["Repo AGENTS.md references (Read when the task touches these topics):", ...rows(payload.references).map((row) => `  - ${reference(row)}`)].join("\n");
+  if (type === "repo.identity") {
     const dirty = payload.workspaceDirty ? `dirty(${number2(payload.modifiedCount)} modified, ${number2(payload.untrackedCount)} untracked)` : payload.workspaceDirty === null ? "unknown" : "clean";
     const warnings = [payload.protected ? "PROTECTED" : "", typeof payload.staleBindingHours === "number" ? `repo binding is ${payload.staleBindingHours.toFixed(1)}h old; confirm the repo with cd` : ""].filter(Boolean);
     if (payload.inspectionProblem) warnings.push(text2(payload.inspectionProblem));
     return `[Current repo: ${text2(payload.codeDir) || text2(payload.repoRoot)} (${text2(payload.language) || "?"})] | Branch: ${text2(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${typeof payload.ahead === "number" ? payload.ahead : "?"}, behind ${typeof payload.behind === "number" ? payload.behind : "?"} vs ${text2(payload.baseBranch)}, target=${text2(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` \u26A0\uFE0F ${warnings.join("; ")}` : ""}`;
   }
-  if (item.type === "repo.pull-request") {
+  if (type === "repo.pull-request") {
     if (payload.error) return `PR status unavailable: ${text2(payload.error)}`;
     if (payload.ambiguous) return `Branch '${text2(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
     return `${pullRequestLabel(text2(payload.provider), number2(payload.number))} ${text2(payload.state)} (${text2(payload.repository)})`;
   }
-  if (item.type === "repo.validation") {
+  if (type === "repo.validation") {
     if (payload.error) return text2(payload.error);
     if (!number2(payload.total)) return "Validation history: no retained runs for this checkout.";
     const lines = rows(payload.runs).map((run2) => {
@@ -13805,11 +13806,8 @@ function renderItem(item) {
     });
     return [`Validation history (${number2(payload.total)} retained runs; historical results, not current validation):`, ...lines].join("\n");
   }
-  if (item.type === "repo.review") return renderReview(payload);
+  if (type === "repo.review") return renderReview(payload);
   return "";
-}
-function renderPrompt(items) {
-  return items.map(renderItem).filter(Boolean).join("\n\n");
 }
 function renderReview(payload) {
   const status = text2(payload.status);
@@ -13828,165 +13826,6 @@ function renderReview(payload) {
   const message = text2(payload.message).trim();
   const reason = status !== "success" && message ? ` \u2014 ${message}` : "";
   return `Review: ${parts.length ? parts.join(", ") : "clean (no findings)"} on ${sha}${reason}; see ${artifact}`;
-}
-
-// domain/board/delivery.ts
-import { unlinkSync as unlinkSync2 } from "node:fs";
-
-// domain/board/model.ts
-import { createHash as createHash7 } from "node:crypto";
-function stable(value) {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, stable(item)]));
-  }
-  return value;
-}
-function boardItem(type, kind, scope, payload) {
-  const owner2 = scope.repoRoot ?? scope.workspaceRoot;
-  const identity2 = { type, kind, scope, payload };
-  return {
-    id: `${owner2}:${type}`,
-    type,
-    kind,
-    scope,
-    payload,
-    signature: createHash7("sha1").update(JSON.stringify(stable(identity2))).digest("hex")
-  };
-}
-var BoardView = class _BoardView {
-  constructor(root, focus, items) {
-    this.root = root;
-    this.focus = focus;
-    this.items = items;
-  }
-  root;
-  focus;
-  items;
-  select(items) {
-    return new _BoardView(this.root, this.focus, items);
-  }
-  toJSON() {
-    return {
-      root: this.root,
-      focus: this.focus ?? null,
-      items: this.items.map(({ signature: _signature, ...item }) => item)
-    };
-  }
-};
-var Board = class {
-  constructor(root, items = []) {
-    this.root = root;
-    for (const item of items) this.append(item);
-  }
-  root;
-  entries = /* @__PURE__ */ new Map();
-  get items() {
-    return [...this.entries.values()];
-  }
-  /**
-   * @spec Producers upsert facts by identity; full/delta consumers observe the latest revision.
-   * @see {@link component://docs/board.md}
-   */
-  append(item) {
-    this.entries.set(item.id, item);
-  }
-  /** @spec No focus reads all repositories; an explicit workspace-only focus excludes repository facts. */
-  full(focus) {
-    const items = !focus ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
-    return new BoardView(this.root, focus, items);
-  }
-};
-
-// domain/board/delivery.ts
-var RULES = {
-  workspace: { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
-  "repo.references": { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
-  "repo.pull-request": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
-  "repo.identity": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
-  "repo.validation": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: true },
-  "repo.pr-blocked": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
-  "repo.review": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
-  "repo.review-findings": { channels: ["prompt", "ui"], promptScope: "turn", replayAfterCompact: false },
-  "repo.pr-history": { channels: ["ui"], replayAfterCompact: true }
-};
-function itemsFor(view, channel) {
-  return view.items.filter((item) => RULES[item.type].channels.includes(channel));
-}
-var PromptDelivery = class {
-  constructor(root, sessionId2) {
-    this.root = root;
-    this.sessionId = sessionId2;
-  }
-  root;
-  sessionId;
-  segment() {
-    return `board/sessions/${sessionName(this.sessionId)}`;
-  }
-  load() {
-    const raw = loadSegment(this.root, this.segment());
-    const items = raw?.items;
-    if (items === null || typeof items !== "object" || Array.isArray(items)) return { items: {} };
-    const marks = {};
-    for (const [id, value] of Object.entries(items)) {
-      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
-      const row = value, type = row.item_type;
-      if (!Object.hasOwn(RULES, type) || typeof row.signature !== "string") continue;
-      const scope = row.scope;
-      marks[id] = {
-        item_type: type,
-        signature: row.signature,
-        ...scope && typeof scope.workspaceRoot === "string" && (scope.repoRoot === void 0 || typeof scope.repoRoot === "string") ? { scope } : {}
-      };
-    }
-    return { items: marks, ...typeof raw?.focus === "string" ? { focus: raw.focus } : {} };
-  }
-  /**
-   * @spec Only new, changed or removed visible items are delivered. Elapsed time never reopens delivery.
-   * @spec Inspection is read-only; acknowledgment advances only the inspected revisions.
-   * @spec Repository facts outside an explicit focus retain their receipts, including a workspace-only focus.
-   * @see {@link component://docs/board.md}
-   */
-  delta(view, trigger = "user_prompt") {
-    const receipt = this.load(), focus = view.focus?.repoRoot ?? view.root;
-    const changedFocus = receipt.focus !== void 0 && receipt.focus !== focus;
-    const eligible = (type) => RULES[type]?.channels.includes("prompt") && (trigger !== "session_start" || RULES[type].promptScope === "session");
-    const present = new Set(view.items.map((item) => item.id));
-    const items = view.items.filter((item) => eligible(item.type) && (receipt.items[item.id]?.signature !== item.signature || changedFocus && RULES[item.type].replayAfterCompact));
-    for (const [id, mark] of Object.entries(receipt.items)) {
-      if (!mark.scope || !eligible(mark.item_type)) continue;
-      if (view.focus && mark.scope.repoRoot && mark.scope.repoRoot !== view.focus.repoRoot) continue;
-      if (!present.has(id)) items.push(boardItem(mark.item_type, "state", mark.scope, { removed: true }));
-    }
-    let acknowledged = false;
-    return { items, acknowledge: () => {
-      if (acknowledged || items.length === 0) return;
-      const latest = this.load();
-      for (const item of items) {
-        if (item.payload.removed) delete latest.items[item.id];
-        else latest.items[item.id] = { item_type: item.type, signature: item.signature, scope: item.scope };
-      }
-      saveSegment(this.root, this.segment(), { items: latest.items, focus });
-      acknowledged = true;
-    } };
-  }
-  afterCompact() {
-    const receipt = this.load();
-    for (const mark of Object.values(receipt.items)) if (RULES[mark.item_type]?.replayAfterCompact) mark.signature = "";
-    saveSegment(this.root, this.segment(), receipt);
-  }
-  clear() {
-    try {
-      unlinkSync2(segmentFile(this.root, this.segment()));
-    } catch {
-    }
-  }
-};
-
-// lib/forge.ts
-async function prContextForRepo(repo) {
-  const target = pullRequestTarget(repo);
-  return pullRequestContext(repo, target ? { targets: [target] } : {});
 }
 
 // domain/board/validation.ts
@@ -14018,10 +13857,17 @@ async function validationHistory(repo) {
 }
 
 // domain/board/projection.ts
-async function projectBoard(root, workspace, repo, staleBindingHours) {
-  const board = new Board(root);
+async function projectNotes(root, workspace, repo, staleBindingHours) {
+  const notes = [], startupIds = [], restoreIds = [];
+  const result2 = { notes, startupIds, restoreIds };
+  const add = (type, scope, owner2, payload) => {
+    const id = JSON.stringify([type, ...owner2]);
+    notes.push({ id, scope, content: renderFact(type, payload) });
+    if (type === "workspace" || type === "repo.references") startupIds.push(id);
+    if (type !== "repo.review") restoreIds.push(id);
+  };
   if (workspace && (workspace.agentsDocument.references.length > 0 || workspace.subprojects.length > 0)) {
-    board.append(boardItem("workspace", "state", { workspaceRoot: root }, {
+    add("workspace", "workspace", [root], {
       root: workspace.workspaceRoot,
       references: workspace.agentsDocument.references.map((item) => ({ title: item.title, path: item.path, description: item.hook ?? "" })),
       subprojects: workspace.subprojects.map((item) => ({
@@ -14031,10 +13877,14 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
         role: item.role ?? "",
         canonical: item.canonical ?? ""
       }))
-    }));
+    });
   }
-  if (!repo) return board;
-  const scope = { workspaceRoot: root, repoRoot: repo };
+  if (!repo) return result2;
+  let branch;
+  try {
+    branch = currentBranch(repo) ?? "";
+  } catch {
+  }
   let component, inspectionProblem = "";
   try {
     const catalog = await inspectCatalog(repo);
@@ -14046,16 +13896,11 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   const agents = findAgentsDocument(repo, component?.path);
   const references = agents ? parseReferencesSection(agents) : [];
   if (references.length > 0) {
-    board.append(boardItem("repo.references", "state", scope, {
+    add("repo.references", component ? "component" : "repo", [repo, agents ?? repo, branch ?? "@unknown"], {
       references: references.map((item) => ({ title: item.title, path: item.path, description: item.description }))
-    }));
+    });
   }
-  let branch;
   let base = "?";
-  try {
-    branch = currentBranch(repo) ?? "";
-  } catch {
-  }
   try {
     base = localDefaultTarget(repo);
   } catch {
@@ -14074,7 +13919,7 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   } catch {
     linkedWorktree = null;
   }
-  board.append(boardItem("repo.identity", "state", scope, {
+  add("repo.identity", "repo", [repo], {
     codeDir,
     repoRoot: repo,
     language: component?.language ?? "",
@@ -14090,24 +13935,24 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
     untrackedCount: status.untrackedCount,
     protected: isProtectedBranch(branch),
     ...staleBindingHours === void 0 ? {} : { staleBindingHours: Math.floor(staleBindingHours * 10) / 10 }
-  }));
-  board.append(boardItem("repo.validation", "state", scope, await validationHistory(repo)));
-  if (branch === void 0) return board;
+  });
+  add("repo.validation", "repo", [repo], await validationHistory(repo));
+  if (branch === void 0) return result2;
   let prContext;
   try {
     prContext = branch ? await prContextForRepo(repo) : void 0;
     if (prContext) {
       const view = await prContext.getCheckout({ signal: AbortSignal.timeout(1e3) });
-      if (view?.selected || view?.error || view?.ambiguous) board.append(boardItem("repo.pull-request", "state", scope, {
+      if (view?.selected || view?.error || view?.ambiguous) add("repo.pull-request", "branch", [repo, branch], {
         branch: view.branch,
         provider: prContext.reader.provider,
         ...view.selected ? { repository: view.selected.repository.path, number: view.selected.number, state: view.selected.state, url: view.selected.url } : {},
         ...view.error ? { error: view.error } : {},
         ambiguous: view.ambiguous
-      }));
+      });
     }
   } catch (error) {
-    board.append(boardItem("repo.pull-request", "state", scope, { branch, error: String(error) }));
+    add("repo.pull-request", "branch", [repo, branch], { branch, error: String(error) });
   } finally {
     prContext?.close();
   }
@@ -14116,36 +13961,184 @@ async function projectBoard(root, workspace, repo, staleBindingHours) {
   if (review && typeof review.status === "string" && review.status && review.status !== "skipped" && typeof review.reviewed_sha === "string" && review.reviewed_sha) {
     const generatedAt = typeof review.generated_at === "number" ? review.generated_at : 0;
     const reviewStatus = review.status === "running" && now() - generatedAt > REVIEW_STALE_SECONDS ? "stale" : review.status;
-    board.append(boardItem("repo.review", "event", scope, {
+    add("repo.review", "branch", [repo, branch], {
       status: reviewStatus,
       reviewedSha: review.reviewed_sha,
       findings: typeof review.count === "number" ? review.count : 0,
       failedFiles: typeof review.failed === "number" ? review.failed : 0,
       message: typeof review.message === "string" ? review.message : "",
       artifactPath: segmentFile(repo, reviewSegment)
-    }));
+    });
   }
-  return board;
+  return result2;
 }
+
+// domain/board/store.ts
+import { createHash as createHash7, randomUUID as randomUUID2 } from "node:crypto";
+import { mkdir as mkdir2, open as open6, readFile as readFile4, rename as rename2, rm as rm2 } from "node:fs/promises";
+import { createRequire as createRequire2 } from "node:module";
+import { join as join17 } from "node:path";
+import { setTimeout as delay5 } from "node:timers/promises";
+
+// domain/board/model.ts
+var SCOPES = ["workspace", "repo", "component", "branch"];
+function textOf(value) {
+  return typeof value === "string" ? value : value.text();
+}
+var Board = class _Board {
+  entries = /* @__PURE__ */ new Map();
+  get notes() {
+    return [...this.entries.values()].map((note) => ({ ...note, queue: [...note.queue] }));
+  }
+  upsert({ id, scope, content }) {
+    const previous = this.entries.get(id);
+    if (previous && previous.scope !== scope) throw new Error(`Board note scope changed: ${id}`);
+    const full = previous && typeof content !== "string" ? content.merge(previous.full) : content;
+    if (previous) {
+      if (textOf(full) === textOf(previous.full)) return;
+      previous.full = full;
+      previous.queue.push(content);
+    } else {
+      textOf(full);
+      this.entries.set(id, { id, scope, full, queue: [content] });
+    }
+  }
+  remove(id) {
+    this.entries.delete(id);
+  }
+  selected(ids) {
+    const selected = ids === void 0 ? void 0 : new Set(ids);
+    return SCOPES.flatMap((scope) => [...this.entries.values()].filter((note) => note.scope === scope && (!selected || selected.has(note.id))));
+  }
+  /** Scope controls grouping order, never prompt metadata or a containment hierarchy. */
+  text(ids) {
+    return this.selected(ids).map((note) => textOf(note.full)).filter(Boolean).join("\n\n");
+  }
+  /**
+   * @spec Delta consumes captured queue prefixes only after all text has rendered successfully.
+   * @spec Full reads never consume updates. No cursor, receipt or acknowledgment survives a delta call.
+   */
+  delta(ids) {
+    const batch = this.selected(ids).map((note) => ({ note, queue: note.queue.slice() }));
+    const result2 = batch.flatMap(({ queue }) => queue.map(textOf)).filter(Boolean).join("\n\n");
+    for (const { note, queue } of batch) note.queue.splice(0, queue.length);
+    return result2;
+  }
+  snapshot() {
+    return { schemaVersion: 1, notes: Object.fromEntries([...this.entries].map(([id, note]) => [id, { scope: note.scope, full: textOf(note.full), queue: note.queue.map(textOf) }])) };
+  }
+  static restore(value) {
+    const object6 = (entry) => entry !== null && typeof entry === "object" && !Array.isArray(entry);
+    if (!object6(value) || value.schemaVersion !== 1 || !object6(value.notes)) throw new Error("Invalid Board snapshot");
+    const board = new _Board();
+    for (const [id, note] of Object.entries(value.notes)) {
+      if (!object6(note) || !SCOPES.includes(note.scope) || typeof note.full !== "string" || !Array.isArray(note.queue) || !note.queue.every((item) => typeof item === "string")) throw new Error(`Invalid Board note: ${id}`);
+      board.entries.set(id, { id, scope: note.scope, full: note.full, queue: [...note.queue] });
+    }
+    return board;
+  }
+};
+
+// domain/board/store.ts
+var missing3 = (error) => error.code === "ENOENT";
+var BoardStore = class {
+  constructor(session, directory = join17(configDirectory(), "board", "sessions")) {
+    this.session = session;
+    if (!session.sessionId) throw new Error("Board requires a session ID");
+    this.directory = directory;
+    this.path = join17(directory, createHash7("sha256").update(JSON.stringify([session.harness, session.sessionId])).digest("hex") + ".json");
+  }
+  session;
+  directory;
+  path;
+  async locked(operation, run2) {
+    try {
+      await mkdir2(this.directory, { recursive: true, mode: 448 });
+      const { flockSync } = createRequire2(import.meta.url)("fs-ext");
+      const file2 = await open6(this.path + ".lock", "a+", 384);
+      let owned = false;
+      try {
+        const signal = AbortSignal.timeout(2e3);
+        for (; ; ) {
+          signal.throwIfAborted();
+          try {
+            flockSync(file2.fd, "exnb");
+            owned = true;
+            break;
+          } catch (error) {
+            if (!["EAGAIN", "EWOULDBLOCK"].includes(error.code ?? "")) throw error;
+          }
+          await delay5(10, void 0, { signal });
+        }
+        return await run2();
+      } finally {
+        try {
+          if (owned) flockSync(file2.fd, "un");
+        } finally {
+          await file2.close();
+        }
+      }
+    } catch (error) {
+      console.error(JSON.stringify({
+        plugin: "devloop",
+        event: "board_storage_failed",
+        operation,
+        harness: this.session.harness,
+        session_id: this.session.sessionId,
+        error: error instanceof Error ? error.message : String(error)
+      }));
+      throw error;
+    }
+  }
+  async transaction(operation, run2) {
+    return this.locked(operation, async () => {
+      let board;
+      try {
+        board = Board.restore(JSON.parse(await readFile4(this.path, "utf8")));
+      } catch (error) {
+        if (!missing3(error)) throw error;
+        board = new Board();
+      }
+      const result2 = await run2(board);
+      const content = JSON.stringify(board.snapshot());
+      const temporary = `${this.path}.${randomUUID2()}.tmp`;
+      try {
+        const file2 = await open6(temporary, "wx", 384);
+        try {
+          await file2.writeFile(content);
+          await file2.sync();
+        } finally {
+          await file2.close();
+        }
+        await rename2(temporary, this.path);
+      } finally {
+        await rm2(temporary, { force: true });
+      }
+      return result2;
+    });
+  }
+  async clear() {
+    await this.locked("clear", () => rm2(this.path, { force: true }));
+  }
+};
 
 // domain/board/runtime.ts
 var BoardRuntime = class _BoardRuntime {
-  constructor(root, sessionId2, board, view, repo) {
+  constructor(root, session, workspace, repo, staleHours) {
     this.root = root;
-    this.sessionId = sessionId2;
-    this.board = board;
+    this.session = session;
+    this.workspace = workspace;
     this.repo = repo;
-    this.focus = view.focus;
+    this.staleHours = staleHours;
+    this.store = new BoardStore(session);
   }
   root;
-  sessionId;
-  board;
+  session;
+  workspace;
   repo;
-  focus;
-  get view() {
-    return this.board.full(this.focus);
-  }
-  static async resolve(cwd2, sessionId2) {
+  staleHours;
+  store;
+  static async resolve(cwd2, sessionId2, harness = "claude") {
     let workspaceRoot2 = findContainingWorkspace(cwd2);
     let repo = findGitRoot(cwd2);
     let staleHours;
@@ -14160,33 +14153,39 @@ var BoardRuntime = class _BoardRuntime {
       }
     }
     const root = workspaceRoot2 ?? repo;
-    if (!root) return void 0;
-    const board = await projectBoard(root, workspace, repo, staleHours);
-    return new _BoardRuntime(root, sessionId2, board, board.full({ workspaceRoot: root, ...repo ? { repoRoot: repo } : {} }), repo);
+    return root ? new _BoardRuntime(root, { harness, sessionId: sessionId2 || identityFromEnvironment().sessionId || "anon" }, workspace, repo, staleHours) : void 0;
+  }
+  async read(mode, trigger) {
+    return this.store.transaction(mode, async (board) => {
+      const projection = await projectNotes(this.root, this.workspace, this.repo, this.staleHours);
+      for (const note of projection.notes) board.upsert(note);
+      const ids = trigger === "session_start" ? projection.startupIds : projection.notes.map((note) => note.id);
+      return mode === "text" ? board.text(ids) : board.delta(ids);
+    });
+  }
+  text() {
+    return this.read("text", "user_prompt");
   }
   delta(trigger = "user_prompt") {
-    return new PromptDelivery(this.root, this.sessionId).delta(this.view, trigger);
+    return this.read("delta", trigger);
   }
-  full() {
-    return this.view;
+  async deliverPrompt(trigger = "user_prompt") {
+    const text3 = await this.delta(trigger);
+    if (text3 && this.repo) recordSessionEvent(this.repo, this.session.sessionId, "inject", { text: text3 });
+    return text3 || void 0;
   }
-  deliverPrompt(trigger = "user_prompt") {
-    const delta = this.delta(trigger);
-    const result2 = delta.items.length ? renderPrompt(delta.items) || void 0 : void 0;
-    if (result2) {
-      if (this.repo) recordSessionEvent(this.repo, this.sessionId, "inject", { text: result2 });
-      delta.acknowledge();
-    }
-    return result2;
-  }
-  snapshot() {
-    return this.view.select(itemsFor(this.view, "ui")).toJSON();
-  }
-  afterCompact() {
-    new PromptDelivery(this.root, this.sessionId).afterCompact();
+  async afterCompact() {
+    await this.store.transaction("compact", async (board) => {
+      const projection = await projectNotes(this.root, this.workspace, this.repo, this.staleHours);
+      const restore = new Set(projection.restoreIds);
+      for (const note of projection.notes) {
+        if (restore.has(note.id)) board.remove(note.id);
+        board.upsert(note);
+      }
+    });
   }
   close() {
-    new PromptDelivery(this.root, this.sessionId).clear();
+    return this.store.clear();
   }
 };
 
@@ -14530,7 +14529,7 @@ var PolicyContext = class _PolicyContext {
 
 // hooks/rules/index.ts
 import { existsSync as existsSync11, readFileSync as readFileSync7 } from "node:fs";
-import { basename as basename8, dirname as dirname12, extname, join as join17, resolve as resolve13 } from "node:path";
+import { basename as basename8, dirname as dirname12, extname, join as join18, resolve as resolve13 } from "node:path";
 
 // domain/context/gate.ts
 async function evaluateGate(repo) {
@@ -14658,7 +14657,7 @@ var pipInstall = {
     const catalog = await context.catalog(repo);
     if (catalog.components.length === 0) return [];
     const component = enclosingComponent(runDirectory, catalog).path;
-    if (!existsSync11(join17(component, "pyproject.toml")) || !existsSync11(join17(component, "uv.lock"))) return [];
+    if (!existsSync11(join18(component, "pyproject.toml")) || !existsSync11(join18(component, "uv.lock"))) return [];
     return finding("pip-install", "This component is uv-managed. Use `uv add` or `uv sync`; direct `pip install` bypasses pyproject.toml and uv.lock.", commandLine(value));
   }
 };
@@ -14730,7 +14729,7 @@ var requirementsEdit = {
     const path = context.anchorPath || file(target).path;
     if (basename8(path) !== "requirements.txt") return [];
     const parent = dirname12(path);
-    return existsSync11(join17(parent, "pyproject.toml")) || existsSync11(join17(dirname12(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
+    return existsSync11(join18(parent, "pyproject.toml")) || existsSync11(join18(dirname12(parent), "pyproject.toml")) ? finding("requirements-edit", `\`${path}\` is generated dependency output. Edit pyproject.toml, then regenerate it with uv.`, file(target).path) : [];
   }
 };
 function stringArray(value) {
@@ -14791,7 +14790,7 @@ var layerDeps = {
     });
   }
 };
-var RULES2 = [protectBranch, checkoutOwner, worktreeAdd, addAll, workspaceCwd, pipInstall, editOwner, branchMerged, requirementsEdit, layerDeps];
+var RULES = [protectBranch, checkoutOwner, worktreeAdd, addAll, workspaceCwd, pipInstall, editOwner, branchMerged, requirementsEdit, layerDeps];
 
 // hooks/friction.ts
 function recordDeniedDecision(root, decision2, input) {
@@ -14818,7 +14817,7 @@ async function evaluateTool(input) {
     sessionId: typeof input.toolInput.session_id === "string" ? input.toolInput.session_id : ""
   };
   const context = new PolicyContext(input.cwd, identity2);
-  const result2 = await evaluate(change, context, RULES2);
+  const result2 = await evaluate(change, context, RULES);
   if (result2.action === "deny" && context.gitRoot) {
     recordDeniedDecision(context.gitRoot, result2, {
       tool: input.toolName,
@@ -14890,15 +14889,14 @@ function sessionId(payload) {
 function identity(payload, harness) {
   return { harness, sessionId: sessionId(payload) };
 }
-async function initializeBoard(payload) {
+async function initializeBoard(payload, harness = "claude") {
   const directory = cwd(payload);
   const workspaceRoot2 = findContainingWorkspace(directory) ?? maybeRegisterWorkspace(directory);
   const workspace = workspaceRoot2 ? WorkspaceContext.refresh(workspaceRoot2) : void 0;
   const repo = findGitRoot(directory);
   const root = workspaceRoot2 ?? repo;
   if (!root) return { watchPaths: [] };
-  const board = await projectBoard(root, workspace, repo);
-  const runtime = new BoardRuntime(root, sessionId(payload), board, board.full({ workspaceRoot: root, ...repo ? { repoRoot: repo } : {} }), repo);
+  const runtime = new BoardRuntime(root, { harness, sessionId: sessionId(payload) || identityFromEnvironment().sessionId || "anon" }, workspace, repo);
   const watchPaths = /* @__PURE__ */ new Set();
   if (workspace?.agentsDocument.path) watchPaths.add(workspace.agentsDocument.path);
   for (const project of workspace?.subprojects ?? []) {
@@ -14912,8 +14910,8 @@ async function initializeBoard(payload) {
   return { runtime, watchPaths: [...watchPaths] };
 }
 async function sessionStartOutput(payload, harness = "claude") {
-  const { runtime, watchPaths } = await initializeBoard(payload);
-  const content = runtime?.deliverPrompt("session_start");
+  const { runtime, watchPaths } = await initializeBoard(payload, harness);
+  const content = await runtime?.deliverPrompt("session_start");
   const deliveredWatches = harness === "claude" ? watchPaths : [];
   if (!content && deliveredWatches.length === 0) return {};
   return {
@@ -14924,12 +14922,12 @@ async function sessionStartOutput(payload, harness = "claude") {
     }
   };
 }
-async function userPromptOutput(payload) {
-  const content = (await BoardRuntime.resolve(cwd(payload), sessionId(payload)))?.deliverPrompt("user_prompt");
+async function userPromptOutput(payload, harness = "claude") {
+  const content = await (await BoardRuntime.resolve(cwd(payload), sessionId(payload), harness))?.deliverPrompt("user_prompt");
   return content ? { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: content } } : {};
 }
-async function afterCompact(payload) {
-  (await BoardRuntime.resolve(cwd(payload), sessionId(payload)))?.afterCompact();
+async function afterCompact(payload, harness = "claude") {
+  await (await BoardRuntime.resolve(cwd(payload), sessionId(payload), harness))?.afterCompact();
 }
 function afterCwdChanged(payload) {
   const directory = string2(payload.new_cwd) || cwd(payload);
@@ -15009,11 +15007,13 @@ function recordToolCall(payload, harness) {
     appendToolCall(root, record2, timestamp);
   }
 }
-function endSession(payload, harness) {
+async function endSession(payload, harness) {
+  try {
+    await new BoardStore({ harness, sessionId: sessionId(payload) || identityFromEnvironment().sessionId || "anon" }).clear();
+  } catch {
+  }
   const direct = findGitRoot(cwd(payload));
   const workspace = findContainingWorkspace(cwd(payload)) ?? (direct ? findContainingWorkspace(direct) : void 0);
-  const root = workspace ?? direct;
-  if (root) new PromptDelivery(root, sessionId(payload)).clear();
   if (workspace) clearActiveRepo(workspace, sessionId(payload));
   const candidates = /* @__PURE__ */ new Set();
   if (direct) candidates.add(direct);
@@ -15054,12 +15054,12 @@ async function run(payload, adapter) {
   recordToolCall(payload, adapter.harness);
   if (event === "PreToolUse") return adapter.preTool(payload);
   if (event === "SessionStart") return sessionStartOutput(payload, adapter.harness);
-  if (event === "UserPromptSubmit") return userPromptOutput(payload);
-  if (event === "PostCompact") await afterCompact(payload);
+  if (event === "UserPromptSubmit") return userPromptOutput(payload, adapter.harness);
+  if (event === "PostCompact") await afterCompact(payload, adapter.harness);
   else if (event === "PostToolUse") afterTool(payload, adapter.harness);
   else if (event === "CwdChanged") afterCwdChanged(payload);
   else if (event === "FileChanged") afterFileChanged(payload);
-  else if (event === "SessionEnd") endSession(payload, adapter.harness);
+  else if (event === "SessionEnd") await endSession(payload, adapter.harness);
   return {};
 }
 try {

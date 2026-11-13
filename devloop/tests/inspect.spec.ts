@@ -1,10 +1,11 @@
 import { saveSegment, branchSegment } from "../domain/context/store.js";
-import { projectBoard } from "../domain/board/projection.js";
+import { projectNotes } from "../domain/board/projection.js";
 import { evaluateTool } from "../hooks/core/policy.js";
-import { renderItem } from "../domain/board/render.js";
+import { textOf } from "../domain/board/model.js";
+import { BoardStore } from "../domain/board/store.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import * as toolkit from "@compforge/repokit";
@@ -36,23 +37,23 @@ function fixture() {
 describe("native repocli organization", () => {
   it("renders missing and failed divergence as unknown", async () => {
     const { root } = fixture();
-    let board = await projectBoard(root, undefined, root);
-    let identity = board.items.find(item => item.type === "repo.identity")!;
-    expect(identity.payload).toMatchObject({ ahead: null, behind: null });
-    expect(renderItem(identity)).toContain("ahead ?, behind ?");
+    let board = await projectNotes(root, undefined, root);
+    let identity = board.notes.find(note => note.id.startsWith('["repo.identity",'))!;
+    expect(identity.scope).toBe("repo");
+    expect(textOf(identity.content)).toContain("ahead ?, behind ?");
     vi.mocked(toolkit.aheadBehind).mockImplementationOnce(() => { throw new Error("read failed"); });
-    board = await projectBoard(root, undefined, root);
-    identity = board.items.find(item => item.type === "repo.identity")!;
-    expect(renderItem(identity)).toContain("ahead ?, behind ?");
+    board = await projectNotes(root, undefined, root);
+    identity = board.notes.find(note => note.id.startsWith('["repo.identity",'))!;
+    expect(textOf(identity.content)).toContain("ahead ?, behind ?");
   });
 
   it("does not join detached branch history when identity is unavailable", async () => {
     const { root } = fixture();
     saveSegment(root, branchSegment(undefined, "review"), { status: "success", reviewed_sha: "old-head" });
     vi.mocked(toolkit.currentBranch).mockImplementationOnce(() => { throw new Error("read failed"); });
-    const board = await projectBoard(root, undefined, root);
-    expect(board.items.some(item => item.type === "repo.review")).toBe(false);
-    expect(renderItem(board.items.find(item => item.type === "repo.identity")!)).toContain("Branch: ?");
+    const board = await projectNotes(root, undefined, root);
+    expect(board.notes.some(note => note.id.startsWith('["repo.review",'))).toBe(false);
+    expect(textOf(board.notes.find(note => note.id.startsWith('["repo.identity",'))!.content)).toContain("Branch: ?");
   });
 
   it("denies writes when live branch identity cannot be observed", async () => {
@@ -112,28 +113,39 @@ describe("native repocli organization", () => {
     await expect(inspectCatalog(root)).rejects.toThrow("inspection incomplete");
   });
 
-  it("releases session ownership without starting inspection", () => {
+  it("releases session ownership without starting inspection", async () => {
     const { root } = fixture();
     vi.stubEnv("DEVLOOP_CONFIG_DIR", join(root, "config"));
     const identity = { sessionId: "cleanup", harness: "codex" } as const;
     expect(acquireOwner(root, identity, "feature")).toBe(true);
     expect(anyActiveOwner(root)).toBeDefined();
-    endSession({ cwd: root, session_id: identity.sessionId }, identity.harness);
+    await endSession({ cwd: root, session_id: identity.sessionId }, identity.harness);
     expect(anyActiveOwner(root)).toBeUndefined();
     expect(toolkit.inspect).not.toHaveBeenCalled();
   });
 
-  it("releases known owners when checkout enumeration fails", () => {
+  it("releases known owners when checkout enumeration fails", async () => {
     const { root } = fixture();
     vi.stubEnv("DEVLOOP_CONFIG_DIR", join(root, "config"));
     const identity = { sessionId: "cleanup-failure", harness: "codex" } as const;
     expect(acquireOwner(root, identity, "feature")).toBe(true);
     vi.mocked(toolkit.listCheckouts).mockImplementationOnce(() => { throw new Error("read failed"); });
-    endSession({ cwd: root, session_id: identity.sessionId }, identity.harness);
+    await endSession({ cwd: root, session_id: identity.sessionId }, identity.harness);
     expect(anyActiveOwner(root)).toBeUndefined();
   });
 
-  it("excludes separate metadata from session owner cleanup", () => {
+  it("clears the session Board even when cwd discovery fails", async () => {
+    const { root } = fixture();
+    vi.stubEnv("DEVLOOP_CONFIG_DIR", join(root, "config"));
+    const session = { sessionId: "cleanup-board", harness: "codex" } as const;
+    const store = new BoardStore(session);
+    await store.transaction("upsert", board => board.upsert({id:"x", scope:"repo", content:"pending"}));
+    vi.mocked(toolkit.findCheckout).mockImplementationOnce(() => { throw new Error("cwd unavailable"); });
+    await expect(endSession({cwd:root, session_id:session.sessionId}, session.harness)).rejects.toThrow("cwd unavailable");
+    expect(existsSync(store.path)).toBe(false);
+  });
+
+  it("excludes separate metadata from session owner cleanup", async () => {
     const { root } = fixture();
     const metadata = root + "-metadata"; roots.push(metadata);
     execFileSync("git", ["-C", root, "init", "--separate-git-dir", metadata]);
@@ -141,7 +153,7 @@ describe("native repocli organization", () => {
     const identity = { sessionId: "separate-cleanup", harness: "codex" } as const;
     expect(acquireOwner(root, identity, "feature")).toBe(true);
     expect(acquireOwner(metadata, identity, "sentinel")).toBe(true);
-    endSession({ cwd: root, session_id: identity.sessionId }, identity.harness);
+    await endSession({ cwd: root, session_id: identity.sessionId }, identity.harness);
     expect(anyActiveOwner(root)).toBeUndefined();
     expect(anyActiveOwner(metadata)).toBeDefined();
   });
@@ -165,8 +177,8 @@ describe("repository contract consumption", () => {
     rmSync(join(root, "client/Makefile"));
     const catalog = await inspectCatalog(root);
     expect(catalog.components).toEqual([]);
-    const board = await projectBoard(root, undefined, root);
-    expect(board.items.find(item => item.type === "repo.identity")!.payload).toMatchObject({ inspectionProblem: "" });
+    const board = await projectNotes(root, undefined, root);
+    expect(textOf(board.notes.find(note => note.id.startsWith('["repo.identity",'))!.content)).not.toContain("inspection");
     expect(catalog.owner(join(root, "service/go.mod"))).toBeUndefined();
   });
 

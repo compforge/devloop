@@ -1,7 +1,7 @@
 import type { Context } from "@opencode/plugin/promise/plugin";
 /**
  * @spec OpenCode request-local Board context remains visible throughout a user turn.
- * @why Context hooks are not durable history; delivery receipts alone cannot replay them.
+ * @why Context hooks are not durable history; consuming a queue cannot preserve them across requests.
  * @link ../../docs/harness-adapters.md
  * @case ../../tests/opencode.spec.ts
  */

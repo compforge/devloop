@@ -8,7 +8,7 @@
 | 开发基线 | PR target 或 devloop 工作流选择 | 任务策略，不伪装成 Git 创建来源 |
 | 远端 trunk tips | RepoKit remote_branches | 工具包按远端 URL、refs 与时效复用 |
 | validation | RepoKit validation | 执行与历史统一读取 |
-| review、Board delivery | devloop 工作流 | 按各自 owner 持久化证据或投递游标 |
+| review、Board delivery | devloop 工作流 | 按各自 owner 持久化证据或 Note 文本快照与待消费更新 |
 
 `domain/context/gate` 是硬门禁的唯一事实入口。Python 与 TypeScript 都调用 repocli，并在网络
 查询之后重新核对本地 branch/HEAD，避免慢查询期间的切分支使决策串到另一份工作上。

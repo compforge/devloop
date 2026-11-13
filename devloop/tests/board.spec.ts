@@ -9,10 +9,10 @@ import { renderPrompt } from "../domain/board/render.js";
 
 const roots: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive:true, force:true }); });
-function fixture() {
+function fixture(repoName?: string) {
   const root = mkdtempSync(join(tmpdir(), "devloop-board-")); roots.push(root);
-  const scope = {workspaceRoot:root, repoRoot:root};
-  const identity = (branch="feature") => boardItem("repo.identity", "state", scope, {repoRoot:root,branch});
+  const scope = {workspaceRoot:root, repoRoot:repoName ? join(root,repoName) : root};
+  const identity = (branch="feature") => boardItem("repo.identity", "state", scope, {repoRoot:scope.repoRoot,branch});
   const board = new Board(root,[boardItem("workspace","state",{workspaceRoot:root},{root}),identity(),boardItem("repo.review","event",scope,{status:"success",reviewedSha:"abc",findings:1})]);
   return {root,scope,board,identity,delivery:new PromptDelivery(root,"session")};
 }
@@ -84,11 +84,33 @@ describe("Board delta", () => {
     expect(delivery.delta(next.full()).items.map(item=>item.payload.removed)).toEqual([true]);
   });
 
+  // @case A workspace-only visit preserves consumed repo events when returning to the repo.
+  it("retains repo receipts while the runtime has no resolved repo", () => {
+    const {root,scope,board,delivery}=fixture("repo");
+    delivery.delta(board.full(scope)).acknowledge();
+    const workspaceFocus={workspaceRoot:root};
+    expect(board.full(workspaceFocus).items.map(item=>item.type)).toEqual(["workspace"]);
+    const workspaceBoard=new Board(root,board.full(workspaceFocus).items);
+    const workspaceRuntime=new BoardRuntime(root,"session",workspaceBoard,workspaceBoard.full(workspaceFocus));
+    const visit=workspaceRuntime.delta();
+    expect(visit.items.map(item=>item.type)).toEqual(["workspace"]);
+    expect(visit.items.some(item=>item.payload.removed)).toBe(false);
+    visit.acknowledge();
+    expect(workspaceRuntime.delta().items).toEqual([]);
+    const back=delivery.delta(board.full(scope));
+    expect(back.items.map(item=>item.type)).toEqual(["workspace","repo.identity"]);
+    back.acknowledge();
+    expect(delivery.delta(board.full(scope)).items).toEqual([]);
+  });
+
   it("does not consume turn items during session startup", () => {
-    const {board,delivery}=fixture();
-    expect(delivery.deliver(board.full(),"session_start")).toContain("[Workspace:");
-    const turn=delivery.delta(board.full());
+    const {root,board}=fixture();
+    const runtime=new BoardRuntime(root,"session",board,board.full());
+    expect(runtime.deliverPrompt("session_start")).toContain("[Workspace:");
+    const turn=runtime.delta();
     expect(turn.items.map(item=>item.type)).toEqual(["repo.identity","repo.review"]);
+    expect(runtime.deliverPrompt()).toBeTruthy();
+    expect(runtime.deliverPrompt()).toBeUndefined();
   });
 });
 

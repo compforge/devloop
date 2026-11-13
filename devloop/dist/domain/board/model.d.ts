@@ -35,6 +35,7 @@ export declare class Board {
      * @see {@link component://docs/board.md}
      */
     append(item: BoardItem): void;
+    /** @spec No focus reads all repositories; an explicit workspace-only focus excludes repository facts. */
     full(focus?: BoardFocus): BoardView;
 }
 //# sourceMappingURL=model.d.ts.map

@@ -17,10 +17,10 @@ export declare class PromptDelivery {
     /**
      * @spec Only new, changed or removed visible items are delivered. Elapsed time never reopens delivery.
      * @spec Inspection is read-only; acknowledgment advances only the inspected revisions.
+     * @spec Repository facts outside an explicit focus retain their receipts, including a workspace-only focus.
      * @see {@link component://docs/board.md}
      */
     delta(view: BoardView, trigger?: PromptTrigger): BoardDelta;
-    deliver(view: BoardView, trigger?: PromptTrigger): string | undefined;
     afterCompact(): void;
     clear(): void;
 }

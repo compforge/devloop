@@ -23,6 +23,9 @@ producer 用 `Board.append(item)` 按稳定身份更新当前条目；它不比�
 先提供一个 delta，不划分 session delta / context delta；`session_start` 只控制启动时先投递哪些条目。
 正常轮次同一 revision 只投递一次，时间流逝不会重新打开投递。消失的已投递条目明确输出删除通知，
 但当前 focus 之外的条目不当作源端删除；切回之前的 repo 时重新投递其当前状态。
+底层 `Board.full()` 不传 focus 时覆盖所有 repo；显式传 `{workspaceRoot}` 时只覆盖 workspace，
+传 `{workspaceRoot, repoRoot}` 时覆盖 workspace 与指定 repo。未解析到 repo 的 runtime 使用 workspace-only
+focus，保留其他 repo 的投递基线；只有当前 view 覆盖范围内的缺失条目才产生删除通知。
 
 Claude/Codex 的进程 hook 与 DSH 的注入进入保留的会话历史，使用 delta。
 OpenCode 的 `session.context` 每次重建模型请求，使用 full，既不依赖上一次 hook 输出被保存，

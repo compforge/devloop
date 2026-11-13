@@ -61,8 +61,9 @@ export class Board {
    * @see {@link component://docs/board.md}
    */
   append(item: BoardItem): void { this.entries.set(item.id, item); }
+  /** @spec No focus reads all repositories; an explicit workspace-only focus excludes repository facts. */
   full(focus?: BoardFocus): BoardView {
-    const items = !focus?.repoRoot ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
+    const items = !focus ? this.items : this.items.filter((item) => !item.scope.repoRoot || item.scope.repoRoot === focus.repoRoot);
     return new BoardView(this.root, focus, items);
   }
 }

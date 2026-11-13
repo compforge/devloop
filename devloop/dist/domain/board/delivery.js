@@ -2,7 +2,6 @@ import { unlinkSync } from "node:fs";
 import { loadSegment, saveSegment, segmentFile } from "../context/store.js";
 import { sessionName } from "../context/session.js";
 import { boardItem } from "./model.js";
-import { renderPrompt } from "./render.js";
 const RULES = {
     workspace: { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
     "repo.references": { channels: ["prompt", "ui"], promptScope: "session", replayAfterCompact: true },
@@ -46,6 +45,7 @@ export class PromptDelivery {
     /**
      * @spec Only new, changed or removed visible items are delivered. Elapsed time never reopens delivery.
      * @spec Inspection is read-only; acknowledgment advances only the inspected revisions.
+     * @spec Repository facts outside an explicit focus retain their receipts, including a workspace-only focus.
      * @see {@link component://docs/board.md}
      */
     delta(view, trigger = "user_prompt") {
@@ -56,7 +56,9 @@ export class PromptDelivery {
         const items = view.items.filter(item => eligible(item.type) && (receipt.items[item.id]?.signature !== item.signature || changedFocus && RULES[item.type].replayAfterCompact));
         for (const [id, mark] of Object.entries(receipt.items)) {
             // An out-of-focus item has not been removed from its source.
-            if (!mark.scope || view.focus?.repoRoot && mark.scope.repoRoot && mark.scope.repoRoot !== view.focus.repoRoot || !eligible(mark.item_type))
+            if (!mark.scope || !eligible(mark.item_type))
+                continue;
+            if (view.focus && mark.scope.repoRoot && mark.scope.repoRoot !== view.focus.repoRoot)
                 continue;
             if (!present.has(id))
                 items.push(boardItem(mark.item_type, "state", mark.scope, { removed: true }));
@@ -75,15 +77,6 @@ export class PromptDelivery {
                 saveSegment(this.root, this.segment(), { items: latest.items, focus });
                 acknowledged = true;
             } };
-    }
-    deliver(view, trigger = "user_prompt") {
-        const delta = this.delta(view, trigger);
-        if (!delta.items.length)
-            return undefined;
-        const content = renderPrompt(delta.items);
-        if (content)
-            delta.acknowledge();
-        return content || undefined;
     }
     afterCompact() {
         const receipt = this.load();

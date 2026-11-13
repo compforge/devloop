@@ -3,7 +3,6 @@ import { loadSegment, saveSegment, segmentFile } from "../context/store.js";
 import { sessionName } from "../context/session.js";
 import type { JsonObject } from "../../lib/config.js";
 import { boardItem, type BoardItem, type BoardItemType, type BoardView } from "./model.js";
-import { renderPrompt } from "./render.js";
 
 export type DeliveryChannel = "prompt" | "ui";
 export type PromptScope = "session" | "turn";
@@ -49,6 +48,7 @@ export class PromptDelivery {
   /**
    * @spec Only new, changed or removed visible items are delivered. Elapsed time never reopens delivery.
    * @spec Inspection is read-only; acknowledgment advances only the inspected revisions.
+   * @spec Repository facts outside an explicit focus retain their receipts, including a workspace-only focus.
    * @see {@link component://docs/board.md}
    */
   delta(view: BoardView, trigger: PromptTrigger = "user_prompt"): BoardDelta {
@@ -60,7 +60,8 @@ export class PromptDelivery {
       receipt.items[item.id]?.signature !== item.signature || changedFocus && RULES[item.type].replayAfterCompact));
     for (const [id, mark] of Object.entries(receipt.items)) {
       // An out-of-focus item has not been removed from its source.
-      if (!mark.scope || view.focus?.repoRoot && mark.scope.repoRoot && mark.scope.repoRoot !== view.focus.repoRoot || !eligible(mark.item_type)) continue;
+      if (!mark.scope || !eligible(mark.item_type)) continue;
+      if (view.focus && mark.scope.repoRoot && mark.scope.repoRoot !== view.focus.repoRoot) continue;
       if (!present.has(id)) items.push(boardItem(mark.item_type, "state", mark.scope, {removed:true}));
     }
     let acknowledged = false;
@@ -74,13 +75,6 @@ export class PromptDelivery {
       saveSegment(this.root, this.segment(), {items:latest.items,focus} as unknown as JsonObject);
       acknowledged = true;
     }};
-  }
-  deliver(view: BoardView, trigger: PromptTrigger = "user_prompt"): string | undefined {
-    const delta = this.delta(view, trigger);
-    if (!delta.items.length) return undefined;
-    const content = renderPrompt(delta.items);
-    if (content) delta.acknowledge();
-    return content || undefined;
   }
   afterCompact(): void {
     const receipt = this.load();

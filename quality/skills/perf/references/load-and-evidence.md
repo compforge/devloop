@@ -62,11 +62,12 @@ With quality-harness, inspect:
 | `requests.jsonl` | Scheduling records and actual OperationRuns with their unique raw Outcomes; a drop has no call. |
 | `evaluations.json` | Request judgments keyed by ArmRun and OperationRun identity. |
 | `timeseries.csv` | Resource observations, when supplied by the implementation. |
-| `verdict.json` | The native run-level decision and evidence references. |
+| `verdict.json` | Native execution diagnostics and evidence references; not business acceptance. |
+| `callgraph.json` (when available) | Declared Operation topology enriched with window metrics and provenance. |
 
-Verify the reader supports the artifact schema. Python provides resource observation, SLO
-evaluation, and HTML reporting; the TypeScript perf SDK supplies request execution and evidence,
-with resource observation and gates supplied by the consumer. Discover the consumer's actual
+Verify the reader supports the artifact schema. Python provides resource observation and HTML
+reporting; the TypeScript perf SDK supplies request execution and evidence, with resource
+observation supplied by the consumer. Quality-harness records facts and does not own business SLOs. Discover the consumer's actual
 capabilities rather than assuming SDK parity or a generic EvaluationRun/Worksheet artifact.
 
 Preserve completed Outcomes when a Judge raises. Treat absent judgments as incomplete evaluation,
@@ -80,7 +81,8 @@ For quality-harness's half-open Windows `[start_s, end_s)`:
 
 - Arrivals count actual accepted initiation opportunities by scheduled time; dispatches count
   actual sends by dispatch time.
-- Completion throughput and success throughput count finished calls by finish time.
+- Completion throughput is grouped by outcome code and counted by finish time; only `success`
+  denotes success. Preserve exact other codes rather than collapsing them into one failure rate.
 - Latency and request error rate use completed requests from the dispatch cohort, including those
   that finish during cooldown. Their sample count differs from completions inside the Window.
 - Inflight peak/end include requests carried in from earlier Windows.
@@ -91,13 +93,13 @@ does not prove SSE business completion; inspect the project's Judge and completi
 `first_byte_ms` measures first byte, not automatically first token; token timing needs an explicit
 protocol fact from the Runner.
 
-## Confirm capacity and compare curves
+## Describe observed throughput and compare curves
 
-Quality-harness confirms capacity only from complete hold Windows with requests, no drops,
-interruptions or missing judgments, and applicable SLOs that all pass. A finite-rate Window with
-`limited_s > 0` cannot confirm configured-rate capacity or support resource-curve extrapolation.
-An otherwise healthy run without SLOs is `skipped`, not confirmed capacity. A later failure can leave earlier complete
-hold evidence usable; retain the run's failure separately.
+Quality-harness Run status describes execution health: completed, stopped or error. It does not
+assert business acceptance or sustainable capacity. Report observed throughput by code, latency,
+inflight and data completeness even when no business thresholds are supplied. A finite-rate
+Window with `limited_s > 0` cannot demonstrate that the configured rate was sustained. A later
+failure can leave earlier complete hold evidence usable; retain the run failure separately.
 
 For finite-rate sweeps, scan request rate and fix the inflight schedule. For `inf` sweeps, scan the
 inflight limit. Fix resources, case mix, target and generator conditions, arrival distribution,
@@ -112,3 +114,6 @@ extrapolation. Use the native shared comparison grouping when available.
 The source contract is [Perf Harness](https://github.com/compforge/quality-harness/blob/main/spec/perf-contract.md).
 Resolve API details and schema support from the version used by the project; this skill does not
 authorize an SDK upgrade or a profile conversion.
+
+For downstream attribution, read [call graph evidence](callgraph.md); keep declared paths,
+measured node traffic and causal explanations distinct.

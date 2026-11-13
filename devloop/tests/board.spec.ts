@@ -1,121 +1,98 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { PromptDelivery } from "../domain/board/delivery.js";
-import { Board, boardItem } from "../domain/board/model.js";
-import { BoardRuntime } from "../domain/board/runtime.js";
-import { renderPrompt } from "../domain/board/render.js";
+import { describe, expect, it } from "vitest";
+import { Board, textOf, type MergeableText, type NoteUpdate } from "../domain/board/model.js";
 
-const roots: string[] = [];
-afterEach(() => { vi.useRealTimers(); for (const root of roots.splice(0)) rmSync(root, { recursive:true, force:true }); });
-function fixture(repoName?: string) {
-  const root = mkdtempSync(join(tmpdir(), "devloop-board-")); roots.push(root);
-  const scope = {workspaceRoot:root, repoRoot:repoName ? join(root,repoName) : root};
-  const identity = (branch="feature") => boardItem("repo.identity", "state", scope, {repoRoot:scope.repoRoot,branch});
-  const board = new Board(root,[boardItem("workspace","state",{workspaceRoot:root},{root}),identity(),boardItem("repo.review","event",scope,{status:"success",reviewedSha:"abc",findings:1})]);
-  return {root,scope,board,identity,delivery:new PromptDelivery(root,"session")};
+class Lines implements MergeableText {
+  constructor(readonly value: string) {}
+  merge(previous: MergeableText | string): MergeableText {
+    return new Lines([...new Set([...textOf(previous).split("\n"), ...this.value.split("\n")])].join("\n"));
+  }
+  text(): string { return this.value; }
 }
+const update = (content: NoteUpdate["content"], id = "opaque-id"): NoteUpdate => ({id, scope:"branch", content});
 
-describe("Board delta", () => {
-  // @case Only acknowledged changes consume delivery; full reads and elapsed TTL do not.
-  it("keeps full reads independent and delivers each revision once", () => {
-    const {board,identity,delivery} = fixture();
-    const first = delivery.delta(board.full());
-    expect(first.items).toHaveLength(3);
-    expect(delivery.delta(board.full()).items).toEqual(first.items);
-    expect(board.full().items).toHaveLength(3);
-    first.acknowledge();
-    first.acknowledge();
-    vi.useFakeTimers(); vi.advanceTimersByTime(24*60*60*1_000);
-    expect(delivery.delta(board.full()).items).toEqual([]);
-    board.append(identity("other"));
-    expect(board.full().items).toHaveLength(3);
-    const next = delivery.delta(board.full());
-    expect(next.items.map(item=>item.type)).toEqual(["repo.identity"]);
-    expect(next.items[0]?.payload.branch).toBe("other");
-    next.acknowledge();
-    expect(delivery.delta(board.full()).items).toEqual([]);
+describe("Board notes", () => {
+  // @case A full read never consumes two pending updates; each update is delivered once in arrival order.
+  it("merges full text and queues effective incoming updates", () => {
+    const board = new Board();
+    const first = new Lines("alpha"), second = new Lines("beta");
+    board.upsert(update(first));
+    board.upsert(update(second));
+    expect(board.text()).toBe("alpha\nbeta");
+    expect(board.text()).toBe("alpha\nbeta");
+    expect(first.text()).toBe("alpha");
+    expect(second.text()).toBe("beta");
+    expect(board.delta()).toBe("alpha\n\nbeta");
+    expect(board.delta()).toBe("");
+    expect(board.text()).toBe("alpha\nbeta");
+    board.upsert(update(second));
+    expect(board.delta()).toBe("");
   });
-
-  it("exposes appended producer facts through both runtime read methods", () => {
-    const {root,board,identity}=fixture();
-    const runtime=new BoardRuntime(root,"session",board,board.full());
-    runtime.delta().acknowledge();
-    board.append(identity("updated"));
-    expect(runtime.full().items.find(item=>item.type==="repo.identity")?.payload.branch).toBe("updated");
-    expect(runtime.delta().items.map(item=>item.payload.branch)).toEqual(["updated"]);
+  it("treats strings as replacement updates and preserves changes back to an earlier value", () => {
+    const board = new Board();
+    board.upsert(update("a"));
+    board.delta();
+    for (const value of ["b", "b", "a"]) board.upsert(update(value));
+    expect(board.text()).toBe("a");
+    expect(board.delta()).toBe("b\n\na");
   });
-
-  it("replays state after compaction while retaining consumed events", () => {
-    const {board,delivery}=fixture();
-    delivery.delta(board.full()).acknowledge();
-    delivery.afterCompact();
-    const replay=delivery.delta(board.full());
-    expect(replay.items.map(item=>item.type)).toEqual(["workspace","repo.identity"]);
-    replay.acknowledge();
-    expect(delivery.delta(board.full()).items).toEqual([]);
+  it("groups by scope without emitting IDs, scope labels or a containment tree", () => {
+    const board = new Board();
+    for (const scope of ["branch", "repo", "component", "workspace"] as const) {
+      board.upsert({id:`private-id-${scope}`, scope, content:`${scope}-content`});
+    }
+    expect(board.text()).toBe("workspace-content\n\nrepo-content\n\ncomponent-content\n\nbranch-content");
+    expect(board.delta()).toBe(board.text());
+    expect(board.text()).not.toContain("private-id");
   });
-
-  it("reports removal once without treating out-of-focus facts as deleted", () => {
-    const {root,scope,board,delivery}=fixture();
-    delivery.delta(board.full({workspaceRoot:root,repoRoot:root})).acknowledge();
-    const other=join(root,"other");
-    board.append(boardItem("repo.identity","state",{workspaceRoot:root,repoRoot:other},{branch:"other"}));
-    const switchDelta=delivery.delta(board.full({workspaceRoot:root,repoRoot:other}));
-    expect(switchDelta.items.some(item=>item.payload.removed)).toBe(false);
-    switchDelta.acknowledge();
-    const back=delivery.delta(board.full(scope));
-    expect(back.items.some(item=>item.type==="repo.identity")).toBe(true);
-    expect(back.items.some(item=>item.type==="repo.review")).toBe(false);
-    back.acknowledge();
-    const removed=new Board(root,board.items.filter(item=>item.type!=="repo.review"));
-    const delta=delivery.delta(removed.full(scope));
-    expect(delta.items.map(item=>[item.type,item.payload.removed])).toEqual([["repo.review",true]]);
-    expect(renderPrompt(delta.items)).toContain("Previous information for this item no longer applies");
-    delta.acknowledge();
-    expect(delivery.delta(removed.full(scope)).items).toEqual([]);
+  it("keeps unselected queues and removes notes only by explicit ID", () => {
+    const board = new Board();
+    board.upsert(update("A", "a"));
+    board.upsert(update("B", "b"));
+    expect(board.delta(["a"])).toBe("A");
+    expect(board.delta(["a"])).toBe("");
+    expect(board.text(["b"])).toBe("B");
+    expect(board.delta(["b"])).toBe("B");
+    board.upsert(update("discard", "a"));
+    board.remove("a"); board.remove("a");
+    expect(board.text()).toBe("B");
+    expect(board.delta()).toBe("");
   });
-
-  it("detects removals when the view includes all repositories", () => {
-    const {root,board,delivery}=fixture();
-    delivery.delta(board.full()).acknowledge();
-    const next=new Board(root,board.items.filter(item=>item.type!=="repo.review"));
-    expect(delivery.delta(next.full()).items.map(item=>item.payload.removed)).toEqual([true]);
+  it("restores string full/queues and accepts the next object merge without a codec", () => {
+    const board = new Board();
+    board.upsert(update(new Lines("one")));
+    const saved = JSON.parse(JSON.stringify(board.snapshot()));
+    expect(saved.notes["opaque-id"]).toEqual({scope:"branch", full:"one", queue:["one"]});
+    const restored = Board.restore(saved);
+    restored.upsert(update(new Lines("two")));
+    expect(restored.text()).toBe("one\ntwo");
+    expect(restored.delta()).toBe("one\n\ntwo");
   });
-
-  // @case A workspace-only visit preserves consumed repo events when returning to the repo.
-  it("retains repo receipts while the runtime has no resolved repo", () => {
-    const {root,scope,board,delivery}=fixture("repo");
-    delivery.delta(board.full(scope)).acknowledge();
-    const workspaceFocus={workspaceRoot:root};
-    expect(board.full(workspaceFocus).items.map(item=>item.type)).toEqual(["workspace"]);
-    const workspaceBoard=new Board(root,board.full(workspaceFocus).items);
-    const workspaceRuntime=new BoardRuntime(root,"session",workspaceBoard,workspaceBoard.full(workspaceFocus));
-    const visit=workspaceRuntime.delta();
-    expect(visit.items.map(item=>item.type)).toEqual(["workspace"]);
-    expect(visit.items.some(item=>item.payload.removed)).toBe(false);
-    visit.acknowledge();
-    expect(workspaceRuntime.delta().items).toEqual([]);
-    const back=delivery.delta(board.full(scope));
-    expect(back.items.map(item=>item.type)).toEqual(["workspace","repo.identity"]);
-    back.acknowledge();
-    expect(delivery.delta(board.full(scope)).items).toEqual([]);
+  it("does not consume any note if rendering fails", () => {
+    const board = new Board(); let fail = false;
+    const content: MergeableText = {merge:() => content, text:() => {if (fail) throw new Error("render failed"); return "B";}};
+    board.upsert(update("A", "a")); board.upsert(update(content, "b"));
+    fail = true;
+    expect(() => board.delta()).toThrow("render failed");
+    fail = false;
+    expect(board.delta()).toBe("A\n\nB");
   });
-
-  it("does not consume turn items during session startup", () => {
-    const {root,board}=fixture();
-    const runtime=new BoardRuntime(root,"session",board,board.full());
-    expect(runtime.deliverPrompt("session_start")).toContain("[Workspace:");
-    const turn=runtime.delta();
-    expect(turn.items.map(item=>item.type)).toEqual(["repo.identity","repo.review"]);
-    expect(runtime.deliverPrompt()).toBeTruthy();
-    expect(runtime.deliverPrompt()).toBeUndefined();
+  it("consumes only the captured prefixes when rendering appends another update", () => {
+    const board = new Board(); let append = false;
+    const content: MergeableText = {merge:() => content, text:() => {
+      if (append) { append = false; board.upsert(update("third")); }
+      return "first";
+    }};
+    board.upsert(update(content)); board.upsert(update("second"));
+    append = true;
+    expect(board.delta()).toBe("first\n\nsecond");
+    expect(board.delta()).toBe("third");
+    expect(board.text()).toBe("third");
   });
-});
-
-it("does not render an unavailable workspace as clean", () => {
-  const item=boardItem("repo.identity","state",{workspaceRoot:"/repo",repoRoot:"/repo"},{codeDir:"/repo",branch:"feature",workspaceDirty:null});
-  expect(renderPrompt([item])).toContain("Workspace: unknown");
-  expect(renderPrompt([item])).not.toContain("Workspace: clean");
+  it("rejects corrupt snapshots and changing the scope of an existing identity", () => {
+    expect(() => Board.restore({schemaVersion:2, notes:{}})).toThrow("Invalid Board snapshot");
+    expect(() => Board.restore({schemaVersion:1, notes:{a:{scope:"branch", full:"a", queue:[1]}}})).toThrow("Invalid Board note");
+    const board = new Board(); board.upsert(update("A"));
+    expect(() => board.upsert({...update("B"), scope:"repo"})).toThrow("scope changed");
+    expect(board.text()).toBe("A");
+  });
 });

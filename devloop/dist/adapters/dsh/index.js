@@ -18,7 +18,7 @@ export const Config = Schema.object({
  * @spec Board context preserves downstream step admission and request-series boundaries.
  */
 export function apply(ctx, config = {}) {
-    const boardFor = (agent) => BoardRuntime.resolve(agent.session.header.cwd ?? config.cwd ?? process.cwd(), String(agent.id));
+    const boardFor = (agent) => BoardRuntime.resolve(agent.session.header.cwd ?? config.cwd ?? process.cwd(), String(agent.id), "dsh");
     const contextMessage = (content) => createUserMessage({
         content: [{ type: "text", text: content }],
         source: { kind: "plugin", plugin: name },
@@ -27,12 +27,12 @@ export function apply(ctx, config = {}) {
         const board = (await initializeBoard({
             cwd: agent.session.header.cwd ?? config.cwd ?? process.cwd(),
             session_id: String(agent.id),
-        })).runtime ?? await boardFor(agent);
+        }, "dsh")).runtime ?? await boardFor(agent);
         if (!board)
             return;
         if (source === "compact")
-            board.afterCompact();
-        const content = board.deliverPrompt("session_start");
+            await board.afterCompact();
+        const content = await board.deliverPrompt("session_start");
         if (content)
             agent.inject(contextMessage(content));
     });
@@ -40,7 +40,7 @@ export function apply(ctx, config = {}) {
         const downstream = await next();
         if (downstream.kind !== "enter")
             return downstream;
-        const content = (await boardFor(agent))?.deliverPrompt("user_prompt");
+        const content = await (await boardFor(agent))?.deliverPrompt("user_prompt");
         // Goal rounds can start a fresh request series even when Board adds context.
         return content
             ? { ...downstream, messages: [...downstream.messages, contextMessage(content)] }
@@ -84,8 +84,8 @@ export function apply(ctx, config = {}) {
         }
         return downstream;
     });
-    ctx.on("agent/disposed", ({ agent }) => {
-        endSession({
+    ctx.on("agent/disposed", async ({ agent }) => {
+        await endSession({
             cwd: agent.session.header.cwd ?? config.cwd ?? process.cwd(),
             session_id: String(agent.id),
         }, "dsh");

@@ -1,6 +1,6 @@
 import { pullRequestLabel } from "../forge.js";
 import { basename } from "node:path";
-import type { BoardItem } from "./model.js";
+export type FactType = "workspace" | "repo.references" | "repo.identity" | "repo.validation" | "repo.pull-request" | "repo.review";
 
 type Row = Record<string, unknown>;
 function rows(value: unknown): readonly Row[] { return Array.isArray(value) ? value.filter((item): item is Row => item !== null && typeof item === "object" && !Array.isArray(item)) : []; }
@@ -12,10 +12,8 @@ function reference(item: Row): string {
   return description && description !== base && description !== path ? `${title} — ${description}  ← ${base}` : `${title}  ← ${base}`;
 }
 
-export function renderItem(item: BoardItem): string {
-  const payload = item.payload;
-  if (payload.removed) return `Board item removed: ${item.type} (${item.scope.repoRoot ?? item.scope.workspaceRoot}). Previous information for this item no longer applies.`;
-  if (item.type === "workspace") {
+export function renderFact(type: FactType, payload: Readonly<Row>): string {
+  if (type === "workspace") {
     const lines = [`[Workspace: ${text(payload.root)}]`];
     const references = rows(payload.references);
     if (references.length) lines.push("AGENTS.md references (Read when the task touches these topics):", ...references.map((row) => `  - ${reference(row)}`));
@@ -27,19 +25,19 @@ export function renderItem(item: BoardItem): string {
     }));
     return lines.join("\n");
   }
-  if (item.type === "repo.references") return ["Repo AGENTS.md references (Read when the task touches these topics):", ...rows(payload.references).map((row) => `  - ${reference(row)}`)].join("\n");
-  if (item.type === "repo.identity") {
+  if (type === "repo.references") return ["Repo AGENTS.md references (Read when the task touches these topics):", ...rows(payload.references).map((row) => `  - ${reference(row)}`)].join("\n");
+  if (type === "repo.identity") {
     const dirty = payload.workspaceDirty ? `dirty(${number(payload.modifiedCount)} modified, ${number(payload.untrackedCount)} untracked)` : payload.workspaceDirty === null ? "unknown" : "clean";
     const warnings = [payload.protected ? "PROTECTED" : "", typeof payload.staleBindingHours === "number" ? `repo binding is ${payload.staleBindingHours.toFixed(1)}h old; confirm the repo with cd` : ""].filter(Boolean);
     if (payload.inspectionProblem) warnings.push(text(payload.inspectionProblem));
     return `[Current repo: ${text(payload.codeDir) || text(payload.repoRoot)} (${text(payload.language) || "?"})] | Branch: ${text(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${typeof payload.ahead === "number" ? payload.ahead : "?"}, behind ${typeof payload.behind === "number" ? payload.behind : "?"} vs ${text(payload.baseBranch)}, target=${text(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` ⚠️ ${warnings.join("; ")}` : ""}`;
   }
-  if (item.type === "repo.pull-request") {
+  if (type === "repo.pull-request") {
     if (payload.error) return `PR status unavailable: ${text(payload.error)}`;
     if (payload.ambiguous) return `Branch '${text(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
     return `${pullRequestLabel(text(payload.provider), number(payload.number))} ${text(payload.state)} (${text(payload.repository)})`;
   }
-  if (item.type === "repo.validation") {
+  if (type === "repo.validation") {
     if (payload.error) return text(payload.error);
     if (!number(payload.total)) return "Validation history: no retained runs for this checkout.";
     const lines = rows(payload.runs).map(run => {
@@ -51,12 +49,8 @@ export function renderItem(item: BoardItem): string {
     });
     return [`Validation history (${number(payload.total)} retained runs; historical results, not current validation):`, ...lines].join("\n");
   }
-  if (item.type === "repo.review") return renderReview(payload);
+  if (type === "repo.review") return renderReview(payload);
   return "";
-}
-
-export function renderPrompt(items: readonly BoardItem[]): string {
-  return items.map(renderItem).filter(Boolean).join("\n\n");
 }
 
 function renderReview(payload: Readonly<Row>): string {

@@ -10,8 +10,7 @@ import { branchSegment, loadSegment, saveSegment } from "../domain/context/store
 import { snapshot } from "@compforge/repokit";
 import * as repokit from "@compforge/repokit";
 import { validationHistory } from "../domain/board/validation.js";
-import { boardItem } from "../domain/board/model.js";
-import { renderItem } from "../domain/board/render.js";
+import { renderFact } from "../domain/board/render.js";
 
 vi.mock("@compforge/repokit", async importOriginal => ({
   ...await importOriginal<typeof import("@compforge/repokit")>(),
@@ -65,7 +64,7 @@ it("projects native history and invalidates the source comparison after an edit"
     writeFileSync(wal,[start,end].map((e,i)=>JSON.stringify({index:String(i+1),data:"+"+JSON.stringify(e)})+"\n").join(""));
     writeFileSync(join(directory,"inputs","INPUT.json"),JSON.stringify({schemaVersion:1,checkout:root,snapshot:observed.digest,files:{}}));
     for (const stream of ["stdout","stderr"]) writeFileSync(join(directory,"logs",`2026-11-12.${stream}.jsonl`),JSON.stringify({runID:"RUN",output:""})+"\n");
-    const render=async()=>renderItem(boardItem("repo.validation","state",{workspaceRoot:root,repoRoot:root},await validationHistory(root)));
+    const render=async()=>renderFact("repo.validation",await validationHistory(root));
     expect(await render()).toContain("source unchanged");
     writeFileSync(join(root,"source.ts"),"export const value = 2;\n");
     const changed=await render();

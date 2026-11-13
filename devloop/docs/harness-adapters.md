@@ -73,8 +73,8 @@ baseline is `@opencode/plugin` / OpenCode `2.1.2`; V1 hooks are a different prot
 
 - `skill.transform` registers the bundled Markdown assets with namespaced IDs, real file paths,
   and resolved `<PLUGIN_ROOT>` paths. YAML frontmatter is parsed once during setup.
-- `session.context` renders `BoardRuntime.full()` for each rebuilt request. It does not consume delta
-  receipts or keep adapter-owned revision/selection state. Every request contains one current Board
+- `session.context` renders `BoardRuntime.text()` for each rebuilt request. It does not consume pending Note updates
+  or keep adapter-owned diff state. Every request contains one current Board
   view; compaction/resume naturally reconstructs it from facts. Retained-history hosts instead use
   the Board delta path, which emits unchanged revisions only after an explicit baseline reset.
 - Tool admission uses the session's current location/subpath, not the plugin's loading location.

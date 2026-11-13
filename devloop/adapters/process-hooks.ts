@@ -1,12 +1,11 @@
 import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { findGitRoot, findAgentsDocument } from "../domain/repo-layout.js";
 import { WorkspaceContext } from "../domain/context/workspace.js";
-import { acquireOwner, clearActiveRepo, recordActiveRepo, releaseOwner, type SessionIdentity } from "../domain/context/session.js";
+import { acquireOwner, clearActiveRepo, recordActiveRepo, releaseOwner, identityFromEnvironment, type SessionIdentity } from "../domain/context/session.js";
 import { appendToolCall, TOOL_CALL_SCHEMA, toolCallStartedAt } from "../domain/context/tool-calls.js";
 import { findContainingWorkspace, maybeRegisterWorkspace } from "../domain/workspace.js";
 import { BoardRuntime } from "../domain/board/runtime.js";
-import { PromptDelivery } from "../domain/board/delivery.js";
-import { projectBoard } from "../domain/board/projection.js";
+import { BoardStore } from "../domain/board/store.js";
 import { currentBranch, listCheckouts } from "../lib/git-state.js";
 import { projectTool } from "../hooks/core/project.js";
 import type { HookHarness, HookPayload } from "./hook-payload.js";
@@ -20,15 +19,14 @@ function sessionId(payload: HookPayload): string { return string(payload.session
 function identity(payload: HookPayload, harness: RuntimeHarness): SessionIdentity { return { harness, sessionId: sessionId(payload) }; }
 
 /** Refresh discoverable workspace facts and construct the shared Board for session startup. */
-export async function initializeBoard(payload: HookPayload): Promise<{ readonly runtime?: BoardRuntime; readonly watchPaths: readonly string[] }> {
+export async function initializeBoard(payload: HookPayload, harness: RuntimeHarness = "claude"): Promise<{ readonly runtime?: BoardRuntime; readonly watchPaths: readonly string[] }> {
   const directory = cwd(payload);
   const workspaceRoot = findContainingWorkspace(directory) ?? maybeRegisterWorkspace(directory);
   const workspace = workspaceRoot ? WorkspaceContext.refresh(workspaceRoot) : undefined;
   const repo = findGitRoot(directory);
   const root = workspaceRoot ?? repo;
   if (!root) return { watchPaths: [] };
-  const board = await projectBoard(root, workspace, repo);
-  const runtime = new BoardRuntime(root, sessionId(payload), board, board.full({ workspaceRoot: root, ...(repo ? { repoRoot: repo } : {}) }), repo);
+  const runtime = new BoardRuntime(root, {harness, sessionId:sessionId(payload) || identityFromEnvironment().sessionId || "anon"}, workspace, repo);
   const watchPaths = new Set<string>();
   if (workspace?.agentsDocument.path) watchPaths.add(workspace.agentsDocument.path);
   for (const project of workspace?.subprojects ?? []) {
@@ -43,8 +41,8 @@ export async function initializeBoard(payload: HookPayload): Promise<{ readonly 
 }
 
 export async function sessionStartOutput(payload: HookPayload, harness: HookHarness = "claude"): Promise<Record<string, unknown>> {
-  const { runtime, watchPaths } = await initializeBoard(payload);
-  const content = runtime?.deliverPrompt("session_start");
+  const { runtime, watchPaths } = await initializeBoard(payload, harness);
+  const content = await runtime?.deliverPrompt("session_start");
   const deliveredWatches = harness === "claude" ? watchPaths : [];
   if (!content && deliveredWatches.length === 0) return {};
   return {
@@ -56,13 +54,13 @@ export async function sessionStartOutput(payload: HookPayload, harness: HookHarn
   };
 }
 
-export async function userPromptOutput(payload: HookPayload): Promise<Record<string, unknown>> {
-  const content = (await BoardRuntime.resolve(cwd(payload), sessionId(payload)))?.deliverPrompt("user_prompt");
+export async function userPromptOutput(payload: HookPayload, harness: RuntimeHarness = "claude"): Promise<Record<string, unknown>> {
+  const content = await (await BoardRuntime.resolve(cwd(payload), sessionId(payload), harness))?.deliverPrompt("user_prompt");
   return content ? { hookSpecificOutput: { hookEventName: "UserPromptSubmit", additionalContext: content } } : {};
 }
 
-export async function afterCompact(payload: HookPayload): Promise<void> {
-  (await BoardRuntime.resolve(cwd(payload), sessionId(payload)))?.afterCompact();
+export async function afterCompact(payload: HookPayload, harness: RuntimeHarness = "claude"): Promise<void> {
+  await (await BoardRuntime.resolve(cwd(payload), sessionId(payload), harness))?.afterCompact();
 }
 
 export function afterCwdChanged(payload: HookPayload): void {
@@ -139,12 +137,13 @@ export function recordToolCall(payload: HookPayload, harness: RuntimeHarness): v
   }
 }
 
-export function endSession(payload: HookPayload, harness: RuntimeHarness): void {
+export async function endSession(payload: HookPayload, harness: RuntimeHarness): Promise<void> {
+  // Cleanup needs only the session location; inspection must not delay releasing ownership.
+  // Board cleanup is cwd-independent and must not prevent owner release on storage failure.
+  try { await new BoardStore({harness, sessionId:sessionId(payload) || identityFromEnvironment().sessionId || "anon"}).clear(); }
+  catch { /* BoardStore has recorded the storage error. */ }
   const direct = findGitRoot(cwd(payload));
   const workspace = findContainingWorkspace(cwd(payload)) ?? (direct ? findContainingWorkspace(direct) : undefined);
-  const root = workspace ?? direct;
-  // Cleanup needs only the session location; inspection must not delay releasing ownership.
-  if (root) new PromptDelivery(root, sessionId(payload)).clear();
   if (workspace) clearActiveRepo(workspace, sessionId(payload));
   const candidates = new Set<string>();
   if (direct) candidates.add(direct);

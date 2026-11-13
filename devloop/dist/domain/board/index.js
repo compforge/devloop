@@ -1,4 +1,4 @@
-export * from "./delivery.js";
+export * from "./store.js";
 export * from "./model.js";
 export * from "./projection.js";
 export * from "./render.js";

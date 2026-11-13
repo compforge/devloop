@@ -1,71 +1,80 @@
-# Board：上下文组织与投递
+# Board：Note 与上下文文本
 
-## 理念 / 概念
+## 边界
 
-Board 是状态源之上的协作上下文读模型，prompt 与 UI 都只是消费者。它的边界是：
-**状态源提供事实，Board 决定如何组织和投递**。
+Board 按不透明 id 管理 Note。生产方决定稳定身份、归属粒度和当前相关的 Note；Board 不解析
+repo、component、branch，不建立包含树，也不把本次没有出现的 Note 当成删除。
+Git、forge、验证历史与 review 仍拥有业务事实；Board 保存的是可重建的文本缓存，不参与 guard 判断。
 
-Git、forge、验证命令、review 与 workspace 解析器仍各自拥有事实；Board
-不复制这些事实，也不参与硬门禁判定。它把相关事实投影成 payload-first 的
-`BoardItem`：payload 是供 prompt、UI 等消费者共享的稳定读模型，prompt 文本只是
-其中一个 renderer，不再是 Board 的事实形态。
+## 内容与更新
 
-## 读取与投递
+```ts
+interface MergeableText {
+  merge(previous: MergeableText | string): MergeableText;
+  text(): string;
+}
 
-producer 用 `Board.append(item)` 按稳定身份更新当前条目；它不比较 revision，也不保存投递状态。
-`BoardRuntime` 是 Harness 的消费入口：
+interface Note {
+  id: string;
+  scope: "workspace" | "repo" | "component" | "branch";
+  full: MergeableText | string;
+  queue: Array<MergeableText | string>;
+}
+```
 
-- `full()` 返回当前 focus 的完整只读 view，不改变投递基线，UI 与重建请求 context 的 Harness 可直接使用。
-- `delta()` 返回相对该 session 已投递基线的新增、变化和删除条目。重复读取不消费增量，返回值的
-  `acknowledge()` 在内容交给投递边界后推进基线。`deliverPrompt()` 封装 delta 的文本渲染、记录与确认。
+`Board.upsert({id, scope, content})` 按 id 插入或更新。同一个 id 的 scope 保持稳定。
+新 Note 的输入同时成为 full 和第一条 queue 更新。已有 Note 接收对象时调用
+`incoming.merge(previousFull)`，返回新全量而不修改双方；字符串则直接替换 full。
+新旧全量文本相同不入队；不同则更新 full，并把 incoming 追加到 queue。
+queue 保存生效的更新内容，不要求是最小 diff；同一 Note 的多次更新按到达顺序保留。
 
-增量比较、相关性、基线与 compaction 重放都由 Board 内部拥有，producer 和 consumer 不实现差分。
-先提供一个 delta，不划分 session delta / context delta；`session_start` 只控制启动时先投递哪些条目。
-正常轮次同一 revision 只投递一次，时间流逝不会重新打开投递。消失的已投递条目明确输出删除通知，
-但当前 focus 之外的条目不当作源端删除；切回之前的 repo 时重新投递其当前状态。
-底层 `Board.full()` 不传 focus 时覆盖所有 repo；显式传 `{workspaceRoot}` 时只覆盖 workspace，
-传 `{workspaceRoot, repoRoot}` 时覆盖 workspace 与指定 repo。未解析到 repo 的 runtime 使用 workspace-only
-focus，保留其他 repo 的投递基线；只有当前 view 覆盖范围内的缺失条目才产生删除通知。
+full 始终是最新全量，已经包含 queue 中更新的效果，不是等待日志合并的 checkpoint。
+`MergeableText.text()` 必须提供足以参与下一次 merge 的完整表示，不能省略合并所需信息。
+当前仓库事实生产方提交完整的文本快照，使用字符串替换语义；扩展生产方可以提交 MergeableText。
 
-Claude/Codex 的进程 hook 与 DSH 的注入进入保留的会话历史，使用 delta。
-OpenCode 的 `session.context` 每次重建模型请求，使用 full，既不依赖上一次 hook 输出被保存，
-也不维护 adapter 私有的 selected IDs 或差分状态；每个请求只有一个当前 Board 块，不累积历史快照。
-全量读取不消费 delta，也不因读取导致下一次其他 consumer 漏掉变化。
+## 读取与消费
 
-UI 读取 `BoardRuntime.snapshot()` 得到 JSON-ready 的完整 view；只有 `ui` channel 的条目不进入 prompt。
-投递记录按 session 存在 `.devloop/board/sessions/`，仅包含条目身份、revision、scope 和当前 focus。
-`PostCompact` 让状态条目在下一轮重放；已消费 event 不会因 compaction 重放。
+- `board.text()` 返回最新全量文本，不消费 queue。
+- `board.delta()` 返回待消费更新的文本，渲染全部成功后移除本次捕获的 queue 前缀。
+- 两者都可以接收显式 id 集合以选择 Note；未选择的 Note 和 queue 不受影响。
+- 输出按 workspace、repo、component、branch 分组排列，同 scope 内保持 Note 的插入顺序，
+  不额外打印 id、scope 标签或内部状态。分组不是父子关系。
+- cursor 只存在于一次消费的临时边界；没有持久化 cursor、signature、receipt 或 acknowledge。
+- 读取期间新增的更新保留到下一次；没有变化时 delta 返回空字符串。
 
-## 关键设计
+`delta()` 是消费边界。消费持久化成功后进程崩溃或发送失败不会自动重放；不承诺 exactly-once 投递。
+queue 暂不限制大小，不会因容量超限静默清掉尚未消费的更新。
 
-### 相关优先，内容从小
+## 生产与 Harness 适配
 
-Board 只投递当前工作所需信息。当前分支的 PR 会进入 branch 条目；与当前任务
-无关的近期 PR 窗口仍保留在状态源中，供查询或后续 UI 展示，但不占 prompt
-token。每个条目独立去重，某个事实变化不会捎带未变化的整块上下文。
+`projectNotes` 从当前来源生成 NoteUpdate，并选择启动阶段和上下文重建需要的状态 Note。
+review、PR 关联的身份包含所属 branch，因此 A → B → A 不会覆盖 A 的已消费状态。
+读取失败不会落到 detached 分支的 review；无记录也不触发通用删除通知。
 
-相关性属于 `BoardView`，增量投递与重放属于 Board；事实生产者不选择 channel、
-prompt scope 或重放行为。Requirement 等长期领域对象由 Baton Plugin 提供，不在 devloop
-的 Harness 内 Board 建兼容投影。
+`BoardRuntime` 在会话存储事务中获取当前投影并 upsert，只读取当前相关 id。
+Claude/Codex 的进程 hook 和 DSH 使用 delta；OpenCode 每次重建请求，使用 text。
+全量读取不会消费待投递更新。启动阶段先消费 workspace/reference Note，保留 turn 更新。
+compaction 重新建立当前状态 Note 的 full/queue，让下一次 delta 提供最新状态；已消费的 review
+不会因此重放，未消费 review 的 queue 仍保留。Board 通用模型不包含这些业务分类规则。
 
-### 投递状态不是业务事实
+验证历史只走 RepoKit 原生 API，一次查询本页输入摘要，不按行读取完整日志。
+历史成功不代表当前通过；输入缺口显示 comparison unavailable，查询预算超时显示 history unavailable。
+review 的运行、错误、失败、未完成和警告都保留文本证据；Board 不启动或重试 review。
 
-Board 本体和 view 都不持久化事实副本。`DeliveryReceiptStore` 只保存每个 session 的
-条目 revision、scope 和 focus；这些数据可以安全删除或过期。repo、branch、PR 等事实仍由对应 owner 提供。
-验证历史由 RepoKit 保存，Board 通过其 TS 原生 API 读取当前 checkout 最近三次执行。
-列表按需携带输入摘要，与当前 snapshot 比较后展示源码 unchanged / changed / unknown；
-输入缺口不抹去已知执行，历史成功也不授予当前通过或复用结论。完整日志只在显式查询详情时读取。
-Board 不读取旧 `.devloop` 验证记录来推断是否执行过检查；查询预算或历史读取失败明确显示 unavailable，
-不当作没有历史。能力契约与调用边界见 [仓库工具包](repository-toolkit.md#验证与-pr-交付)。
-硬门禁继续读取 live truth，不依赖 Board 的展示视图或投递游标。
+## 持久化与生命周期
 
-### 状态与事件分开重放
+每个 Harness + 原始 session ID 对应一个快照，放在配置目录的 `board/sessions/` 下
+（默认 `~/.devloop/board/sessions/`）。文件名是这两个字段的哈希，切换 cwd、repo、branch 不改变身份。
+快照只保存 `schemaVersion` 和按 id 索引的 `scope/full/queue`。所有内容以 text 落盘；
+恢复后 full 和 queue 都是字符串，下一次 incoming.merge 接受这个字符串，不需要 codec 或类型注册表。
 
-branch、dirty 等描述“现在在哪里”，compaction 后必须重放；review
-结果和待办提醒描述“发生过什么 / 请做什么”，按身份和 revision 去重投递，避免 agent
-重复处理同一件事。
+`BoardStore.transaction` 在 session 文件锁内读取最新快照、投影、更新/消费，随后写临时文件并
+原子替换，成功后才返回输出。渲染、解析、存储失败不会返回一个假空 Board，也不会确认消费；
+失败记录带 operation、Harness 和 session 的结构化日志。锁等待最多 2 秒，原生锁随进程退出释放。
+为了避免等待进程锁住不同 inode，稳定的 `.lock` 文件不在 SessionEnd 删除。
 
-Review 从当前分支的状态文件投影，prompt 与 UI 共用状态、被评审提交、finding / 失败数量、
-错误原因和产物路径。运行中超过既有时限显示 stale；失败、未完成与警告不能因零 finding
-显示为 clean。尚无记录和 skipped 不产生 review 条目。相同结果只提示一次，状态变化后
-重新投递；Board 不负责启动或重试 review。
+`board.remove(id)` 显式删除 full 和尚未消费的 queue，重复删除无副作用，不自动产生通知。
+需要通知业务事实失效时，生产方 upsert 有意义的更新。切换视图不删除 Note。
+SessionEnd / agent disposed 通过 `BoardStore.clear()` 回收快照；异常退出遗留的 session
+也可通过同一显式入口回收。没有 Note TTL、hook 全目录扫描或自动容量截断。
+旧工作区下的投递记录不迁移为新快照，新会话缓存从来源重新建立。

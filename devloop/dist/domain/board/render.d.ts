@@ -1,4 +1,5 @@
-import type { BoardItem } from "./model.js";
-export declare function renderItem(item: BoardItem): string;
-export declare function renderPrompt(items: readonly BoardItem[]): string;
+export type FactType = "workspace" | "repo.references" | "repo.identity" | "repo.validation" | "repo.pull-request" | "repo.review";
+type Row = Record<string, unknown>;
+export declare function renderFact(type: FactType, payload: Readonly<Row>): string;
+export {};
 //# sourceMappingURL=render.d.ts.map

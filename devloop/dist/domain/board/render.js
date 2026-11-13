@@ -10,11 +10,8 @@ function reference(item) {
     const base = basename(path);
     return description && description !== base && description !== path ? `${title} — ${description}  ← ${base}` : `${title}  ← ${base}`;
 }
-export function renderItem(item) {
-    const payload = item.payload;
-    if (payload.removed)
-        return `Board item removed: ${item.type} (${item.scope.repoRoot ?? item.scope.workspaceRoot}). Previous information for this item no longer applies.`;
-    if (item.type === "workspace") {
+export function renderFact(type, payload) {
+    if (type === "workspace") {
         const lines = [`[Workspace: ${text(payload.root)}]`];
         const references = rows(payload.references);
         if (references.length)
@@ -28,23 +25,23 @@ export function renderItem(item) {
             }));
         return lines.join("\n");
     }
-    if (item.type === "repo.references")
+    if (type === "repo.references")
         return ["Repo AGENTS.md references (Read when the task touches these topics):", ...rows(payload.references).map((row) => `  - ${reference(row)}`)].join("\n");
-    if (item.type === "repo.identity") {
+    if (type === "repo.identity") {
         const dirty = payload.workspaceDirty ? `dirty(${number(payload.modifiedCount)} modified, ${number(payload.untrackedCount)} untracked)` : payload.workspaceDirty === null ? "unknown" : "clean";
         const warnings = [payload.protected ? "PROTECTED" : "", typeof payload.staleBindingHours === "number" ? `repo binding is ${payload.staleBindingHours.toFixed(1)}h old; confirm the repo with cd` : ""].filter(Boolean);
         if (payload.inspectionProblem)
             warnings.push(text(payload.inspectionProblem));
         return `[Current repo: ${text(payload.codeDir) || text(payload.repoRoot)} (${text(payload.language) || "?"})] | Branch: ${text(payload.branch) || "?"}${payload.linkedWorktree === null ? " (checkout unknown)" : payload.linkedWorktree ? " (worktree)" : ""} (ahead ${typeof payload.ahead === "number" ? payload.ahead : "?"}, behind ${typeof payload.behind === "number" ? payload.behind : "?"} vs ${text(payload.baseBranch)}, target=${text(payload.targetBranch)}) | Workspace: ${dirty}${warnings.length ? ` ⚠️ ${warnings.join("; ")}` : ""}`;
     }
-    if (item.type === "repo.pull-request") {
+    if (type === "repo.pull-request") {
         if (payload.error)
             return `PR status unavailable: ${text(payload.error)}`;
         if (payload.ambiguous)
             return `Branch '${text(payload.branch)}' matches multiple PRs; select a proposal explicitly.`;
         return `${pullRequestLabel(text(payload.provider), number(payload.number))} ${text(payload.state)} (${text(payload.repository)})`;
     }
-    if (item.type === "repo.validation") {
+    if (type === "repo.validation") {
         if (payload.error)
             return text(payload.error);
         if (!number(payload.total))
@@ -60,12 +57,9 @@ export function renderItem(item) {
         });
         return [`Validation history (${number(payload.total)} retained runs; historical results, not current validation):`, ...lines].join("\n");
     }
-    if (item.type === "repo.review")
+    if (type === "repo.review")
         return renderReview(payload);
     return "";
-}
-export function renderPrompt(items) {
-    return items.map(renderItem).filter(Boolean).join("\n\n");
 }
 function renderReview(payload) {
     const status = text(payload.status);

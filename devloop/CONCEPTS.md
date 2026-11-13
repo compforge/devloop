@@ -97,18 +97,16 @@ AGENTS.md 是文字知识源；`.devloop/*.json` 是由 hooks / scripts 维护�
 - Workspace 级：`<workspace_root>/.devloop/context.json`，保存 workspace AGENTS.md 的 References + 文件系统自发现的 subproject 清单（叠加 AGENTS.md 表润色，symlink 子项目附 canonical 路径映射）；`active/<session_id>.json` **一 session 一文件**保存该 session 绑定的最近活跃 repo（脚本在 workspace 根被调用时的解析兜底）——这是 session 态而非 workspace 态，owner 即 session，按 writer-owner 铁律落盘零例外；多 session 各干各的仓互不劫持。语义与生命周期见〈Session 运行态〉。
 - Repo 级按 owner 保存工作流状态：repo 域保留 `agents.json` 知识缓存及 observability ledgers；branch 域保存 `review.json` 等任务证据。Repository metadata、branch/checkout 观测、创建来源与 remote tips 归 RepoKit；validation 执行历史也由 RepoKit 管理。`RepoContext` 查询这些事实形成内存视图，不复制到 `.devloop`。working-tree 域的 owner 锁与一次性 `commit_msg` 留各 worktree 自己的 `.devloop`；主仓 `tmp/` 存进程间临时文件。连续 review history 从 Forge comments 派生。见 [分支状态与决策边界](docs/branch-state.md)。
 
-### Board 投递游标
+### Board Note 与消费
 
-状态源只提交事实；Board 按当前 focus 组织 `BoardItem`，内部维护 revision 与投递基线。
-consumer 选择 `full()` 或 `delta()`：full 是无副作用的完整 view；delta 返回新增、变化、删除项，
-确认投递后才推进基线。producer、Harness adapter 都不自行计算差分。
+Board 按不透明 id 管理 Note，scope 表达 workspace/repo/component/branch 粒度，不建立包含树。
+生产方通过 upsert 提交字符串或 MergeableText；full 始终保存最新全量，queue 保存尚未消费的生效更新。
+text() 返回全量文本，delta() 返回并移除待消费更新；两者按 scope 分组，不输出内部 id。
+生产方拥有身份与相关性，Board 不从缺席推断删除。显式 remove 同时移除 full 和 queue。
 
-Claude/Codex/DSH 保留注入历史，使用 delta；OpenCode 每次重建请求，使用 full。
-同一 revision 不因 TTL 到期再次投递。切换 repo、首次进入及 PostCompact 明确恢复当前状态；
-已消费 event 不因 compaction 重放。只有 UI channel 的内容不产生 prompt 投递记录。
-
-游标按 session 保存在 `.devloop/board/sessions/`，只含 revision、scope、focus，不复制业务事实。
-具体接口、删除通知与恢复语义见 [Board](docs/board.md)。
+Harness + session 的文本快照跨进程保存，更新和消费在同一文件锁事务内完成。
+Claude/Codex/DSH 消费 delta，OpenCode 每次请求读取 text；compaction 恢复当前状态 Note，
+不重放已消费 review。具体契约、持久化与生命周期见 [Board](docs/board.md)。
 
 ## 脚本的 repo 解析
 

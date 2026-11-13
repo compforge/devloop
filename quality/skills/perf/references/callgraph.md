@@ -25,7 +25,7 @@ snapshot values as a baseline. Missing values must stay missing; never replace N
 ## Match observations to operations
 
 HTTP metrics normally identify an API by service scope, HTTP method and route template, e.g.
-`POST /datasets/{id}/retrieve`. Raw paths containing concrete IDs are not interchangeable with
+`GET /products/{product_id}`. Raw paths containing concrete IDs are not interchangeable with
 route templates. Inspect the actual metric/label names and deployment filters; OTel conventions
 do not guarantee that every exporter exposes the same Prometheus label names or route coverage.
 
@@ -52,11 +52,11 @@ V_i = downstream calls attributable to the entry cohort / entry requests in that
 X_i ≈ V_i × X_entry
 ```
 
-The throughput relationship is the **Forced Flow Law**. For example, an average of three retrieve
-calls per entry request means an entry rate of 8 req/s produces about 24 retrieve calls/s under
-stable conditions. The ratio can be below one for conditional calls or cache hits. Multiple
-retrieval rounds, loops, retries and independent call sites can all increase it; a large ratio
-alone does not prove a defect or identify which cause applies.
+The throughput relationship is the **Forced Flow Law**. For example, a checkout request that
+checks inventory for four items on average produces about 20 inventory calls/s at 5 checkout
+requests/s under stable conditions. The ratio can be below one for conditional calls or cache
+hits. Multiple item lookups, loops, retries and independent call sites can all increase it;
+a large ratio alone does not prove a defect or identify which cause applies.
 
 When only aggregate Prometheus rates are available, `QPS_downstream / QPS_entry` is an observed
 rate ratio, not an exact per-request call count. Use it as an estimate only after checking:

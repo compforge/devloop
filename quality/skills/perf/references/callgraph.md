@@ -40,6 +40,33 @@ p95 after combining histogram buckets across matching instances, not by averagin
 Inspect bucket coverage for long requests. Percentiles from parent and child APIs cannot be added
 or subtracted to derive exclusive work or critical-path duration.
 
+## Read RED with explicit semantics
+
+RED means **Rate, Errors, Duration**. QPS, error rate and p95 are representative selections,
+not the complete observation model or an automatic bottleneck verdict. Duration is a distribution;
+p95 summarizes its tail. Service resource, queue and restart observations remain useful alongside RED.
+
+Keep the project's static graph, observation declarations and experiment plan distinct. Observation
+selects targets and metrics; Probes are acquisition mechanisms. Join recorded observations to nodes
+by Operation identity. Prometheus selectors must independently match the intended service, method,
+route and deployment scope; attaching a query to an Operation does not filter the query automatically.
+
+For each displayed RED value establish:
+
+- Rate: arrival or completion events, request scope and window. Configured initiation rate is not
+  observed throughput; retain completion counts by code when available.
+- Errors: the numerator and denominator, transport versus business failure, and ratio versus
+  percentage units. HTTP 200 or an established SSE does not prove business success. Do not label
+  an HTTP status failure ratio as an SSE business failure ratio.
+- Duration: full request/stream, handler processing or first output, unit and sample population.
+  Aggregate histogram buckets before computing p95. An overflow marked `+Inf` means the requested
+  quantile cannot be resolved within finite buckets, not that requests literally ran forever.
+
+No traffic, absent instrumentation and failed queries are different from zero errors. Preserve
+missing reasons, source queries and measurement boundaries. Compare like populations and windows;
+do not average Pod error ratios or Pod p95 values. A high-error downstream node is a candidate for
+investigation, not proof that it caused the entry's errors. Confirm via aligned codes, logs or traces.
+
 ## Call amplification and visit ratio
 
 One entry invocation can call the same downstream operation multiple times. This creates request

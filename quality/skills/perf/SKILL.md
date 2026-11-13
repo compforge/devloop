@@ -25,7 +25,8 @@ Read the project's AGENTS.md and README, then locate:
 - Cases or stimuli, case mix, protocol Runner, raw completion signals, and independent Judge;
 - named experiments and resource/load profiles, both request rate and maximum inflight limits,
   phase schedules, duration, arrival distribution, and request/time budgets;
-- Probes, optional acceptance criteria, breakers, stop/cancellation behavior, cleanup, and target authorization;
+- project graph and observation declarations, Probes and metric semantics (including RED when available);
+- optional acceptance criteria, breakers, stop/cancellation behavior, cleanup, and target authorization;
 - native run schema, raw requests and resource observations, evaluation records, reports, and
   comparison baselines.
 

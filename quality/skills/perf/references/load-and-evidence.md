@@ -47,6 +47,26 @@ while warmup, individual stages, aggregate measurement, and cooldown retain dist
 Respect project-specific phase behavior when another framework is used. Never flatten warmup,
 measurement, and recovery into a single apparent steady-state result.
 
+### Choose hold duration from full request latency
+
+Use representative completed requests from a comparable run to size hold. Generally make hold
+longer than the target API's full request duration; a representative p95 is a useful starting
+reference when enough samples exist. For SSE, measure through the terminal event or full stream
+completion defined by the Runner, rather than connection setup or first token. Check metric timing
+boundaries and histogram bucket coverage before using a server-side percentile as this reference.
+
+The purpose is to observe requests completing and releasing inflight slots while load continues,
+so completion throughput, replenishment and downstream behavior can be assessed under ongoing
+pressure. A short hold dominated by filling slots can leave most completions to cooldown, where
+initiation has stopped. That drain remains useful evidence but does not establish sustained-load
+throughput. For steady-state analysis, allow several representative request lifecycles and enough
+completed samples, and check the actual time series for stabilization; duration alone is no proof.
+
+Treat this as experiment-design guidance, not a fixed duration, SLO or Harness validation rule.
+Record the latency reference and chosen duration; distinguish smoke/burst objectives when a shorter
+hold is intentional. Request timeout and cooldown drain budget remain separate controls, and a
+longer hold does not remove an inflight limit or guarantee the configured initiation rate.
+
 ## Join execution and evaluation evidence
 
 An Arm names a resource/load configuration. An ArmRun is one actual execution containing request

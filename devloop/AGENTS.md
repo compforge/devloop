@@ -99,7 +99,7 @@ devloop/
 - 一轮循环端到端流程（事件 → hook/script → 状态）：[`docs/loop.md`](./docs/loop.md)
 - Board 上下文读模型（事实源 → Board/View → channel/scope/replay policy）：[`docs/board.md`](./docs/board.md)
 - devops 生命周期 hook（pre_commit/post_commit，统一工作流 action 与 review 的触发；hook 皆阻塞，异步结果写结构化状态供下一轮或外部控制面观察）：[`docs/lifecycle-hooks.md`](./docs/lifecycle-hooks.md)
-- Worktree 依赖环境（checkout-local 依赖视图 + 共享包缓存；生态 prepare 与验证前置条件）：[`docs/worktree-env.md`](./docs/worktree-env.md)
+- Worktree 操作与依赖准备：[worktree](./skills/git-ops/references/worktree.md)
 - 提交期 code-review（signal hook `review`，任意相位由 config 决定：detach 起、审全量 diff、不挡 commit、结果经 Board pull 投递；分支有开放 MR 时机会性发评论到 MR 做历史）：[`docs/code-review.md`](./docs/code-review.md)
 - 使用 / 安装 / 配置：[`README.md`](./README.md)
 - 共享术语（repo_dir / **component** + default component / 保护分支 / PR 模型 / 验证状态 / `<PLUGIN_ROOT>`）：[`CONCEPTS.md`](./CONCEPTS.md)
@@ -107,4 +107,4 @@ devloop/
 - 完整方案与设计决策：plan 文档（开发者本地 `~/.claude/plans/devloop-plugin-0.1.md`）
 - Harness adapter 边界与事件映射：[`docs/harness-adapters.md`](./docs/harness-adapters.md)
 
-- [仓库工具包与开发流程](docs/repository-toolkit.md)：事实、操作、验证身份与门禁边界。
+- [Repository](docs/repository.md)：Component 资源、工具包与开发流程的职责边界。

@@ -15,7 +15,7 @@ devloop 内多个 skill / 脚本共用的术语。架构理念见 [`AGENTS.md`](
   - **失败语义**：inspect 不可用时无法确定验证对象，依赖组件信息的操作报错。可选上下文展示保留 Git 等独立事实并提示组件信息缺失，不把未知目录伪装成仓根 Component。
 
 
-依赖环境同样属于 component。worktree 创建时预热、lint/test 启动前兜底；验证进程必须使用当前 checkout 的依赖视图，不能向上借主 checkout 的 `node_modules`，也不能沿用指向别处源码的 Python editable environment。跨 checkout 共享的是包管理器缓存，不是整个环境目录。详细模型见 [`docs/worktree-env.md`](./docs/worktree-env.md)。
+依赖环境同样属于 component。worktree 创建时预热、lint/test 启动前兜底；验证进程必须使用当前 checkout 的依赖视图，不能向上借主 checkout 的 `node_modules`，也不能沿用指向别处源码的 Python editable environment。跨 checkout 共享的是包管理器缓存，不是整个环境目录。详细模型见 [worktree 依赖准备](./skills/git-ops/references/worktree.md#dependency-preparation)。
 - **`repo_code_dir`** / **default component**：repo 级**默认** component——没有更具体目标路径时用（显式按名字选仓、cwd 就是仓根）。探测规则 `server/` > `backend/` > `repo_dir`（`repo_layout.find_repo_code_dir` / `default_component`）。这是**选择**启发式（「没有具体目标该选谁」），与上面的**身份**判据（「这个目录是不是 component」）是两个问题，别拿它回答身份——`discover_components` 曾用它补根 component，而 `server/` 存在时它返回 `server/`（早被枚举收过），于是补根永远补不进、根的 go.mod 从 catalog 里消失。Go / TS 单 component 仓通常就是 `repo_dir`。子项目 `AGENTS.md` 一定在默认 component 下面。
 
 ## 保护分支
@@ -81,7 +81,7 @@ session-scoped 运行状态的统一生命周期约定：**activity 时创建 �
 决定检查哪些文件；整仓 snapshot 确认分析、执行和暂存使用同一份代码；检查输入 fingerprint
 决定已有通过结果能否复用。声明完整输入的检查按 Component 内容、依赖 Component 与共享路径
 计算指纹；没有完整声明时保守绑定整仓内容。配置与边界见
-[仓库工具包与开发流程](docs/repository-toolkit.md)。
+[仓库工具包与开发流程](docs/repository.md)。
 
 复用要求命令、文件集合、输入指纹和受管理依赖环境一致，不以编辑计数判断。未命中只执行
 原计划，不扩大检查范围。复用成功后证据关联到本轮核对的仓库快照，保留原执行时间；

@@ -23,7 +23,7 @@ def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
     """Choose task naming and preparation policy over RepoKit checkout placement and lifecycle.
 
     +spec=Only a confirmed matching CLI result authorizes preparation; failure/unknown never falls back to SDK mutation.
-    +link=component://devloop/docs/worktree-env.md
+    +link=component://devloop/skills/git-ops/references/worktree.md#dependency-preparation
     """
     branch = f"worktree-{tag}"
     try:

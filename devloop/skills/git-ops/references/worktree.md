@@ -16,9 +16,33 @@ absolute `data.checkout`. `created` refreshes the remote base before creation; `
 checks out an existing branch; `reused` verifies the registered checkout. Existing work is
 preserved. An unknown result requires observation before retry.
 
+RepoKit ensure registers confirmed checkouts and reports registration diagnostics. RepoKit home
+contains repository state; `.devloop` contains workflow and session state.
+
+## Dependency preparation
+
 `--prepare` prepares declared dependency Bins. Inspect `data.ready`, `data.preparation` and
-diagnostics separately from checkout confirmation. Partial preparation or observation warnings
-preserve the confirmed checkout; dependency readiness does not establish validation success.
+diagnostics separately from checkout confirmation. `ready=false` preserves each Bin's reason
+and installation output as warnings. Partial preparation or observation warnings preserve the
+confirmed checkout; dependency readiness does not establish validation success.
+
+Use the current checkout's dependency environment. Worktrees share package-manager caches;
+`node_modules`, Python virtual environments and editable installs belong to each checkout.
+The plugin's `scripts/python` environment is separate from the inspected project's environment.
+
+For an existing checkout or changed lockfiles, run:
+
+```bash
+repocli depot prepare --repo <checkout> --timeout 10m --json
+```
+
+`depot inspect` provides read-only diagnostics. `validate` runs checks against the prepared
+environment. RepoKit owns Bin fingerprints, installation locks, receipts, shared-Bin deduplication
+and phase costs; see [Component resources](../../../docs/repository.md#component-与依赖资源).
+The CLI timeout bounds the round; the Python process adapter allows another ten seconds for
+termination and result serialization.
+
+## Task naming
 
 For repository lookup and devloop task naming, use:
 

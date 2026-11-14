@@ -127,7 +127,7 @@ parsing, plans, bounded execution, Component/check fingerprints and result reuse
 
 The AI selects validation scope and runs the CLI directly; commit hooks do not execute validation.
 Automated repository queries prefer the CLI; SDKs cover operations without an equivalent CLI contract. Inspect the report before publishing code. See
-[validation](../skills/validate/SKILL.md) and [repository-toolkit](../docs/repository-toolkit.md).
+[validation](../skills/validate/SKILL.md) and [repository-toolkit](../docs/repository.md).
 
 Use `repocli validate history list/show` for retained executions, logs, slow cases and input evidence;
 `validate --history` returns aggregate statistics. See

@@ -38,7 +38,7 @@ def _invoke(repo: str, action: str, arguments: list[str] | None = None, *, branc
             target: str | None = None) -> list[str]:
     """+spec=Only confirmed matching CLI facts advance the workflow; no SDK mutation fallback or local recovery record.
 
-    +link=component://devloop/docs/repository-toolkit.md
+    +link=component://devloop/docs/repository.md
     """
     try:
         envelope = run_repocli(repo, ("git", "rebase", action), arguments or [], timeout=300)

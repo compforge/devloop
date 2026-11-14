@@ -2,7 +2,7 @@
 """Managed commit/push transactions; the AI invokes PR and validation CLI commands.
 
 +spec=`This workflow does not create/update PRs or execute project validation.`
-+link=`component://docs/repository-toolkit.md`
++link=`component://docs/repository.md`
 
 Branch protection, checkout ownership and exact staging selection remain live checks.
 Fresh branches use an explicit base, and pushes reject unintended foreign commits.
@@ -222,7 +222,7 @@ def publish(intent: GitIntent, branch: BranchResult, staged: StageResult, plan: 
 def publish_branch(repo: str, branch: str, plan: list[str], expected_commit: str = "") -> None:
     """+spec=Publish one frozen commit through RepoCLI; only matching remote evidence confirms success, including after a lost push response.
 
-    +link=component://devloop/docs/repository-toolkit.md
+    +link=component://devloop/docs/repository.md
     """
     commit = expected_commit or git_state.rev_parse(repo, f"refs/heads/{branch}")
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):

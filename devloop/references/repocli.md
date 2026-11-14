@@ -25,7 +25,9 @@ these describe static associations, not runtime probabilities.
 ## Worktree lifecycle
 
 `repocli worktree ensure <name> --branch <branch> --base <branch> --remote origin --repo <repo> --json`
-creates or reuses a named checkout below the primary checkout’s `.worktrees` directory. `--repo` is required; callers consume `data.checkout` instead of constructing paths. Require `data.confirmed=true`, matching name/branch and an absolute `data.checkout`;
+creates or reuses `<primary-checkout>/.worktrees/<name>`. `--repo` selects the actual repository explicitly;
+RepoKit resolves the primary checkout from symlinks and linked checkouts. Use the returned `data.checkout`.
+Require `data.confirmed=true`, matching name/branch and an absolute `data.checkout`;
 action distinguishes `created`, `resumed` and `reused`. A new branch requires a successful remote refresh;
 existing branches/checkouts are never reset to the creation base. Diagnostics can retain a confirmed checkout
 with failed state publication. An unknown result needs inspection before retry; do not fall back to SDK mutation.

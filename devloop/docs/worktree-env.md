@@ -1,7 +1,8 @@
 # Worktree 依赖准备
 
 devloop 一次调用 `repocli worktree ensure <name> --repo <repository> --branch <branch> --base <base> --remote origin --prepare --timeout 12m --json`。
-RepoKit 完成 checkout 核验、创建或复用、登记及依赖准备；devloop 决定任务命名、基线与是否带告警继续。
+RepoKit 解析主 checkout，在 `.worktrees/<name>` 下创建或复用、核验、登记并准备依赖；
+devloop 决定任务名称、branch、基线与是否带告警继续，并使用返回的 `data.checkout`。
 
 ## 结果与策略
 
@@ -18,15 +19,15 @@ RepoKit 拥有 Component → Depot → Bin、指纹、锁定安装、回执、�
 ## Component 的资源声明
 
 Component 直接投影 RepoKit 提供的 `tools`、`depot` 和独立 `toolEvidence`，Python 使用
-`tool_evidence`。Tool/Depot/Bin 类型来自 common；devloop 不保留旧 PackageTool 字段或兼容别名。
+`tool_evidence`。Tool/Depot/Bin 类型来自 common。
 一个 Component 至多对应一个逻辑 Depot，Bin 的路径是 checkout 相对路径，workspace 成员可共享
 同一物理 Bin。目录回收后逻辑声明仍存在；发现、安装根解析、准备回执和验证复用归 RepoKit。
 
-依赖 Bin 的自动 witness 由 repocli 0.58.0 起提供。依赖缺失时执行真实检查，devloop 不维护第二份
-reuse 缓存，也不在 Component 投影中解释回执或自行决定目录是否可删除。
+RepoKit 通过依赖 Bin 的 witness 判定验证复用；依赖缺失时执行真实检查。
+Component 投影描述资源，回执解释、复用与目录回收由 RepoKit 负责。
 
 ## Repository 信息
 
-创建和复用后的登记统一由 RepoKit ensure 完成；devloop 不再单独调用 `RepositoryState.observe()`。
+RepoKit ensure 统一完成创建和复用后的登记。
 登记失败以结构化诊断保留，不把已确认的 checkout 当作创建失败。RepoKit home 的解析和布局归 RepoKit；
 `.devloop` 继续保存工作流和 session 状态。

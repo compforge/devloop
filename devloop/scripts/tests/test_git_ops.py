@@ -238,7 +238,7 @@ def test_commit_flow_retains_scratch_on_failure_and_cleans_on_success():
 
 
 def test_push_requires_cli_but_does_not_run_validation():
-    # +case=`push-cli-unavailable` +link=`component://docs/repository-toolkit.md`
+    # +case=`push-cli-unavailable` +link=`component://docs/repository.md`
     # Missing CLI never falls back to an SDK push; project checks remain skill-owned.
     from tempfile import TemporaryDirectory
     from unittest.mock import patch

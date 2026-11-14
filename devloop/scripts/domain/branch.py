@@ -31,7 +31,7 @@ def create(repo: str, name: str, base: str, *, carry_changes: bool = False,
            identity: session.SessionIdentity | None = None) -> CreateResult:
     """+spec=RepoCLI owns Git writes and recovery. Confirmed branch identity advances devloop context even when restoring changes fails.
 
-    +link=component://devloop/docs/repository-toolkit.md
+    +link=component://devloop/docs/repository.md
     """
     ident = identity or session.current_identity()
     previous = session.read(repo, ident.harness) if ident.session_id else None

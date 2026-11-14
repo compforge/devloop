@@ -1,4 +1,19 @@
-# 仓库工具包与开发流程
+# Repository
+
+Repository 是 branch、PR/MR、checkout 和 Component 所属的仓库边界。RepoKit 提供仓库事实与操作能力，
+devloop 组织开发策略、session 协作与交付流程。
+
+## Component 与依赖资源
+
+Component 直接投影 RepoKit 提供的 `tools`、`depot` 和独立 `toolEvidence`，Python 使用
+`tool_evidence`。Tool/Depot/Bin 类型来自 common。
+一个 Component 至多对应一个逻辑 Depot，Bin 的路径是 checkout 相对路径，workspace 成员可共享
+同一物理 Bin。目录回收后逻辑声明仍存在；发现、安装根解析、准备回执和验证复用归 RepoKit。
+
+RepoKit 通过依赖 Bin 的 witness 判定验证复用；依赖缺失时执行真实检查。
+Component 投影描述资源，回执解释、复用与目录回收由 RepoKit 负责。
+
+## 工具包与开发流程
 
 RepoKit 拥有 Repository 的组织、Git/Forge 操作、验证执行与资源维护。devloop 负责开发策略、
 managed Git 策略、review 和 Board。AI 按 skill 直接执行 `repocli validate`、`repocli pr`
@@ -11,7 +26,7 @@ CLI 交付命令结果 envelope，SDK 返回领域对象。AI 同时检查退出
 结果未知时先核验目标事实，部分失败保留已确认动作。具体恢复规则归各 skill，程序消费 CLI 时只在边界做有超时的调用和契约解码，不复制
 Repository 逻辑、结果缓存、重试或第二套错误分类。
 
-## 验证与 PR 交付
+### 验证与 PR 交付
 
 验证计划、Makefile 执行、输入指纹、执行历史和复用判断均归 RepoKit。AI 在提交代码或提交 PR 前
 执行验证并检查 envelope 的 outcome、diagnostics，以及 `data` 的 passed、complete、inputsConsistent
@@ -35,7 +50,7 @@ Board 不读取 `.devloop/validation_results`、分支 lint/test 引用或 `vali
 PR 标题、正文和目标仓由 AI 显式传给 CLI，不自动把 commit message 追加到已有 PR。
 CLI 和 SDK 均由 RepoKit 的 `<home>/config.json` 解析 Forge 访问配置；devloop 不读取或注入凭据。
 
-## Managed Git 事务
+### Managed Git 事务
 
 提交范围由调用方选择，路径解释、候选 index、gitlink 注册和提交核验由 RepoKit 负责。
 `domain.commit` 消费 `repocli git commit plan/create`，只检查敏感路径及返回身份；保护分支、
@@ -64,7 +79,7 @@ rebase 的 Git 事务、lease、恢复与远端核验归 RepoKit，devloop 通�
 AI 验证，devloop 再检查发布策略；已确认 Git 结果不会因 Board 刷新失败而要求重试。
 排序和本地忽略可 best-effort，必要事实读取失败必须停止。
 
-## PR 观察与 worktree 维护
+### PR 观察与 worktree 维护
 
 PR、branch 和 checkout 的关联、观察缓存及 HTTP 协调归 RepoKit。devloop 按需读取原生 PR context，
 构造 branch gate 与 Board 视图；review 评论、Verdict、readiness 单独读取。
@@ -85,11 +100,11 @@ RepoKit 在 PR 写操作后维护本地资源。全局 `clean` 扫描 RepoKit ho
 devloop 没有 after_success 清理回调、周期 task、monitor 注册或 Harness 活动触发的扫描进程。
 用户要求清理时，AI 按 monitor skill 直接执行 CLI；纯状态查询不清理。
 
-managed worktree 的命名、目标基线、任务/session 归属及依赖准备时机由 devloop 决定。
-创建、恢复、复用核验和登记统一调用 `repocli worktree ensure --prepare`；不再根据目录/分支自行拼装 Git 操作。
-依赖准备由同一次 ensure 的 `--prepare` 完成，消费逐 Bin 结果和成本；安装成功不代表验证通过。详见 [worktree-env](worktree-env.md)。
+managed worktree 的任务名称、branch、目标基线、任务/session 归属及依赖准备时机由 devloop 决定。
+RepoKit 通过 `repocli worktree ensure --prepare` 完成路径解析、创建、恢复、复用核验、登记及依赖准备。
+操作与结果判断见 [worktree](../skills/git-ops/references/worktree.md)。
 
-## 组织事实与状态归属
+### 组织事实与状态归属
 
 RepoKit inspect 提供零个、一个或多个 Component，owner 提供路径归属，包括删除路径。
 不补隐式根组件，不将读取失败解释为成功的空目录。TypeScript 每次策略操作共享一次 inspection，
@@ -101,7 +116,7 @@ checkout 与 common Git directory 关系由 toolkit 解释。仓库级状态共�
 未知 checkout 位置保持未知，不据此推断资源已删除；Session 结束时仍释放可确认位置的 owner。
 Git status、ahead/behind 或祖先查询失败均保留失败语义，不伪造 clean、0/0 或非祖先事实。
 
-## Discussion 操作入口
+### Discussion 操作入口
 
 通用讨论读取、发表评论、回复与 resolve 由 skill 直接调用 `repocli pr discussion`，不保留
 `scripts/pr.py`。CLI 入口与输出约定见 [PR management](../skills/git-ops/references/pr-management.md#discussions)。
@@ -109,7 +124,7 @@ Git status、ahead/behind 或祖先查询失败均保留失败语义，不伪造
 保留，不为替换通用入口新增 Python CLI wrapper。`review findings` 输出 comment ID 和可用的
 thread ID，前者用于 Verdict 命令，后者用于通用 discussion 命令。
 
-## Tag 发布
+### Tag 发布
 
 通用 tag 发布由 skill 直接调用 `repocli git tag publish`；devloop 不保留 `release.py tag`
 或 Python 转发器。RepoKit 拥有目标 commit 固定、push destination 选择、已有 tag 冲突检查、
@@ -117,7 +132,7 @@ thread ID，前者用于 Verdict 命令，后者用于通用 discussion 命令�
 项目契约和 skill。Forge Release 由 skill 直接调用 `repocli release latest/show/create`，
 查询、目标核验、重复创建和未知结果恢复归 RepoKit；devloop 不保留 Release Python 入口。
 
-## Repository 事实与工作流状态
+### Repository 事实与工作流状态
 
 远端 Forge、本地 Git 与 RepoKit home 由 RepoKit 协调。devloop 通过显式 `repokit.cli` 执行和解码
 CLI 协议，通过原生 SDK 获取展示事实；不维护第二份 branch/meta/remote JSON。`RepoContext` 是瞬时读模型，

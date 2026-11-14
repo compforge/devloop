@@ -24,8 +24,10 @@ these describe static associations, not runtime probabilities.
 
 ## Worktree lifecycle
 
-`repocli worktree ensure <path> --branch <branch> --base <branch> --remote origin --repo <repo> --json`
-creates or reuses the exact requested checkout. Require `data.confirmed=true` and matching checkout/branch;
+`repocli worktree ensure <name> --branch <branch> --base <branch> --remote origin --repo <repo> --json`
+creates or reuses `<primary-checkout>/.worktrees/<name>`. `--repo` selects the actual repository explicitly;
+RepoKit resolves the primary checkout from symlinks and linked checkouts. Use the returned `data.checkout`.
+Require `data.confirmed=true`, matching name/branch and an absolute `data.checkout`;
 action distinguishes `created`, `resumed` and `reused`. A new branch requires a successful remote refresh;
 existing branches/checkouts are never reset to the creation base. Diagnostics can retain a confirmed checkout
 with failed state publication. An unknown result needs inspection before retry; do not fall back to SDK mutation.
@@ -154,7 +156,7 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.78.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.83.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.

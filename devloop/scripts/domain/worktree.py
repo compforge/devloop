@@ -1,6 +1,6 @@
 """Managed git worktree lifecycle used by the explicit worktree helper.
 
-All devloop-created worktrees live below ``<repo>/.worktrees/``. Keeping creation,
+RepoKit selects the checkout path from the requested repository and name. Keeping creation,
 reuse and dependency preparation behind this module prevents callers from
 reproducing only the visible ``git worktree add`` step and skipping lifecycle policy.
 """
@@ -20,23 +20,28 @@ logger = logging.getLogger(__name__)
 
 
 def create_or_reuse(repo_dir: str, tag: str) -> tuple[str | None, str]:
-    """Choose devloop naming and preparation policy over RepoKit checkout lifecycle.
+    """Choose task naming and preparation policy over RepoKit checkout placement and lifecycle.
 
     +spec=Only a confirmed matching CLI result authorizes preparation; failure/unknown never falls back to SDK mutation.
     +link=component://devloop/docs/worktree-env.md
     """
     branch = f"worktree-{tag}"
-    target = Path(repo_dir).resolve() / ".worktrees" / tag
     try:
         base = git_policy.local_default_target(repo_dir)
         envelope = _repocli(repo_dir, ("worktree", "ensure"), [
-            str(target), "--branch", branch, "--base", base, "--remote", "origin", "--prepare",
+            tag, "--branch", branch, "--base", base, "--remote", "origin", "--prepare",
         ], timeout=720)
         if envelope["outcome"] not in {"succeeded", "partial"}:
             error = envelope.get("error")
             detail = error.get("message") if isinstance(error, dict) else None
             return None, f"worktree ensure {envelope['outcome']}: {detail or 'inspect the CLI result before retrying'}"
-        data = worktree_result(envelope, target, branch, prepared=True)
+        data = envelope.get("data")
+        if not isinstance(data, dict) or data.get("name") != tag:
+            raise ValueError("mismatching worktree name")
+        checkout = data.get("checkout")
+        if not isinstance(checkout, str) or not Path(checkout).is_absolute():
+            raise ValueError("invalid checkout path")
+        data = worktree_result(envelope, Path(checkout), branch, prepared=True)
         diagnostics = data["diagnostics"]
         warnings = [d["message"] for d in diagnostics]
         checkout = data["checkout"]

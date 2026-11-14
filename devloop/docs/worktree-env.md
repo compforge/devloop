@@ -1,12 +1,12 @@
 # Worktree 依赖准备
 
-devloop 一次调用 `repocli worktree ensure <path> --branch <name> --base <base> --remote origin --prepare --timeout 12m --json`。
+devloop 一次调用 `repocli worktree ensure <name> --repo <repository> --branch <branch> --base <base> --remote origin --prepare --timeout 12m --json`。
 RepoKit 完成 checkout 核验、创建或复用、登记及依赖准备；devloop 决定任务命名、基线与是否带告警继续。
 
 ## 结果与策略
 
 `scripts/domain/worktree.py` 通过 `repokit.cli` 启动命令并消费其协议。成功或部分成功时，只有
-`confirmed=true` 且路径/分支匹配才返回 checkout。`ready=false` 保留逐 Bin 原因和安装输出作为告警，
+`confirmed=true`、名称/分支匹配且返回绝对路径时才使用 checkout。`ready=false` 保留逐 Bin 原因和安装输出作为告警，
 不撤销 checkout，不宣称依赖就绪。CLI 缺失、超时、失败、未知或协议错误停止，不自动重放或回退 SDK。
 
 RepoKit 拥有 Component → Depot → Bin、指纹、锁定安装、回执、共享 Bin 去重与阶段成本。整轮预算

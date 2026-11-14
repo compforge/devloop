@@ -47,7 +47,7 @@ def _add_external_worktree(repo: str, tag: str) -> str:
 
 def _ensure_report(action="created", **fields):
     return {"schemaVersion": "1.0", "command": "repocli worktree ensure", "outcome": "succeeded",
-            "data": {"checkout": str(Path("/repo/.worktrees/topic").resolve()), "branch": "worktree-topic",
+            "data": {"name": "topic", "checkout": str(Path("/repo/.worktrees/topic").resolve()), "branch": "worktree-topic",
                      "headSha": "a" * 40, "confirmed": True, "action": action, "diagnostics": [], "preparation": {"complete": True, "bins": []}, "ready": True, **fields}}
 
 
@@ -61,7 +61,7 @@ def test_creation_resume_and_reuse_delegate_identity_to_repocli():
         assert run.call_count == 1
         repo, operation, arguments = run.call_args.args
         assert repo == "/repo" and operation == ("worktree", "ensure")
-        assert arguments == [str(Path("/repo/.worktrees/topic").resolve()), "--branch", "worktree-topic",
+        assert arguments == ["topic", "--branch", "worktree-topic",
                              "--base", "main", "--remote", "origin", "--prepare"]
         assert run.call_args.kwargs["timeout"] == 720
 
@@ -76,7 +76,7 @@ def test_failed_and_unknown_ensure_never_prepare_or_fallback():
 
 
 def test_mismatching_or_unconfirmed_reports_never_authorize_preparation():
-    for fields in ({"confirmed": False}, {"checkout": "/other"}, {"branch": "different"},
+    for fields in ({"confirmed": False}, {"checkout": "relative"}, {"name": "different"}, {"branch": "different"},
                    {"action": "unknown"}, {"headSha": ""}, {"diagnostics": None}):
         with (patch.object(worktree.git_policy, "local_default_target", return_value="main"),
               patch.object(worktree, "_repocli", return_value=_ensure_report(**fields))):
@@ -125,6 +125,15 @@ def test_repo_context_topology_uses_checkout_locations():
     assert next(b.path for b in observed.checkouts if b.branch == "main") is None
     assert str(metadata) not in [b.path for b in observed.checkouts]
 
+
+
+
+def test_repocli_owns_destination_for_linked_checkout():
+    with (patch.object(worktree.git_policy, "local_default_target", return_value="main"),
+          patch.object(worktree, "_repocli", return_value=_ensure_report(checkout="/primary/.worktrees/topic")) as invoke):
+        path, _ = worktree.create_or_reuse("/linked", "topic")
+    assert path == "/primary/.worktrees/topic"
+    assert invoke.call_args.args[2][0] == "topic"
 
 if __name__ == "__main__":
     run_main(globals())

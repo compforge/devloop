@@ -3,8 +3,9 @@ import { Model, Provider } from "@opencode/plugin";
 import type { Context } from "@opencode/plugin/promise/plugin";
 import type { SessionPrompt } from "@opencode/plugin/promise/session";
 import { setup } from "../adapters/opencode/index.js";
+import { fastModel } from "../domain/routing.js";
 
-const ref = (id: string) => Model.Ref.parse(`openai/${id}`);
+const ref = (id: string) => ({ providerID: Provider.ID.make("openai"), id: Model.ID.make(id) });
 const ids = ["gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"];
 let cleanup: (() => void) | undefined;
 let prompt: (event: SessionPrompt) => Promise<void> | void;
@@ -31,8 +32,8 @@ beforeEach(async () => {
   context = {
     options: {},
     provider: { transform: async (callback: (editor: unknown) => void) => callback({
-      get: () => ({ models: new Map(models.map((model) => [model.id, model])) }),
-      models: { set: (_id: string, value: Model.Info[]) => { models = value; } },
+      get: (id: string) => ({ models: new Map(models.filter(model => model.providerID === id).map((model) => [model.id, model])) }),
+      models: { set: (id: string, value: Model.Info[]) => { models = [...models.filter(model => model.providerID !== id), ...value]; } },
     }) },
     model: { list: async () => ({ data: models }), default: async () => ({ data: ref("model-router") }) },
     session: {
@@ -55,7 +56,7 @@ describe("OpenCode routing ownership", () => {
     request.mockResolvedValue(answer(tier!));
     await prompt(event());
     expect(selected.get("s1")).toEqual(ref(target!));
-    expect(stored.get("route/s1")).toEqual(ref(target!));
+    expect(stored.get("route/s1")).toEqual({ mode: "auto", lastModel: ref(target!) });
   });
   it("Auto uses Sol's real transport model as its fallback", () => {
     expect(models.find((model) => model.id === "model-router")?.modelID).toBe("gpt-6.1-sol");
@@ -119,6 +120,155 @@ describe("OpenCode routing ownership", () => {
     request.mockResolvedValueOnce(answer("complex")).mockResolvedValueOnce(answer("simple"));
     await Promise.all([prompt(event("one")), prompt(event("two", "s2"))]);
     expect(selected.get("s1")).toEqual(ref("gpt-6-astra")); expect(selected.get("s2")).toEqual(ref("gpt-6.1-terra"));
+  });
+});
+
+describe("Auto Fast", () => {
+  it("offers exactly two Auto entries and leaves original model defaults unchanged", () => {
+    expect(models.filter(model => model.id.startsWith("model-router")).map(model => [model.id, model.name])).toEqual([
+      ["model-router", "Auto (Decisions)"], ["model-router-fast", "Auto Fast (Decisions)"],
+    ]);
+    const autoFast = models.find(model => model.id === "model-router-fast")!;
+    expect(autoFast.modelID).toBe(ids[1]);
+    expect(autoFast.settings).toMatchObject({ serviceTier: "priority" });
+    expect(autoFast.body).toMatchObject({ service_tier: "priority" });
+    for (const id of ids) {
+      const original = models.find(model => model.id === id)!;
+      expect(original.settings?.serviceTier).toBeUndefined();
+      expect(original.body?.service_tier).toBeUndefined();
+    }
+  });
+  it.each([["simple", ids[0]], ["medium", ids[1]], ["complex", ids[2]]])("routes %s with priority service", async (tier, id) => {
+    selected.set("s1", ref("model-router-fast"));
+    request.mockResolvedValueOnce(answer(tier!));
+    await prompt(event());
+    expect(selected.get("s1")).toEqual(fastModel(ref(id!)));
+    expect(stored.get("route/s1")).toEqual({ mode: "auto-fast", lastModel: fastModel(ref(id!)) });
+    const variant = models.find(model => model.id === id)!.variants.find(variant => variant.id === "model-router-fast")!;
+    expect(variant.settings).toEqual({ serviceTier: "priority" });
+    expect(variant.body).toEqual({ service_tier: "priority" });
+    expect(JSON.parse(String(request.mock.calls[0]?.[1]?.body)).service_tier).toBeUndefined();
+  });
+  it("preserves Fast across prompts and restart, and switches back to ordinary Auto", async () => {
+    selected.set("s1", ref("model-router-fast"));
+    await prompt(event()); cleanup?.(); cleanup = await setup(context);
+    request.mockResolvedValueOnce(answer("complex"));
+    await prompt(event("next"));
+    expect(selected.get("s1")).toEqual(fastModel(ref(ids[2]!)));
+    selected.set("s1", ref("model-router"));
+    await prompt(event("ordinary"));
+    expect(selected.get("s1")).toEqual(ref(ids[0]!));
+    expect(stored.get("route/s1")).toEqual({ mode: "auto", lastModel: ref(ids[0]!) });
+  });
+  it("continues legacy ownership in ordinary Auto", async () => {
+    selected.set("s1", ref(ids[0]!)); stored.set("route/s1", ref(ids[0]!));
+    request.mockResolvedValueOnce(answer("complex"));
+    await prompt(event());
+    expect(selected.get("s1")).toEqual(ref(ids[2]!));
+    expect(stored.get("route/s1")).toEqual({ mode: "auto", lastModel: ref(ids[2]!) });
+  });
+  it("falls back to medium Fast on classifier failure or a missing target", async () => {
+    selected.set("s1", ref("model-router-fast"));
+    request.mockResolvedValueOnce(Response.json({ answers: [] })).mockResolvedValueOnce(answer("complex"));
+    await prompt(event());
+    expect(selected.get("s1")).toEqual(fastModel(ref(ids[1]!)));
+    models = models.filter(model => model.id !== ids[2]);
+    await prompt(event("next"));
+    expect(selected.get("s1")).toEqual(fastModel(ref(ids[1]!)));
+  });
+  it("does not silently fall back to ordinary medium when Fast variants are unavailable", async () => {
+    selected.set("s1", ref("model-router-fast"));
+    models = models.map(model => ({ ...model, variants: [] }));
+    await prompt(event());
+    expect(switchModel).not.toHaveBeenCalled();
+    expect(console.error).toHaveBeenLastCalledWith(expect.stringContaining('"reason":"fallback_unavailable"'));
+  });
+  it("keeps the conservative medium floor in Fast mode", async () => {
+    selected.set("s1", ref("model-router-fast"));
+    const attached = event("inspect this");
+    attached.prompt.files = [{}] as SessionPrompt["prompt"]["files"];
+    await prompt(attached);
+    expect(selected.get("s1")).toEqual(fastModel(ref(ids[1]!)));
+    vi.stubEnv("OPENAI_API_KEY", "");
+    await prompt(event("no key"));
+    expect(selected.get("s1")).toEqual(fastModel(ref(ids[1]!)));
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+  it("does not offer Auto Fast when the configured medium variant is missing", async () => {
+    cleanup?.();
+    models = ids.map(id => Model.Info.default(Provider.ID.make("openai"), Model.ID.make(id)));
+    context = { ...context, options: { models: { medium: { ...ref(ids[1]!), variant: "missing" } } } };
+    cleanup = await setup(context);
+    expect(models.some(model => model.id === "model-router")).toBe(true);
+    expect(models.some(model => model.id === "model-router-fast")).toBe(false);
+  });
+  it("registers priority variants across the configured providers", async () => {
+    cleanup?.();
+    models.push(Model.Info.default(Provider.ID.make("gateway"), Model.ID.make("reasoner")));
+    context = { ...context, options: { models: { complex: { providerID: "gateway", id: "reasoner" } } } };
+    cleanup = await setup(context);
+    selected.set("s1", ref("model-router-fast"));
+    request.mockResolvedValueOnce(answer("complex"));
+    await prompt(event());
+    expect(selected.get("s1")).toEqual({ providerID: "gateway", id: "reasoner", variant: "model-router-fast" });
+    expect(models.find(model => model.providerID === "gateway")!.variants[0]!.body).toEqual({ service_tier: "priority" });
+    expect(models.filter(model => model.id.startsWith("model-router"))).toHaveLength(2);
+  });
+  it("leaves queue admission and manual selections alone", async () => {
+    selected.set("s1", ref("model-router-fast"));
+    await prompt(event("queued", "s1", "queue"));
+    expect(request).not.toHaveBeenCalled();
+    await prompt(event());
+    selected.set("s1", ref(ids[0]!));
+    await prompt(event("manual"));
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(stored.has("route/s1")).toBe(false);
+  });
+  it("discards a pending Fast result after switching to Auto", async () => {
+    selected.set("s1", ref("model-router-fast"));
+    let finish!: (value: Response) => void;
+    request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; })).mockResolvedValueOnce(answer("medium"));
+    const first = prompt(event("first"));
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    selected.set("s1", ref("model-router"));
+    await prompt(event("ordinary")); finish(answer("complex")); await first;
+    expect(selected.get("s1")).toEqual(ref(ids[1]!));
+    expect(switchModel).toHaveBeenCalledTimes(1);
+  });
+  it("does not overwrite a manual selection while Fast classification is pending", async () => {
+    selected.set("s1", ref("model-router-fast"));
+    let finish!: (value: Response) => void;
+    request.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const running = prompt(event());
+    await vi.waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+    selected.set("s1", ref(ids[2]!)); finish(answer("simple")); await running;
+    expect(switchModel).not.toHaveBeenCalled();
+  });
+  it("keeps ordinary and Fast sessions independent", async () => {
+    selected.set("s2", ref("model-router-fast"));
+    await Promise.all([prompt(event("ordinary")), prompt(event("fast", "s2"))]);
+    expect(selected.get("s1")).toEqual(ref(ids[0]!));
+    expect(selected.get("s2")).toEqual(fastModel(ref(ids[0]!)));
+  });
+  it("preserves configured reasoning variants and overrides conflicting service tiers", async () => {
+    cleanup?.();
+    models = models.map(model => ({ ...model, settings: { reasoningEffort: "medium", serviceTier: "flex", nested: { keep: true, effort: "medium" } },
+      body: { service_tier: "flex", keep: true, nested: { keep: true, effort: "medium" } }, variants: [{ id: Model.VariantID.make("high"),
+        settings: { reasoningEffort: "high", serviceTier: "default", nested: { effort: "high" } },
+        body: { service_tier: "default", extra: true, nested: { effort: "high" } } }] }));
+    context = { ...context, options: { models: { medium: { ...ref(ids[1]!), variant: "high" } } } };
+    cleanup = await setup(context);
+    selected.set("s1", ref("model-router-fast"));
+    request.mockResolvedValueOnce(answer("medium"));
+    await prompt(event());
+    expect(selected.get("s1")).toEqual({ ...ref(ids[1]!), variant: "model-router-fast-high" });
+    const variant = models.find(model => model.id === ids[1])!.variants.find(variant => variant.id === "model-router-fast-high")!;
+    expect(variant.settings).toEqual({ reasoningEffort: "high", serviceTier: "priority", nested: { effort: "high" } });
+    expect(variant.body).toEqual({ service_tier: "priority", extra: true, nested: { effort: "high" } });
+    const alias = models.find(model => model.id === "model-router-fast")!;
+    expect(alias.settings).toMatchObject({ reasoningEffort: "high", serviceTier: "priority", nested: { keep: true, effort: "high" } });
+    expect(alias.body).toEqual({ service_tier: "priority", keep: true, extra: true, nested: { keep: true, effort: "high" } });
+    expect(models.find(model => model.id === ids[1])!.settings?.serviceTier).toBe("flex");
   });
 });
 

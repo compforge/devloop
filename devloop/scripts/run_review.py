@@ -339,7 +339,10 @@ def _build_history_feed(forge, pr) -> tuple[str | None, list]:
         return None, []
     try:
         comments = forge.list_comments(pr.number)
-    except ForgeError:
+    except ForgeError as error:
+        logging.getLogger(__name__).warning(
+            "Review history unavailable pr=%s error=%s", pr.number, error,
+        )
         return None, []
     feed = review_feedback.history_feed(comments)
     if not feed:
@@ -354,7 +357,11 @@ def _build_history_feed(forge, pr) -> tuple[str | None, list]:
         ) as out:
             json.dump(feed, out, ensure_ascii=False)
             return out.name, comments
-    except OSError:
+    except OSError as error:
+        logging.getLogger(__name__).warning(
+            "Review history input unavailable pr=%s comments=%s error=%s",
+            pr.number, len(comments), error,
+        )
         return None, comments
 
 

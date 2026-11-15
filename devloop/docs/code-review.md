@@ -96,7 +96,9 @@ discussion 独立反映处理进度。
 `forge.list_comments()` 拉取当前 PR/MR 的 finding threads 与 `ccr:label` 回复，临时投影成 CCR
 `--history` 输入，review 进程结束即删除；不从 `.devloop/review-history.jsonl` 恢复行为状态。
 新评论携带隐藏的 unit key，优先精确回到 symbol-id；旧评论只有 diff 锚点时按 repo-relative
-path 退化。发布阶段再按稳定 fingerprint 跳过已有未解决 thread 与已标 `wrong` / `repeat`
+path 退化。每个 history item 保留 `msg`、可用的 `sha`、`fingerprint`、公开 `comment_id`
+与 `url`，让 CCR 能定位同一条远端交付；相同指纹保留最新一次评论的完整身份。读取评论或
+生成输入失败会记录带 PR 身份的 warning，继续沿用现有降级行为。发布阶段再按稳定 fingerprint 跳过已有未解决 thread 与已标 `wrong` / `repeat`
 的同一 finding；已解决且不属于这两类的问题若重新出现，允许重新发布。尚未创建 PR/MR 时
 没有可恢复的跨次 history。临时 CI runner 采用同一姿势即可，无需缓存容器或持久化 workspace。
 

@@ -117,5 +117,63 @@ def test_unknown_finding_publication_does_not_retry_or_abort_review():
         assert state["warnings"][0]["type"] == "comment_publish_unknown"
 
 
+def test_history_input_reaches_engine_with_matching_remote_identity():
+    """+case=The runner passes a live history file and removes it after engine completion."""
+    import json
+    from pathlib import Path
+    rr = _load_script("run_review")
+    old = finding("review:old", "same", url="https://example.test/pr/7#old")
+    latest = replace(
+        finding("review:latest", "same", url="https://example.test/pr/7#latest"),
+        body="🤖 **devloop code-review**\n\n" + feedback.history_marker(
+            key="a.py::same", msg="latest finding", sha="reviewed-revision", fp="same",
+        ),
+    )
+    verdict = comment("review:verdict", feedback.verdict_reply("wrong", "unreachable", target_id=latest.id),
+                      reply_to_id=latest.id)
+    with TemporaryDirectory() as directory:
+        repo = str(make_repo(directory))
+        pr = PullRequest(7, state="open", source_branch="main", target_branch="main")
+        forge = _FakeForge([pr])
+        paths = []
+        def run(repo, from_ref, to_ref, background, history_path=None, **kwargs):
+            paths.append(Path(history_path))
+            feed = json.loads(paths[0].read_text())
+            assert list(feed) == ["a.py::same"]
+            assert len(feed["a.py::same"]) == 1
+            item = feed["a.py::same"][0]
+            assert {k: v for k, v in item.items() if k != "msg"} == {
+                "sha": "reviewed-revision", "fingerprint": "same",
+                "comment_id": latest.id, "url": latest.url,
+            }
+            assert "latest finding" in item["msg"] and "unreachable" in item["msg"]
+            return rr.review_engine.ReviewResult(ok=True, status="success", comments=[])
+        engine = SimpleNamespace(name="ccr", available=lambda: True, configured=lambda repo: True, review=run)
+        with patch.object(rr.review_engine, "resolve", return_value=engine), \
+             patch.object(rr, "_open_mr", return_value=(forge, pr)), \
+             patch.object(forge, "list_comments", return_value=[old, latest, verdict]) as fetch:
+            assert rr.main(["--repo", repo]) == 0
+            fetch.assert_called_once_with(7)
+        assert len(paths) == 1 and not paths[0].exists()
+
+
+def test_history_read_and_materialization_failures_are_visible():
+    from unittest import TestCase
+    from domain.forge import ForgeError
+    rr = _load_script("run_review")
+    pr = PullRequest(7, state="open")
+    forge = _FakeForge([pr])
+    with patch.object(forge, "list_comments", side_effect=ForgeError("offline")), \
+         TestCase().assertLogs(rr.__name__, level="WARNING") as logs:
+        assert rr._build_history_feed(forge, pr) == (None, [])
+    assert "pr=7" in logs.output[0] and "offline" in logs.output[0]
+    comments = [finding("review:one", "one")]
+    with patch.object(forge, "list_comments", return_value=comments), \
+         patch.object(rr.tempfile, "NamedTemporaryFile", side_effect=OSError("disk full")), \
+         TestCase().assertLogs(rr.__name__, level="WARNING") as logs:
+        assert rr._build_history_feed(forge, pr) == (None, comments)
+    assert "pr=7" in logs.output[0] and "disk full" in logs.output[0]
+
+
 if __name__ == "__main__":
     run_main(globals())

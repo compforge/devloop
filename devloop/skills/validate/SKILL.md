@@ -1,12 +1,32 @@
 ---
 name: validate
-description: Run a repository or Component's Makefile format/lint/test through repocli and explain its scope and results. Use to validate changes, format code, run tests, verify before committing or pushing, or diagnose past validation failures and slow checks.
+description: Guide project Makefile format/lint/test contracts, run checks through repocli, and tune slow validation from execution evidence. Use to set up or improve validation targets, validate changes, format code, run tests, verify before publishing, or diagnose failed and slow checks.
 ---
 
 Use repocli directly for project checks. The project owns its Makefile recipes;
 repocli owns target discovery, file selection, execution, bounded concurrency and result reuse.
 Read [repocli results and recovery](../../references/repocli.md#command-results-and-recovery)
 before interpreting CLI output; use its supported CLI/schema baseline.
+
+## Project Makefile guidance
+
+For a new project or a request to improve validation, inspect existing Makefiles, pinned tools,
+configuration and project instructions before proposing changes. Reuse its runners and installation
+entrypoints. Read [the contract](references/spec.md) and only the relevant language guidance:
+[Go](references/go.md), [Python](references/python.md), or [Node](references/node.md).
+
+Guide the project toward literal `format`, `lint` and `test` targets: format normalizes source;
+lint/test remain read-only and non-interactive. Recommend optional `LINT_FILES` / `TEST_FILES`
+support where language semantics permit, with empty values retaining full checks. For parallelizable
+checks, recommend overridable positive `LINT_WORKERS` / `TEST_WORKERS` defaults mapped to native
+runner capacity. Missing worker controls are an improvement opportunity, not a failing check.
+Explain the concrete gap and suggested recipe; make changes when the task authorizes them.
+Do not add dependencies or targets merely to make an execution request pass.
+
+## Run and tune validation
+
+Start with project defaults. Inspect a Makefile's capabilities when entering a project or when the
+report exposes full-scope fallback or slow checks; do not repeat an onboarding audit on every run.
 
 ```bash
 repocli format --repo <repo> --component <component>
@@ -35,6 +55,13 @@ even when the process exits nonzero. `--plan` and `--history` also return envelo
 neither provides evidence that checks ran in this invocation. Repocli checks its own history
 before execution. `--force` requests real execution; `--concurrency` bounds simultaneous checks.
 Do not assemble previous reports or decide execution reuse in the workflow.
+
+When actual execution is slow, locate the expensive phase/check before changing parameters.
+Use `--lint-workers N` / `--test-workers N` to override the corresponding Makefile budget;
+these are separate from outer `--concurrency`. Check installed command help before using the
+worker flags (repocli 0.91.0+). A flag cannot accelerate a recipe that does not consume its variable;
+recommend the project change instead. Follow [capacity tuning](references/spec.md#capacity-tuning)
+to adjust one budget at a time and compare real execution at the same scope.
 
 Accept validation only after checking the command outcome plus `data.passed`, `data.complete`,
 `data.inputsConsistent`, scope and individual check results. Report Components, focused/full

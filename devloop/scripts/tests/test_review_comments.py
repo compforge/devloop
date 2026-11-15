@@ -1,7 +1,7 @@
 """Public Comment identities and durable Verdict joins across Forge capabilities."""
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import asdict, replace
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -23,7 +23,7 @@ def finding(identity, fp, **fields):
 
 
 def test_explicit_verdict_target_survives_grouped_replies():
-    """+case=An exact child target governs pending, history and repeat suppression."""
+    """+case=An exact child target governs pending and repeat suppression."""
     root = finding("review:root", "root", resolution=CommentResolution.RESOLVED)
     child = finding("review:child", "child", reply_to_id=root.id, resolution=CommentResolution.RESOLVED)
     verdict = comment("review:verdict", feedback.verdict_reply("repeat", "already covered", target_id=child.id),
@@ -33,9 +33,6 @@ def test_explicit_verdict_target_survives_grouped_replies():
         (root.id, None), (child.id, "repeat"),
     ]
     assert feedback.suppress_delivery_fingerprints(comments) == {"child"}
-    history = feedback.history_feed(comments)
-    assert "Do not deliver it again" in history["a.py::child"][0]["msg"]
-    assert "Previous verdict" not in history["a.py::root"][0]["msg"]
     # A reload needs only Forge records, including Verdicts without a native reply edge.
     assert feedback.findings([root, child, replace(verdict, reply_to_id=None)])[1].verdict == "repeat"
 
@@ -117,8 +114,8 @@ def test_unknown_finding_publication_does_not_retry_or_abort_review():
         assert state["warnings"][0]["type"] == "comment_publish_unknown"
 
 
-def test_history_input_reaches_engine_with_matching_remote_identity():
-    """+case=The runner passes a live history file and removes it after engine completion."""
+def test_all_pr_comments_reach_engine_without_filtering_or_dedup():
+    """+case=People, bots, unanchored and nested replies survive unchanged; same-fingerprint comments are not collapsed."""
     import json
     from pathlib import Path
     rr = _load_script("run_review")
@@ -131,6 +128,10 @@ def test_history_input_reaches_engine_with_matching_remote_identity():
     )
     verdict = comment("review:verdict", feedback.verdict_reply("wrong", "unreachable", target_id=latest.id),
                       reply_to_id=latest.id)
+    human = comment("conversation:human", "The same race also affects another file")
+    child = comment("conversation:child", "The first fix missed the retry path", reply_to_id=human.id)
+    nested = comment("conversation:nested", "Confirmed on the retry", reply_to_id=child.id)
+    comments = [old, latest, verdict, human, child, nested]
     with TemporaryDirectory() as directory:
         repo = str(make_repo(directory))
         pr = PullRequest(7, state="open", source_branch="main", target_branch="main")
@@ -139,19 +140,14 @@ def test_history_input_reaches_engine_with_matching_remote_identity():
         def run(repo, from_ref, to_ref, background, history_path=None, **kwargs):
             paths.append(Path(history_path))
             feed = json.loads(paths[0].read_text())
-            assert list(feed) == ["a.py::same"]
-            assert len(feed["a.py::same"]) == 1
-            item = feed["a.py::same"][0]
-            assert {k: v for k, v in item.items() if k != "msg"} == {
-                "sha": "reviewed-revision", "fingerprint": "same",
-                "comment_id": latest.id, "url": latest.url,
-            }
-            assert "latest finding" in item["msg"] and "unreachable" in item["msg"]
+            assert feed == [asdict(c) for c in comments]
+            assert [row["id"] for row in feed] == [c.id for c in comments]
+            assert feed[-1]["reply_to_id"] == child.id
             return rr.review_engine.ReviewResult(ok=True, status="success", comments=[])
         engine = SimpleNamespace(name="ccr", available=lambda: True, configured=lambda repo: True, review=run)
         with patch.object(rr.review_engine, "resolve", return_value=engine), \
              patch.object(rr, "_open_mr", return_value=(forge, pr)), \
-             patch.object(forge, "list_comments", return_value=[old, latest, verdict]) as fetch:
+             patch.object(forge, "list_comments", return_value=comments) as fetch:
             assert rr.main(["--repo", repo]) == 0
             fetch.assert_called_once_with(7)
         assert len(paths) == 1 and not paths[0].exists()
@@ -165,13 +161,13 @@ def test_history_read_and_materialization_failures_are_visible():
     forge = _FakeForge([pr])
     with patch.object(forge, "list_comments", side_effect=ForgeError("offline")), \
          TestCase().assertLogs(rr.__name__, level="WARNING") as logs:
-        assert rr._build_history_feed(forge, pr) == (None, [])
+        assert rr._build_comment_input(forge, pr) == (None, [])
     assert "pr=7" in logs.output[0] and "offline" in logs.output[0]
     comments = [finding("review:one", "one")]
     with patch.object(forge, "list_comments", return_value=comments), \
          patch.object(rr.tempfile, "NamedTemporaryFile", side_effect=OSError("disk full")), \
          TestCase().assertLogs(rr.__name__, level="WARNING") as logs:
-        assert rr._build_history_feed(forge, pr) == (None, comments)
+        assert rr._build_comment_input(forge, pr) == (None, comments)
     assert "pr=7" in logs.output[0] and "disk full" in logs.output[0]
 
 

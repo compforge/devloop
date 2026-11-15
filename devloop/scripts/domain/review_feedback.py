@@ -1,4 +1,4 @@
-"""Review feedback — verdict joins and continuous-review history.
+"""Review feedback — Verdict joins and delivery fingerprints.
 
 Findings carry a `ccr:fp` footer. Verdict comments carry `ccr:label` and an explicit
 opaque target Comment ID. This relationship lives on the Forge and survives Home cleanup.
@@ -8,9 +8,7 @@ cannot recover an exact historical target beyond the parent the Forge reports.
 Pure over a `list[Comment]` — the caller does the fetching. That keeps the forge round-trip at
 the presentation or review workflow boundary and makes this testable without HTTP.
 
-The same boundary serves re-review: finding comments carry hidden `ccr:history` metadata, and
-`history_feed()` projects the current Forge comments into ccr's one-shot input. The generated
-file is transport only; no local JSON becomes a second source of truth.
+All PR comments are passed to CCR by the review workflow without this module filtering them.
 """
 from __future__ import annotations
 
@@ -30,7 +28,6 @@ _FP_RE = re.compile(r"ccr:fp=([A-Za-z0-9_-]+)")
 _LABEL_RE = re.compile(r"ccr:label=([A-Za-z]+)")
 _TARGET_RE = re.compile(r"<!--\s*ccr:target=([A-Za-z0-9_-]+)\s*-->")
 _HISTORY_RE = re.compile(r"<!--\s*ccr:history=([A-Za-z0-9_-]+)\s*-->")
-_FOOTER_RE = re.compile(r"\n*\s*<sub>[^<]*ccr:fp=.*?</sub>\s*$", re.DOTALL)
 
 Verdict = Literal["important", "minor", "debatable", "wrong", "repeat"]
 
@@ -123,94 +120,6 @@ def _decode_history_marker(raw: str) -> dict | None:
     if not isinstance(value, dict) or not value.get("key") or not value.get("msg"):
         return None
     return value
-
-
-def _legacy_message(body: str) -> str:
-    """Recover the original text from pre-marker devloop finding comments."""
-    text = _FOOTER_RE.sub("", body or "").strip()
-    if text.startswith("🤖 **devloop code-review**") and "\n\n" in text:
-        text = text.split("\n\n", 1)[1].strip()
-    return text
-
-
-def _history_message(
-    msg: str,
-    comment: Comment,
-    verdict: Verdict | None,
-    reply_body: str,
-) -> str:
-    parts = [msg.strip()]
-    if verdict == "wrong":
-        parts.append(
-            "Previous verdict: wrong (false positive). Do not repeat it unless the current "
-            "revision provides new concrete evidence."
-        )
-    elif verdict == "repeat":
-        parts.append(
-            "Previous verdict: repeat (already delivered in an earlier MR comment). "
-            "Do not deliver it again."
-        )
-    elif verdict:
-        parts.append(f"Previous verdict: {verdict}.")
-    if reply_body:
-        parts.append("Reviewer feedback: " + reply_body.strip())
-    if comment.resolution == CommentResolution.RESOLVED:
-        parts.append("Forge resolution: resolved; verify the current revision before re-raising.")
-    return "\n".join(parts)
-
-
-def history_feed(comments: list[Comment]) -> dict[str, list[dict[str, str]]]:
-    """Project current Forge comments into ccr's transient history input.
-
-    Forge is the durable source. New comments carry one or more `ccr:history` markers;
-    old anchored devloop comments fall back to their diff path and visible body. Repeated
-    fingerprints collapse to the latest occurrence so re-review does not amplify its own
-    prior duplicates. Preserve the matching comment's public identity and URL for CCR.
-
-    +spec=History carries msg, sha, fingerprint, comment_id and url from the same occurrence.
-    +link=component://docs/code-review.md
-    """
-    entries: dict[str, tuple[str, dict[str, str]]] = {}
-    verdicts = _verdicts(comments)
-    for comment in comments:
-        # PR comments are user-controlled prompt input. devloop only ingests its own
-        # publisher protocol; other review bots remain ordinary MR context.
-        if not (comment.body or "").startswith("🤖 **devloop code-review**"):
-            continue
-        verdict, reply_body = verdicts.get(comment.id, (None, ""))
-        decoded = [
-            value
-            for raw in _HISTORY_RE.findall(comment.body or "")
-            if (value := _decode_history_marker(raw)) is not None
-        ]
-        if not decoded and comment.anchor and _FP_RE.search(comment.body or ""):
-            decoded = [{
-                "key": comment.anchor.path,
-                "msg": _legacy_message(comment.body),
-                "sha": comment.anchor.revision,
-                "fp": _FP_RE.search(comment.body).group(1),
-            }]
-        for value in decoded:
-            fp = str(value.get("fp") or "")
-            identity = fp or f"{value['key']}\0{value['msg']}"
-            item = {
-                "msg": _history_message(str(value["msg"]), comment, verdict, reply_body),
-                "comment_id": comment.id,
-            }
-            if fp:
-                item["fingerprint"] = fp
-            if comment.url:
-                item["url"] = comment.url
-            if value.get("sha"):
-                item["sha"] = str(value["sha"])
-            # Adapters return comments chronologically; overwrite makes the latest review
-            # occurrence authoritative while retaining its human verdict.
-            entries[identity] = (str(value["key"]), item)
-
-    feed: dict[str, list[dict[str, str]]] = {}
-    for key, item in entries.values():
-        feed.setdefault(key, []).append(item)
-    return feed
 
 
 def suppress_delivery_fingerprints(comments: list[Comment]) -> set[str]:

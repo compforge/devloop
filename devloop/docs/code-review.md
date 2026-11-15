@@ -59,7 +59,7 @@ AI → repocli validate → managed commit/push → repocli pr create/update
    → review status：同一 SHA 已在审则复用，否则显式 review run
 run_review（后台、独立进程）：**启动即冻结 (branch, sha)**（见下）→ 先写 status=running
    → 自动拼 --background（业务上下文）：本次提交说明（git log）+ MR 标题/描述（forge）
-   → 经 forge.list_comments 拉当前 PR/MR 已有 finding threads，临时构造 history
+   → 经 forge.list_comments 拉当前 PR/MR 全部 comments，临时序列化为输入
    → CCR review --from origin/<target> --to <冻结的 sha> --background <ctx> --format jsonl [--history <feed>]
      （CCR 额外接收 `--biz-id <forge>:<repository>#<number>`，只用于 session 关联与观测）
    → 每收到一个通过 Trial 的 finding：增量写 .devloop/review.json；若分支有开放 MR，立即发独立 Comment
@@ -92,21 +92,24 @@ discussion 独立反映处理进度。
 （`_BG_CAP`），因为它每文件都注、要控 token。AGENTS.md / 受影响 spec 等更多上下文是后续增量
 （往同一个 background 里加）。
 
-**连续 review 必须带已有 Forge findings**：PR/MR comments 是唯一持久事实源。devloop 每次经
-`forge.list_comments()` 拉取当前 PR/MR 的 finding threads 与 `ccr:label` 回复，临时投影成 CCR
-`--history` 输入，review 进程结束即删除；不从 `.devloop/review-history.jsonl` 恢复行为状态。
-新评论携带隐藏的 unit key，优先精确回到 symbol-id；旧评论只有 diff 锚点时按 repo-relative
-path 退化。每个 history item 保留 `msg`、可用的 `sha`、`fingerprint`、公开 `comment_id`
-与 `url`，让 CCR 能定位同一条远端交付；相同指纹保留最新一次评论的完整身份。读取评论或
-生成输入失败会记录带 PR 身份的 warning，继续沿用现有降级行为。发布阶段再按稳定 fingerprint 跳过已有未解决 thread 与已标 `wrong` / `repeat`
-的同一 finding；已解决且不属于这两类的问题若重新出现，允许重新发布。尚未创建 PR/MR 时
-没有可恢复的跨次 history。临时 CI runner 采用同一姿势即可，无需缓存容器或持久化 workspace。
+**连续 review 共享全部 PR comments**：PR/MR comments 是唯一持久事实源。devloop 每次经
+`forge.list_comments(pr.number)` 拉取全部评论，用 RepoKit Python `Comment` dataclass 的字段直接序列化
+为 JSON 数组，作为 CCR `--history` 输入，review 进程结束即删除临时文件。正文、作者、PR 编号、
+公开 ID、`reply_to_id`、时间、URL、anchor 和 resolution 原样保留；不按作者、review 类型、
+文件位置或 publisher marker 筛选，也不按 fingerprint 合并评论。
+CCR 将这份 PR 级材料提供给 R1 和 R2，判断相关性、讨论内容及 novelty；无锚点的总评和嵌套回复同样可见。
+平台 resolution 不代表认可或修复证明。读取评论或生成输入失败记录带 PR 身份的 warning，沿用现有降级行为。
+尚未创建 PR/MR 时没有跨次评论输入；`.devloop/review-history.jsonl` 只保存运行历史，不恢复评论事实。
+
+Verdict 关联和发布端 fingerprint 去重仍由 devloop 拥有，只处理自身 finding 的协议。
+发布时跳过已有未解决评论与已标 `wrong` / `repeat` 的同一 finding；已解决且不属于这两类的问题
+若重新出现，允许重新发布。这些规则不影响 CCR 能看到哪些 PR comments。
 
 关键对象（锚点）：`scripts/domain/lifecycle/review.py`（`review` handler，返回 relay）、`commit_flow`
 （`launch_background_relays`，各相位 git 动作后 detach 起）、`scripts/run_review.py`（后台执行体：
 审全量 diff + 机会性发评论，经 `scripts/domain/review_engine.py` 协议调引擎）、`scripts/domain/review_engine.py`（**review
 tool 协议** `ReviewEngine` + `ReviewResult` + ocr/ccr adapter）、`scripts/domain/review_feedback.py`（Finding↔Verdict
-join + Forge comments→history 投影，纯函数、无 HTTP）、`scripts/review.py`（ReviewRun / Finding /
+join + 发布端 fingerprint 去重，纯函数、无 HTTP）、`scripts/review.py`（ReviewRun / Finding /
 Verdict / resolve 的 provider-neutral 入口）、
 `forge.comment`（写评论原语，gitlab notes / github issue comment）、
 `.devloop/review.json`（结果段）、`context/repo.py` 的 `Review:` 注入行（pull）。

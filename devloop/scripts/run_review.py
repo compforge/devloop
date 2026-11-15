@@ -21,6 +21,7 @@ import json
 import logging
 import sys
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -35,7 +36,7 @@ from repokit.git import state as git_state
 from domain import review_engine
 from domain import review_feedback  # noqa: E402
 from domain.context import base, record_active_repo, store  # noqa: E402
-from domain.forge import CommentAnchor, ForgeError, ForgeOutcomeUnknown, pr_label  # noqa: E402
+from domain.forge import Comment, CommentAnchor, Forge, ForgeError, ForgeOutcomeUnknown, PullRequest, pr_label  # noqa: E402
 from repokit import forge_client
 from repokit.cli import list_pull_requests, pull_request_description
 from repokit.git.remote import remote
@@ -329,8 +330,11 @@ def _findings_for_history(comments: list, warnings: list) -> list:
     return out
 
 
-def _build_history_feed(forge, pr) -> tuple[str | None, list]:
+def _build_comment_input(forge: Forge | None, pr: PullRequest | None) -> tuple[str | None, list[Comment]]:
     """Fetch the current PR/MR comments and materialize ccr's one-shot adapter input.
+
+    +spec=Pass every PR comment in source order with all SDK fields; author, anchor and publisher markers never gate inclusion.
+    +link=component://docs/code-review.md
 
     The file is deliberately outside `.devloop`: Forge comments are the durable source,
     and losing this temporary file changes no future review.
@@ -341,25 +345,25 @@ def _build_history_feed(forge, pr) -> tuple[str | None, list]:
         comments = forge.list_comments(pr.number)
     except ForgeError as error:
         logging.getLogger(__name__).warning(
-            "Review history unavailable pr=%s error=%s", pr.number, error,
+            "PR comments unavailable pr=%s error=%s", pr.number, error,
         )
         return None, []
-    feed = review_feedback.history_feed(comments)
-    if not feed:
+    if not comments:
         return None, comments
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
-            prefix="ccr-history-",
+            prefix="ccr-comments-",
             suffix=".json",
             delete=False,
         ) as out:
-            json.dump(feed, out, ensure_ascii=False)
+            json.dump([asdict(comment) for comment in comments], out, ensure_ascii=False)
+            logging.getLogger(__name__).info("PR comments loaded pr=%s comments=%s", pr.number, len(comments))
             return out.name, comments
     except OSError as error:
         logging.getLogger(__name__).warning(
-            "Review history input unavailable pr=%s comments=%s error=%s",
+            "PR comment input unavailable pr=%s comments=%s error=%s",
             pr.number, len(comments), error,
         )
         return None, comments
@@ -403,7 +407,7 @@ def main(argv: list[str]) -> int:
     background = _build_background(repo, target, forge, pr, ns.background)
     pull_request = _pull_request_identity(repo, pr)
     history_path, prior_comments = (
-        _build_history_feed(forge, pr) if engine.name == "ccr" else (None, [])
+        _build_comment_input(forge, pr) if engine.name == "ccr" else (None, [])
     )  # current Forge comments → one-shot ccr --history
 
     suppressed = review_feedback.suppress_delivery_fingerprints(prior_comments)

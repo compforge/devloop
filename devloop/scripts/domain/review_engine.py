@@ -136,7 +136,7 @@ class CcrEngine:
         cmd = ["ccr", "review", "--from", from_ref, "--to", to_ref, "--format", "jsonl", "--repo", repo]
         if background:
             cmd += ["--background", background]
-        if history_path:  # prior-review findings, injected per unit so the reviewer reconciles them
+        if history_path:  # all PR comments, shared by CCR discovery and assessment
             cmd += ["--history", history_path]
         if biz_id:
             cmd += ["--biz-id", biz_id]

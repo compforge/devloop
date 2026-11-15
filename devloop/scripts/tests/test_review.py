@@ -682,7 +682,7 @@ def test_findings_for_history_status_from_warnings():
         assert out[0]["symbol_id"] == "a.go::F" and out[0]["status"] == "ok"
         assert out[1]["status"] == "failed" and "deadline" in out[1]["reason"]
 
-def test_build_history_feed_fetches_current_forge_comments():
+def test_build_comment_input_fetches_current_forge_comments():
     """连续 review 的持久事实只在 Forge；本地仅为 CCR 临时物化一次输入。"""
     import json as _json
     from pathlib import Path as _Path
@@ -709,25 +709,28 @@ def test_build_history_feed_fetches_current_forge_comments():
                     )]
 
     forge = WithComments([PullRequest(number=7, state="open")])
-    path, prior_comments = rr._build_history_feed(forge, forge.get(7))
+    path, prior_comments = rr._build_comment_input(forge, forge.get(7))
     try:
         assert path is not None
         assert len(prior_comments) == 2
         data = _json.loads(_Path(path).read_text())
-        assert list(data) == ["a.go::F"]
-        assert data["a.go::F"][0]["sha"] == "priorsha"
-        assert "false positive" in data["a.go::F"][0]["msg"]
-        assert "caller guarantees non-nil" in data["a.go::F"][0]["msg"]
+        assert [row["id"] for row in data] == ["20", "fixture-684"]
+        assert data[0]["anchor"]["revision"] == "reviewed-sha"
+        assert data[0]["resolution"] == "resolved"
+        assert data[1]["reply_to_id"] == "20"
+        assert "caller guarantees non-nil" in data[1]["body"]
     finally:
         if path:
             _Path(path).unlink()
 
 
-def test_build_history_feed_none_without_pr_or_comments():
+def test_build_comment_input_none_without_pr_or_comments():
+    from unittest.mock import patch
     rr = _load_script("run_review")
     forge = _FakeForge([PullRequest(number=7, state="open")])
-    assert rr._build_history_feed(None, None) == (None, [])
-    assert rr._build_history_feed(forge, forge.get(7)) == (None, forge.list_comments(7))
+    assert rr._build_comment_input(None, None) == (None, [])
+    with patch.object(forge, "list_comments", return_value=[]):
+        assert rr._build_comment_input(forge, forge.get(7)) == (None, [])
 
 def test_format_comment_shows_models():
     """review 级 model 身份打进 header（alias×次数、按 alias 排序去重），clean review 也打。"""
@@ -888,12 +891,11 @@ def test_review_feedback_joins_fp_to_label():
     assert parse_verdict(verdict_reply("important", "real defect", target_id="20")) == "important"
 
 
-def test_review_feedback_history_marker_and_legacy_path():
-    """新评论按 symbol-id 精确恢复；旧评论没有 marker 时从 Forge 文件锚点降级恢复。"""
+def test_review_feedback_delivery_fingerprints():
+    """Publisher metadata only controls exact duplicate delivery, not comment context."""
     from domain.forge import Comment
     from domain.forge import CommentResolution
     from domain.review_feedback import (
-        history_feed,
         history_marker,
         suppress_delivery_fingerprints,
     )
@@ -915,10 +917,6 @@ def test_review_feedback_history_marker_and_legacy_path():
         Comment(id='fixture-881', pr=7, author="bot", created_at="", body="🤖 **devloop code-review**\n\n" +
                 history_marker(key="b.go", msg="summary finding", sha="def456", fp="sum")),
     ]
-    feed = history_feed(comments)
-    assert feed["a.go::F"] == [{"msg": "new exact finding", "sha": "abc123", "fingerprint": "same", "comment_id": "1"}]
-    assert feed["a.go"] == [{"msg": "legacy latest", "sha": "reviewed-sha", "fingerprint": "legacy", "comment_id": "2"}]
-    assert feed["b.go"] == [{"msg": "summary finding", "sha": "def456", "fingerprint": "sum", "comment_id": "fixture-881"}]
     assert suppress_delivery_fingerprints(comments) == {"same", "legacy", "sum"}
 
     resolved = [Comment(
@@ -940,7 +938,6 @@ def test_review_feedback_history_marker_and_legacy_path():
                            reply_to_id='fixture-897',
                        )]
     assert suppress_delivery_fingerprints(resolved_repeat) == {"repeat"}
-    assert "Do not deliver it again" in history_feed(resolved_repeat)["a.go::F"][0]["msg"]
 
 
 def test_format_comment_counts_inline():

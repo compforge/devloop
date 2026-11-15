@@ -8,7 +8,7 @@ export interface NoteProjection {
 /**
  * @spec Producers assign branch-aware IDs; Board never interprets them or infers deletion.
  * @spec Board only projects facts with an authoritative reader; legacy validation stamps are not evidence.
- * @see {@link component://docs/repository-toolkit.md}
+ * @see {@link component://docs/repository.md}
  */
 export declare function projectNotes(root: string, workspace?: WorkspaceContext, repo?: string, staleBindingHours?: number): Promise<NoteProjection>;
 //# sourceMappingURL=projection.d.ts.map

@@ -15,6 +15,7 @@ from pathlib import Path
 from _testkit import _FakeForge, _git, _git_out, _load_script, run_main  # noqa: E402  (bootstrap first)
 from domain import git_policy
 from domain.context import PullRequest  # noqa: E402
+from domain.forge import CommentAnchor
 from domain.forge import ForgeError  # noqa: E402
 
 
@@ -513,10 +514,14 @@ def test_pending_review_verdict_nudge_is_forge_derived():
     from domain.forge import Comment, PullRequest, MergeReadiness, ForgeError
     root, _, _ = _fixture("review_nudge_native")
     reader = _FakeForge([PullRequest(7, state="open", source_branch="main")])
-    comments = [Comment(id="1", reply_ref="1", path="a.py", body="finding ccr:fp=one")]
+    comments = [Comment(
+        id="1", pr=7, author="bot", created_at="",
+        body="finding ccr:fp=one",
+        anchor=CommentAnchor(path="a.py", revision="reviewed-sha", side="RIGHT"),
+    )]
     with patch.object(prstate, "pr_context_for_repo", side_effect=lambda repo, forge=None: _pr_context(repo, reader)), \
          patch.object(prstate, "forge_client", return_value=reader), \
-         patch.object(reader, "comments", side_effect=lambda number: comments) as fetch, \
+         patch.object(reader, "list_comments", side_effect=lambda number: comments) as fetch, \
          patch.object(reader, "merge_readiness", return_value=MergeReadiness.CI_BLOCKED):
         RepoContext.refresh_all(root)
         ctx = RepoContext.load(root)
@@ -525,14 +530,18 @@ def test_pending_review_verdict_nudge_is_forge_derived():
         assert "1 条待判定" in ctx.turn_text()
         fetch.assert_called_once_with(7)
         assert "MERGE-BLOCKED" in ctx.turn_text()
-        comments[0].replies.append(Comment(body="ccr:label=important — confirmed"))
+        comments.append(Comment(
+            id='fixture-529', pr=7, author="bot", created_at="",
+            body="ccr:label=important — confirmed",
+            reply_to_id="1",
+        ))
         assert "待判定" not in RepoContext.load(root).turn_text()
-        comments[0].replies.clear()
+        comments.pop()
         store.save_segment(root, store.branch_segment("main", "review"), {})
         assert "1 条待判定" in RepoContext.load(root).turn_text()
         with patch.object(reader, "merge_readiness", side_effect=ForgeError("offline")):
             assert "1 条待判定" in RepoContext.load(root).turn_text()
-        with patch.object(reader, "comments", side_effect=ForgeError("offline")):
+        with patch.object(reader, "list_comments", side_effect=ForgeError("offline")):
             text = RepoContext.load(root).turn_text()
             assert "待判定" not in text and "MERGE-BLOCKED" in text
         _git(root, "checkout", "-b", "other")
@@ -551,10 +560,14 @@ def test_review_finding_nudge_decays_then_reopens_on_new_findings():
     from domain.forge import Comment, PullRequest, MergeReadiness
     root, _, _ = _fixture("review_nudge_decay_native")
     reader = _FakeForge([PullRequest(7, state="open", source_branch="main")])
-    comments = [Comment(id="1", reply_ref="1", path="a.py", body="finding ccr:fp=one")]
+    comments = [Comment(
+        id="1", pr=7, author="bot", created_at="",
+        body="finding ccr:fp=one",
+        anchor=CommentAnchor(path="a.py", revision="reviewed-sha", side="RIGHT"),
+    )]
     with patch.object(prstate, "pr_context_for_repo", side_effect=lambda repo, forge=None: _pr_context(repo, reader)), \
          patch.object(prstate, "forge_client", return_value=reader), \
-         patch.object(reader, "comments", side_effect=lambda number: comments), \
+         patch.object(reader, "list_comments", side_effect=lambda number: comments), \
          patch.object(reader, "merge_readiness", return_value=MergeReadiness.CI_BLOCKED):
         RepoContext.refresh_all(root)
         def ask():
@@ -562,10 +575,18 @@ def test_review_finding_nudge_decays_then_reopens_on_new_findings():
             return bool(text and "待判定" in text)
         assert [ask() for _ in range(REVIEW_FINDING_NUDGE_CAP)] == [True] * REVIEW_FINDING_NUDGE_CAP
         assert not ask() and not ask()
-        comments.append(Comment(id="2", reply_ref="2", path="b.py", body="finding ccr:fp=two"))
+        comments.append(Comment(
+            id="2", pr=7, author="bot", created_at="",
+            body="finding ccr:fp=two",
+            anchor=CommentAnchor(path="b.py", revision="reviewed-sha", side="RIGHT"),
+        ))
         assert [ask() for _ in range(REVIEW_FINDING_NUDGE_CAP)] == [True] * REVIEW_FINDING_NUDGE_CAP
         assert not ask()
-        comments[0].replies.append(Comment(body="ccr:label=important — confirmed"))
+        comments.append(Comment(
+            id='fixture-569', pr=7, author="bot", created_at="",
+            body="ccr:label=important — confirmed",
+            reply_to_id="1",
+        ))
         assert ask()
 
 
@@ -670,25 +691,28 @@ def test_build_history_feed_fetches_current_forge_comments():
     rr = _load_script("run_review")
 
     class WithComments(_FakeForge):
-        def comments(self, number):
+        def list_comments(self, number):
             assert number == 7
             marker = history_marker(
                 key="a.go::F", msg="missing nil check", sha="priorsha", fp="fp1",
             )
             return [Comment(
-                id="20",
-                reply_ref="20",
-                path="a.go",
+                id="20", pr=7, author="bot", created_at="",
                 body=f"🤖 **devloop code-review**\n\nfinding <sub>ccr:fp=fp1</sub>\n{marker}",
-                replies=[Comment(body="ccr:label=wrong — caller guarantees non-nil")],
                 resolution=CommentResolution.RESOLVED,
-            )]
+                anchor=CommentAnchor(path="a.go", revision="reviewed-sha", side="RIGHT"),
+            ),
+                    Comment(
+                        id='fixture-684', pr=7, author="bot", created_at="",
+                        body="ccr:label=wrong — caller guarantees non-nil",
+                        reply_to_id="20",
+                    )]
 
     forge = WithComments([PullRequest(number=7, state="open")])
     path, prior_comments = rr._build_history_feed(forge, forge.get(7))
     try:
         assert path is not None
-        assert len(prior_comments) == 1
+        assert len(prior_comments) == 2
         data = _json.loads(_Path(path).read_text())
         assert list(data) == ["a.go::F"]
         assert data["a.go::F"][0]["sha"] == "priorsha"
@@ -703,7 +727,7 @@ def test_build_history_feed_none_without_pr_or_comments():
     rr = _load_script("run_review")
     forge = _FakeForge([PullRequest(number=7, state="open")])
     assert rr._build_history_feed(None, None) == (None, [])
-    assert rr._build_history_feed(forge, forge.get(7)) == (None, forge.comments(7))
+    assert rr._build_history_feed(forge, forge.get(7)) == (None, forge.list_comments(7))
 
 def test_format_comment_shows_models():
     """review 级 model 身份打进 header（alias×次数、按 alias 排序去重），clean review 也打。"""
@@ -739,7 +763,8 @@ def test_post_inline_findings():
         {"content": "no path at all"},                          # 无锚可锚 → 汇总
     ]
     n, fb = rr._post_inline(fake, pr, comments, "abc123456")
-    assert n == 2 and [c.get("content") for c in fb] == ["no path at all"]
+    assert n == 3 and fb == []
+    assert fake.posted[0][0] == 7
     assert fake.diff_posted[0][:3] == (7, "a.py", 5)            # line-level：锚在 end_line
     assert "m1" in fake.diff_posted[0][3] and "ready in 1m 5s" in fake.diff_posted[0][3]
     assert "bug" in fake.diff_posted[0][3]
@@ -748,28 +773,21 @@ def test_post_inline_findings():
     assert len(fake.diff_posted) == 2                           # 行锚成功 → 不会再补一条文件锚
 
     class Refusing(_FakeForge):
-        def comment(self, number, body, *, replyable=False, path="", line=None):
-            if replyable:
-                raise ForgeError("no anchor")
-            super().comment(number, body)
+        def create_comment(self, number, body, *, anchor=None):
+            raise ForgeError("comment rejected")
     rf = Refusing([PullRequest(number=7, state="open")])
     n2, fb2 = rr._post_inline(rf, rf.get(7), comments)
-    assert n2 == 0 and len(fb2) == 3                            # 全部回落，单条失败不致命
-    assert rr._post_inline(None, None, comments) == (0, comments)   # 无 MR → 原样回落
+    assert n2 == 0 and len(fb2) == 3
+    assert rr._post_inline(None, None, comments) == (0, comments)
 
-    class Discussing(Refusing):
-        def comment(self, number, body, *, replyable=False, path="", line=None):
-            if not replyable:
-                return super().comment(number, body)
-            if path:
+    class Unanchored(_FakeForge):
+        def create_comment(self, number, body, *, anchor=None):
+            if anchor:
                 raise ForgeError("no anchor")
-            self.thread_posted = getattr(self, "thread_posted", [])
-            self.thread_posted.append((number, body))
-
-    df = Discussing([PullRequest(number=7, state="open")])
-    n3, fb3 = rr._post_inline(df, df.get(7), comments)
-    assert n3 == 3 and fb3 == []                                # GitLab: 锚不上也保住独立 discussion
-    assert len(df.thread_posted) == 3
+            return super().create_comment(number, body)
+    df = Unanchored([PullRequest(number=7, state="open")])
+    assert rr._post_inline(df, df.get(7), comments) == (3, [])
+    assert len(df.posted) == 3
 
 def test_post_inline_degrades_line_to_file_anchor():
     """line-level finding 的行锚不上（context 行 finding：行不在当前 diff 里）→ 先退一级到
@@ -779,10 +797,10 @@ def test_post_inline_degrades_line_to_file_anchor():
 
     class LineRefusing(_FakeForge):
         """收文件锚、拒行锚——GitLab「行不在 diff」/ GitHub 422 的形状。"""
-        def comment(self, number, body, *, replyable=False, path="", line=None):
-            if line is not None:
+        def create_comment(self, number, body, *, anchor=None):
+            if anchor and anchor.line is not None:
                 raise ForgeError("line not in diff")
-            super().comment(number, body, replyable=replyable, path=path)
+            return super().create_comment(number, body, anchor=anchor)
 
     f = LineRefusing([PullRequest(number=7, state="open")])
     comments = [{"path": "a.py", "start_line": 3, "end_line": 5,
@@ -803,58 +821,71 @@ def test_review_feedback_joins_fp_to_label():
 
     cs = [
         # 汇总 note：无 reply target，body 里有多个 ccr:fp → 不是 published finding
-        Comment(id="1", body="2 finding(s)\n- `a.py` `ccr:fp=aaa`\n- `b.py` `ccr:fp=bbb`"),
         Comment(
-            id="20",
-            reply_ref="20",
-            path="a.py",
-            line=5,
-            body="漏判空 <sub>ccr:fp=fp1</sub>",
-            replies=[Comment(id="21", body="ccr:label=wrong — 该路径走不到 #textbook")],
+            id="1", pr=7, author="bot", created_at="",
+            body="2 finding(s)\n- `a.py` `ccr:fp=aaa`\n- `b.py` `ccr:fp=bbb`",
         ),
-        Comment(id="30", reply_ref="30", path="b.py",
-                body="缺测试 <sub>ccr:fp=fp2</sub>"),   # file-level
+        Comment(
+            id="20", pr=7, author="bot", created_at="",
+            body="漏判空 <sub>ccr:fp=fp1</sub>",
+            anchor=CommentAnchor(path="a.py", revision="reviewed-sha", side="RIGHT", line=5),
+        ),
+        Comment(
+            id="21", pr=7, author="bot", created_at="",
+            body="ccr:label=wrong — 该路径走不到 #textbook",
+            reply_to_id="20",
+        ),
+        Comment(
+            id="30", pr=7, author="bot", created_at="",
+            body="缺测试 <sub>ccr:fp=fp2</sub>",
+            anchor=CommentAnchor(path="b.py", revision="reviewed-sha", side="RIGHT"),
+        ),   # file-level
     ]
     fs = findings(cs)
     assert [(f.fp, f.verdict) for f in fs] == [("fp1", "wrong"), ("fp2", None)]
     assert [f.fp for f in pending(cs)] == ["fp2"]
-    assert fs[1].comment.path == "b.py" and fs[1].comment.line is None
+    assert fs[1].comment.anchor.path == "b.py" and fs[1].comment.anchor.line is None
 
     # 词表外的 verdict 视为未标——打错字必须显示成还没标,不能污染 ground truth
-    typo = [Comment(
-        id="40",
-        reply_ref="40",
-        body="x <sub>ccr:fp=fp3</sub>",
-        replies=[Comment(id="41", body="ccr:label=importnat — oops")],
-    )]
+    typo = [Comment(id="40", pr=7, author="bot", created_at="", body="x <sub>ccr:fp=fp3</sub>"),
+            Comment(
+                id="41", pr=7, author="bot", created_at="",
+                body="ccr:label=importnat — oops",
+                reply_to_id="40",
+            )]
     assert [f.fp for f in pending(typo)] == ["fp3"]
 
-    repeat = [Comment(
-        id="42",
-        reply_ref="42",
-        body="x <sub>ccr:fp=fp-repeat</sub>",
-        replies=[Comment(id="43", body="ccr:label=repeat — see comment 20")],
-    )]
+    repeat = [Comment(id="42", pr=7, author="bot", created_at="", body="x <sub>ccr:fp=fp-repeat</sub>"),
+              Comment(
+                  id="43", pr=7, author="bot", created_at="",
+                  body="ccr:label=repeat — see comment 20",
+                  reply_to_id="42",
+              )]
     assert [(f.fp, f.verdict) for f in findings(repeat)] == [("fp-repeat", "repeat")]
     assert pending(repeat) == []
 
     # pending_key 认 fp 集合、不认条数：标掉一条又新来一条 → 数没变但活变了 → key 必须变
     from domain.review_feedback import pending_key
-    def _fs(*fps): return [Finding(fp=f, comment=Comment(id=f, reply_ref=f)) for f in fps]
+    def _fs(*fps): return [Finding(fp=f, comment=Comment(
+        id=f, pr=7, author="bot", created_at="",
+        body="",
+    )) for f in fps]
     assert pending_key(_fs("a", "b")) == pending_key(_fs("b", "a"))   # 顺序无关（两个面交织）
     assert pending_key(_fs("a", "b")) != pending_key(_fs("a", "c"))   # 同为 2 条,活不同
     # fingerprint 是稳定问题身份；同一问题在新 review 轮次重新发布时 comment id 会变，必须重开 nudge
     assert pending_key(_fs("a")) != pending_key(
-        [Finding(fp="a", comment=Comment(id="new-round", reply_ref="new-round"))])
+        [Finding(fp="a", comment=Comment(id="new-round", pr=7, author="bot", created_at="", body=""))])
     assert pending_key([]) == ""
 
     # 带 ccr:label 但不是回复（thread 根自己提了一嘴）→ 不算 verdict
-    selfref = [Comment(id="50", reply_ref="50",
-                       body="讲讲 ccr:label=wrong 的用法 <sub>ccr:fp=fp4</sub>")]
+    selfref = [Comment(
+        id="50", pr=7, author="bot", created_at="",
+        body="讲讲 ccr:label=wrong 的用法 <sub>ccr:fp=fp4</sub>",
+    )]
     assert [f.fp for f in pending(selfref)] == ["fp4"]
 
     from domain.review_feedback import parse_verdict, verdict_reply
-    assert parse_verdict(verdict_reply("important", "real defect")) == "important"
+    assert parse_verdict(verdict_reply("important", "real defect", target_id="20")) == "important"
 
 
 def test_review_feedback_history_marker_and_legacy_path():
@@ -870,20 +901,18 @@ def test_review_feedback_history_marker_and_legacy_path():
     marker = history_marker(key="a.go::F", msg="new exact finding", sha="abc123", fp="same")
     comments = [
         Comment(
-            id="1",
-            reply_ref="1",
-            path="a.go",
+            id="1", pr=7, author="bot", created_at="",
             body=f"🤖 **devloop code-review**\n\nold copy <sub>ccr:fp=same</sub>\n{marker}",
+            anchor=CommentAnchor(path="a.go", revision="reviewed-sha", side="RIGHT"),
         ),
         # A pre-marker comment falls back to the Forge path.
         Comment(
-            id="2",
-            reply_ref="2",
-            path="a.go",
+            id="2", pr=7, author="bot", created_at="",
             body="🤖 **devloop code-review**\n\nlegacy latest\n\n<sub>ccr:fp=legacy</sub>",
+            anchor=CommentAnchor(path="a.go", revision="reviewed-sha", side="RIGHT"),
         ),
         # Summary notes are not replyable, but their machine markers still survive.
-        Comment(body="🤖 **devloop code-review**\n\n" +
+        Comment(id='fixture-881', pr=7, author="bot", created_at="", body="🤖 **devloop code-review**\n\n" +
                 history_marker(key="b.go", msg="summary finding", sha="def456", fp="sum")),
     ]
     feed = history_feed(comments)
@@ -893,6 +922,7 @@ def test_review_feedback_history_marker_and_legacy_path():
     assert suppress_delivery_fingerprints(comments) == {"same", "legacy", "sum"}
 
     resolved = [Comment(
+        id='fixture-890', pr=7, author="bot", created_at="",
         body="🤖 **devloop code-review**\n\nfixed <sub>ccr:fp=fixed</sub>",
         resolution=CommentResolution.RESOLVED,
     )]
@@ -900,10 +930,15 @@ def test_review_feedback_history_marker_and_legacy_path():
 
     repeat_marker = history_marker(key="a.go::F", msg="duplicate", fp="repeat")
     resolved_repeat = [Comment(
+        id='fixture-897', pr=7, author="bot", created_at="",
         body=f"🤖 **devloop code-review**\n\nduplicate <sub>ccr:fp=repeat</sub>\n{repeat_marker}",
-        replies=[Comment(body="ccr:label=repeat — see comment 20")],
         resolution=CommentResolution.RESOLVED,
-    )]
+    ),
+                       Comment(
+                           id='fixture-899', pr=7, author="bot", created_at="",
+                           body="ccr:label=repeat — see comment 20",
+                           reply_to_id='fixture-897',
+                       )]
     assert suppress_delivery_fingerprints(resolved_repeat) == {"repeat"}
     assert "Do not deliver it again" in history_feed(resolved_repeat)["a.go::F"][0]["msg"]
 

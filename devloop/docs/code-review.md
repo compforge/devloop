@@ -22,7 +22,7 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
   发评论（已有开放 MR 的提交后 review，或 AI 在创建 MR 后显式启动 review）。
   没有 MR 就只落 review.json。所以 **MR 评论是机会性的,不是 phase 硬绑**。
 - **findings 优先锚点,汇总 note 兜底**:每条 finding 先尝试发成 diff 锚点评论
-  （`forge.comment(..., replyable=True)`,GitLab positioned discussion / GitHub review
+  （`forge.create_comment(..., anchor=...)`,GitLab positioned discussion / GitHub review
   comment）——锚点换来
   forge **原生的 outdated 生命周期**:下一轮 AI 修完再 push,改到的行上的旧 finding 被 forge
   自动折叠成 outdated,不像普通 note 永远悬着（GitLab 项目开 `resolve_outdated_diff_discussions`
@@ -32,20 +32,17 @@ commit_flow 自动 detach 起后台 **review 引擎**（默认 [`ccr`](https://g
 - **finding 有 line-level 和 file-level 两级**:带行号的是 line-level（"这行漏判空"）,不带的
   是 file-level（"这文件缺测试"）——后者不是信息缺失,本来就没有哪一行可指,直接锚文件。
   line-level 锚不上时（最常见:context 行 finding,行不在当前 diff 里）先退一级到文件锚,
-  两级都锚不上再尝试无锚 review comment，仍不支持才进汇总。多这些层级的理由是
+  两级都锚不上再尝试无锚 Comment，仍不支持才进汇总。多这些层级的理由是
   **可判定性**:独立 review comment 能持久化 Verdict,汇总里的 finding 只是一行文本、
-  没有可回复的对象,等于退出 ground truth 回收。
+  没有独立 Comment ID,等于退出 ground truth 回收。
 - **单条 finding 展示自己的 ready time**：CCR Session JSONL 是时间事实源；devloop 按
   `hypothesis_id` / `origin_unit` 连接 Finding 与其 Unit ready point，在独立 thread 上展示
   `ready in …`。它表示该 Unit 从形成完毕到 Finding 可交付的端到端 latency，不把并发 Execution
   duration 相加；汇总 header 的 `cost` 仍表示整次 review 的总耗时。
-- **Finding/Verdict 关系锚在 forge 上,不落本地**:finding comment 带 `ccr:fp=` 指纹,Verdict 以
-  `ccr:label=` 回复落在其下；Forge adapter 把平台线程整理成 top-level Comment + replies，
-  `scripts/domain/review_feedback.py` 直接读取。指纹跟着持久对象（comment body）走,所以换机器 /
-  换 worktree / 换 session 都接得上;
-  本地存一份 fp→comment-id 表只会是这份数据的陈旧副本,丢了还会把 join 悄悄弄断。
-  待判定数（`Review findings: N 条待判定`）由此派生,刻意不用 review.json 的 finding 数——
-  那是「上次 review 出了几条」而非「还剩几条没有 Verdict」。
+- **Finding/Verdict 关系锚在 Forge 上，不落本地**：独立 finding 带 `ccr:fp` footer，Verdict
+  带 `ccr:label` 和明确的目标 Comment ID。`scripts/domain/review_feedback.py` 从平铺 Comment
+  还原关联，规则见 [PR Comment 关联](#pr-comment-关联)。待判定数由远端评论派生，不使用
+  review.json 的 finding 数；后者表示本轮产生的问题数。
 - **启动失败可见**：runner 文件缺失时，当前操作给出 advisory 提示，并记录分支的 review error，
   供后续状态查询和 Board 展示；不影响 commit / MR。
 - **signal hook,不挡 commit**:review 跑得久,且写码 AI 与 review AI 同源——结论仅供参考、
@@ -62,12 +59,12 @@ AI → repocli validate → managed commit/push → repocli pr create/update
    → review status：同一 SHA 已在审则复用，否则显式 review run
 run_review（后台、独立进程）：**启动即冻结 (branch, sha)**（见下）→ 先写 status=running
    → 自动拼 --background（业务上下文）：本次提交说明（git log）+ MR 标题/描述（forge）
-   → 经 forge.comments 拉当前 PR/MR 已有 finding threads，临时构造 history
+   → 经 forge.list_comments 拉当前 PR/MR 已有 finding threads，临时构造 history
    → CCR review --from origin/<target> --to <冻结的 sha> --background <ctx> --format jsonl [--history <feed>]
      （CCR 额外接收 `--biz-id <forge>:<repository>#<number>`，只用于 session 关联与观测）
-   → 每收到一个通过 Trial 的 finding：增量写 .devloop/review.json；若分支有开放 MR，立即发 replyable comment
+   → 每收到一个通过 Trial 的 finding：增量写 .devloop/review.json；若分支有开放 MR，立即发独立 Comment
      → line-level 行锚 →（失败）文件锚；file-level 直接文件锚
-     →（锚点失败）无锚 review comment →（仍失败）回落汇总评论（forge.comment）
+     →（锚点失败）无锚 Comment →（仍失败）回落汇总评论（forge.create_comment）
    → run_finished：用最终 summary/warnings 收口 review.json 和汇总评论
 下一轮：userprompt 注入读 review.json → 上下文出现 `Review: …`（含 mr_comment 状态）
 
@@ -77,7 +74,7 @@ Session 猜测哪些中间结论可发布。`finding` 事件已经完成 Trial�
 
 Finding 判定与处理（异步、人/agent 触发，见 `skills/review`）：
 ```
-review_details → forge.comments(n) → review_feedback.pending → 查询时构造的 review 视图
+review_details → forge.list_comments(n) → review_feedback.pending → 查询时构造的 review 视图
 下一轮注入：`Review findings: N 条待判定`
 agent：review findings <n> --pending → 逐条对照真实 diff 求证 → review label <n> <id> <verdict>
       → 真问题修复、验证并发布 / 误报附反证 → review resolve <n> <id> [--fixed]
@@ -96,7 +93,7 @@ discussion 独立反映处理进度。
 （往同一个 background 里加）。
 
 **连续 review 必须带已有 Forge findings**：PR/MR comments 是唯一持久事实源。devloop 每次经
-`forge.comments()` 拉取当前 PR/MR 的 finding threads 与 `ccr:label` 回复，临时投影成 CCR
+`forge.list_comments()` 拉取当前 PR/MR 的 finding threads 与 `ccr:label` 回复，临时投影成 CCR
 `--history` 输入，review 进程结束即删除；不从 `.devloop/review-history.jsonl` 恢复行为状态。
 新评论携带隐藏的 unit key，优先精确回到 symbol-id；旧评论只有 diff 锚点时按 repo-relative
 path 退化。发布阶段再按稳定 fingerprint 跳过已有未解决 thread 与已标 `wrong` / `repeat`
@@ -257,3 +254,15 @@ review 才变。`status=skipped`（引擎/LLM 没配）不进注入,避免噪声
 （超时 / 连接池、SQL 可移植、分层、易错点）写进项目级 `rule.json`——它之于 review 就像 AGENTS.md
 之于进项目的人。模板（schema 通用，按引擎放对应路径）见
 [`config/opencodereview.rule.example.json`](../config/opencodereview.rule.example.json)。
+
+## PR Comment 关联
+
+Review 使用 RepoKit 平铺的 Comment CRUD，公开 Comment ID 同时用于读取、回复和 resolution；
+平台 thread/discussion 句柄归 Forge adapter。独立 finding 通过 `ccr:fp` 的 subscript footer
+识别，汇总里的列表项不作为独立打标目标。锚点引用本轮冻结的 reviewed revision。
+
+Verdict 评论保留 `ccr:label`，并以 `<!-- ccr:target=<base64url Comment ID> -->` 明确目标。
+该关联优先于 `reply_to_id`，因为平台可能只保留所属会话的根评论。旧 Verdict 没有 target
+时使用 Forge 返回的结构父 ID；无效或已删除的显式目标不会回落到另一个评论。
+原生 reply 不受支持时，使用携带相同 target 的独立 PR comment。所有关联都能从远端重建，
+Home 清理不应丢失打标。resolution 只表达平台状态，不能推断认可或修复。

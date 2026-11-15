@@ -26,20 +26,21 @@ a request to fix/process findings.
 
 ```bash
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/review.py findings <n|url> [--pending]
-repocli pr discussion show <n> <thread-id> --repo <path> --json
+repocli pr comment show <n> <comment-id> --repo <path> --json
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/review.py label <n> <comment-id> <verdict> --reason '<evidence>'
 <PLUGIN_ROOT>/scripts/python <PLUGIN_ROOT>/scripts/review.py resolve <n> <comment-id> [--fixed]
 ```
 
 Read the full finding and replies, then verify against the actual diff and execution path.
-`review findings` prints `thread=<thread-id>` when the platform supplies a thread handle.
-Use that ID for `repocli pr discussion show`; keep the comment ID for `review label/resolve`.
-If no thread handle is available, use `repocli pr discussion list <n> --repo <path> --json`
-and match `comments[].id`; never assume a comment ID is a thread ID. Pass the same explicit
-`--target-repository` to repocli when reviewing a fork destination. See the
-[discussion contract](../git-ops/references/pr-management.md#discussions) for capabilities and recovery.
-Only published, independently replyable Finding threads can receive Verdicts; local-only findings
-and summary-note fallback text have no reply target.
+`review findings` prints the public Comment ID used by both repocli and `review label/resolve`.
+Use `repocli pr comment list <n> --repo <path> --json` for the flat comment inventory and
+follow `reply_to_id` for structural replies. Pass the same explicit `--target-repository`
+to repocli when reviewing a fork destination. See the
+[comment contract](../git-ops/references/pr-management.md#pr-comments) for capabilities and recovery.
+Only individually published findings receive Verdicts; local findings and summary-list text
+have no individual Comment ID. The label command records its exact target in Forge comment
+metadata, using a standalone comment when native replies are unsupported. This relationship
+survives Home cleanup and does not rely on a platform preserving an exact reply parent.
 
 | Verdict | Meaning |
 |---|---|

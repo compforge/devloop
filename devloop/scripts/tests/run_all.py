@@ -29,6 +29,7 @@ MODULES = [
     "test_inspect",
     "test_python",
     "test_review",
+    "test_review_comments",
     "test_review_launch",
 ]
 

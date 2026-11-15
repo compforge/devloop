@@ -18,6 +18,7 @@ from repokit.git.remote import remote
 def parse_origin(repo):
     observed = remote(repo)
     return (observed.host, observed.path) if observed else None  # noqa: E402
+from domain.forge import CommentAnchor
 from domain.forge import pr_label  # noqa: E402
 
 
@@ -44,8 +45,8 @@ def test_parse_origin_and_detect_provider():
     assert detect_provider("git.acme.com", "github") == "github"        # GHE on custom host
 
 
-def test_review_findings_exposes_thread_identity_for_repocli():
-    """+case=Finding comment IDs stay distinct from platform thread IDs for CLI handoff."""
+def test_review_findings_exposes_public_comment_identity():
+    """+case=One opaque Comment ID is used for review and repocli operations."""
     import io
     from contextlib import redirect_stdout
     from types import SimpleNamespace
@@ -53,13 +54,16 @@ def test_review_findings_exposes_thread_identity_for_repocli():
     from domain.forge import Comment
 
     reviewcli = _load_script("review")
-    comment = Comment(id="20", resolve_ref="PRRT_thread", reply_ref="20", body="finding ccr:fp=identity")
-    forge = SimpleNamespace(comments=lambda number: [comment])
+    comment = Comment(
+        id="review:20", pr=7, author="bot", created_at="",
+        body="finding <sub>ccr:fp=identity</sub>",
+    )
+    forge = SimpleNamespace(list_comments=lambda number: [comment])
     output = io.StringIO()
     with patch.object(reviewcli, "_forge_or_exit", return_value=forge), redirect_stdout(output):
         assert reviewcli.main(["findings", "5"]) == 0
-    assert "20  [PENDING]" in output.getvalue()
-    assert "thread=PRRT_thread" in output.getvalue()
+    assert "review:20  [PENDING]" in output.getvalue()
+    assert "thread=" not in output.getvalue()
 
 
 def test_review_cli_separates_verdict_from_resolution():
@@ -72,29 +76,29 @@ def test_review_cli_separates_verdict_from_resolution():
             super().__init__(prs)
             self.replied = []
             self.resolved = []
-        def comments(self, number):
+        def list_comments(self, number):
             return [
                 Comment(
-                    id="20",
-                    reply_ref="20",
-                    path="a.py",
-                    line=5,
+                    id="20", pr=7, author="bot", created_at="",
                     body="漏判空 ccr:fp=fp1",
-                    replies=[Comment(id="21", body="ccr:label=wrong — 走不到")],
+                    anchor=CommentAnchor(path="a.py", revision="reviewed-sha", side="RIGHT", line=5),
                 ),
                 Comment(
-                    id="30",
-                    reply_ref="30",
-                    resolve_ref="30",
-                    resolution=CommentResolution.UNRESOLVED,
-                    path="b.py",
+                    id="21", pr=7, author="bot", created_at="",
+                    body="ccr:label=wrong — 走不到",
+                    reply_to_id="20",
+                ),
+                Comment(
+                    id="30", pr=7, author="bot", created_at="",
                     body="缺测试 ccr:fp=fp2",
+                    resolution=CommentResolution.UNRESOLVED,
+                    anchor=CommentAnchor(path="b.py", revision="reviewed-sha", side="RIGHT"),
                 ),
             ]
-        def reply(self, number, target, body):
-            self.replied.append((number, target.id, body))
+        def reply_comment(self, number, target, body):
+            self.replied.append((number, target, body))
         def resolve_comment(self, number, target):
-            self.resolved.append((number, target.resolve_ref))
+            self.resolved.append((number, target))
 
     fake = _F([PullRequest(number=5, state="open", source_branch="feat/x")])
 
@@ -115,16 +119,18 @@ def test_review_cli_separates_verdict_from_resolution():
         assert reviewcli.main([
             "label", "5", "30", "minor", "--reason", "真问题，待修复",
         ]) == 0
-        assert fake.replied == [(5, "30", "ccr:label=minor — 真问题，待修复")]
+        assert fake.replied == [(5, "30", reviewcli.review_feedback.verdict_reply("minor", "真问题，待修复", target_id="30"))]
         assert fake.resolved == []
 
         # The fake Forge does not mutate its comment snapshot after a reply, so expose the
         # recorded Verdict when testing the later, independent resolution action.
-        original_comments = fake.comments
-        fake.comments = lambda number: [
-            replace(finding, replies=[Comment(body="ccr:label=minor — 真问题")])
-            if finding.id == "30" else finding
-            for finding in original_comments(number)
+        original_comments = fake.list_comments
+        fake.list_comments = lambda number: original_comments(number) + [
+            Comment(
+                id="31", pr=7, author="bot", created_at="",
+                body="ccr:label=minor — 真问题",
+                reply_to_id="30",
+            )
         ]
         assert reviewcli.main(["resolve", "5", "30"]) == 1
         assert fake.resolved == []

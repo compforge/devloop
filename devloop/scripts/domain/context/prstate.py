@@ -59,7 +59,7 @@ def review_details(repo: str, pr: PullRequest | None) -> ReviewDetails:
         return result
     target = forge.for_repository(pr.target_repository)
     try:
-        findings = review_feedback.pending(target.comments(pr.number))
+        findings = review_feedback.pending(target.list_comments(pr.number))
         result.pending = len(findings)
         result.pending_key = review_feedback.pending_key(findings)
     except ForgeError as exc:

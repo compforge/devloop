@@ -18,6 +18,44 @@ when the corresponding variable is explicitly consumed and paths are representab
 Deleted/reowned paths, missing filtering support or empty candidates for an affected
 Component fall back to full scope. Partial impact does not by itself force full scope.
 
+## Worker budgets
+
+Projects may consume positive integer `LINT_WORKERS` / `TEST_WORKERS` for the internal capacity
+of one lint/test invocation. Declare overridable defaults, for example `TEST_WORKERS ?= 2`, and
+map them to the pinned runner's supported options. Omitted overrides retain project defaults;
+empty worker values are not the file-list full-scope convention. Do not use Make `override`
+assignments to defeat the caller's budget. Serial tools can remain serial.
+
+Repocli 0.89.0+ accepts `--lint-workers` on lint/validate and `--test-workers` on test/validate.
+An explicit flag must be positive. It freezes `LINT_WORKERS=N` or `TEST_WORKERS=N` in only the
+corresponding Make command, visible in plans/results/history and included in reuse matching.
+Changing test workers does not invalidate lint reuse, and format receives neither override.
+Existing inherited environment values still participate in the environment digest as before.
+The flags apply to every selected Component's corresponding check; select a Component when
+tuning it independently. Repocli does not infer native runner flags or automatically tune them.
+
+## Capacity tuning
+
+Use project defaults for the first normal validation, then inspect `cost.wallSeconds`, measured
+phases and `cost.validation.steps`. Separate impact/planning, dependency preparation, reuse lookup
+and actual lint/test execution. Worker changes cannot repair a slow analysis phase or missing file
+filtering; address the measured bottleneck through its owner.
+
+For a slow executed check with a working worker contract and available CPU/memory, increase its
+budget gradually, for example 2 to 4, while holding outer concurrency, scope and other settings
+constant. Use comparable natural validation rounds where possible; changed inputs, scope or warm
+caches limit causal comparisons. A reused result has no current execution timing to tune against.
+Use `--force` only for a deliberate execution comparison, not automatically on each validation.
+
+Treat `--concurrency` as simultaneous checks and each worker value as capacity inside one check.
+Account for concurrent Components, native nested pools and shared databases/ports. The Makefile
+allocates its budget across internal stages instead of multiplying every pool by the same value.
+Keep useful improvements, lower the budget when contention or resource failures appear, and stop
+when checks are fast enough or higher capacity brings no meaningful benefit. Do not repeatedly run
+a large suite solely to seek a marginal speedup, weaken assertions or suppress failures.
+Report chosen settings, comparable timings, execution/reuse and any limits on the comparison.
+No additional tuning cache or persistent settings are required; retain the command/result for the task.
+
 ## Execution and evidence
 
 `repocli format`, `lint`, `test` are independent. `validate` defaults to lint/test;

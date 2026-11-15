@@ -6,12 +6,13 @@ from repokit.forge.model import (
     ForgeRateLimited as ForgeRateLimited,
     PullRequestIdentity as PullRequestIdentity,
     PullRequest as PullRequest,
-    CommentResolution as CommentResolution,
-    Comment as Comment,
     MergeReadiness as MergeReadiness,
     Forge as Forge,
     parse_pr_number as parse_pr_number,
 )
+
+from repokit.forge.comment import Comment, CommentAnchor, CommentResolution
+from repokit.forge.errors import ForgeOutcomeUnknown, ForgeUnsupported
 
 _VOCAB = {"github": ("PR", "#"), "gitlab": ("MR", "!")}
 

@@ -35,7 +35,7 @@ from repokit.git import state as git_state
 from domain import review_engine
 from domain import review_feedback  # noqa: E402
 from domain.context import base, record_active_repo, store  # noqa: E402
-from domain.forge import ForgeError, pr_label  # noqa: E402
+from domain.forge import CommentAnchor, ForgeError, ForgeOutcomeUnknown, pr_label  # noqa: E402
 from repokit import forge_client
 from repokit.cli import list_pull_requests, pull_request_description
 from repokit.git.remote import remote
@@ -91,18 +91,12 @@ def _append_history(repo: str, started: float, **fields) -> None:
 
 
 def _post_inline(forge, pr, comments: list, sha: str = "") -> tuple[int, list]:
-    """把 findings 逐条发成可回复 thread，优先 diff 锚点（GitLab positioned discussion /
-    GitHub review comment）——锚点让 forge 原生管理生命周期:后续 push 改了对应行,评论自动
-    折叠成 outdated,不像普通 note 永远悬着。
+    """Publish individual comments, trying line, file, then unanchored placement.
 
-    finding 自带粒度:带行号的是 **line-level**（"这行漏判空"）,不带的是 **file-level**
-    （"这文件缺测试"）——后者不是信息缺失,而是本来就没有哪一行可指。所以 file-level 直接
-    锚文件,line-level 才有「行锚不上退文件锚」这一级(最常见是 context 行 finding:行不在
-    当前 diff 里)。两者都锚不上时再尝试无锚 thread（GitLab discussion），最后才进汇总。
-
-    之所以尽量别掉进汇总:只有独立 thread 才能被回复打标（`ccr:label=`),而汇总里的 finding
-    只是一条 note 里的一行文本,没有可回复的对象,等于退出了 ground truth 回收。
-    返回 (thread 发布成功数, 回落列表),单条失败不影响其余。"""
+    The frozen reviewed revision owns the anchor. Each comment remains a Verdict target;
+    platforms without native replies use an explicitly targeted standalone Verdict comment.
+    +spec=An unconfirmed write must not trigger another placement or summary publication.
+    """
     if forge is None or pr is None:
         return 0, comments
     posted, fallback = 0, []
@@ -133,25 +127,27 @@ def _post_inline(forge, pr, comments: list, sha: str = "") -> tuple[int, list]:
             # None = 文件级锚点。line-level 先试行锚、退文件锚;file-level 只有文件锚这一级。
             for anchor in ((int(line), None) if line else (None,)):
                 try:
-                    forge.comment(
+                    forge.create_comment(
                         pr.number,
                         rendered,
-                        replyable=True,
-                        path=path,
-                        line=anchor,
+                        anchor=CommentAnchor(path=path, revision=sha or pr.sha, side="RIGHT", line=anchor),
                     )
                     posted += 1
                     anchored = True
                     break
+                except ForgeOutcomeUnknown:
+                    raise
                 except ForgeError:
                     continue
         if anchored:
             continue
         try:
-            forge.comment(pr.number, rendered, replyable=True)
+            forge.create_comment(pr.number, rendered)
             posted += 1
+        except ForgeOutcomeUnknown:
+            raise
         except ForgeError:
-            # GitHub 没有无锚 review thread；GitLab 也可能禁掉 discussions。最后才回汇总。
+            # Confirmed rejection can fall back to the summary; unknown writes cannot.
             fallback.append(c)
     fallback += comments[_MAX_COMMENT_FINDINGS:]
     return posted, fallback
@@ -310,7 +306,7 @@ def _post(forge, pr, body: str) -> str:
     if forge is None or pr is None:
         return "no open MR — comment skipped"
     try:
-        forge.comment(pr.number, body)
+        forge.create_comment(pr.number, body)
         return f"posted to {pr_label(forge.provider, pr.number)}"
     except ForgeError as e:
         return f"MR comment failed (non-fatal): {e}"
@@ -342,7 +338,7 @@ def _build_history_feed(forge, pr) -> tuple[str | None, list]:
     if forge is None or pr is None:
         return None, []
     try:
-        comments = forge.comments(pr.number)
+        comments = forge.list_comments(pr.number)
     except ForgeError:
         return None, []
     feed = review_feedback.history_feed(comments)
@@ -407,6 +403,7 @@ def main(argv: list[str]) -> int:
     comments: list[dict] = []
     publish_comments: list[dict] = []
     fallback: list[dict] = []
+    delivery_warnings: list[dict] = []
     seen: set[tuple] = set()
     inline_posted = 0
 
@@ -423,9 +420,20 @@ def main(argv: list[str]) -> int:
         if not fp or fp not in suppressed:
             publish_comments.append(comment)
             if len(publish_comments) <= _MAX_COMMENT_FINDINGS:
-                posted, unanchored = _post_inline(forge, pr, [comment], sha)
-                inline_posted += posted
-                fallback.extend(unanchored)
+                try:
+                    posted, unanchored = _post_inline(forge, pr, [comment], sha)
+                    inline_posted += posted
+                    fallback.extend(unanchored)
+                except ForgeOutcomeUnknown as error:
+                    message = f"Finding publication unconfirmed; read PR comments before retrying: {error}"
+                    delivery_warnings.append({
+                        "type": "comment_publish_unknown", "file": comment.get("path", ""),
+                        "message": message,
+                    })
+                    logging.getLogger(__name__).warning(
+                        "Review comment publication unconfirmed pr=%s fingerprint=%s error=%s",
+                        pr.number, fp, error,
+                    )
             else:
                 fallback.append(comment)
 
@@ -458,6 +466,9 @@ def main(argv: list[str]) -> int:
     # repeats streamed findings. The run-local key keeps both paths exact-once.
     for comment in result.comments:
         accept_finding(comment)
+    result.warnings.extend(delivery_warnings)
+    if delivery_warnings and result.status == "success":
+        result.status = "completed_with_warnings"
     tool_label = f"{engine.name} {result.tool_version}" if result.tool_version else ""
     deduped = len(comments) - len(publish_comments)
     counts = review_engine.warning_counts(result.warnings)

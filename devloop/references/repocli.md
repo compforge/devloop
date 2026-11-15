@@ -156,11 +156,15 @@ lockfile in both Git and the npm package.
 
 Install a compatible stable repocli release from [GitHub releases](https://github.com/compforge/repokit/releases)
 outside validation, verify its published SHA-256 checksum, and put its binary on
-`PATH`. Use repocli CLI 0.83.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
+`PATH`. Use repocli CLI 0.88.0 or later with output schema `"1.0"`. The AI may invoke another installed binary by
 absolute path. Native toolkit operations do not require the CLI and never download or build it.
 Python and TypeScript toolkit dependencies remain independently locked.
 The shared user directory is explicit `home` / CLI `--home`, then `REPOKIT_HOME`, then `~/.repokit`.
 Devloop uses the toolkit default and never supplies its `.devloop` workflow directory as RepoKit home.
+Home bridges remote repository/PR facts and local clones/worktrees. Its resource records are
+expiring caches and coordination data, not durable Forge facts. Devloop reads them through SDKs;
+`repocli clean` owns global resource ordering, soft count budgets, active-operation protection
+and lock reclamation. Devloop keeps no Home paths or parallel cleanup policy.
 
 Use `repocli upgrade --check` (or add `--json`)
 to discover updates and `repocli upgrade` to install the latest stable release.
@@ -237,16 +241,16 @@ and output delivery. See [validation](../skills/validate/references/spec.md) for
 RepoKit owns Forge instance/provider, API host and credentials in `<home>/config.json`.
 Devloop does not load access settings or inject token environment variables. SDK fallbacks use
 RepoKit configuration; workflow configuration only selects the PR target repository.
-This workflow requires Python RepoKit 0.28.0 and TypeScript RepoKit 0.23.0.
+This workflow requires Python RepoKit 0.31.0 and TypeScript RepoKit 0.26.0.
 The lockfiles pin registry packages. Publish the required RepoKit version before releasing
 this plugin. For joint development, build and pack the SDK, then install its tarball with
 `npm install --no-save --package-lock=false <tarball>`; keep local paths out of the manifests.
 TypeScript history queries use native `fs-ext` locking on Linux/macOS;
 installation requires native build tooling.
 
-## Discussions
+## PR comments
 
-Skills invoke `repocli pr discussion` directly for list/show/create/reply/resolve; there is no
-Python PR command wrapper. See [PR management](../skills/git-ops/references/pr-management.md#discussions)
+Skills invoke `repocli pr comment` directly for list/show/create/reply/update/delete/resolve/unresolve; there is no
+Python PR command wrapper. See [PR management](../skills/git-ops/references/pr-management.md#pr-comments)
 for opaque IDs, platform capabilities and recovery. Review Verdicts and fix authorization remain
 in devloop's review workflow; its SDK-backed execution is independent of the generic CLI entrypoints.

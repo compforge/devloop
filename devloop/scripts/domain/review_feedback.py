@@ -1,15 +1,9 @@
 """Review feedback — verdict joins and continuous-review history.
 
-The durable relationship, entirely on the forge: `run_review` publishes each finding as a
-replyable comment carrying a `ccr:fp=<fp>` footer; an agent/human later records a Verdict by
-replying with `ccr:label=<verdict>`. This module joins the two back together over
-`Forge.comments()`.
-
-Nothing here is persisted as a source of truth, on purpose. The join key (`fp`) travels inside
-the comment bodies, so the pair is recoverable from the API alone — from any machine, any
-worktree, any session, including ones that never saw the review run. A local fp→comment-id
-table would only be a staler copy of what `comments()` already returns, and would silently
-break the join when it's lost. Board requests the derived count when presenting an open PR.
+Findings carry a `ccr:fp` footer. Verdict comments carry `ccr:label` and an explicit
+opaque target Comment ID. This relationship lives on the Forge and survives Home cleanup.
+Older Verdicts without a target marker use the platform's `reply_to_id`; grouped replies
+cannot recover an exact historical target beyond the parent the Forge reports.
 
 Pure over a `list[Comment]` — the caller does the fetching. That keeps the forge round-trip at
 the presentation or review workflow boundary and makes this testable without HTTP.
@@ -34,6 +28,7 @@ from domain.forge import Comment, CommentResolution
 # (`<sub>ccr:fp=abc</sub>`, "ccr:label=wrong — 反证是 …").
 _FP_RE = re.compile(r"ccr:fp=([A-Za-z0-9_-]+)")
 _LABEL_RE = re.compile(r"ccr:label=([A-Za-z]+)")
+_TARGET_RE = re.compile(r"<!--\s*ccr:target=([A-Za-z0-9_-]+)\s*-->")
 _HISTORY_RE = re.compile(r"<!--\s*ccr:history=([A-Za-z0-9_-]+)\s*-->")
 _FOOTER_RE = re.compile(r"\n*\s*<sub>[^<]*ccr:fp=.*?</sub>\s*$", re.DOTALL)
 
@@ -65,14 +60,43 @@ def parse_verdict(body: str) -> Verdict | None:
     return cast(Verdict, match.group(1))
 
 
-def verdict_reply(verdict: Verdict, reason: str) -> str:
+def verdict_reply(verdict: Verdict, reason: str, *, target_id: str) -> str:
     """Encode a Verdict for the Forge transport after validating its required rationale."""
     reason = reason.strip()
     if verdict not in VERDICTS:
         raise ValueError(f"unknown review verdict: {verdict}")
     if not reason:
         raise ValueError("a review verdict requires a reason")
-    return f"ccr:label={verdict} — {reason}"
+    if not target_id:
+        raise ValueError("a review verdict requires a target Comment ID")
+    encoded = base64.urlsafe_b64encode(target_id.encode()).decode().rstrip("=")
+    return f"ccr:label={verdict} — {reason}\n<!-- ccr:target={encoded} -->"
+
+
+def _verdicts(comments: list[Comment]) -> dict[str, tuple[Verdict, str]]:
+    """Join exact targets, falling back to structural parents for legacy Verdicts.
+
+    +spec=An explicit Verdict target wins over a grouped reply's structural parent.
+    +link=component://docs/code-review.md
+    """
+    ids = {comment.id for comment in comments}
+    result: dict[str, tuple[Verdict, str]] = {}
+    for comment in comments:
+        verdict = parse_verdict(comment.body)
+        if verdict is None:
+            continue
+        target = comment.reply_to_id
+        if "ccr:target=" in comment.body:
+            markers = _TARGET_RE.findall(comment.body)
+            if len(markers) != 1:
+                continue
+            try:
+                target = base64.urlsafe_b64decode(markers[0] + "=" * (-len(markers[0]) % 4)).decode()
+            except (ValueError, UnicodeDecodeError):
+                continue
+        if target in ids and target != comment.id:
+            result.setdefault(target, (verdict, comment.body))
+    return result
 
 
 def history_marker(*, key: str, msg: str, sha: str = "", fp: str = "") -> str:
@@ -131,7 +155,7 @@ def _history_message(
     if reply_body:
         parts.append("Reviewer feedback: " + reply_body.strip())
     if comment.resolution == CommentResolution.RESOLVED:
-        parts.append("Forge thread: resolved; verify the current revision before re-raising.")
+        parts.append("Forge resolution: resolved; verify the current revision before re-raising.")
     return "\n".join(parts)
 
 
@@ -139,29 +163,26 @@ def history_feed(comments: list[Comment]) -> dict[str, list[dict[str, str]]]:
     """Project current Forge comments into ccr's transient history input.
 
     Forge is the durable source. New comments carry one or more `ccr:history` markers;
-    old replyable devloop comments fall back to their diff path and visible body. Repeated
+    old anchored devloop comments fall back to their diff path and visible body. Repeated
     fingerprints collapse to the latest occurrence so re-review does not amplify its own
     prior duplicates.
     """
     entries: dict[str, tuple[str, dict[str, str]]] = {}
+    verdicts = _verdicts(comments)
     for comment in comments:
         # PR comments are user-controlled prompt input. devloop only ingests its own
         # publisher protocol; other review bots remain ordinary MR context.
         if not (comment.body or "").startswith("🤖 **devloop code-review**"):
             continue
-        reply = next(
-            ((parse_verdict(r.body), r.body) for r in comment.replies if parse_verdict(r.body)),
-            (None, ""),
-        )
-        verdict, reply_body = reply
+        verdict, reply_body = verdicts.get(comment.id, (None, ""))
         decoded = [
             value
             for raw in _HISTORY_RE.findall(comment.body or "")
             if (value := _decode_history_marker(raw)) is not None
         ]
-        if not decoded and comment.replyable and _FP_RE.search(comment.body or "") and comment.path:
+        if not decoded and comment.anchor and _FP_RE.search(comment.body or ""):
             decoded = [{
-                "key": comment.path,
+                "key": comment.anchor.path,
                 "msg": _legacy_message(comment.body),
                 "sha": "",
                 "fp": _FP_RE.search(comment.body).group(1),
@@ -185,21 +206,18 @@ def history_feed(comments: list[Comment]) -> dict[str, list[dict[str, str]]]:
 
 
 def suppress_delivery_fingerprints(comments: list[Comment]) -> set[str]:
-    """Fingerprints whose existing Forge thread should not be delivered again.
+    """Fingerprints whose existing Forge comment should not be delivered again.
 
-    Unresolved/unsupported threads already give the finding a durable place on the MR.
+    Unresolved/unsupported comments already give the finding a durable place on the MR.
     A `wrong` or `repeat` verdict also suppresses the same stable finding after resolution.
-    Another resolved thread may be delivered again if the issue genuinely reappears later.
+    Another resolved comment may be delivered again if the issue genuinely reappears later.
     """
     suppressed = set()
+    verdicts = _verdicts(comments)
     for comment in comments:
         if not (comment.body or "").startswith("🤖 **devloop code-review**"):
             continue
-        verdict = next(
-            (verdict for reply in comment.replies
-             if (verdict := parse_verdict(reply.body))),
-            None,
-        )
+        verdict, _ = verdicts.get(comment.id, (None, ""))
         if comment.resolution == CommentResolution.RESOLVED and verdict not in {"wrong", "repeat"}:
             continue
         fps = {
@@ -213,21 +231,20 @@ def suppress_delivery_fingerprints(comments: list[Comment]) -> set[str]:
 
 
 def findings(comments: list[Comment]) -> list[Finding]:
-    """Published findings on a PR/MR, each with its first valid verdict reply.
+    """Join individual finding comments with Verdicts; summary list text is not a finding.
 
-    A published finding is a replyable comment carrying a `ccr:fp=`. Replyability excludes the
-    review summary note, which may list `ccr:fp=` once per fallback finding. The summary has
-    no reply target, so nothing in it can be labeled.
+    The publisher gives individual findings a subscript fingerprint footer. Older anchored
+    findings may carry only the fingerprint. Neither condition depends on platform handles.
     """
     found = []
+    verdicts = _verdicts(comments)
     for c in comments:
-        if not c.replyable:
+        if not c.anchor and not re.search(r"<sub>ccr:fp=[A-Za-z0-9_-]+</sub>", c.body):
             continue
         m = _FP_RE.search(c.body or "")
         if not m:
             continue
-        verdict = next((verdict for reply in c.replies
-                        if (verdict := parse_verdict(reply.body))), None)
+        verdict, _ = verdicts.get(c.id, (None, ""))
         found.append(Finding(fp=m.group(1), comment=c, verdict=verdict))
     return found
 
@@ -245,5 +262,5 @@ def pending_key(found: list[Finding]) -> str:
     after an earlier round was labeled, it is new work and must reopen the nudge. Sorted so comment
     order (two forge surfaces, interleaved by time) can't churn the key and reset the decay.
     """
-    identities = sorted(f"{f.fp}:{f.comment.id or f.comment.reply_ref}" for f in found)
+    identities = sorted(f"{f.fp}:{f.comment.id}" for f in found)
     return hashlib.sha256("\n".join(identities).encode()).hexdigest()[:12] if identities else ""

@@ -55,7 +55,7 @@ it("projects native history and invalidates the source comparison after an edit"
     execFileSync("git", ["-C",root,"remote","add","origin","https://github.com/example/board.git"]);
     writeFileSync(join(root,"source.ts"),"export const value = 1;\n");
     const observed=await snapshot(root);
-    const directory=join(home,"repositories","github--example--board");
+    const directory=join(home,"repositories","github--example--board","validation");
     for (const child of ["history","inputs","logs"]) mkdirSync(join(directory,child),{recursive:true});
     const check={runID:"RUN",check:"test",scope:"full",status:"passed",durationSeconds:1};
     const start={schemaVersion:2,type:"started",checkout:root,at:"2026-11-12T00:00:00Z",run:"RUN",component:".",inputs:"INPUT",check};

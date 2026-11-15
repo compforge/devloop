@@ -16,6 +16,7 @@ sys.path.insert(0, str(_SCRIPTS))
 
 from domain import review_feedback  # noqa: E402
 from domain.context import store  # noqa: E402
+from domain.forge import CommentAnchor, ForgeUnsupported
 from domain.forge import CommentResolution, ForgeError, parse_pr_number, pr_label  # noqa: E402
 import command as cli
 from repokit.git import state as git_state
@@ -48,7 +49,7 @@ def _number_or_exit(raw: str, prog: str) -> int:
 
 def _findings(forge, number: int, prog: str) -> list[review_feedback.Finding] | None:
     try:
-        return review_feedback.findings(forge.comments(number))
+        return review_feedback.findings(forge.list_comments(number))
     except ForgeError as exc:
         print(f"{prog}: {exc}", file=sys.stderr)
         return None
@@ -108,13 +109,13 @@ def cmd_findings(ns) -> int:
         return 0
     for finding in found:
         comment = finding.comment
-        location = comment.path + (f":{comment.line}" if comment.line else "")
+        location = ""
+        if comment.anchor:
+            location = comment.anchor.path + (f":{comment.anchor.line}" if comment.anchor.line else "")
         print(
             f"{comment.id}  [{finding.verdict or 'PENDING'}]  "
             f"{location or '?'}  ccr:fp={finding.fp}"
         )
-        if comment.resolve_ref:
-            print(f"    thread={comment.resolve_ref}")
         body = (comment.body or "").strip().replace("\n", " ")
         print(f"    {body[:200]}")
     return 0
@@ -144,9 +145,13 @@ def cmd_label(ns) -> int:
             file=sys.stderr,
         )
         return 1
-    body = review_feedback.verdict_reply(ns.verdict, reason)
+    body = review_feedback.verdict_reply(ns.verdict, reason, target_id=finding.comment.id)
     try:
-        forge.reply(number, finding.comment, body)
+        try:
+            forge.reply_comment(number, finding.comment.id, body)
+        except ForgeUnsupported:
+            # The explicit target survives even when native replies are unavailable.
+            forge.create_comment(number, body)
     except ForgeError as exc:
         print(f"review label: {exc}", file=sys.stderr)
         return 1
@@ -184,11 +189,11 @@ def cmd_resolve(ns) -> int:
     if comment.resolution is CommentResolution.RESOLVED:
         print(f"finding {ns.finding_id} is already resolved")
         return 0
-    if not comment.resolve_ref:
+    if comment.resolution is CommentResolution.UNSUPPORTED:
         print("review resolve: this Forge comment is not resolvable", file=sys.stderr)
         return 1
     try:
-        forge.resolve_comment(number, comment)
+        forge.resolve_comment(number, comment.id)
     except ForgeError as exc:
         print(f"review resolve: {exc}", file=sys.stderr)
         return 1
@@ -204,12 +209,11 @@ def cmd_missed(ns) -> int:
         print("review missed: --reason cannot be empty", file=sys.stderr)
         return 1
     try:
-        forge.comment(
+        pr = forge.get(number)
+        forge.create_comment(
             number,
             f"ccr:missed — {reason}",
-            replyable=True,
-            path=ns.path,
-            line=ns.line,
+            anchor=CommentAnchor(path=ns.path, revision=pr.sha, side="RIGHT", line=ns.line),
         )
     except ForgeError as exc:
         print(f"review missed: {exc}", file=sys.stderr)

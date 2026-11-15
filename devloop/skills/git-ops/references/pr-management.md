@@ -32,28 +32,35 @@ fields for an update or terminal state for a close, not just PR existence. An em
 proves absence when the query succeeded. Honor `retryAt` when present; do not infer safe
 retries from error text.
 
-## Discussions
+## PR comments
 
-Use repocli 0.67.0 or later for generic discussion operations:
+Use repocli 0.88.0 or later:
 
 ```bash
-repocli pr discussion list <number> --repo <path> --json
-repocli pr discussion show <number> <thread-id> --repo <path> --json
-repocli pr discussion create <number> --repo <path> --body-file <file> --json
-repocli pr discussion reply <number> <thread-id> --repo <path> --body-file <file> --json
-repocli pr discussion resolve <number> <thread-id> --repo <path> --json
+repocli pr comment list <number> --repo <path> --json
+repocli pr comment show <number> <comment-id> --repo <path> --json
+repocli pr comment create <number> --repo <path> --body-file <file> --json
+repocli pr comment reply <number> <comment-id> --repo <path> --body-file <file> --json
+repocli pr comment update <number> <comment-id> --repo <path> --body-file <file> --json
+repocli pr comment delete <number> <comment-id> --repo <path> --json
+repocli pr comment resolve <number> <comment-id> --repo <path> --json
+repocli pr comment unresolve <number> <comment-id> --repo <path> --json
 ```
 
-Use the returned thread `id`; comment IDs in `comments[]` are distinct. `show` and JSON
-preserve full Markdown and replies. `create` posts an unanchored conversation comment.
-Check `replyable`, `resolvable` and `resolution`: GitHub conversation comments cannot be
-replied to or resolved as review threads. For forks, pass the target repository explicitly.
-These operations do not run worktree maintenance.
+The list is flat and counts every comment, including replies. Treat `id` and `reply_to_id`
+as opaque public Comment IDs; never split them or substitute native thread/discussion handles.
+`reply_to_id` is the platform-recoverable structural parent and can differ from the requested
+reply target. `show` returns one comment; use `list` to read the surrounding conversation.
+Creation accepts an optional `--anchor-file` with path, revision, side and optional line range.
+For forks, pass the target repository explicitly. These operations do not run cleanup.
 
-A successful reply returns the actual new comment ID and body. For an unknown write or lost
-output, read the same PR/thread and compare the message/author or resolution before retrying.
-Do not repeat a create/reply merely because its response was lost. A failed read is not absence.
+`resolution` is `unresolved`, `resolved`, `unsupported` or `unknown`; it describes platform
+state and may apply to the containing conversation. It does not establish agreement or a fix.
+Some comments cannot be replied to or resolved; the adapter reports unsupported operations.
 
-A generic reply does not record a Verdict, and platform resolution does not establish that a
-finding was fixed. For devloop findings use [review](../../review/SKILL.md): its domain commands
-own Verdict encoding and the validated/published-fix requirement before resolution.
+For an unknown write or lost output, read the same PR and compare IDs, body, author and
+resolution before retrying. Do not repeat a create/reply because its response was lost.
+A failed read is not absence. Deletion does not authorize cascading deletion of replies.
+
+Generic replies do not record Verdicts. For devloop findings use [review](../../review/SKILL.md):
+its commands own the explicit target encoding and the published-fix requirement before resolution.

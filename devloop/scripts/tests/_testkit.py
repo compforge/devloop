@@ -36,6 +36,7 @@ os.environ["REPOKIT_HOME"] = _repokit_home.name
 
 from harness_common import Forge as ForgeIdentity, Repository  # noqa: E402
 from domain.context import PullRequest  # noqa: E402
+from domain.forge import CommentAnchor
 from domain.forge import Comment, Forge, ForgeError, ForgeNotFound  # noqa: E402
 
 
@@ -94,20 +95,17 @@ class _FakeForge(Forge):
     def open_pull_requests(self):
         return [p for p in self.recent(len(self._prs)) if p.is_open]
 
-    def comments(self, number):
-        return [Comment(author="x", body="y")]
+    def list_comments(self, number):
+        return [Comment(id='fixture-99', pr=7, author="x", created_at="", body="y")]
 
-    def comment(self, number, body, *, replyable=False, path="", line=None):
-        if replyable:
-            if not path:
-                raise ForgeError("unanchored replyable comments not supported")
+    def create_comment(self, number, body, *, anchor=None):
+        if anchor:
             self.diff_posted = getattr(self, "diff_posted", [])
-            self.diff_posted.append((number, path, line, body))
-            return
-        if path or line is not None:
-            raise ForgeError("standalone comments cannot have a diff anchor")
-        self.posted = getattr(self, "posted", [])
-        self.posted.append((number, body))
+            self.diff_posted.append((number, anchor.path, anchor.line, body))
+        else:
+            self.posted = getattr(self, "posted", [])
+            self.posted.append((number, body))
+        return Comment(id="created", pr=number, author="bot", created_at="", body=body)
 
     def default_branch(self):
         return "main"

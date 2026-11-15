@@ -2,7 +2,7 @@ import { listValidationRuns, snapshot } from "@compforge/repokit";
 /**
  * @spec Board displays retained executions, never a current pass or a reuse decision.
  * A source comparison does not attest the toolchain, environment or declared external inputs.
- * @see {@link component://docs/repository-toolkit.md}
+ * @see {@link component://docs/repository.md}
  */
 export async function validationHistory(repo) {
     const signal = AbortSignal.timeout(1_000);

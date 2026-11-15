@@ -64,14 +64,14 @@ regression from a change in workload or annotation coverage.
 
 Good diagnosis explains whether the result met the goal and how a deviation reached that result.
 Use a graph perspective: actions consume and produce evidence, intermediate judgments and delivered
-artifacts. Follow those dependencies across Job, Session and Context views, expanding the branches
+artifacts. Follow those dependencies across Job, Session and Prompt views, expanding the branches
 needed to explain the outcome. Existing records and explicit references can support this reasoning;
 a persisted graph or a new view is not a prerequisite.
 
 1. **Anchor the deviation:** establish the expected behavior and affected outcome using project
    requirements or independent checks. The agent's own verdict is an output to inspect.
 2. **Trace backward from the outcome:** identify the decisions and inputs that produced it, then
-   follow their recorded sources. Inspect the actual request in Context View and the relevant
+   follow their recorded sources. Inspect the actual request in Prompt View and the relevant
    calls in Session View. Keep the identity and version of a claim or artifact through handoffs;
    distinguish evidence available to read, actually present in a request, and cited in a decision.
    Temporal proximity alone does not establish a dependency; mark missing links explicitly.

@@ -1,6 +1,6 @@
 ---
 name: trajectory
-description: Present SessionView as text in conversation or TUI (including loop view / agent view requests), inspect JobView observations, show Context View text outlines of prompts to spot possible prompt issues, diagnose agent failures and avoidable work, assess Good, Fast, Cheap for agents (effect, speed and cost), and design evidence-backed optimization experiments. Use project-owned recordings and evaluation entrypoints; do not invent missing evidence or judgments.
+description: Present SessionView as text in conversation or TUI (including loop view / agent view requests), inspect JobView observations, show Prompt View text outlines of prompts to spot possible prompt issues, diagnose agent failures and avoidable work, assess Good, Fast, Cheap for agents (effect, speed and cost), and design evidence-backed optimization experiments. Use project-owned recordings and evaluation entrypoints; do not invent missing evidence or judgments.
 ---
 
 # Trajectory Quality
@@ -16,14 +16,14 @@ Organize the work into **Execution / Observation / Improvement（执行 / 观察
 
 - **Execution:** business orchestration and the agent framework/harness run loops, model calls
   and tool calls, producing recorded facts.
-- **Observation:** Job, Session and Context views make those facts visible to people for supervision.
+- **Observation:** Job, Session and Prompt views make those facts visible to people for supervision.
 - **Improvement:** evaluate Good/Fast/Cheap, select candidates, diagnose, optimize and verify with
   new execution evidence. Trajectory Harness supports this analysis; it is distinct from the
   agent's execution framework/harness.
 
 ```text
 agent execution -> recorded facts
-  |-> Job / Session / Context views -> human observation and supervision
+  |-> Job / Session / Prompt views -> human observation and supervision
   |-> Good / Fast / Cheap evaluation -> candidates -> diagnosis
         -> authorized optimization -> new execution -> controlled comparison
 ```
@@ -38,7 +38,7 @@ Trajectory names execution history; ATIF is an industry interchange standard for
 the only format. In an ATIF-based project, Trajectory is the standardized fact and evaluation input.
 Store scores separately with their criteria and source evidence; do not write judgments into facts.
 
-- Actual model-request message list → Context View, including tool definitions outside messages.
+- Actual model-request message list → Prompt View, including tool definitions outside messages.
 - Loop execution → ATIF Trajectory → SessionView, for projects using ATIF.
 - Business work across one or more loops and deterministic operations → JobView.
 
@@ -85,25 +85,25 @@ Fast and Cheap usually have direct timing and usage signals to locate bottleneck
 the project's intended behavior and a causal diagnosis: identify where work departed from that
 intent, trace how the deviation affected the result, and explain the supported cause. Use
 [effect diagnosis](references/diagnosis.md#trace-effect-loss-to-its-cause) to connect Job outcomes,
-Session decisions and Context evidence; a low score alone does not locate the problem.
+Session decisions and Prompt evidence; a low score alone does not locate the problem.
 
 ## Choose the action and perspective
 
 | Request | Action and reading |
 |---|---|
-| Show a SessionView, loop view or agent view | Present the SessionView as text in conversation/TUI using [SessionView text rendering](references/observation.md#sessionview-text-rendering). |
-| Show a Context View | Show a text prompt outline by message role, expanding complex messages into their component sections to spot possible prompt issues; use [Context View](references/observation.md#context-view). |
-| Show a JobView | Inspect the task snapshot using [Observation](references/observation.md); lead with its goal, work and result. |
+| Show a SessionView, loop view or agent view | Present the SessionView as text in conversation/TUI using [SessionView text rendering](references/session-view.md#sessionview-text-rendering). |
+| Show a Prompt View | Show a text prompt outline by message role, expanding complex messages into their component sections and comparing per-part changes across model calls to spot possible prompt issues; use [Prompt View](references/prompt-view.md). |
+| Show a JobView | Inspect the task snapshot using [JobView](references/job-view.md); lead with its goal, work and result. |
 | Find why a task failed or an agent repeated work | Read [Evidence](references/evidence.md), [Evaluation](references/evaluation.md) and [Diagnosis](references/diagnosis.md). |
 | Compare results or versions | Read [Evidence](references/evidence.md) and the comparison rules in [Evaluation](references/evaluation.md). |
 | Optimize an evidenced problem | Preserve the diagnosis, then select a mechanism reference below and define a controlled experiment. |
 
 “Loop view” and “agent view” are request phrases for viewing a SessionView. Choose text for
-conversation/TUI; use HTML or another artifact format when requested. Context View has its own
+conversation/TUI; use HTML or another artifact format when requested. Prompt View has its own
 reading task: expose prompt organization by actual message order, roles and internal sections.
 
 A Job question starts from goals and outcomes, then follows relevant calls into their Sessions.
-A Session question starts from continuity and actions, then checks contribution to Jobs. A Context
+A Session question starts from continuity and actions, then checks contribution to Jobs. A Prompt
 question starts from prompt composition, then follows the response and subsequent actions to
 check its consequences. Use explicit identities to move among the views. All three can inform
 Good, Fast, Cheap; they are not assigned one dimension each. A usable single view is enough for a
@@ -143,7 +143,7 @@ Use [Evaluation](references/evaluation.md) for assessment and comparison:
    failed, using the [dependency-based diagnosis](references/diagnosis.md#trace-effect-loss-to-its-cause).
 3. Inspect costly or repeated work, including successful executions. Ask what evidence, decision
    or task progress each suspicious action contributed.
-4. Follow explicit Job/Session links and inspect the relevant Context View to explain decisions.
+4. Follow explicit Job/Session links and inspect the relevant Prompt View to explain decisions.
    Distinguish evidence acquired, present in a request, cited by the agent and verified to support
    the conclusion. Preserve contrary evidence and distinguish confirmed causes from hypotheses.
 5. Quantify effect, elapsed time and resource cost within the supported scope, including gaps.

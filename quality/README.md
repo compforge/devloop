@@ -10,7 +10,7 @@ The bundled skills currently cover three independent quality views:
   coverage when requested;
 - `perf` operates and compares project-owned load, capacity, stress, and soak experiments, and can
   incrementally add bounded performance coverage when requested;
-- `trajectory` offers Job, Session and Context views to connect results, execution and prompt
+- `trajectory` offers Job, Session and Prompt views to connect results, execution and prompt
   organization, assess Good/Fast/Cheap (effect, speed and cost), and design optimization experiments.
 
 The project owns the tests, profiles, recordings, adapters, and judgment criteria. A framework
@@ -47,7 +47,7 @@ invent a missing suite nor supply cross-skill execution orchestration.
 ## Agent trajectory analysis
 
 The [trajectory operating model](skills/trajectory/SKILL.md#operating-model) organizes Execution,
-Observation and Improvement around recorded execution facts. Job, Session and Context views render business progress, execution and
+Observation and Improvement around recorded execution facts. Job, Session and Prompt views render business progress, execution and
 prompt organization for human observation and supervision. Good/Fast/Cheap evaluation identifies
 optimization candidates, followed by diagnosis, an authorized change and controlled re-evaluation.
 Evidence references connect scores to visible execution details; low scores are one selection method.

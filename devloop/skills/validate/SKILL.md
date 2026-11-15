@@ -59,7 +59,7 @@ Do not assemble previous reports or decide execution reuse in the workflow.
 When actual execution is slow, locate the expensive phase/check before changing parameters.
 Use `--lint-workers N` / `--test-workers N` to override the corresponding Makefile budget;
 these are separate from outer `--concurrency`. Check installed command help before using the
-worker flags (repocli 0.89.0+). A flag cannot accelerate a recipe that does not consume its variable;
+worker flags (repocli 0.91.0+). A flag cannot accelerate a recipe that does not consume its variable;
 recommend the project change instead. Follow [capacity tuning](references/spec.md#capacity-tuning)
 to adjust one budget at a time and compare real execution at the same scope.
 

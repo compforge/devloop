@@ -26,7 +26,7 @@ map them to the pinned runner's supported options. Omitted overrides retain proj
 empty worker values are not the file-list full-scope convention. Do not use Make `override`
 assignments to defeat the caller's budget. Serial tools can remain serial.
 
-Repocli 0.89.0+ accepts `--lint-workers` on lint/validate and `--test-workers` on test/validate.
+Repocli 0.91.0+ accepts `--lint-workers` on lint/validate and `--test-workers` on test/validate.
 An explicit flag must be positive. It freezes `LINT_WORKERS=N` or `TEST_WORKERS=N` in only the
 corresponding Make command, visible in plans/results/history and included in reuse matching.
 Changing test workers does not invalidate lint reuse, and format receives neither override.

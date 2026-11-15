@@ -916,9 +916,9 @@ def test_review_feedback_history_marker_and_legacy_path():
                 history_marker(key="b.go", msg="summary finding", sha="def456", fp="sum")),
     ]
     feed = history_feed(comments)
-    assert feed["a.go::F"] == [{"msg": "new exact finding", "sha": "abc123"}]
-    assert feed["a.go"] == [{"msg": "legacy latest"}]
-    assert feed["b.go"] == [{"msg": "summary finding", "sha": "def456"}]
+    assert feed["a.go::F"] == [{"msg": "new exact finding", "sha": "abc123", "fingerprint": "same", "comment_id": "1"}]
+    assert feed["a.go"] == [{"msg": "legacy latest", "sha": "reviewed-sha", "fingerprint": "legacy", "comment_id": "2"}]
+    assert feed["b.go"] == [{"msg": "summary finding", "sha": "def456", "fingerprint": "sum", "comment_id": "fixture-881"}]
     assert suppress_delivery_fingerprints(comments) == {"same", "legacy", "sum"}
 
     resolved = [Comment(

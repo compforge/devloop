@@ -165,7 +165,10 @@ def history_feed(comments: list[Comment]) -> dict[str, list[dict[str, str]]]:
     Forge is the durable source. New comments carry one or more `ccr:history` markers;
     old anchored devloop comments fall back to their diff path and visible body. Repeated
     fingerprints collapse to the latest occurrence so re-review does not amplify its own
-    prior duplicates.
+    prior duplicates. Preserve the matching comment's public identity and URL for CCR.
+
+    +spec=History carries msg, sha, fingerprint, comment_id and url from the same occurrence.
+    +link=component://docs/code-review.md
     """
     entries: dict[str, tuple[str, dict[str, str]]] = {}
     verdicts = _verdicts(comments)
@@ -184,7 +187,7 @@ def history_feed(comments: list[Comment]) -> dict[str, list[dict[str, str]]]:
             decoded = [{
                 "key": comment.anchor.path,
                 "msg": _legacy_message(comment.body),
-                "sha": "",
+                "sha": comment.anchor.revision,
                 "fp": _FP_RE.search(comment.body).group(1),
             }]
         for value in decoded:
@@ -192,7 +195,12 @@ def history_feed(comments: list[Comment]) -> dict[str, list[dict[str, str]]]:
             identity = fp or f"{value['key']}\0{value['msg']}"
             item = {
                 "msg": _history_message(str(value["msg"]), comment, verdict, reply_body),
+                "comment_id": comment.id,
             }
+            if fp:
+                item["fingerprint"] = fp
+            if comment.url:
+                item["url"] = comment.url
             if value.get("sha"):
                 item["sha"] = str(value["sha"])
             # Adapters return comments chronologically; overwrite makes the latest review

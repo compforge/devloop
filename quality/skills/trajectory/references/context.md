@@ -6,7 +6,7 @@ version before proposing a policy; a different checkout may already behave diffe
 
 ## Inspect request composition
 
-Start with [Context View](observation.md#context-view) to expose the selected prompt's organization
+Start with [Prompt View](prompt-view.md) to expose the selected prompt's organization
 by actual message role and internal sections. Use SessionView to expand exact requests and trace
 responses and tool actions. Follow relevant ModelCalls across input, tool-result and compact
 boundaries. Compare their recorded requests to locate repeated background,

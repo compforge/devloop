@@ -17,7 +17,7 @@ version, score or verdict, applicability and source trajectory/step references. 
 an investigation target; it does not establish the cause. Low-scoring bad cases are one entry:
 regressions, intermittent failures, costly successful runs and issues observed through the views
 can also justify investigation. Select against the project's objectives, not a universal score cutoff. Missing evidence and not-applicable are
-not zero scores or passes. Inspect Session/Context/Job views without making the rendered view the
+not zero scores or passes. Inspect Session/Prompt/Job views without making the rendered view the
 replacement source dataset. Re-scoring old facts tests evaluator changes; proving an agent change
 requires new execution evidence under a controlled comparison.
 
@@ -61,7 +61,7 @@ result delivery. An open continuous Session is not a failed Job; a completed Job
 result is correct. Deliberate silence, recorded understanding or delegation can be valid outcomes
 under the project's criterion. An absent output alone cannot establish that criterion was met.
 
-Follow result problems into relevant Session calls and Context Views. Follow suspicious prompt
+Follow result problems into relevant Session calls and Prompt Views. Follow suspicious prompt
 organization or Session behavior back to Job goals and consequences where explicit links exist.
 Evidence acquired, present in an actual request, cited in an answer and verified to support a claim
 are distinct observations. A cumulative acquisition receipt does not establish current visibility

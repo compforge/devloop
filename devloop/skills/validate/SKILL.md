@@ -45,9 +45,19 @@ Component boundary; omit `--component` to include all discovered Components. A p
 analysis does not itself require full checks. Let repocli explain selection and fallback.
 Use `--file` only for an explicit requested file scope; do not build Make arguments yourself.
 
+Choose the intended Component boundary and full/impact-based scope before expensive validation
+and retain that intent through publication. Switching a completed full round to focused solely
+for publication can miss history: commands, scope and file selections must match. Let repocli
+replan the actual files when delivered inputs or required coverage change.
+
 Prepare project dependencies through its documented installation entrypoint before
 validation. Missing Makefile targets are unavailable, not passing checks. Do not invent
 targets, install tools, or change dependencies merely to make a validation command work.
+
+Finish intended checkout edits, including version and dependency manifests, before final
+validation. Keep captured inputs unchanged until the command finishes; use another checkout
+for concurrent edits. After a failed round, inspect its output and consistency before retrying
+or changing scope.
 
 Use `--json` for workflow decisions and `--output <file>` to retain the whole command result
 in ignored local state, including failed rounds. The ValidationReport is in `data`; parse it

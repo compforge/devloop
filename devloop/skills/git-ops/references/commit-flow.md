@@ -6,9 +6,10 @@
 | Commit + push | `bash <PLUGIN_ROOT>/scripts/smart_gcamp.sh` |
 | Commit + push + PR/MR | AI runs the commit-and-push transaction, then `repocli pr create` |
 
-Before publishing code, run `repocli validate --repo <repo> --base <baseline> --check format,lint,test --json`.
-Use HEAD for uncommitted edits, or the target baseline for a committed branch. Inspect results and
-fix relevant failures. These commands are issued by the AI following the skill; the Git transaction
+Before publishing code, run `repocli validate` following [validate](../../validate/SKILL.md),
+retaining the intended full/impact-based scope and Component boundary from development.
+For impact-based selection, use HEAD for uncommitted edits or the target baseline for a committed
+branch. Inspect results and fix relevant failures. The AI issues validation; the Git transaction
 neither launches repocli nor requires validation records.
 
 Select the actual repository with `--repo <path>`. Repeat `--file <path>` for explicit, repo-relative

@@ -41,7 +41,8 @@
 
 ### 入口：承接触发
 
-入口包括组装、启动与关闭的 `main`，以及 API handler、task 触发、MQ message handler 等操作入口。
+入口包括组装、启动与关闭的 `main`，以及 API handler、CLI command handler、task 触发、MQ message handler 等操作入口。
+CLI command handler 负责参数解析与输入校验、调用业务流程，以及输出格式和退出状态适配；业务规则与流程由业务层承接。
 入口 handler 负责处理协议与触发上下文，选择并调用业务流程；handler 保持薄，薄厚看职责而非行数：流式协议处理可以较长，但业务策略、资源归属与生命周期决策应由业务层承接。若新增入口需要复制这些决策，或普通需求总要在入口层跨域改状态，应检查是否缺少核心概念或统一流程入口，而不只是拆小 handler 文件。
 
 ### 业务概念与流程：表达规则并组织协作

@@ -174,6 +174,9 @@ does not update the TypeScript/Python libraries or their lockfiles.
 
 ## Command results and recovery
 
+RepoKit owns the [CLI output contract](https://github.com/compforge/repokit/blob/main/docs/cli-output.md);
+the guidance here covers its use in devloop workflows.
+
 Use default text when a person or AI reads the result to decide the next workflow action.
 Use explicit `--json` when a program needs to parse fields or filter results; non-TTY execution
 and AI use alone do not require JSON. Text must retain the verdict, scope, gaps and evidence.

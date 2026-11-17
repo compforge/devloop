@@ -11,6 +11,7 @@
 
 ## 索引
 
+- [`lifecycle-rules-as-state-transitions`](lifecycle-rules-as-state-transitions.md) — 用状态转换细化生命周期，明确合法行为、规则 owner 与独立生命周期的协作
 - [`query-scope-follows-consumer`](query-scope-follows-consumer.md) — 从慢查询追到消费方数据需求，按职责分派查询范围与执行能力
 - [`scope-not-special-case`](scope-not-special-case.md) — 新增稳定业务维度，别先建成特判分支，先重组模型
 - [`guard-impl-side`](guard-impl-side.md) — 守卫 / 空值检查放实现侧，不让每个调用方重复

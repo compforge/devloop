@@ -59,7 +59,7 @@ description: "Use when writing, modifying, refactoring, or reviewing software co
 | 应用内部哪层职责、契约或能力不足，代码如何组织 | [模块化：边界、分层与协作](references/modularity.md) |
 | 如何检验现有设计、比较差距并增量调整，或复盘 MR | [演进：绿地审视与增量调整](references/evolution.md) |
 | 既定职责下，控制流与行为是否正确清楚 | [行为：控制流、职责与契约](references/behavior.md) |
-| 命名、README / AGENTS.md、设计文档、Blog、注释与日志如何表达设计 | [表达：命名、文档、注释与日志](references/expression.md) |
+| 命名、README / AGENTS.md、设计文档、Blog、注释、日志与 CLI 输出如何表达设计 | [表达：命名、文档、注释与日志](references/expression.md) |
 | 检查架构或实现是否成立 | [评审：架构与代码](references/review.md) |
 
 - 编写或修改 Go、Python、TypeScript：读取 [语言专项约定入口](references/language/README.md) 及对应语言文件；语言基线不改变 T0 / T1 / T2 定档。

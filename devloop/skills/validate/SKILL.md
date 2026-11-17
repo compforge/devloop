@@ -32,7 +32,7 @@ report exposes full-scope fallback or slow checks; do not repeat an onboarding a
 repocli format --repo <repo> --component <component>
 repocli lint --repo <repo> --component <component>
 repocli test --repo <repo> --component <component>
-repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m --json
+repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m
 ```
 
 `validate` defaults to lint/test. `--check` selects the steps to combine. Format always runs
@@ -59,10 +59,12 @@ validation. Keep captured inputs unchanged until the command finishes; use anoth
 for concurrent edits. After a failed round, inspect its output and consistency before retrying
 or changing scope.
 
-Use `--json` for workflow decisions and `--output <file>` to retain the whole command result
-in ignored local state, including failed rounds. The ValidationReport is in `data`; parse it
-even when the process exits nonzero. `--plan` and `--history` also return envelopes by default;
-neither provides evidence that checks ran in this invocation. Repocli checks its own history
+Read the default text summary for AI-led diagnosis and workflow decisions. Use `--json` only
+when parsing fields, or `--output <file>` to retain full JSON evidence alongside the text summary,
+including failed rounds. Do not add `--json` and shell redirection to save a second copy of an
+`--output` result. Read results even on nonzero exit; JSON carries the ValidationReport in `data`.
+In repocli 0.93.0+, `--plan` and `--history` also default to text; use `--json` for structured
+queries. Neither proves that checks ran in this invocation. Repocli checks its own history
 before execution. `--force` requests real execution; `--concurrency` bounds simultaneous checks.
 Do not assemble previous reports or decide execution reuse in the workflow.
 
@@ -73,12 +75,13 @@ worker flags (repocli 0.91.0+). A flag cannot accelerate a recipe that does not 
 recommend the project change instead. Follow [capacity tuning](references/spec.md#capacity-tuning)
 to adjust one budget at a time and compare real execution at the same scope.
 
-Accept validation only after checking the command outcome plus `data.passed`, `data.complete`,
-`data.inputsConsistent`, scope and individual check results. Report Components, focused/full
-scope, executed/reused checks, failures and unavailable checks. Input inconsistency invalidates
+Accept validation only after checking the outcome, passed/complete/inputsConsistent verdict,
+scope and individual checks; these verdict fields are under `data` in JSON. Report Components,
+focused/full scope, executed/reused checks, failures and unavailable checks. Input inconsistency invalidates
 passing evidence; a focused pass, format success or a single check does not prove full validation.
-Report `cost.wallSeconds` and the slowest Component/check steps with their current execution
-and lookup times. Use `cost.validation`, not historical reused check durations, for this round's cost.
+Report wall time and the slowest Component/check steps with their current execution and lookup
+times; the text summary exposes these costs. In JSON use `cost.wallSeconds` and `cost.validation`,
+not historical reused check durations, for this round's cost.
 
 For past failures or slow checks, use `repocli validate history list` to select a run,
 then `repocli validate history show <runID>` for captured output, test timings and input evidence.

@@ -174,9 +174,12 @@ does not update the TypeScript/Python libraries or their lockfiles.
 
 ## Command results and recovery
 
-Before using CLI output to decide the next workflow action, read this contract. Use `--json`
-for validation and PR/cleanup decisions. stdout contains one final command result; stderr
-contains progress and logs. Capture the exit status and parse stdout even on nonzero exit.
+Use default text when a person or AI reads the result to decide the next workflow action.
+Use explicit `--json` when a program needs to parse fields or filter results; non-TTY execution
+and AI use alone do not require JSON. Text must retain the verdict, scope, gaps and evidence.
+In JSON mode stdout contains one final command result; stderr contains progress and logs.
+Capture the exit status and read the result even on nonzero exit. The field contract below
+applies when parsing JSON; do not add JSON solely to read a validation or PR/cleanup summary.
 `version --json` reports the product version at `data.version`; help and `--version` remain text.
 
 The envelope has `schemaVersion`, `command`, `outcome`, `summary`, `diagnostics`, `data`,
@@ -201,7 +204,7 @@ a known empty collection only after a successful query. Analysis can succeed wit
 
 Use `error.code` for classification and `op`, `subject`, `httpStatus`, `retryAt`, `uncertain`
 and `hint` for context. `error` is optional: failed checks and partial batches can be fully
-explained by `data` and diagnostics. Do not parse `message` or `summary` for control decisions.
+explained by `data` and diagnostics. Programs must not parse `message` or `summary` for control decisions.
 Diagnostics carry severity/code/phase and may link evidence via a JSON Pointer into the
 whole result (for example `/data/components/0/checks/1`). Preserve these links and any
 successfully exported artifacts when reporting a failure.
@@ -214,9 +217,13 @@ be interpreted as absence of side effects. PR-specific recovery is in
 [PR management](../skills/git-ops/references/pr-management.md).
 
 `--output <file>` on validation saves the whole command result, including failed rounds,
-plans and history. Successful export matches JSON stdout, not the raw ValidationReport;
-`artifacts` identifies the exported file. Keep reports in ignored local state: they contain
-project output, and the caller owns retention. Export failure does not erase checks already
+plans and history. File export is independent of stdout format: use
+`repocli validate --output result.json` for a readable summary and full JSON evidence. Do not also redirect JSON stdout
+to another copy of the result, or to the same path. Alternatively, use `--json > result.json`
+without `--output` when only a file is needed. Successful export matches the JSON envelope,
+not the raw ValidationReport; `artifacts` identifies the file. Repocli 0.93.0+ also prints its
+path in text mode and defaults `--plan` / `--history` to text; add `--json` for field parsing.
+Keep reports in ignored local state: they contain project output, and the caller owns retention. Export failure does not erase checks already
 completed in `data`, but must be reported separately. Do not rerun checks solely to reconstruct
 an export. Repocli owns execution identity and reuse; devloop does not import this result
 into a commit gate or maintain another validation cache.

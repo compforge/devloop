@@ -5,6 +5,8 @@ The project declares literal targets in each Component's Makefile:
 - `format`: optional source normalization, explicitly requested before checks.
 - `lint-ci`, then `lint`: static checks.
 - `test`, then `test-ci`, then `test-local`: behavior checks.
+- `build`: optional compilation, packaging and artifact checks. Only Components that need
+  build verification declare this target. Each recipe owns its output paths and toolchain.
 
 Repocli parses this contract without evaluating Make, freezes commands and uses
 `make -f Makefile`. It does not infer language-specific runners. The project owns
@@ -17,6 +19,9 @@ An empty value must mean the complete check. Repocli selects focused inputs only
 when the corresponding variable is explicitly consumed and paths are representable.
 Deleted/reowned paths, missing filtering support or empty candidates for an affected
 Component fall back to full scope. Partial impact does not by itself force full scope.
+
+With repocli 0.94.0+, format may consume `FORMAT_FILES` (existing recipes can use `LINT_FILES`),
+and build may consume `BUILD_FILES` for an explicit file selection. Impact-based builds remain full.
 
 ## Worker budgets
 
@@ -31,6 +36,8 @@ An explicit flag must be positive. It freezes `LINT_WORKERS=N` or `TEST_WORKERS=
 corresponding Make command, visible in plans/results/history and included in reuse matching.
 Changing test workers does not invalidate lint reuse, and format receives neither override.
 Existing inherited environment values still participate in the environment digest as before.
+In 0.94.0+, format and build also accept their own worker budgets through `--format-workers` and
+`--build-workers`, passed to Make as `FORMAT_WORKERS` and `BUILD_WORKERS`.
 The flags apply to every selected Component's corresponding check; select a Component when
 tuning it independently. Repocli does not infer native runner flags or automatically tune them.
 
@@ -62,6 +69,13 @@ No additional tuning cache or persistent settings are required; retain the comma
 `validate --check format,lint,test` finishes format before fresh planning and bounded parallel
 checks. Failed format stops the round; absent optional format allows checks. Format-only
 success is never lint/test evidence. Dependencies must be prepared first.
+
+With repocli 0.94.0+, `--check lint,test,build` finishes the selected lint/test checks and
+verifies input consistency before build. Build runs in full for each selected Component with
+a build target by default. An explicit file selection may narrow build when its recipe consumes
+`BUILD_FILES`. Each execution gets its own history record. A failed prerequisite or missing
+target leaves the build skipped. If delivery requires a verified artifact, inspect the
+Component's build result before publishing.
 
 The CLI command envelope and the ValidationReport in `data` answer different questions:
 command completion versus validation coverage and evidence. Read

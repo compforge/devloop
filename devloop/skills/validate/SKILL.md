@@ -1,6 +1,6 @@
 ---
 name: validate
-description: Guide project Makefile format/lint/test contracts, run checks through repocli, and tune slow validation from execution evidence. Use to set up or improve validation targets, validate changes, format code, run tests, verify before publishing, or diagnose failed and slow checks.
+description: Guide project Makefile format/lint/test and optional build contracts, run checks through repocli, and tune slow validation from execution evidence. Use to set up or improve validation targets, validate changes, format code, run tests, verify before publishing, or diagnose failed and slow checks.
 ---
 
 Use repocli directly for project checks. The project owns its Makefile recipes;
@@ -33,12 +33,18 @@ repocli format --repo <repo> --component <component>
 repocli lint --repo <repo> --component <component>
 repocli test --repo <repo> --component <component>
 repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m
+repocli validate --repo <repo> --component <component> --check build --timeout 10m
 ```
 
 `validate` defaults to lint/test. `--check` selects the steps to combine. Format always runs
 first; repocli replans from the resulting contents before running lint/test. Format can
 change files and never grants validation evidence. `--plan` is read-only; when format is
 selected, subsequent check commands are previews and must be replanned after format.
+
+With repocli 0.94.0+, request `build` when the task needs an artifact verified. The Component
+declares a literal `build` target in its own Makefile and owns the native commands and artifact
+checks. File selection and worker budgets are optional recipe inputs. Keep packaging smoke tests there so ordinary test runs stay fast. In a combined round,
+build follows lint/test and executes afresh. Report a missing target as skipped.
 
 Use `--base` for automatic impact selection. Omit it for full checks within the selected
 Component boundary; omit `--component` to include all discovered Components. A partial
@@ -51,7 +57,7 @@ for publication can miss history: commands, scope and file selections must match
 replan the actual files when delivered inputs or required coverage change.
 
 Prepare project dependencies through its documented installation entrypoint before
-validation. Missing Makefile targets are unavailable, not passing checks. Do not invent
+validation. Missing Makefile targets are reported as skipped. Do not invent
 targets, install tools, or change dependencies merely to make a validation command work.
 
 Finish intended checkout edits, including version and dependency manifests, before final

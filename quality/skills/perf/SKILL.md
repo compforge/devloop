@@ -104,8 +104,10 @@ restarts, and scaling; use profiling or trace evidence for causal investigation.
 Preserve useful completed windows after later failures while reporting the run's error or cleanup
 state. Keep missing evidence and interrupted measurement visible.
 
-For dependency attribution or a call graph snapshot, read [call graph evidence](references/callgraph.md).
-It covers Operation metrics, conditional paths, call amplification/visit ratio, and evidence limits.
+Use the observed inflight request count to characterize load during the selected window. Starting
+at the entry Operation, follow the [call graph](references/callgraph.md) and compare each Operation's
+request rate, error rate, and duration (RED) with its owning Service's resource usage in that same
+window to identify bottleneck candidates.
 
 ## Grow coverage deliberately
 

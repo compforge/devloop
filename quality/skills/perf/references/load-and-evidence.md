@@ -85,9 +85,9 @@ With quality-harness, inspect:
 | `verdict.json` | Native execution diagnostics and evidence references; not business acceptance. |
 | `callgraph.json` (when available) | Declared Operation topology enriched with window metrics and provenance. |
 
-Verify the reader supports the artifact schema. Python provides resource observation and HTML
-reporting; the TypeScript perf SDK supplies request execution and evidence, with resource
-observation supplied by the consumer. Quality-harness records facts and does not own business SLOs. Discover the consumer's actual
+Verify the reader supports the artifact schema. For Kubernetes, the TypeScript Toolbox can derive
+standard resource observations from the consumer's Workload declarations. Interpret the resulting
+series using the [Service resource evidence guide](resources.md). Quality-harness records facts and does not own business SLOs. Discover the consumer's actual
 capabilities rather than assuming SDK parity or a generic EvaluationRun/Worksheet artifact.
 
 Preserve completed Outcomes when a Judge raises. Treat absent judgments as incomplete evaluation,

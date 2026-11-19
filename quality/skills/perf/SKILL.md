@@ -106,7 +106,7 @@ state. Keep missing evidence and interrupted measurement visible.
 
 Use the observed inflight request count to characterize load during the selected window. Starting
 at the entry Operation, follow the [call graph](references/callgraph.md) and compare each Operation's
-request rate, error rate, and duration (RED) with its owning Service's resource usage in that same
+request rate, error rate, and duration (RED) with its owning Service's [resource usage](references/resources.md) in that same
 window to identify bottleneck candidates.
 
 ## Grow coverage deliberately

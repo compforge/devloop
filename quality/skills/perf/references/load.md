@@ -1,7 +1,9 @@
 # Load and result interpretation
 
-Use this reference when selecting load, interpreting a run, or comparing experiments. Shared
-identity and evidence semantics are defined in [Quality concepts](../../../CONCEPTS.md).
+Use this guide to select a load profile or interpret saved runs. For an existing run, start
+with the recorded target revision, resource profile and Case mix. Identify the realized Window,
+observed inflight, completed sample count and collection gaps before comparing results.
+See [Quality concepts](../../../CONCEPTS.md) for shared identity and evidence semantics.
 
 ## Establish the native load contract
 

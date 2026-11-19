@@ -45,7 +45,7 @@ and [load-environment preparation](references/load-environment.md) completely. R
 then execution location and connection, then load-generator capacity, dependency quotas, fresh
 observations, steady state, safety limits, and cleanup.
 
-Before selecting or interpreting load, read [load and evidence](references/load-and-evidence.md)
+Before selecting or interpreting load, read [load and result interpretation](references/load.md)
 completely. Use the project's actual scheduling contract: inspect what happens at the inflight
 limit, how phases end, and which events determine windows and statistics.
 

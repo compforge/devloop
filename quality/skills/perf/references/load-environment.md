@@ -2,7 +2,7 @@
 
 Read [environment preparation](../../../references/environment.md) first. This reference adds
 performance-specific resource, generator, observation, guardrail, and cooldown preparation.
-Interpret scheduling and result semantics through [load and evidence](load-and-evidence.md).
+Interpret scheduling and result semantics through [load and result interpretation](load.md).
 
 ## Establish the load contract
 

@@ -1,4 +1,4 @@
-# Performance load and evidence
+# Load and result interpretation
 
 Use this reference when selecting load, interpreting a run, or comparing experiments. Shared
 identity and evidence semantics are defined in [Quality concepts](../../../CONCEPTS.md).

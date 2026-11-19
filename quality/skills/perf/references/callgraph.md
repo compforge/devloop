@@ -108,7 +108,8 @@ Reference: Denning and Buzen, [The Operational Analysis of Queueing Network Mode
    traffic amplification, slower APIs and response-code changes. Preserve candidate explanations.
 3. Compare an earlier or lower-load run only after fixing case, graph revision, counter semantics,
    windows, resources and generator conditions. Report changed paths or configuration explicitly.
-4. Follow candidates to service resource/queue/restart evidence and request traces or logs. A
+4. Check the candidate Operation's [Service resource usage](resources.md) over the same window,
+   then examine queue and restart evidence and request traces or logs. A
    parent's long duration may include waiting on a child; sequential and parallel work behave
    differently. The largest p95 node is not automatically the bottleneck.
 5. State the confirmed facts, plausible mechanism and remaining gap. Use a bounded follow-up

@@ -15,97 +15,26 @@ The project owns its Cases, protocol Runners, Judges, resource/load profiles, Pr
 limits, baselines and any explicitly supplied acceptance criteria. A perf Runner invokes a service protocol; Workload identifies a Service's
 platform carrier. Record where the load generator executes separately from both.
 
-## Discover and select
+## Choose the workflow
 
-Read the project's AGENTS.md and README, then locate:
+- **Run a load test.** Select the project's Case mix and profile using [load.md](references/load.md).
+  Follow [run.md](references/run.md) to verify the target and generator, show the effective configuration,
+  obtain confirmation, execute the run, and verify recovery.
+- **Interpret or compare saved runs.** Start with the artifacts and [load.md](references/load.md).
+  Establish the actual inflight load, measurement window, and request population before interpreting
+  latency or throughput. Existing artifacts support offline analysis.
+- **Diagnose a bottleneck.** Establish the pressure during the selected window from observed inflight.
+  From the entry Operation, follow the [call graph](references/callgraph.md) and compare each Operation's
+  rate, errors, and duration (RED). Check the owning Service's [resource usage](references/resources.md)
+  during the same window. Use traces, logs, or a controlled comparison to test a candidate explanation.
 
-- the canonical performance, capacity, stress, soak, or regression commands and operating notes;
-- the target Service, Environment, deployed revision, Workloads, load-generator location, and
-  application connection path;
-- Cases or stimuli, case mix, protocol Runner, raw completion signals, and independent Judge;
-- named experiments and resource/load profiles, both request rate and maximum inflight limits,
-  phase schedules, duration, arrival distribution, and request/time budgets;
-- project graph and observation declarations, Probes and metric semantics (including RED when available);
-- optional acceptance criteria, breakers, stop/cancellation behavior, cleanup, and target authorization;
-- native run schema, raw requests and resource observations, evaluation records, reports, and
-  comparison baselines.
+## Discover the project's capability
 
+Use the project's AGENTS.md and README to find the canonical entrypoint, Cases, protocol Runner,
+completion signals and Judge, resource/load profiles, observation declarations, and saved artifacts.
 Classify the requested action as `ready`, `blocked`, or `no_capability` using the shared concepts.
-An executable load test requires a project-owned adapter, runnable profile, and verified target
-connection. Existing artifacts can support offline analysis without a reachable target.
-
-Choose the smallest existing profile that answers the question. Preserve a requested capacity scan
-or soak test's scope; a smoke run cannot stand in for it. Resolve ambiguity from project evidence
-and ask when the intended profile or target remains unclear.
-
-## Prepare and run
-
-Before live load or target changes, read [environment preparation](../../references/environment.md)
-and [load-environment preparation](references/load-environment.md) completely. Resolve the target,
-then execution location and connection, then load-generator capacity, dependency quotas, fresh
-observations, steady state, safety limits, and cleanup.
-
-Before selecting or interpreting load, read [load and evidence](references/load-and-evidence.md)
-completely. Use the project's actual scheduling contract: inspect what happens at the inflight
-limit, how phases end, and which events determine windows and statistics.
-
-### Show and confirm the actual configuration before load
-
-Before starting live load, print the actual raw configuration that will be executed in a fenced
-YAML/JSON block, with its file path and exact command. Use the final file after overrides and show
-any effective defaults that affect load separately; do not substitute a remembered profile or a
-prose summary. Redact credentials and sensitive payload values without hiding the experimental
-conditions: target and connection, Cases and routing selectors (including whether bot_id is absent),
-request_rate, max_inflight, warmup/hold/cooldown, request/cleanup timeouts, breakers, and observations.
-Explicitly describe inf/unlimited as no rate limit; an inflight cap does not limit request rate.
-
-Wait for the user's explicit confirmation of these displayed configurations before sending load.
-A general request to run is not confirmation of a configuration selected later. For a comparison,
-show every configuration and identify the intended differences; keep other load parameters equal.
-One confirmation covers the displayed sequence of runs, without asking again between unchanged
-runs. If the configuration, target or connection changes, show the revised configuration and obtain
-confirmation again. Do not quietly replace a load run with a single-request preflight.
-
-Use the canonical entrypoint and native lifecycle. Preserve the requested revision, resource
-envelope, load, case mix, and any declared acceptance policy. Record the exact command and realized configuration;
-respect warmup, hold, cooldown, breaker, stop, cancellation, and cleanup behavior. Do not edit a
-profile during measurement or retry a failed run only to obtain green output.
-
-Deploying, installing dependencies, creating credentials, resizing resources, switching targets,
-or generating material load requires authorization covering that action and target. Record changed
-execution conditions and preserve the first failure when an alternate connection is used.
-
-Capture the native execution model, raw requests and resource samples, independent evaluations,
-Verdict, report, logs, traces, and cleanup evidence. Use persisted facts for supported offline
-judgment or report rendering; changing a judgment is not a reason to generate
-load again. A Judge error must remain visible even when a completed Outcome is available.
-
-## Validate and interpret
-
-Check data health before drawing a performance conclusion:
-
-1. Verify the target and revision, resources, both load axes, case mix, and realized phase windows.
-2. Check stop reasons, completed samples, missing judgments, drops, interruptions, inflight state,
-   time limited by the inflight cap, Probe errors, and missing series.
-3. Distinguish configured rate, actual dispatch rate, and completion throughput. No drops does not
-   prove the configured rate was sustained. Read scheduling and coordinated-omission caveats.
-4. Align request and resource windows. Interpret latency by the native request cohort and
-   throughput by actual completion events; inspect warmup, hold, and cooldown separately.
-5. Describe observed throughput and limitations from complete windows with sufficient evidence.
-   Business acceptance requires supplied criteria; do not invent SLOs. A finite-rate window
-   blocked by its inflight cap cannot confirm that the configured rate was sustained.
-6. Compare within a declared scan axis while holding the other axis, resources, scheduling shape,
-   and execution conditions fixed. Separate incomparable points instead of fitting one curve.
-
-A supplied acceptance criterion supports a decision only under the realized experiment.
-It does not establish untested capacity or a root cause. Correlate latency, throughput, errors, saturation, resources,
-restarts, and scaling; use profiling or trace evidence for causal investigation.
-
-Preserve useful completed windows after later failures while reporting the run's error or cleanup
-state. Keep missing evidence and interrupted measurement visible.
-
-For dependency attribution or a call graph snapshot, read [call graph evidence](references/callgraph.md).
-It covers Operation metrics, conditional paths, call amplification/visit ratio, and evidence limits.
+For live load, choose the smallest existing profile that answers the requested question, preserving
+the scope of a capacity scan or soak test. Resolve the target and profile before execution.
 
 ## Grow coverage deliberately
 

@@ -1,17 +1,32 @@
 import { Model } from "@opencode/plugin";
 import type { Context, Plugin } from "@opencode/plugin/promise/plugin";
 import type { Session } from "@opencode/schema/session";
-import { modelRef, routeFor, sameModel, type Complexity, type ModelRef } from "../../domain/routing.js";
+import { fastModel, routingOwnership, routeFor, sameModel, type Complexity, type ModelRef, type RoutingMode } from "../../domain/routing.js";
 import { configuration } from "../../lib/config.js";
 import { DecisionError, DecisionsClient } from "../../lib/decisions.js";
 
 const AUTO_ID = "model-router";
+const AUTO_FAST_ID = "model-router-fast";
 function log(event: string, fields: Record<string, unknown>): void {
   console.error(JSON.stringify({ plugin: "model-router", event, ...fields }));
 }
 
+// Match host variant semantics when materializing Auto Fast's queue fallback.
+// A shallow spread would drop nested model defaults overridden only in part.
+function mergeOverlay(base: Record<string, unknown> = {}, overlay: Record<string, unknown> = {}): Record<string, unknown> {
+  return Object.fromEntries([...new Set([...Object.keys(base), ...Object.keys(overlay)])].map(key => {
+    const left = base[key], right = overlay[key];
+    if (right === undefined) return [key, left];
+    if (left && right && typeof left === "object" && typeof right === "object" && !Array.isArray(left) && !Array.isArray(right)) {
+      return [key, mergeOverlay(left as Record<string, unknown>, right as Record<string, unknown>)];
+    }
+    return [key, right];
+  }));
+}
+
 /**
- * @spec Routing is opt-in through Auto; classification never owns permissions or agent selection.
+ * @spec Routing is opt-in through Auto or Auto Fast; classification never owns permissions or agent selection.
+ * @spec Auto Fast preserves the chosen reasoning settings and requests priority service, including fallback and tool steps.
  * @spec Queued prompts do not mutate the model of work that is already running.
  * @why switchModel is session-wide; stale classifications and manual overrides must win over a late result.
  * @case ../../tests/router.spec.ts
@@ -20,6 +35,10 @@ export async function setup(ctx: Context): Promise<() => void> {
   const config = configuration(ctx.options);
   const client = new DecisionsClient(config);
   const auto = { providerID: config.models.medium.providerID, id: AUTO_ID };
+  const autoFast = { providerID: config.models.medium.providerID, id: AUTO_FAST_ID };
+  const routes = { auto: config.models, "auto-fast": {
+    simple: fastModel(config.models.simple), medium: fastModel(config.models.medium), complex: fastModel(config.models.complex),
+  } };
   const revisions = new Map<string, symbol>();
   const transitions = new Map<string, Promise<void>>();
   let closed = false;
@@ -30,15 +49,36 @@ export async function setup(ctx: Context): Promise<() => void> {
     return session.model ?? (await ctx.model.default()).data ?? undefined;
   };
 
-  // Auto inherits a real Sol model's transport, credentials and limits. If routing
-  // is skipped (e.g. queue admission), inference still has a usable medium model.
+  // Variants keep the real models in the picker without global billing changes.
+  // Raw body overlays win over protocol settings, so both must request priority.
   await ctx.provider.transform((editor) => {
+    for (const providerID of new Set(Object.values(config.models).map(ref => ref.providerID))) {
+      const source = editor.get(providerID);
+      if (!source) continue;
+      editor.models.set(providerID, [...source.models.values()].map(model => {
+        const variants = Object.values(config.models).filter(ref => ref.providerID === providerID && ref.id === model.id).flatMap(ref => {
+          const base = ref.variant && ref.variant !== "default" ? model.variants.find(variant => variant.id === ref.variant) : undefined;
+          if (ref.variant && ref.variant !== "default" && !base) return [];
+          return [{ ...base, id: Model.VariantID.make(fastModel(ref).variant),
+            settings: { ...base?.settings, serviceTier: "priority" },
+            body: { ...base?.body, service_tier: "priority" } }];
+        });
+        return { ...model, variants: [...new Map([...model.variants, ...variants].map(variant => [variant.id, variant])).values()] };
+      }));
+    }
     const provider = editor.get(auto.providerID);
     const medium = provider?.models.get(config.models.medium.id);
     if (!provider || !medium) return;
+    const fast = medium.variants.find(variant => variant.id === fastModel(config.models.medium).variant);
+    // Both Auto entries inherit a working medium transport even when queue
+    // admission skips classification. Fast also inherits the configured variant.
     editor.models.set(auto.providerID, [
-      ...[...provider.models.values()].filter((model) => model.id !== AUTO_ID),
+      ...[...provider.models.values()].filter((model) => model.id !== AUTO_ID && model.id !== AUTO_FAST_ID),
       { ...medium, id: Model.ID.make(AUTO_ID), name: "Auto (Decisions)", variants: [], enabled: true },
+      ...(fast ? [{ ...medium, id: Model.ID.make(AUTO_FAST_ID), name: "Auto Fast (Decisions)", variants: [], enabled: true,
+        settings: mergeOverlay(medium.settings, fast.settings),
+        headers: Object.fromEntries([...Object.entries(medium.headers ?? {}), ...Object.entries(fast.headers ?? {})].map(([name, value]) => [name.toLowerCase(), value])),
+        body: mergeOverlay(medium.body, fast.body) }] : []),
     ]);
   });
 
@@ -50,9 +90,11 @@ export async function setup(ctx: Context): Promise<() => void> {
     try {
       await transitions.get(event.sessionID);
       const selected = await effectiveModel(event.sessionID);
-      const last = modelRef(await ctx.storage.get(storageKey(event.sessionID)));
-      if (!sameModel(selected, auto) && !sameModel(selected, last)) {
-        if (last) await ctx.storage.remove(storageKey(event.sessionID));
+      const ownership = routingOwnership(await ctx.storage.get(storageKey(event.sessionID)));
+      const mode: RoutingMode | undefined = sameModel(selected, autoFast) ? "auto-fast"
+        : sameModel(selected, auto) ? "auto" : sameModel(selected, ownership?.lastModel) ? ownership?.mode : undefined;
+      if (!mode) {
+        if (ownership) await ctx.storage.remove(storageKey(event.sessionID));
         return;
       }
       const history = await ctx.session.context({ sessionID: event.sessionID });
@@ -83,8 +125,8 @@ export async function setup(ctx: Context): Promise<() => void> {
       const available = (await ctx.model.list()).data;
       const exists = (ref: ModelRef) => available.some((model) => model.enabled && model.providerID === ref.providerID && model.id === ref.id
         && (!ref.variant || model.variants.some((variant) => variant.id === ref.variant)));
-      let target = config.models[tier];
-      if (!exists(target)) { target = config.models.medium; reason = "target_unavailable"; }
+      let target = routes[mode][tier];
+      if (!exists(target)) { target = routes[mode].medium; reason = "target_unavailable"; }
       if (!exists(target)) { log("route_skipped", { session: event.sessionID, reason: "fallback_unavailable" }); return; }
       // Serialize only the host mutation and ownership receipt, not classification.
       // A new prompt must not observe our switched model before its receipt exists.
@@ -98,8 +140,8 @@ export async function setup(ctx: Context): Promise<() => void> {
         }
         await ctx.session.switchModel({ sessionID: event.sessionID, model: target });
         // Only ownership is persisted; prompt text stays in OpenCode's own history.
-        await ctx.storage.set(storageKey(event.sessionID), { ...target });
-        log("routed", { session: event.sessionID, message: event.messageID, tier, confidence, target, reason, durationMs: Date.now() - start });
+        await ctx.storage.set(storageKey(event.sessionID), { mode, lastModel: { ...target } });
+        log("routed", { session: event.sessionID, message: event.messageID, mode, tier, confidence, target, reason, durationMs: Date.now() - start });
       })();
       transitions.set(event.sessionID, transition);
       try { await transition; }

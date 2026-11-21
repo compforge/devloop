@@ -2,6 +2,7 @@
 
 ## 默认技术栈
 
+- 实现通用逻辑时，可在 [python-stdx](https://github.com/compforge/python-stdx) 中查找已有能力。
 - DB 访问默认使用 SQLAlchemy。
 - 项目通常用一个继承 pydantic `BaseSettings` 的 settings 类集中外部依赖配置。
 - Web 项目通常使用 FastAPI，并使用 dependency_injector 作为 IoC 框架。

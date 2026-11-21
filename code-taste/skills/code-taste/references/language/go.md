@@ -2,6 +2,7 @@
 
 ## 默认技术选择
 
+- 实现通用逻辑时，可在 [go-stdx](https://github.com/compforge/go-stdx) 中查找已有能力。
 - 使用 Go Modules；项目目录不依赖 GOPATH 的 `src` 布局。
 - DB 访问默认使用 GORM；除非项目已有其它稳定选择，不为局部需求引入第二套 ORM。
 - 结构化日志默认使用标准库 `log/slog`；若项目已统一使用 `zap` 或 `zerolog`，沿用现有日志栈，不为局部改动引入第二套。

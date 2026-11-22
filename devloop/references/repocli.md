@@ -34,6 +34,7 @@ a repository-relative path, one-based line, and one-based UTF-8 byte column.
 | What does it directly call? | `repocli code callees --at file.go:12:6` |
 | Which types does this type extend or implement? | `repocli code hierarchy --at types.ts:4:7 --direction parents` |
 | Which types extend or implement it? | `repocli code hierarchy --at types.ts:4:7 --direction children` |
+| Which declarations may have become unused in my working-tree changes? | `repocli code dead --base HEAD` |
 
 Call queries return one hop and preserve each call site. Hierarchy queries traverse
 recursively. Omit `--direction` to see both ancestors and descendants of the selected

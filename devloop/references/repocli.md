@@ -22,6 +22,24 @@ retaining the dependency workset. Repocli selects symbol, file or package granul
 automatically. `data.affectedFiles` includes seeds, confidence, distance and relation evidence;
 these describe static associations, not runtime probabilities.
 
+## Code navigation
+
+Use `rg` to locate the declaration when you only know its name. Run the query in the
+relevant checkout, or pass `--repo <checkout>`. Point `--at` at the **declaration name** using
+a repository-relative path, one-based line, and one-based UTF-8 byte column.
+
+| Question | Command |
+| --- | --- |
+| Who directly calls this function or method? | `repocli code callers --at file.go:12:6` |
+| What does it directly call? | `repocli code callees --at file.go:12:6` |
+| Which types does this type extend or implement? | `repocli code hierarchy --at types.ts:4:7 --direction parents` |
+| Which types extend or implement it? | `repocli code hierarchy --at types.ts:4:7 --direction children` |
+
+Call queries return one hop and preserve each call site. Hierarchy queries traverse
+recursively. Omit `--direction` to see both ancestors and descendants of the selected
+type. Follow reported locations into source. An empty caller list can occur for a
+registered callback. Use `--json` for structured evidence, confidence, and diagnostics.
+
 ## Worktree lifecycle
 
 `repocli worktree ensure <name> --branch <branch> --base <branch> --remote origin --repo <repo> --json`

@@ -62,8 +62,9 @@ targets, install tools, or change dependencies merely to make a validation comma
 
 Finish intended checkout edits, including version and dependency manifests, before final
 validation. Keep captured inputs unchanged until the command finishes; use another checkout
-for concurrent edits. After a failed round, inspect its output and consistency before retrying
-or changing scope.
+for concurrent edits. When an edit supersedes an active round in the same checkout, cancel
+that round and wait for it to exit before editing and starting the replacement. If a matching
+round is already running, wait for its report. Inspect failed output and consistency before retrying.
 
 Read the default text summary for AI-led diagnosis and workflow decisions. Use `--json` only
 when parsing fields, or `--output <file>` to retain full JSON evidence alongside the text summary,

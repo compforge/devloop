@@ -89,7 +89,7 @@ devloop 会选择当前仓库和受影响的 Component，完成验证、提交�
 AI 按 validate skill 直接执行 repocli，由 RepoKit 选择 Component、规划检查、执行并记录历史：
 
 ```console
-repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m --json
+repocli validate --repo <repo> --check format,lint,test --timeout 10m --json
 ```
 
 format 可选且允许修改源码；完成后重新规划，再有界并发执行 lint/test。

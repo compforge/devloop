@@ -29,10 +29,9 @@ Start with project defaults. Inspect a Makefile's capabilities when entering a p
 report exposes full-scope fallback or slow checks; do not repeat an onboarding audit on every run.
 
 ```bash
-repocli format --repo <repo> --component <component>
-repocli lint --repo <repo> --component <component>
-repocli test --repo <repo> --component <component>
-repocli validate --repo <repo> --base HEAD --check format,lint,test --timeout 10m
+repocli validate --repo <repo>
+repocli validate --repo <repo> --component <component> --check test
+repocli validate --repo <repo> --check format,lint,test --timeout 10m
 repocli validate --repo <repo> --component <component> --check build --timeout 10m
 ```
 
@@ -46,15 +45,11 @@ declares a literal `build` target in its own Makefile and owns the native comman
 checks. File selection and worker budgets are optional recipe inputs. Keep packaging smoke tests there so ordinary test runs stay fast. In a combined round,
 build follows lint/test and executes afresh. Report a missing target as skipped.
 
-Use `--base` for automatic impact selection. Omit it for full checks within the selected
-Component boundary; omit `--component` to include all discovered Components. A partial
-analysis does not itself require full checks. Let repocli explain selection and fallback.
-Use `--file` only for an explicit requested file scope; do not build Make arguments yourself.
-
-Choose the intended Component boundary and full/impact-based scope before expensive validation
-and retain that intent through publication. Switching a completed full round to focused solely
-for publication can miss history: commands, scope and file selections must match. Let repocli
-replan the actual files when delivered inputs or required coverage change.
+Run `repocli validate` for routine checks. With repocli 0.100.0+, it selects lint and
+test files from the branch diff and falls back to full checks when the scope is uncertain.
+Pass `--component` for a requested Component boundary and `--full` for explicitly required
+full coverage. Earlier CLI versions run full checks by default.
+Inspect the reported scope and fallback reason. Let repocli supply Makefile file lists.
 
 Prepare project dependencies through its documented installation entrypoint before
 validation. Missing Makefile targets are reported as skipped. Do not invent

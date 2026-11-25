@@ -8,12 +8,11 @@ Branch protection, checkout ownership and exact staging selection remain live ch
 Fresh branches use an explicit base, and pushes reject unintended foreign commits.
 """
 from __future__ import annotations
-from repokit import cli as repokit_cli
+from repokit import RepoKitError, cli as repokit_cli
 from domain import git_policy
 
 import argparse
 import os
-import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -225,23 +224,13 @@ def publish_branch(repo: str, branch: str, plan: list[str], expected_commit: str
     +link=component://devloop/docs/repository.md
     """
     commit = expected_commit or git_state.rev_parse(repo, f"refs/heads/{branch}")
-    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
-        raise SmartError("cannot freeze the source branch commit before publication")
-    recovery = f"repocli git push --branch {branch!r} --commit {commit} --remote origin --check"
     try:
-        result = repokit_cli.run(repo, ("git", "push"),
-            ["--branch", branch, "--commit", commit, "--remote", "origin", "--set-upstream"], timeout=300)
-        data = repokit_cli.push_result(result, repo, branch, commit, "origin")
-        if result["outcome"] != "succeeded":
-            error = result.get("error") or {}
-            message = error.get("message") if isinstance(error, dict) else None
-            raise SmartError(f"push {result['outcome']}: {message or 'remote publication not confirmed'}; inspect with {recovery}")
-        if not data["confirmed"] or data.get("remoteCommit") != commit:
-            raise ValueError("successful command lacks matching remote commit evidence")
-        plan.append(f"confirmed origin/{branch} at {commit}")
-        plan.extend(f"warning: {d['message']}" for d in data["diagnostics"])
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
-        raise SmartError(f"push result unavailable; inspect with {recovery} before retrying: {error}") from error
+        data = repokit_cli.push_commit(repo, branch, commit, set_upstream=True)
+    except RepoKitError as error:
+        raise SmartError(error.text()) from error
+    plan.append(f"confirmed origin/{branch} at {commit}")
+    plan.extend(f"warning: {item['message']}" for item in data["diagnostics"])
+
 
 # The failure that bites gcampr callers most: a --message whose quotes/specials broke shell
 # parsing, so its tail leaks as stray argv → "unrecognized arguments". Handed to cli.ArgParser

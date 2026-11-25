@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import shlex
 import subprocess
+from pathlib import Path
 
 from repokit.cli import rebase_result
 from repokit.cli import run as run_repocli
@@ -54,10 +56,14 @@ def _invoke(repo: str, action: str, arguments: list[str] | None = None, *, branc
             if not isinstance(diagnostic, dict) or not isinstance(diagnostic.get("message"), str):
                 raise ValueError("invalid rebase diagnostic")
             plan.append(f"warning: {diagnostic['message']}")
-        if phase == "paused":
-            plan.append("resolve and stage conflicts, then run smart_rebase.sh continue")
-        elif phase == "ready":
-            plan.append("validate the resulting tree, then run smart_rebase.sh finish")
+        if phase in {"paused", "ready"}:
+            scripts = Path(__file__).resolve().parents[1]
+            if phase == "paused":
+                instruction, verb = "resolve and stage conflicts", "continue"
+            else:
+                instruction, verb = "validate the resulting tree", "finish"
+            next_command = shlex.join([str(scripts / "python"), str(scripts / "rebase.py"), verb, "--repo", repo])
+            plan.append(f"{instruction}, then run {next_command}")
         if action != "status":
             try:
                 RepoContext.refresh_branch(repo)

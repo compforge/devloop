@@ -4,4 +4,4 @@ description: Commit current changes and push, without creating a pull/merge requ
 ---
 
 Follow [git-ops](../git-ops/SKILL.md) and its [commit flow](../git-ops/references/commit-flow.md).
-Select the **commit-and-push** transaction: `smart_gcamp.sh`.
+Select the **commit-and-push** transaction: `commit_flow.py push`.

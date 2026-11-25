@@ -42,8 +42,8 @@ selected, subsequent check commands are previews and must be replanned after for
 
 With repocli 0.94.0+, request `build` when the task needs an artifact verified. The Component
 declares a literal `build` target in its own Makefile and owns the native commands and artifact
-checks. File selection and worker budgets are optional recipe inputs. Keep packaging smoke tests there so ordinary test runs stay fast. In a combined round,
-build follows lint/test and executes afresh. Report a missing target as skipped.
+checks. Keep unit tests independent of the build output. RepoCLI can schedule lint, test and build
+concurrently and executes the requested build afresh. Report a missing target as skipped.
 
 Run `repocli validate` for routine checks. With repocli 0.100.0+, it selects lint and
 test files from the branch diff and falls back to full checks when the scope is uncertain.
@@ -67,12 +67,12 @@ including failed rounds. Do not add `--json` and shell redirection to save a sec
 `--output` result. Read results even on nonzero exit; JSON carries the ValidationReport in `data`.
 In repocli 0.93.0+, `--plan` and `--history` also default to text; use `--json` for structured
 queries. Neither proves that checks ran in this invocation. Repocli checks its own history
-before execution. `--force` requests real execution; `--concurrency` bounds simultaneous checks.
+before execution. `--force` requests real execution.
 Do not assemble previous reports or decide execution reuse in the workflow.
 
 When actual execution is slow, locate the expensive phase/check before changing parameters.
-Use `--lint-workers N` / `--test-workers N` to override the corresponding Makefile budget;
-these are separate from outer `--concurrency`. Check installed command help before using the
+Use `--lint-workers N` / `--test-workers N` to override the corresponding Makefile budget.
+Check installed command help before using the
 worker flags (repocli 0.91.0+). A flag cannot accelerate a recipe that does not consume its variable;
 recommend the project change instead. Follow [capacity tuning](references/spec.md#capacity-tuning)
 to adjust one budget at a time and compare real execution at the same scope.

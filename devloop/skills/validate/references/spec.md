@@ -49,12 +49,12 @@ and actual lint/test execution. Worker changes cannot repair a slow analysis pha
 filtering; address the measured bottleneck through its owner.
 
 For a slow executed check with a working worker contract and available CPU/memory, increase its
-budget gradually, for example 2 to 4, while holding outer concurrency, scope and other settings
+budget gradually, for example 2 to 4, while holding scope and other settings
 constant. Use comparable natural validation rounds where possible; changed inputs, scope or warm
 caches limit causal comparisons. A reused result has no current execution timing to tune against.
 Use `--force` only for a deliberate execution comparison, not automatically on each validation.
 
-Treat `--concurrency` as simultaneous checks and each worker value as capacity inside one check.
+Each worker value applies within one check. RepoCLI schedules concurrent checks.
 Account for concurrent Components, native nested pools and shared databases/ports. The Makefile
 allocates its budget across internal stages instead of multiplying every pool by the same value.
 Keep useful improvements, lower the budget when contention or resource failures appear, and stop

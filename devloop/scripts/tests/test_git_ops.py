@@ -15,12 +15,9 @@ from domain.context import PullRequest  # noqa: E402
 
 
 def test_workflow_entrypoints_are_executable():
-    """Workflow wrappers may be invoked directly even though skills normally spell out `bash`."""
     scripts = Path(__file__).resolve().parent.parent
-    missing = [path.name for path in scripts.glob("smart_*.sh") if not os.access(path, os.X_OK)]
-    if not os.access(scripts / "branch.py", os.X_OK):
-        missing.append("branch.py")
-    assert missing == []
+    assert os.access(scripts / "python", os.X_OK)
+    assert os.access(scripts / "branch.py", os.X_OK)
 
 
 def test_sensitive_filter():

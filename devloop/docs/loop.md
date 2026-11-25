@@ -30,7 +30,7 @@ devloop 的两个杠杆沿循环分布：**状态源 + Board**（软提示）覆
 | 3' | 开发后效 | `PostToolUse` / `PostToolUseFailure` | TS `recordToolCall`；TS `afterTool` | 时间线追加完成结果并滚动清理；git 状态命令后按**位置感知的有效目录**刷新对应 repo 的 branch 段。时间线不参与验证；检查执行与复用由 repocli 管理 |
 | 4 | 验证 | AI 按 validate skill 显式执行 | `repocli validate` → `format → lint ‖ test` | repocli 保存各 check 的结果与复用历史 |
 | 5 | 提交 / PR | `/gcam` `/gcamp` `/gcampr` | `commit_flow`（PLAN banner 自陈） | 复用 `domain.branch` 承载兼容的 edit-then-cut；可重复的 `--file` 收敛 staging；外来提交自检；AI 直接调用 repocli 创建或更新 PR，并检查 review 状态 |
-| 5b | 在途 PR/MR rebase | `smart_rebase.sh start/continue/finish` | `scripts/domain/rebase.py`（worktree-local transaction） | start 在改写前保存远端 source SHA；finish 用精确 `force-with-lease`，远端移动即拒绝覆盖 |
+| 5b | 在途 PR/MR rebase | `rebase.py start/continue/finish` | `scripts/domain/rebase.py` → `repocli git rebase` | start 在改写前保存远端 source SHA；finish 用精确 `force-with-lease`，远端移动即拒绝覆盖 |
 | 6 | 等人工 merge | Board / 写入 gate 按需查询 | 原生 RepoKit PR context | 当前分支派生为 in-flight，Board turn item 软提示 |
 | 7 | PR/MR 终态后的下一轮 | 查询到 Forge 状态变为 merged / closed | 原生查询；PR 写入或显式 clean 时维护资源 | 分支派生为 inactive；RepoKit 按 merged 状态和数量策略维护 linked worktree（保护本地工作、保留 branch ref），回到第 1 拍，从最新 `origin/<target>` 切新分支 |
 

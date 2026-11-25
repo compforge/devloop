@@ -1,11 +1,11 @@
 # Rebase
 
 ```bash
-bash <PLUGIN_ROOT>/scripts/smart_rebase.sh start --repo <name|path> [--target <branch>]
+"<PLUGIN_ROOT>/scripts/python" "<PLUGIN_ROOT>/scripts/rebase.py" start --repo <name|path> [--target <branch>]
 # Resolve conflicts, stage the resolved files, and continue as needed.
-bash <PLUGIN_ROOT>/scripts/smart_rebase.sh continue --repo <name|path>
+"<PLUGIN_ROOT>/scripts/python" "<PLUGIN_ROOT>/scripts/rebase.py" continue --repo <name|path>
 # Validate the resulting tree before publishing (see below).
-bash <PLUGIN_ROOT>/scripts/smart_rebase.sh finish --repo <name|path>
+"<PLUGIN_ROOT>/scripts/python" "<PLUGIN_ROOT>/scripts/rebase.py" finish --repo <name|path>
 ```
 
 The helper checks development policy and invokes `repocli git rebase`; it owns no Git transaction

@@ -1,12 +1,11 @@
 """Commit policy over RepoCLI's prepared content and confirmed result."""
 from __future__ import annotations
 
-import re
-import shlex
 import subprocess
 from dataclasses import dataclass
 
-from repokit.cli import commit_plan_result, commit_result
+from repokit import RepoKitError
+from repokit.cli import commit_plan_result, create_commit
 
 
 class CommitError(Exception):
@@ -23,10 +22,6 @@ def is_sensitive(path: str) -> bool:
             or any(p in _SENSITIVE_DIRS for p in parts))
 
 
-def oid(value: object) -> bool:
-    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", value) is not None
-
-
 @dataclass(frozen=True)
 class Prepared:
     repo: str
@@ -37,12 +32,6 @@ class Prepared:
     mode: str
     files: tuple[str, ...]
     paths: tuple[str, ...]
-
-    def identity_args(self) -> list[str]:
-        return ["--branch", self.branch, "--head", self.head, "--tree", self.tree]
-
-    def recovery(self) -> str:
-        return shlex.join(["repocli", "git", "commit", "check", "--repo", self.repo, *self.identity_args()])
 
 
 def _call(repo: str, action: str, arguments: list[str]) -> dict:
@@ -58,7 +47,6 @@ def prepare(repo: str, branch: str, files: list[str]) -> Prepared:
         args.extend(["--file", path])
     try:
         result = _call(repo, "plan", args)
-        data = result.get("data")
         if result["outcome"] != "succeeded":
             raise CommitError(f"commit plan failed: {result.get('error', {}).get('message', 'candidate unavailable')}")
         data = commit_plan_result(result, repo, branch, mode)
@@ -75,24 +63,12 @@ def create(prepared: Prepared, message: str, plan: list[str]) -> str:
     if not prepared.paths:
         plan.append("nothing selected — skipped commit")
         return ""
-    args = ["--mode", prepared.mode, *prepared.identity_args(), "--index-fingerprint", prepared.index_fingerprint,
-            "--message", message]
-    for path in prepared.files:
-        args.extend(["--file", path])
     try:
-        result = _call(prepared.repo, "create", args)
-        data = result.get("data")
-        data = commit_result(result, prepared.repo, prepared.branch, prepared.head, prepared.tree, prepared.index_fingerprint)
-        if (result["outcome"] != "succeeded" or data.get("confirmed") is not True
-                or not oid(data.get("commit")) or data.get("actualTree") != prepared.tree
-                or data.get("parents") != ([] if prepared.head == "unborn" else [prepared.head])):
-            raise CommitError(f"commit not confirmed; actual={data.get('commit')} recovery={data.get('recoveryPath')}; "
-                              f"inspect with {prepared.recovery()}")
-        plan.append(f"confirmed commit {data['commit']} ({len(prepared.paths)} paths)")
-        plan.extend(f"warning: {d['message']}" for d in data["diagnostics"])
-        if data.get("indexInstalled") is not True:
-            raise CommitError(f"commit {data['commit']} confirmed, but index needs recovery at {data.get('recoveryPath')}; "
-                              "stop before push; do not repeat commit")
-        return data["commit"]
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
-        raise CommitError(f"commit result unavailable; inspect with {prepared.recovery()} before retrying: {error}") from error
+        data = create_commit(prepared.repo, prepared.branch, head=prepared.head, tree=prepared.tree,
+                             index_fingerprint=prepared.index_fingerprint, mode=prepared.mode,
+                             files=prepared.files, message=message)
+    except RepoKitError as error:
+        raise CommitError(error.text()) from error
+    plan.append(f"confirmed commit {data['commit']} ({len(prepared.paths)} paths)")
+    plan.extend(f"warning: {item['message']}" for item in data["diagnostics"])
+    return data["commit"]

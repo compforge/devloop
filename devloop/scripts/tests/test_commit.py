@@ -1,6 +1,5 @@
 """Commit selection mechanics live in RepoKit; devloop verifies policy and CLI evidence."""
 from unittest.mock import patch
-import subprocess
 
 from _testkit import run_main, _load_script
 from domain import commit
@@ -53,53 +52,22 @@ def test_default_selection_is_tracked_and_plan_identity_must_match():
             except commit.CommitError: pass
 
 
-def test_create_forwards_frozen_intent_and_requires_matching_commit():
-    with patch.object(commit, "_call", return_value=created()) as call:
-        plan=[]
-        assert commit.create(prepared(), "message", plan) == SHA
-        args=call.call_args.args[2]
-        assert args == ["--mode", "files", "--branch", "topic", "--head", HEAD, "--tree", TREE,
-                        "--index-fingerprint", INDEX, "--message", "message", "--file", "src"]
-        assert SHA in plan[0]
-    for updates in [dict(confirmed=False), dict(actualTree="f"*40), dict(parents=[]), dict(commit="bad")]:
-        result=created();result["data"].update(updates)
-        with patch.object(commit,"_call",return_value=result) as call:
-            try:commit.create(prepared(),"message",[]);assert False
-            except commit.CommitError as e:assert "commit not confirmed" in str(e)
-            assert call.call_count==1
-
-
-def test_create_rejects_wrong_report_identity_before_accepting_confirmation():
-    for updates in [dict(checkout="/other"), dict(tree="f"*40), dict(head="f"*40),
-                    dict(indexFingerprint="f"*64), dict(branch="other"), dict(action="plan")]:
-        result=created();result["data"].update(updates)
-        with patch.object(commit,"_call",return_value=result) as call:
-            try:commit.create(prepared(),"message",[]);assert False
-            except commit.CommitError as e:assert "invalid or mismatching commit report" in str(e)
-            assert call.call_count==1
-
-
-def test_unknown_or_missing_commit_response_never_replays():
-    result=created();result["outcome"]="unknown"
-    for response,error in [(result,None),(None,subprocess.TimeoutExpired("repocli",180)),({},None)]:
-        with patch.object(commit,"_call",return_value=response,side_effect=error) as call:
-            try:commit.create(prepared(),"message",[]);assert False
-            except commit.CommitError as e:assert HEAD in str(e) and TREE in str(e) and "--repo" in str(e)
-            assert call.call_count==1
-
-
-def test_confirmed_commit_with_uninstalled_index_stops_before_push():
-    result=created();result["data"].update(indexInstalled=False,recoveryPath="/candidate")
-    with patch.object(commit,"_call",return_value=result):
-        plan=[]
-        try:commit.create(prepared(),"message",plan);assert False
-        except commit.CommitError as e:assert SHA in str(e) and "do not repeat commit" in str(e)
-        assert SHA in plan[0]
+def test_create_reports_index_recovery_and_stops_before_push():
+    result = created()
+    result["data"].update(indexInstalled=False, recoveryPath="/candidate")
+    with patch("repokit.cli.run", return_value=result) as call:
+        try:
+            commit.create(prepared(), "message", [])
+        except commit.CommitError as error:
+            assert SHA in str(error) and "/candidate" in str(error)
+        else:
+            raise AssertionError("uninstalled index allowed publication")
+        assert call.call_count == 1
 
 
 def test_empty_selection_has_no_commit_call():
     from dataclasses import replace
-    with patch.object(commit,"_call") as call:
+    with patch("repokit.cli.run") as call:
         assert commit.create(replace(prepared(),paths=()),"message",[]) == ""
         call.assert_not_called()
 

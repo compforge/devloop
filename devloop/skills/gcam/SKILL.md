@@ -4,4 +4,4 @@ description: Commit current changes without pushing. Use when the user says "gca
 ---
 
 Follow [git-ops](../git-ops/SKILL.md) and its [commit flow](../git-ops/references/commit-flow.md).
-Select the **commit-only** transaction: `smart_gcam.sh`.
+Select the **commit-only** transaction: `commit_flow.py commit`.

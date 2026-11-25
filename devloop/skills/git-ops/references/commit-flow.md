@@ -2,8 +2,8 @@
 
 | Requested outcome | Execution |
 |---|---|
-| Commit | `bash <PLUGIN_ROOT>/scripts/smart_gcam.sh` |
-| Commit + push | `bash <PLUGIN_ROOT>/scripts/smart_gcamp.sh` |
+| Commit | `"<PLUGIN_ROOT>/scripts/python" "<PLUGIN_ROOT>/scripts/commit_flow.py" commit` |
+| Commit + push | `"<PLUGIN_ROOT>/scripts/python" "<PLUGIN_ROOT>/scripts/commit_flow.py" push` |
 | Commit + push + PR/MR | AI runs the commit-and-push transaction, then `repocli pr create` |
 
 Before publishing code, run `repocli validate` following [validate](../../validate/SKILL.md),

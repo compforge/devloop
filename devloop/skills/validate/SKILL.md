@@ -1,95 +1,31 @@
 ---
 name: validate
-description: Guide project Makefile format/lint/test and optional build contracts, run checks through repocli, and tune slow validation from execution evidence. Use to set up or improve validation targets, validate changes, format code, run tests, verify before publishing, or diagnose failed and slow checks.
+description: Use to validate changes before publishing, set up Makefile checks, or diagnose failed or slow checks with repocli.
 ---
 
-Use repocli directly for project checks. The project owns its Makefile recipes;
-repocli owns target discovery, file selection, execution, bounded concurrency and result reuse.
-Read [repocli results and recovery](../../references/repocli.md#command-results-and-recovery)
-before interpreting CLI output; use its supported CLI/schema baseline.
+## Validate a change
 
-## Project Makefile guidance
+Prepare dependencies using the project's setup instructions. From the repository root, run
+`repocli validate`. It runs lint and unit tests for the changes on your branch. Repocli selects
+affected files and falls back to a full Component check when it cannot determine the scope.
 
-For a new project or a request to improve validation, inspect existing Makefiles, pinned tools,
-configuration and project instructions before proposing changes. Reuse its runners and installation
-entrypoints. Read [the contract](references/spec.md) and only the relevant language guidance:
-[Go](references/go.md), [Python](references/python.md), or [Node](references/node.md).
+Request a build when you need to verify that the code compiles or packages successfully.
+Request full checks when the task requires full coverage. Use `repocli validate --help` for options.
 
-Guide the project toward literal `format`, `lint` and `test` targets: format normalizes source;
-lint/test remain read-only and non-interactive. Recommend optional `LINT_FILES` / `TEST_FILES`
-support where language semantics permit, with empty values retaining full checks. For parallelizable
-checks, recommend overridable positive `LINT_WORKERS` / `TEST_WORKERS` defaults mapped to native
-runner capacity. Missing worker controls are an improvement opportunity, not a failing check.
-Explain the concrete gap and suggested recipe; make changes when the task authorizes them.
-Do not add dependencies or targets merely to make an execution request pass.
+Before publishing, finish all edits and keep the checkout unchanged during validation. Read the
+result for each Component. Report which checks ran or were reused, what they covered, and any
+failures or skipped checks. Accept the reported scope when validation passed, completed, and
+verified that its inputs stayed unchanged.
 
-## Run and tune validation
+For a failed or slow check, inspect its [recorded output and timings](references/spec.md#history-diagnosis).
+Use the slowest step to decide [what to tune](references/spec.md#capacity-tuning).
 
-Start with project defaults. Inspect a Makefile's capabilities when entering a project or when the
-report exposes full-scope fallback or slow checks; do not repeat an onboarding audit on every run.
+## Set up a Component
 
-```bash
-repocli validate --repo <repo>
-repocli validate --repo <repo> --component <component> --check test
-repocli validate --repo <repo> --check format,lint,test --timeout 10m
-repocli validate --repo <repo> --component <component> --check build --timeout 10m
-```
+A Component declares its checks in its own Makefile. Use the project's existing tools.
+`format` updates source files, `lint` checks them, and `test` runs unit tests independently of
+`build`. Add `build` when there is an artifact to compile or package. Lint, test and build can
+run concurrently.
 
-`validate` defaults to lint/test. `--check` selects the steps to combine. Format always runs
-first; repocli replans from the resulting contents before running lint/test. Format can
-change files and never grants validation evidence. `--plan` is read-only; when format is
-selected, subsequent check commands are previews and must be replanned after format.
-
-With repocli 0.94.0+, request `build` when the task needs an artifact verified. The Component
-declares a literal `build` target in its own Makefile and owns the native commands and artifact
-checks. File selection and worker budgets are optional recipe inputs. Keep packaging smoke tests there so ordinary test runs stay fast. In a combined round,
-build follows lint/test and executes afresh. Report a missing target as skipped.
-
-Run `repocli validate` for routine checks. With repocli 0.100.0+, it selects lint and
-test files from the branch diff and falls back to full checks when the scope is uncertain.
-Pass `--component` for a requested Component boundary and `--full` for explicitly required
-full coverage. Earlier CLI versions run full checks by default.
-Inspect the reported scope and fallback reason. Let repocli supply Makefile file lists.
-
-Prepare project dependencies through its documented installation entrypoint before
-validation. Missing Makefile targets are reported as skipped. Do not invent
-targets, install tools, or change dependencies merely to make a validation command work.
-
-Finish intended checkout edits, including version and dependency manifests, before final
-validation. Keep captured inputs unchanged until the command finishes; use another checkout
-for concurrent edits. When an edit supersedes an active round in the same checkout, cancel
-that round and wait for it to exit before editing and starting the replacement. If a matching
-round is already running, wait for its report. Inspect failed output and consistency before retrying.
-
-Read the default text summary for AI-led diagnosis and workflow decisions. Use `--json` only
-when parsing fields, or `--output <file>` to retain full JSON evidence alongside the text summary,
-including failed rounds. Do not add `--json` and shell redirection to save a second copy of an
-`--output` result. Read results even on nonzero exit; JSON carries the ValidationReport in `data`.
-In repocli 0.93.0+, `--plan` and `--history` also default to text; use `--json` for structured
-queries. Neither proves that checks ran in this invocation. Repocli checks its own history
-before execution. `--force` requests real execution; `--concurrency` bounds simultaneous checks.
-Do not assemble previous reports or decide execution reuse in the workflow.
-
-When actual execution is slow, locate the expensive phase/check before changing parameters.
-Use `--lint-workers N` / `--test-workers N` to override the corresponding Makefile budget;
-these are separate from outer `--concurrency`. Check installed command help before using the
-worker flags (repocli 0.91.0+). A flag cannot accelerate a recipe that does not consume its variable;
-recommend the project change instead. Follow [capacity tuning](references/spec.md#capacity-tuning)
-to adjust one budget at a time and compare real execution at the same scope.
-
-Accept validation only after checking the outcome, passed/complete/inputsConsistent verdict,
-scope and individual checks; these verdict fields are under `data` in JSON. Report Components,
-focused/full scope, executed/reused checks, failures and unavailable checks. Input inconsistency invalidates
-passing evidence; a focused pass, format success or a single check does not prove full validation.
-Report wall time and the slowest Component/check steps with their current execution and lookup
-times; the text summary exposes these costs. In JSON use `cost.wallSeconds` and `cost.validation`,
-not historical reused check durations, for this round's cost.
-
-For past failures or slow checks, use `repocli validate history list` to select a run,
-then `repocli validate history show <runID>` for captured output, test timings and input evidence.
-Read [history diagnosis](references/spec.md#history-diagnosis) for filtering and interpretation.
-Query retained evidence before rerunning just to recover logs. Validate current changes normally;
-historical success does not establish that the current inputs pass.
-
-Read [the validation contract](references/spec.md) for result and Makefile semantics and
-[repocli](../../references/repocli.md) for installation and repository analysis.
+See the [Makefile contract](references/spec.md) and the [Go](references/go.md),
+[Python](references/python.md), or [Node](references/node.md) guide for recipe examples.

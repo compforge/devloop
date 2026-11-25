@@ -20,7 +20,7 @@ when the corresponding variable is explicitly consumed and paths are representab
 Deleted/reowned paths, missing filtering support or empty candidates for an affected
 Component fall back to full scope. Partial impact does not by itself force full scope.
 
-With repocli 0.94.0+, format may consume `FORMAT_FILES` (existing recipes can use `LINT_FILES`),
+Format may consume `FORMAT_FILES` (existing recipes can use `LINT_FILES`),
 and build may consume `BUILD_FILES` for an explicit file selection. Impact-based builds remain full.
 
 ## Worker budgets
@@ -31,12 +31,12 @@ map them to the pinned runner's supported options. Omitted overrides retain proj
 empty worker values are not the file-list full-scope convention. Do not use Make `override`
 assignments to defeat the caller's budget. Serial tools can remain serial.
 
-Repocli 0.91.0+ accepts `--lint-workers` on lint/validate and `--test-workers` on test/validate.
+Repocli accepts `--lint-workers` on lint/validate and `--test-workers` on test/validate.
 An explicit flag must be positive. It freezes `LINT_WORKERS=N` or `TEST_WORKERS=N` in only the
 corresponding Make command, visible in plans/results/history and included in reuse matching.
 Changing test workers does not invalidate lint reuse, and format receives neither override.
-Existing inherited environment values still participate in the environment digest as before.
-In 0.94.0+, format and build also accept their own worker budgets through `--format-workers` and
+Inherited environment values participate in the environment digest.
+Format and build accept their own worker budgets through `--format-workers` and
 `--build-workers`, passed to Make as `FORMAT_WORKERS` and `BUILD_WORKERS`.
 The flags apply to every selected Component's corresponding check; select a Component when
 tuning it independently. Repocli does not infer native runner flags or automatically tune them.
@@ -49,12 +49,12 @@ and actual lint/test execution. Worker changes cannot repair a slow analysis pha
 filtering; address the measured bottleneck through its owner.
 
 For a slow executed check with a working worker contract and available CPU/memory, increase its
-budget gradually, for example 2 to 4, while holding outer concurrency, scope and other settings
+budget gradually, for example 2 to 4, while holding scope and other settings
 constant. Use comparable natural validation rounds where possible; changed inputs, scope or warm
 caches limit causal comparisons. A reused result has no current execution timing to tune against.
 Use `--force` only for a deliberate execution comparison, not automatically on each validation.
 
-Treat `--concurrency` as simultaneous checks and each worker value as capacity inside one check.
+Each worker value applies within one check. RepoCLI schedules concurrent checks.
 Account for concurrent Components, native nested pools and shared databases/ports. The Makefile
 allocates its budget across internal stages instead of multiplying every pool by the same value.
 Keep useful improvements, lower the budget when contention or resource failures appear, and stop
@@ -70,12 +70,10 @@ No additional tuning cache or persistent settings are required; retain the comma
 checks. Failed format stops the round; absent optional format allows checks. Format-only
 success is never lint/test evidence. Dependencies must be prepared first.
 
-With repocli 0.94.0+, `--check lint,test,build` finishes the selected lint/test checks and
-verifies input consistency before build. Build runs in full for each selected Component with
-a build target by default. An explicit file selection may narrow build when its recipe consumes
-`BUILD_FILES`. Each execution gets its own history record. A failed prerequisite or missing
-target leaves the build skipped. If delivery requires a verified artifact, inspect the
-Component's build result before publishing.
+`lint`, `test` and `build` can run concurrently. Each requested build runs afresh and gets
+its own history record. Build covers the selected Component by default. An explicit file
+selection may narrow it when the recipe consumes `BUILD_FILES`. A missing target is reported
+as skipped. If delivery requires a verified artifact, check the build result before publishing.
 
 The CLI command envelope and the ValidationReport in `data` answer different questions:
 command completion versus validation coverage and evidence. Read

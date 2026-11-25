@@ -7,9 +7,9 @@
 | Commit + push + PR/MR | AI runs the commit-and-push transaction, then `repocli pr create` |
 
 Before publishing code, run `repocli validate` following [validate](../../validate/SKILL.md),
-retaining the intended full/impact-based scope and Component boundary from development. Include the optional Component build when delivery requires artifact verification.
-For impact-based selection, use HEAD for uncommitted edits or the target baseline for a committed
-branch. Inspect results and fix relevant failures. The AI issues validation; the Git transaction
+retaining any required Component boundary and full coverage. RepoCLI selects the affected
+files for routine validation. Include the optional Component build when delivery requires artifact verification.
+Inspect results and fix relevant failures. The AI issues validation; the Git transaction
 neither launches repocli nor requires validation records.
 
 Select the actual repository with `--repo <path>`. Repeat `--file <path>` for explicit, repo-relative

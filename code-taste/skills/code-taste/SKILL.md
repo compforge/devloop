@@ -1,6 +1,11 @@
 ---
 name: code-taste
-description: "Use when writing, modifying, refactoring, or reviewing software code; designing models, module boundaries, interfaces, or names; or writing README, AGENTS.md, design documents, and technical blog posts. Includes Go, Python, and TypeScript conventions. Skip read-only debugging, triage, call-path inspection, and operational execution; apply when the task moves into code changes."
+description: >-
+  Use when understanding existing code, including its callers, callees, or type hierarchies,
+  or when writing, modifying, refactoring, or reviewing code. Also use when designing models,
+  module boundaries, interfaces, or names, or writing README, AGENTS.md, design documents,
+  and technical blog posts. Includes Go, Python, and TypeScript conventions.
+  Skip runtime debugging, incident triage, and operational execution.
 ---
 
 # Code Taste
